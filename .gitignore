@@ -1,0 +1,4 @@
+﻿# Visual Studio
+*.vcxproj.user
+*.csproj.user
+*.suo

@@ -1,0 +1,15 @@
+# Binary git LFS files
+*.zip filter=lfs diff=lfs merge=lfs -text
+*.exe filter=lfs diff=lfs merge=lfs -text
+*.an2 filter=lfs diff=lfs merge=lfs -text
+*.256 filter=lfs diff=lfs merge=lfs -text
+*.pal filter=lfs diff=lfs merge=lfs -text
+*.koo filter=lfs diff=lfs merge=lfs -text
+*.dat filter=lfs diff=lfs merge=lfs -text
+*.inf filter=lfs diff=lfs merge=lfs -text
+*.3da filter=lfs diff=lfs merge=lfs -text
+*.000 filter=lfs diff=lfs merge=lfs -text
+*.wav filter=lfs diff=lfs merge=lfs -text
+*.smp filter=lfs diff=lfs merge=lfs -text
+*.prb filter=lfs diff=lfs merge=lfs -text
+*.spl filter=lfs diff=lfs merge=lfs -text
