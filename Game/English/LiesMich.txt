@@ -1,0 +1,57 @@
+DESPERABIS - erweiterte Version
+
+*****************************************
+ACHTUNG!!!!!
+Es bietet sich an, nach der Installation und vor dem ersten Programmstart zu testen, ob die Windows-Eigenschaften für DOS-Programme bezüglich der Verwendung von XMS-Speicher ausreichend sind. Siehe dazu Fehlerbehebung, Fehler Nr.1 !!!
+*****************************************
+
+Hardwarevoraussetzungen
+-------------------------
+- Pentium 133MHz oder schneller, MS-DOS
+- VGA-Grafikkarte, 3D-Beschleunigerkarten nicht erforderlich
+- 16 MB RAM (XMS-Treiber)
+- 10 MB Festplattenspeicher
+- Soundblaster-kompatible Soundkarte
+
+
+Deinstallation
+----------------
+Einfach den kompletten Desperabis-Ordner löschen. Es bleiben keinerlei Rückstände wie z.B. DLL-Dateien im Windows-Verzeichnis.
+
+Fehlerbehebung:
+----------------
+Es können in seltenen Fällen beim Starten von Desperabis Fehlermeldungen im DOS-Fenster auftreten, die evtl. zum anschließenden Absturz von Windows führen. Diese Fehler sind i.a. auf falsche Einstellungen von Windows zurückzuführen und sollen im folgenden beschrieben werden:
+
+Fehler Nr.1 :  XMS-Error Nr.xxx
+Ursache: Windows stellt für DOS-Anwendungen keinen oder zu wenig XMS-Speicher zur Verfügung.
+Behebung: Wählen Sie die Datei DESPERAB im Explorer mit der rechten Maustaste und wählen Sie den letzten Punkt EIGENSCHAFTEN. Im Menü wählen Sie die Menüseite SPEICHER. Dort sollte in ALLEN Feldern AUTOMATISCH ausgewählt werden (empfohlen), oder unter Erweiterungsspeicher(XMS) mindestens 8192KB. Auch VERWENDET HMA sollte ausgewählt werden. Wenn Sie die Veränderungen bestätigen, wird eine neue Datei DESPERAB.PIF angelegt, so dass diese Veränderungen bei jedem Aufruf von DESPERAB.EXE (von Windows aus) wirksam werden.
+
+
+Fehler Nr.2 : Lesefehler in der Datei xxx. SCHREIBSCHUTZ?
+Ursache: Die Datei xxx ist entweder beschädigt oder besitzt nur-lesen-Status. Letzteres kann der Fall sein, wenn Sie die Dateien vom Explorer einfach ins Desperabis-Verzeichnis kopieren.
+Behebung: Entfernen Sie den Schreibschutz einer Datei folgendermaßen: Wählen Sie die Datei im Explorer mit der rechten Maustaste und wählen Sie den letzten Punkt EIGENSCHAFTEN. Jetzt können Sie im Kontrollkästchen SCHREIBSCHUTZ das Häkchen entfernen.
+
+Fehler Nr.3 :  Es ist kein Sound zu hören
+Ursache und Behebung: Im Spiel ist unter EINSTELLUNGEN evtl. sowohl Geräusche als auch SOUND auf AUS geschaltet. Steht dort in beiden Fällen NICHT MÖGLICH, wurde die Soundblaster-Karte nicht erkannt und muss unter KONFIGURATION richtig eingestellt werden. Wenn Sie die Parameter Ihrer Soundkarte nicht kennen, rufen Sie das Programm SB_INST.EXE aus dem Desperabis-Verzeichnis auf. Dieses liest die Soundblaster-Einstellungen aus der Umgebungsvariablen. Wenn Sie die Soundkarte mit den richtigen Werten konfiguriert haben, verlassen Sie das Spiel (die Parameter werden natürlich gespeichert) und starten Sie Windows und Desperabis neu. Stellen Sie ggf. als Soundkarte SOUNDBLASTER ein, obwohl Sie eine SB-16 haben.
+ 
+
+
+Spielinformationen
+--------------------
+Genre: 3D-Action Adventure in sehr düsterer Atmosphäre
+
+Auflösung: 360x240x256 Farben im Spiel
+           360x480x256 Farben im Menü
+
+Steuerung: Wahlweise Maus, Tastatur oder Joystick
+           360°-Drehungen, Springen, Ducken, Tauchen
+
+
+Level: 1 Trainigslevel
+       7 Level im ersten Spielteil mit Schwerpunkt Rätsellösen
+      18 Level im zweiten Spielteil mit Schwerpunkt "action"
+
+Story: Die Geschichte des jungen Zauberlehrlings Kjarthan, der, um das Leben seiner Geliebten zu retten, die mächtige Kristallkugel seines Meisters stiehlt und durch seinen Leichtsinn einen finsteren Dämonen weckt.
+
+
+

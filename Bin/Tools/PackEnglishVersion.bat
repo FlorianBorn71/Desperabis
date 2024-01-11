@@ -1,0 +1,1 @@
+PackingTool.exe -s ..\..\Data\SourceAssets\English -d ..\..\Game\English\GAME.DAT
