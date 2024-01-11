@@ -1,0 +1,50 @@
+Tastenbelegung im Spiel
+------------------------
+
+F1,ESC: Hauptmenue aufrufen
+F2: Inventar anzeigen
+F5: Handsymbole ein- und ausblenden
+F7: Bildhelligkeit ändern
+
+p : Pause
+s : Sound ein- und ausschalten
+g : Geräusche ein- und ausschalten
++ : Geräuschlautstärke erhöhen
+- : Geräuschlautstärke verringern
+
+t : Steuerung über Tastatur
+m : Steuerung mit der Maus
+j : Joysticksteuerung
+
+Zifferntasten: Eine Waffe wird aus dem Inventar ausgewählt, sofern sie gefunden wurde:
+  1 : Dolch
+  2 : Schwert
+  3 : Armbrust
+  4 : Feuerbälle
+  5 : Stein
+  6 : Rattenfalle
+  7 : Konduktorkugel
+  8 : Schaufel
+
+Standardbelegung der Tasten zur Steuerung
+
+                      vorwärts gehen : Cursor hoch
+                     rückwärts gehen : Cursor runter
+                   nach links drehen : Cursor links
+                  nach rechts drehen : Cursor rechts
+               seitwärts links gehen : Shift links
+              seitwärts rechts gehen : Shift rechts
+                              ducken : Bild runter
+                            springen : Bild hoch
+                         hochschauen : POS 1
+                       runterschauen : Ende
+                   geradeaus schauen : Del
+                      Waffe benutzen : Leertaste
+Gegenstände aufheben, Türen öffnen...: RETURN
+       Waffen in den Händen tauschen : ß
+
+
+Tastenbelegung in einem Menü
+-----------------------------
+Cursor hoch/runter : Steuerung des Auswahlzeigers (Schwert)
+            RETURN : Auswahl
