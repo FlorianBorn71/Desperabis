@@ -2,3 +2,5 @@
 *.vcxproj.user
 *.csproj.user
 *.suo
+**/x64/
+**/.vs/
