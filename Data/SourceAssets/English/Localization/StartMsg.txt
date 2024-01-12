@@ -1,0 +1,10 @@
+DESPERABIS - geschrieben von Florian Born 
+email:fburn@gmx.de
+
+Tasten :
+#
+         1..9 : Waffe ausw„hlen
+           F1 : Hauptmenue
+           F2 : Rucksack
+
+RETURN...|

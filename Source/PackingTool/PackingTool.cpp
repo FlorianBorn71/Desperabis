@@ -12,7 +12,9 @@
 using namespace std;
 
 static const __int16 g_MagicXor = 1111;
-static const std::string_view g_Filenames[] = {
+static const int g_DirEntrySize = 28;
+
+static const std::string_view g_FilenamesGAME[] = {
 	"GRAFIK\\TUR6.256",
 	"GRAFIK\\TUR61.256",
 	"GRAFIK\\TUR8.256",
@@ -308,11 +310,10 @@ static const std::string_view g_Filenames[] = {
 	"GRAFIK\\HERZ.256",
 };
 
-static const __int16 g_NumFiles = static_cast<__int16>(std::size(g_Filenames));
-static_assert(g_NumFiles == 293);
-static const int g_DirEntrySize = 28;
-static const int g_initialFileOfs = 4 + g_DirEntrySize * g_NumFiles;
-static_assert(g_initialFileOfs == 8208);
+static const __int16 g_NumFilesGAME = static_cast<__int16>(std::size(g_FilenamesGAME));
+static_assert(g_NumFilesGAME == 293);
+static const int g_initialFileOfsGAME = 4 + g_DirEntrySize * g_NumFilesGAME;
+static_assert(g_initialFileOfsGAME == 8208);
 
 static void FileRead(FILE* fIn, void* buffer, int size)
 {
@@ -428,12 +429,17 @@ struct Texture
 		FileRead(fIn, m_data.data(), count);
 	}
 
-	void Load(const char* fileName)
+	bool Load(const char* fileName)
 	{
 		FILE* fIn = fopen(fileName, "rb");
-		assert(fIn != nullptr);
+		if (fIn == nullptr)
+		{
+			cerr << "failed to load file '" << fileName << "'" << endl;
+			return false;
+		}
 		Read(fIn);
 		fclose(fIn);
+		return true;
 	}
 
 	bool Save(const char* fileName) const
@@ -441,7 +447,7 @@ struct Texture
 		FILE* fOut = fopen(fileName, "wb");
 		if (fOut == nullptr)
 		{
-			assert(fOut != nullptr);
+			cerr << "failed to write file '" << fileName << "'" << endl;
 			return false;
 		}
 		__int16 w = width - 1, h = height - 1;
@@ -470,7 +476,10 @@ struct Texture
 		{
 			size_t len = static_cast<size_t>(ptr[0]);
 			if (len >= width)
+			{
+				cerr << "Invalid text length in file '" << outFile << "'" << endl;
 				return false;
+			}
 			const char* str = (const char*)&ptr[1];
 			while (len > 0 && str[len-1] == 0) // happens for line 2 of tur38
 				len--;
@@ -485,6 +494,60 @@ struct Texture
 		return true;
 	}
 
+	bool ToMissionText(const char* outFile) const
+	{
+		FILE* fOut = fopen(outFile, "wb");
+		if (fOut == nullptr)
+		{
+			assert(fOut != nullptr);
+			return false;
+		}
+
+		std::ostringstream oss;
+		const unsigned char* ptr = m_data.data();
+		for (int h = 0; h < height; h++, ptr += width)
+		{
+			size_t len = static_cast<size_t>(ptr[0]);
+			if (len >= width)
+			{
+				cerr << "Invalid text length in file '" << outFile << "'" << endl;
+				return false;
+			}
+			if ((h & 1) == 0)
+			{
+				// mission name
+				const char* str = (const char*)&ptr[1];
+				while (len > 0 && str[len - 1] == 0) // happens for line 2 of tur38
+					len--;
+				string_view s(str, len);
+				oss << s << std::endl;
+			}
+			else
+			{
+				// list of missions
+				for (int i = 0; i < len; i++)
+				{
+					int level = static_cast<int>(ptr[i + 1]);
+					if (i > 0)
+						oss << ",";
+					oss << level;
+				}
+				if (ptr[len + 1] == 96)
+				{
+					oss << ",END";
+				}
+				oss << std::endl;
+			}
+		}
+
+		string buf = oss.str();
+		fwrite(buf.data(), buf.length(), 1, fOut);
+
+		fclose(fOut);
+		return true;
+	}
+
+
 
 	struct TextLine
 	{
@@ -497,7 +560,7 @@ struct Texture
 		FILE* fIn = fopen(fileName, "rb");
 		if (fIn == nullptr)
 		{
-			assert(fIn != nullptr);
+			cerr << "Failed to load file '" << fileName << "'" << endl;
 			return false;
 		}
 
@@ -508,7 +571,11 @@ struct Texture
 		TextLine line;
 		while (fgets(buffer, sizeof(buffer), fIn) != nullptr) {
 			int len = static_cast<int>(strlen(buffer));
-			assert(len > 0);
+			if (len == 0 || len > 256)
+			{
+				cerr << "Invalid line (" << lines.size() << ") in file '" << fileName << "'" << endl;
+				return false;
+			}
 			len--; // remove '\n' at end
 			memset(line.m_buffer, 0, sizeof(line.m_buffer));
 			memcpy(line.m_buffer, buffer, len);
@@ -533,6 +600,83 @@ struct Texture
 		return true;
 	}
 
+	bool FromMissionText(const char* fileName)
+	{
+		FILE* fIn = fopen(fileName, "rb");
+		if (fIn == nullptr)
+		{
+			cerr << "Failed to load file '" << fileName << "'" << endl;
+			return false;
+		}
+
+		height = width = 0;
+
+		// first load all lines
+		char buffer[1024];
+		vector<TextLine> lines;
+		TextLine line;
+		while (fgets(buffer, sizeof(buffer), fIn) != nullptr) {
+			int len = static_cast<int>(strlen(buffer));
+			if (len == 0 || len > 256)
+			{
+				cerr << "Invalid line ("<< lines.size() << ") in file '" << fileName << "'" << endl;
+				return false;
+			}
+			len--; // remove '\n' at end
+			memset(line.m_buffer, 0, sizeof(line.m_buffer));
+			if ((lines.size() & 1) == 0)
+			{
+				// mission name
+				memcpy(line.m_buffer, buffer, len);
+				line.m_buffer[len] = 0;
+				line.m_length = len;
+			}
+			else
+			{
+				// list of mission indices
+				string input(buffer, len);
+				std::istringstream stream(input);
+				int levelIndex = 0;
+				line.m_length = 0;
+				while (stream >> levelIndex)
+				{
+					line.m_buffer[line.m_length++] = levelIndex;
+					// Check for a comma and discard it
+					if (stream.peek() == ',')
+						stream.ignore();
+					if (stream.peek() == 'E') // 'END'
+					{
+						line.m_buffer[line.m_length] = 96; // does not inc m_length
+						width = std::max(width, line.m_length + 2);
+						break;
+					}
+
+				}
+			}
+
+			lines.push_back(line);
+			width = std::max(width, line.m_length + 1);
+		}
+		fclose(fIn);
+
+		height = static_cast<int>(lines.size());
+		if (height & 1)
+		{
+			cerr << "Mission file must have an even number of lines" << endl;
+		}
+		int count = width * height;
+		m_data.resize(count);
+
+		// Copy lines:
+		unsigned char* ptr = m_data.data();
+		memset(ptr, 0, count);
+		for (int h = 0; h < height; h++, ptr += width)
+		{
+			memcpy(ptr, &lines[h], width); // use width, not m_length+1, because the 'END' level does not count but is still in the list
+		}
+
+		return true;
+	}
 };
 
 
@@ -576,8 +720,8 @@ bool BuildDAT(const char* outFile)
 
 	// load content of all files
 	DirEntry entry = { 0 };
-	entry.m_fileOfs = g_initialFileOfs;
-	for (string_view name : g_Filenames)
+	entry.m_fileOfs = g_initialFileOfsGAME;
+	for (string_view name : g_FilenamesGAME)
 	{
 		entry.SetName(name);
 		if (!entry.LoadContent())
@@ -623,18 +767,30 @@ void TexturesToText()
 //	t.Load("GRAFIK\\TUR29.256");
 //	t.ToText("LEVEL\\Ingame29.txt");
 	t.Load("GRAFIK\\TUR38.256");
-	t.ToText("LEVEL\\Ingame38.txt");
+	t.ToText("Localization\\Ingame38.txt");
 	t.Load("GRAFIK\\TUR39.256");
-	t.ToText("LEVEL\\Ingame39.txt");
+	t.ToText("Localization\\Ingame39.txt");
+
+	t.Load("GRAFIK\\HERZ.256");
+	t.ToMissionText("Localization\\Missions.txt");
 }
 
-void TextToTextures()
+bool TextToTextures()
 {
 	Texture t;
-	t.FromText("LEVEL\\Ingame38.txt");
-	t.Save("GRAFIK\\TUR38.256");
-	t.FromText("LEVEL\\Ingame39.txt");
-	t.Save("GRAFIK\\TUR39.256");
+	if (!t.FromText("Localization\\Ingame38.txt"))
+		return false;
+	if (!t.Save("GRAFIK\\TUR38.256"))
+		return false;
+	if (!t.FromText("Localization\\Ingame39.txt"))
+		return false;
+	if (!t.Save("GRAFIK\\TUR39.256"))
+		return false;
+	if (!t.FromMissionText("Localization\\Missions.txt"))
+		return false;
+	if (!t.Save("GRAFIK\\HERZ.256"))
+		return false;
+	return true;
 }
 
 
@@ -694,20 +850,25 @@ int main(int argc, char* argv[])
 
 		vector<DirEntry> entries;
 
-		ExploreFilesInDAT(entries, "GAME.DAT.orig");
-		std::ostringstream oss;
-		BuildFileList(entries, oss);
-		string s = oss.str();
+		// extract the list of files
+		//ExploreFilesInDAT(entries, "GAME.DAT");
+		//std::ostringstream oss;
+		//BuildFileList(entries, oss);
+		//string s = oss.str();
 		TexturesToText();
 	}
 	else
 	{
-		TextToTextures();
+		if (!TextToTextures())
+		{
+			cerr << "An error occurred during text baking." << endl;
+			return 2;
+		}
 
 		if (!BuildDAT(destFile.c_str()))
 		{
 			cerr << "An error occurred during packaging." << endl;
-			return 1;
+			return 3;
 		}
 	}
 	cout << "Packing file was successfully written to: " << destFile.c_str() << endl;
