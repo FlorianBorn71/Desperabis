@@ -20,86 +20,9 @@ using namespace std;
 #define SUCCEED_OR_RETURN(_f) if (!(_f)) return false;
 
 
-bool ExploreFilesInDAT(vector<DatFile::DirEntry>& entries, const char* fileIn)
-{
-	OPEN_OR_RETURN(fileIn, nullptr);
-
-	__int16 magicXor;
-	FileUtils::FileRead(fIn, &magicXor, sizeof(magicXor));
-	__int16 numFiles;
-	FileUtils::FileRead(fIn, &numFiles, sizeof(numFiles));
-
-	DatFile::DirEntry entry;
-
-	int firstEntry = (int)entries.size();
-	for (int i = 0; i < numFiles; i++)
-	{
-		entry.ReadEntry(fIn, magicXor);
-		entries.push_back(entry);
-	}
-
-	fclose(fIn);
-	return true;
-}
-
-void BuildFileList(vector<DatFile::DirEntry>& entries, std::ostringstream& oss)
-{
-	oss << "static const std::string_view g_Filenames[] = {\n";
-	for (const DatFile::DirEntry& entry : entries)
-	{
-		std::string_view sw(entry.m_name, entry.m_length);
-		oss << "    \"" << entry.Filename() << "\"," << std::endl;
-	}
-	oss << "};";
-}
-
-bool BuildDAT(const char* outFile, string& out_path)
-{
-	vector<DatFile::DirEntry> entries;
-
-	// load content of all files
-	DatFile::DirEntry entry = { 0 };
-	entry.m_fileOfs = g_initialFileOfsGAME;
-	for (string_view name : g_FilenamesGAME)
-	{
-		entry.SetName(name);
-		if (!entry.LoadContent())
-		{
-			cerr << "Failed to load file '" << name << "'" << endl;
-			return false;
-		}
-		entries.push_back(entry);
-		entry.m_fileOfs += entry.m_fileLength;
-	}
-
-
-	CREATE_OR_RETURN(outFile, &out_path);
-
-	__int16 magicXor = g_MagicXor;
-	fwrite(&magicXor, sizeof(magicXor), 1, fOut);
-	__int16 numFiles = static_cast<__int16>(entries.size());
-	fwrite(&numFiles, sizeof(numFiles), 1, fOut);
-
-	for (const DatFile::DirEntry& e : entries)
-	{
-		e.WriteEntry(fOut, magicXor);
-	}
-
-	for (const DatFile::DirEntry& e : entries)
-	{
-		e.WriteContent(fOut);
-	}
-
-	fclose(fOut);
-	return true;
-}
-
-
 bool ConvertTexturesToText()
 {
 	Texture t;
-//	t.Load("GRAFIK\\TUR29.256");
-//	t.ToText("LEVEL\\Ingame29.txt");
 	SUCCEED_OR_RETURN(t.Load("GRAFIK\\TUR38.256"));
 	SUCCEED_OR_RETURN(t.ToText("IngameKjarthan.txt"));
 	SUCCEED_OR_RETURN(t.Load("GRAFIK\\TUR39.256"));
@@ -135,13 +58,32 @@ bool ConvertSMPToWAV()
 	// Witch sounds (samples 109..116):
 	for (int i = 0; i < 8; i++)
 	{
-		std::ostringstream srcName, dstName;
-		srcName << "SAMP\\SOUND" << i+109 << ".SMP";
-		dstName << "Witch" << i << ".wav";
-		string s = srcName.str();
+		std::ostringstream smpName, wavName;
+		smpName << "SAMP\\SOUND" << i + 109 << ".SMP";
+		wavName << "Witch" << i << ".wav";
+		string s = smpName.str();
 		SUCCEED_OR_RETURN(smp.LoadSMP(s.c_str()));
-		s = dstName.str();
+		s = wavName.str();
 		SUCCEED_OR_RETURN(smp.SaveWAV(s.c_str()));
+	}
+
+	return true;
+}
+
+bool ConvertWAVToSMP()
+{
+	Sound smp;
+
+	// Witch sounds (samples 109..116):
+	for (int i = 0; i < 8; i++)
+	{
+		std::ostringstream smpName, wavName;
+		smpName << "SAMP\\SOUND" << i + 109 << ".SMP";
+		wavName << "Witch" << i << ".wav";
+		string s = wavName.str();
+		SUCCEED_OR_RETURN(smp.LoadWAV(s.c_str()));
+		s = smpName.str();
+		SUCCEED_OR_RETURN(smp.SaveSMP(s.c_str()));
 	}
 
 	return true;
@@ -177,17 +119,14 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	const bool extractFromOriginal = true;
+	const bool extractFromOriginal = false;
 	if (extractFromOriginal)
 	{
 		// Some playground code to do the inverse operations, not executed by actual tool
-		vector<DatFile::DirEntry> entries;
+		string snd = DatFile::BuildFileList("SOUNDS.DAT", "SOUNDS");
+		string music = DatFile::BuildFileList("MUSIC.DAT", "MUSIC");
+		string game = DatFile::BuildFileList("GAME.DAT", "GAME");
 
-		// extract the list of files
-		//ExploreFilesInDAT(entries, "GAME.DAT");
-		//std::ostringstream oss;
-		//BuildFileList(entries, oss);
-		//string s = oss.str();
 		if (!ConvertSMPToWAV())
 		{
 			cerr << "An error occurred during sound extraction." << endl;
@@ -202,19 +141,44 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
+		cout << "Start packaging of text files...";
 		if (!ConvertTextToTextures())
 		{
 			cerr << "An error occurred during text baking." << endl;
 			return 2;
 		}
+		cout << "success." << endl;
 
-		string datOutFile;
-		if (!BuildDAT("GAME.DAT", datOutFile))
+		cout << "Start packaging of sound files...";
+		if (!ConvertWAVToSMP())
 		{
-			cerr << "An error occurred during packaging." << endl;
+			cerr << "An error occurred during sound baking." << endl;
 			return 3;
 		}
-		cout << "Packing file was successfully written to: " << datOutFile.c_str() << endl;
+		cout << "success." << endl;
+
+
+		string datOutFile;
+		if (!DatFile::Game.PackageAndSave(&datOutFile))
+		{
+			cerr << "An error occurred during packaging GAME.DAT." << endl;
+			return 101;
+		}
+		cout << "Package successfully written to: " << datOutFile.c_str() << endl;
+		if (!DatFile::Sounds.PackageAndSave(&datOutFile))
+		{
+			cerr << "An error occurred during packaging SOUNDS.DAT." << endl;
+			return 101;
+		}
+		cout << "Package successfully written to : " << datOutFile.c_str() << endl;
+		if (!DatFile::Music.PackageAndSave(&datOutFile))
+		{
+			cerr << "An error occurred during packaging MUSIC.DAT." << endl;
+			return 101;
+		}
+		cout << "Package successfully written to: " << datOutFile.c_str() << endl;
 	}
+
+	cout << "All successful." << endl;
 	return 0;
 }

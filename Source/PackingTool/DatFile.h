@@ -7,6 +7,21 @@
 class DatFile
 {
 public:
+	DatFile(std::string_view name, const std::string_view* fileList, size_t numFiles);
+
+	bool PackageAndSave(std::string* out_path = nullptr) const;
+
+	static const DatFile Game;
+	static const DatFile Sounds;
+	static const DatFile Music;
+
+	static std::string BuildFileList(const char* DATFile, const char* postFix);
+
+private:
+	std::string m_outName;
+	const std::string_view* m_fileList;
+	int m_numFiles;
+
 	struct DirEntry
 	{
 		// hardcoded block:
@@ -32,6 +47,8 @@ public:
 
 		std::vector<char> m_content;
 	};
+
+	static bool ExploreFilesInDAT(const char* fileIn, std::vector<DatFile::DirEntry>& entries);
 
 };
 

@@ -3,9 +3,20 @@
 #include "FileUtils.h"
 
 #include <cassert>
+#include <iostream>
+#include <iosfwd>
 
 
 using namespace std;
+
+
+//////////////////////////////////////////////////////////////////////////////
+
+const DatFile DatFile::Game("GAME.DAT", g_FilenamesGAME, std::size(g_FilenamesGAME));
+const DatFile DatFile::Sounds("SOUNDS.DAT", g_FilenamesSOUNDS, std::size(g_FilenamesSOUNDS));
+const DatFile DatFile::Music("MUSIC.DAT", g_FilenamesMUSIC, std::size(g_FilenamesMUSIC));
+
+//////////////////////////////////////////////////////////////////////////////
 
 
 void DatFile::DirEntry::SetName(string_view n)
@@ -69,4 +80,99 @@ bool DatFile::DirEntry::HasExtension(const char* ext) const
 bool DatFile::DirEntry::HasName(const char* name) const
 {
 	return _stricmp(m_name, name) == 0;
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+DatFile::DatFile(string_view name, const string_view* fileList, size_t numFiles)
+{
+	m_outName = name;
+	m_fileList = fileList;
+	m_numFiles = static_cast<int>(numFiles);
+}
+
+bool DatFile::PackageAndSave(string* out_path) const
+{
+	vector<DatFile::DirEntry> entries;
+	entries.reserve(m_numFiles);
+
+	// load content of all files
+	DatFile::DirEntry entry = { 0 };
+	entry.m_fileOfs = 4 + g_DirEntrySize * m_numFiles;
+	for (int i = 0; i < m_numFiles; i++)
+	{
+		string_view name = m_fileList[i];
+		entry.SetName(name);
+		if (!entry.LoadContent())
+		{
+			cerr << "Failed to load file '" << name << "'" << endl;
+			return false;
+		}
+		entries.push_back(entry);
+		entry.m_fileOfs += entry.m_fileLength;
+	}
+
+
+	CREATE_OR_RETURN(m_outName.c_str(), out_path);
+
+	__int16 magicXor = g_MagicXor;
+	fwrite(&magicXor, sizeof(magicXor), 1, fOut);
+	__int16 numFiles = static_cast<__int16>(entries.size());
+	fwrite(&numFiles, sizeof(numFiles), 1, fOut);
+
+	for (const DatFile::DirEntry& e : entries)
+	{
+		e.WriteEntry(fOut, magicXor);
+	}
+
+	for (const DatFile::DirEntry& e : entries)
+	{
+		e.WriteContent(fOut);
+	}
+
+	fclose(fOut);
+	return true;
+}
+
+
+bool DatFile::ExploreFilesInDAT(const char* fileIn, vector<DatFile::DirEntry>& entries)
+{
+	OPEN_OR_RETURN(fileIn, nullptr);
+
+	__int16 magicXor;
+	FileUtils::FileRead(fIn, &magicXor, sizeof(magicXor));
+	__int16 numFiles;
+	FileUtils::FileRead(fIn, &numFiles, sizeof(numFiles));
+
+	DatFile::DirEntry entry;
+
+	int firstEntry = (int)entries.size();
+	for (int i = 0; i < numFiles; i++)
+	{
+		entry.ReadEntry(fIn, magicXor);
+		entries.push_back(entry);
+	}
+
+	fclose(fIn);
+	return true;
+}
+
+
+std::string DatFile::BuildFileList(const char* DATFile, const char* postFix)
+{
+	std::ostringstream oss;
+	vector<DatFile::DirEntry> entries;
+	if (!ExploreFilesInDAT(DATFile, entries))
+		return "<error>";
+
+	oss << "static const std::string_view g_Filenames"<< postFix<< "[] = {\n";
+	for (const DatFile::DirEntry& entry : entries)
+	{
+		std::string_view sw(entry.m_name, entry.m_length);
+		oss << "    \"" << entry.Filename() << "\"," << std::endl;
+	}
+	oss << "};";
+	return oss.str();
 }
