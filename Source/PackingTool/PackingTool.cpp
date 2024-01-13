@@ -13,21 +13,20 @@
 #include "Texture.h"
 #include "Sound.h"
 #include "DatFile.h"
+#include "FileUtils.h"
 
 using namespace std;
 
 
 
-void ExploreFilesInDAT(vector<DatFile::DirEntry>& entries, const char* fileIn)
+bool ExploreFilesInDAT(vector<DatFile::DirEntry>& entries, const char* fileIn)
 {
-	FILE* fIn = fopen(fileIn, "rb");
-	if (fIn == nullptr)
-		return;
+	OPEN_OR_RETURN(fileIn, nullptr);
 
 	__int16 magicXor;
-	FileRead(fIn, &magicXor, sizeof(magicXor));
+	FileUtils::FileRead(fIn, &magicXor, sizeof(magicXor));
 	__int16 numFiles;
-	FileRead(fIn, &numFiles, sizeof(numFiles));
+	FileUtils::FileRead(fIn, &numFiles, sizeof(numFiles));
 
 	DatFile::DirEntry entry;
 
@@ -39,6 +38,7 @@ void ExploreFilesInDAT(vector<DatFile::DirEntry>& entries, const char* fileIn)
 	}
 
 	fclose(fIn);
+	return true;
 }
 
 void BuildFileList(vector<DatFile::DirEntry>& entries, std::ostringstream& oss)
@@ -52,7 +52,7 @@ void BuildFileList(vector<DatFile::DirEntry>& entries, std::ostringstream& oss)
 	oss << "};";
 }
 
-bool BuildDAT(const char* outFile)
+bool BuildDAT(const char* outFile, string& out_path)
 {
 	vector<DatFile::DirEntry> entries;
 
@@ -72,12 +72,7 @@ bool BuildDAT(const char* outFile)
 	}
 
 
-	FILE* fOut = fopen(outFile, "wb");
-	if (fOut == nullptr)
-	{
-		cerr << "Failed to open output file '" << outFile << "'" << endl;
-		return false;
-	}
+	CREATE_OR_RETURN(outFile, &out_path);
 
 	__int16 magicXor = g_MagicXor;
 	fwrite(&magicXor, sizeof(magicXor), 1, fOut);
@@ -105,26 +100,26 @@ void ConvertTexturesToText()
 //	t.Load("GRAFIK\\TUR29.256");
 //	t.ToText("LEVEL\\Ingame29.txt");
 	t.Load("GRAFIK\\TUR38.256");
-	t.ToText("Localization\\Ingame38.txt");
+	t.ToText("Ingame38.txt");
 	t.Load("GRAFIK\\TUR39.256");
-	t.ToText("Localization\\Ingame39.txt");
+	t.ToText("Ingame39.txt");
 
 	t.Load("GRAFIK\\HERZ.256");
-	t.ToMissionText("Localization\\Missions.txt");
+	t.ToMissionText("Missions.txt");
 }
 
 bool ConvertTextToTextures()
 {
 	Texture t;
-	if (!t.FromText("Localization\\Ingame38.txt"))
+	if (!t.FromText("Ingame38.txt"))
 		return false;
 	if (!t.Save("GRAFIK\\TUR38.256"))
 		return false;
-	if (!t.FromText("Localization\\Ingame39.txt"))
+	if (!t.FromText("Ingame39.txt"))
 		return false;
 	if (!t.Save("GRAFIK\\TUR39.256"))
 		return false;
-	if (!t.FromMissionText("Localization\\Missions.txt"))
+	if (!t.FromMissionText("Missions.txt"))
 		return false;
 	if (!t.Save("GRAFIK\\HERZ.256"))
 		return false;
@@ -140,7 +135,7 @@ bool ConvertSMPToWAV()
 
 //	if (!smp.LoadSMP("SAMP\\SOUND1.SMP"))
 //		return false;
-	if (!smp.SaveWAV("Localization\\Sound1.wav"))
+	if (!smp.SaveWAV("Sound1.wav"))
 		return false;
 
 	return true;
@@ -149,55 +144,34 @@ bool ConvertSMPToWAV()
 
 int main(int argc, char* argv[])
 {
-	string sourceDir, destFile;
-
 	if (argc <= 1)
 	{
 		std::cout << "Command line args: " << std::endl;
-		std::cout << "  -s <folder> : source root folder (absolute path) under which the unpacked game assets are located" << std::endl;
+		std::cout << "  -s <folder> : adds one source root folder (absolute path) under which the unpacked game assets are located" << std::endl;
 		std::cout << "  -d <file> : absolute file path of the destination file (.DAT)." << std::endl;
 		return 0;
 	}
 	else
 	{
-		std::cout << "Number of arguments: " << argc - 1 << std::endl;
+//		std::cout << "Number of arguments: " << argc - 1 << std::endl;
 		// Print each command line argument
 		for (int i = 1; i < argc; ++i)
 		{
-			std::cout << "  Argument " << i << ": " << argv[i] << std::endl;
+//			std::cout << "  Argument " << i << ": " << argv[i] << std::endl;
 			if (_stricmp(argv[i], "-s") == 0 && i < argc - 1)
 			{
-				sourceDir = argv[i + 1];
+				FileUtils::AddInputDirectory(argv[i + 1]);
+				i++;
 			}
 			if (_stricmp(argv[i], "-d") == 0 && i < argc - 1)
 			{
-				destFile = argv[i + 1];
+				FileUtils::SetOutputDirectory(argv[i + 1]);
+				i++;
 			}
 		}
 	}
 
-
-	if (destFile.empty())
-	{
-		destFile = "GAME.DAT"; // save to current cwd
-	}
-	// make it absolute
-	char buf[4096];
-	std::filesystem::path cwd = _getcwd(buf, sizeof(buf));
-	std::filesystem::path outputPath = cwd / destFile;
-	outputPath = outputPath.lexically_normal();
-	destFile = outputPath.string();
-
-	if (!sourceDir.empty())
-	{
-		if (_chdir(sourceDir.c_str()) != 0)
-		{
-			cerr << "Failed to set source directory." << endl;
-			return 1;
-		}
-	}
-
-	const bool loadOriginal = true;
+	const bool loadOriginal = false;
 	if (loadOriginal)
 	{
 
@@ -219,12 +193,13 @@ int main(int argc, char* argv[])
 			return 2;
 		}
 
-		if (!BuildDAT(destFile.c_str()))
+		string datOutFile;
+		if (!BuildDAT("GAME.DAT", datOutFile))
 		{
 			cerr << "An error occurred during packaging." << endl;
 			return 3;
 		}
+		cout << "Packing file was successfully written to: " << datOutFile.c_str() << endl;
 	}
-	cout << "Packing file was successfully written to: " << destFile.c_str() << endl;
 	return 0;
 }

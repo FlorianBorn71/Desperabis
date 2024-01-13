@@ -1,4 +1,5 @@
 #include "Sound.h"
+#include "FileUtils.h"
 
 #include <iostream>
 
@@ -6,16 +7,9 @@ using namespace std;
 
 bool Sound::LoadSMP(const char* fileName)
 {
-	FILE* fIn = fopen(fileName, "rb");
-	if (fIn == nullptr)
-	{
-		cerr << "failed to load file '" << fileName << "'" << endl;
-		return false;
-	}
+	OPEN_OR_RETURN(fileName, nullptr);
 
-	fseek(fIn, 0, SEEK_END);
-	int fileLength = ftell(fIn);
-	fseek(fIn, 0, SEEK_SET);
+	int fileLength = FileUtils::GetFileSize(fIn);
 	m_buffer.resize(fileLength);
 	fread(m_buffer.data(), 1, fileLength, fIn);
 	fclose(fIn);
@@ -27,21 +21,10 @@ bool Sound::SaveSMP(const char* fileName) const
 	return Save(fileName, false);
 }
 
-void SkipBytes(FILE* fIn, int bytes)
-{
-	char dummy;
-	for (int i = 0; i < bytes; i++)
-		fread(&dummy, 1, 1, fIn);
-}
 
 bool Sound::LoadWAV(const char* fileName)
 {
-	FILE* fIn = fopen(fileName, "rb");
-	if (fIn == nullptr)
-	{
-		cerr << "failed to load file '" << fileName << "'" << endl;
-		return false;
-	}
+	OPEN_OR_RETURN(fileName, nullptr);
 
 	ChunkHeader chunk;
 	fread(&chunk, 1, sizeof(chunk), fIn);
@@ -74,7 +57,7 @@ bool Sound::LoadWAV(const char* fileName)
 			// The rest is extensible WAV header -> ignore
 			if (chunk.chunkSize > format.chunk.chunkSize)
 			{
-				SkipBytes(fIn, chunk.chunkSize - format.chunk.chunkSize);
+				FileUtils::SkipBytes(fIn, chunk.chunkSize - format.chunk.chunkSize);
 			}
 
 			if (format.bitsPerSample != referenceFormat.bitsPerSample
@@ -98,7 +81,7 @@ bool Sound::LoadWAV(const char* fileName)
 		else
 		{
 			// ignore bytes
-			SkipBytes(fIn, chunk.chunkSize);
+			FileUtils::SkipBytes(fIn, chunk.chunkSize);
 		}
 	}
 
@@ -120,12 +103,7 @@ bool Sound::SaveWAV(const char* fileName) const
 
 bool Sound::Save(const char* fileName, bool asWav) const
 {
-	FILE* fOut = fopen(fileName, "wb");
-	if (fOut == nullptr)
-	{
-		cerr << "failed to write file '" << fileName << "'" << endl;
-		return false;
-	}
+	CREATE_OR_RETURN(fileName, nullptr);
 
 	int size = static_cast<int>(m_buffer.size());
 	if (asWav)

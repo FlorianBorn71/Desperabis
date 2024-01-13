@@ -1,5 +1,6 @@
 #include "DatFile.h"
 #include "FileLists.h"
+#include "FileUtils.h"
 
 #include <cassert>
 
@@ -41,13 +42,9 @@ void DatFile::DirEntry::WriteEntry(FILE* fOut, __int16 magicXor) const
 bool DatFile::DirEntry::LoadContent()
 {
 	string n(Filename());
-	FILE* fIn = fopen(n.c_str(), "rb");
-	if (fIn == nullptr)
-		return false;
+	OPEN_OR_RETURN(n.c_str(), nullptr);
 
-	fseek(fIn, 0, SEEK_END);
-	m_fileLength = ftell(fIn);
-	fseek(fIn, 0, SEEK_SET);
+	m_fileLength = FileUtils::GetFileSize(fIn);
 	m_content.resize(m_fileLength);
 	fread(m_content.data(), 1, m_fileLength, fIn);
 	fclose(fIn);

@@ -4,3 +4,6 @@
 *.suo
 **/x64/
 **/.vs/
+
+# Packing tool
+**/_temp/

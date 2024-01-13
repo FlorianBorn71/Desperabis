@@ -130,6 +130,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="DatFile.cpp" />
+    <ClCompile Include="FileUtils.cpp" />
     <ClCompile Include="PackingTool.cpp" />
     <ClCompile Include="Sound.cpp" />
     <ClCompile Include="Texture.cpp" />
@@ -137,6 +138,7 @@
   <ItemGroup>
     <ClInclude Include="DatFile.h" />
     <ClInclude Include="FileLists.h" />
+    <ClInclude Include="FileUtils.h" />
     <ClInclude Include="Sound.h" />
     <ClInclude Include="Texture.h" />
   </ItemGroup>

@@ -1,4 +1,5 @@
 #include "Texture.h"
+#include "FileUtils.h"
 #include <cassert>
 #include <iostream>
 #include <sstream>
@@ -9,25 +10,21 @@ using namespace std;
 void Texture::Read(FILE* fIn)
 {
 	__int16 w, h;
-	FileRead(fIn, &w, sizeof(w));
-	FileRead(fIn, &h, sizeof(h));
+	FileUtils::FileRead(fIn, &w, sizeof(w));
+	FileUtils::FileRead(fIn, &h, sizeof(h));
 	assert(w < 512 && h < 512);
 
 	width = w + 1;
 	height = h + 1;
 	int count = width * height;
 	m_data.resize(count);
-	FileRead(fIn, m_data.data(), count);
+	FileUtils::FileRead(fIn, m_data.data(), count);
 }
 
 bool Texture::Load(const char* fileName)
 {
-	FILE* fIn = fopen(fileName, "rb");
-	if (fIn == nullptr)
-	{
-		cerr << "failed to load file '" << fileName << "'" << endl;
-		return false;
-	}
+	OPEN_OR_RETURN(fileName, nullptr);
+
 	Read(fIn);
 	fclose(fIn);
 	return true;
@@ -35,12 +32,8 @@ bool Texture::Load(const char* fileName)
 
 bool Texture::Save(const char* fileName) const
 {
-	FILE* fOut = fopen(fileName, "wb");
-	if (fOut == nullptr)
-	{
-		cerr << "failed to write file '" << fileName << "'" << endl;
-		return false;
-	}
+	CREATE_OR_RETURN(fileName, nullptr);
+
 	__int16 w = width - 1, h = height - 1;
 	fwrite(&w, sizeof(w), 1, fOut);
 	fwrite(&h, sizeof(h), 1, fOut);
@@ -54,12 +47,7 @@ bool Texture::Save(const char* fileName) const
 
 bool Texture::ToText(const char* outFile) const
 {
-	FILE* fOut = fopen(outFile, "wb");
-	if (fOut == nullptr)
-	{
-		assert(fOut != nullptr);
-		return false;
-	}
+	CREATE_OR_RETURN(outFile, nullptr);
 
 	std::ostringstream oss;
 	const unsigned char* ptr = m_data.data();
@@ -87,12 +75,7 @@ bool Texture::ToText(const char* outFile) const
 
 bool Texture::ToMissionText(const char* outFile) const
 {
-	FILE* fOut = fopen(outFile, "wb");
-	if (fOut == nullptr)
-	{
-		assert(fOut != nullptr);
-		return false;
-	}
+	CREATE_OR_RETURN(outFile, nullptr);
 
 	std::ostringstream oss;
 	const unsigned char* ptr = m_data.data();
@@ -143,17 +126,12 @@ bool Texture::ToMissionText(const char* outFile) const
 struct TextLine
 {
 	unsigned char m_length = 0;
-	char m_buffer[1023];
+	char m_buffer[1023] = {0};
 };
 
 bool Texture::FromText(const char* fileName)
 {
-	FILE* fIn = fopen(fileName, "rb");
-	if (fIn == nullptr)
-	{
-		cerr << "Failed to load file '" << fileName << "'" << endl;
-		return false;
-	}
+	OPEN_OR_RETURN(fileName, nullptr);
 
 	height = width = 0;
 
@@ -193,12 +171,7 @@ bool Texture::FromText(const char* fileName)
 
 bool Texture::FromMissionText(const char* fileName)
 {
-	FILE* fIn = fopen(fileName, "rb");
-	if (fIn == nullptr)
-	{
-		cerr << "Failed to load file '" << fileName << "'" << endl;
-		return false;
-	}
+	OPEN_OR_RETURN(fileName, nullptr);
 
 	height = width = 0;
 
