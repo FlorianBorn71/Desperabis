@@ -17,6 +17,7 @@
 
 using namespace std;
 
+#define SUCCEED_OR_RETURN(_f) if (!(_f)) return false;
 
 
 bool ExploreFilesInDAT(vector<DatFile::DirEntry>& entries, const char* fileIn)
@@ -94,35 +95,30 @@ bool BuildDAT(const char* outFile, string& out_path)
 }
 
 
-void ConvertTexturesToText()
+bool ConvertTexturesToText()
 {
 	Texture t;
 //	t.Load("GRAFIK\\TUR29.256");
 //	t.ToText("LEVEL\\Ingame29.txt");
-	t.Load("GRAFIK\\TUR38.256");
-	t.ToText("Ingame38.txt");
-	t.Load("GRAFIK\\TUR39.256");
-	t.ToText("Ingame39.txt");
+	SUCCEED_OR_RETURN(t.Load("GRAFIK\\TUR38.256"));
+	SUCCEED_OR_RETURN(t.ToText("IngameKjarthan.txt"));
+	SUCCEED_OR_RETURN(t.Load("GRAFIK\\TUR39.256"));
+	SUCCEED_OR_RETURN(t.ToText("IngameTrainingInstructions.txt"));
 
-	t.Load("GRAFIK\\HERZ.256");
-	t.ToMissionText("Missions.txt");
+	SUCCEED_OR_RETURN(t.Load("GRAFIK\\HERZ.256"));
+	SUCCEED_OR_RETURN(t.ToMissionText("MissionsMenu.txt"));
+	return true;
 }
 
 bool ConvertTextToTextures()
 {
 	Texture t;
-	if (!t.FromText("Ingame38.txt"))
-		return false;
-	if (!t.Save("GRAFIK\\TUR38.256"))
-		return false;
-	if (!t.FromText("Ingame39.txt"))
-		return false;
-	if (!t.Save("GRAFIK\\TUR39.256"))
-		return false;
-	if (!t.FromMissionText("Missions.txt"))
-		return false;
-	if (!t.Save("GRAFIK\\HERZ.256"))
-		return false;
+	SUCCEED_OR_RETURN(t.FromText("IngameKjarthan.txt"));
+	SUCCEED_OR_RETURN(t.Save("GRAFIK\\TUR38.256"));
+	SUCCEED_OR_RETURN(t.FromText("IngameTrainingInstructions.txt"));
+	SUCCEED_OR_RETURN(t.Save("GRAFIK\\TUR39.256"));
+	SUCCEED_OR_RETURN(t.FromMissionText("MissionsMenu.txt"));
+	SUCCEED_OR_RETURN(t.Save("GRAFIK\\HERZ.256"));
 	return true;
 }
 
@@ -130,13 +126,23 @@ bool ConvertTextToTextures()
 bool ConvertSMPToWAV()
 {
 	Sound smp;
-	if (!smp.LoadWAV("SAMP\\MUSIC1.WAV"))
-		return false;
+//	if (!smp.LoadWAV("SAMP\\MUSIC1.WAV"))
+//		return false;
 
 //	if (!smp.LoadSMP("SAMP\\SOUND1.SMP"))
 //		return false;
-	if (!smp.SaveWAV("Sound1.wav"))
-		return false;
+
+	// Witch sounds (samples 109..116):
+	for (int i = 0; i < 8; i++)
+	{
+		std::ostringstream srcName, dstName;
+		srcName << "SAMP\\SOUND" << i+109 << ".SMP";
+		dstName << "Witch" << i << ".wav";
+		string s = srcName.str();
+		SUCCEED_OR_RETURN(smp.LoadSMP(s.c_str()));
+		s = dstName.str();
+		SUCCEED_OR_RETURN(smp.SaveWAV(s.c_str()));
+	}
 
 	return true;
 }
@@ -171,10 +177,10 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	const bool loadOriginal = false;
-	if (loadOriginal)
+	const bool extractFromOriginal = true;
+	if (extractFromOriginal)
 	{
-
+		// Some playground code to do the inverse operations, not executed by actual tool
 		vector<DatFile::DirEntry> entries;
 
 		// extract the list of files
@@ -182,8 +188,17 @@ int main(int argc, char* argv[])
 		//std::ostringstream oss;
 		//BuildFileList(entries, oss);
 		//string s = oss.str();
-		ConvertSMPToWAV();
-		ConvertTexturesToText();
+		if (!ConvertSMPToWAV())
+		{
+			cerr << "An error occurred during sound extraction." << endl;
+			return 2;
+		}
+		if (!ConvertTexturesToText())
+		{
+			cerr << "An error occurred during texture to text extraction." << endl;
+			return 3;
+		}
+		cout << "Extracting localizable files was successful." << endl;;
 	}
 	else
 	{
