@@ -131,11 +131,13 @@
   <ItemGroup>
     <ClCompile Include="DatFile.cpp" />
     <ClCompile Include="PackingTool.cpp" />
+    <ClCompile Include="Sound.cpp" />
     <ClCompile Include="Texture.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="DatFile.h" />
     <ClInclude Include="FileLists.h" />
+    <ClInclude Include="Sound.h" />
     <ClInclude Include="Texture.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

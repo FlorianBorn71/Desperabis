@@ -11,6 +11,7 @@
 
 #include "FileLists.h"
 #include "Texture.h"
+#include "Sound.h"
 #include "DatFile.h"
 
 using namespace std;
@@ -98,7 +99,7 @@ bool BuildDAT(const char* outFile)
 }
 
 
-void TexturesToText()
+void ConvertTexturesToText()
 {
 	Texture t;
 //	t.Load("GRAFIK\\TUR29.256");
@@ -112,7 +113,7 @@ void TexturesToText()
 	t.ToMissionText("Localization\\Missions.txt");
 }
 
-bool TextToTextures()
+bool ConvertTextToTextures()
 {
 	Texture t;
 	if (!t.FromText("Localization\\Ingame38.txt"))
@@ -127,6 +128,21 @@ bool TextToTextures()
 		return false;
 	if (!t.Save("GRAFIK\\HERZ.256"))
 		return false;
+	return true;
+}
+
+
+bool ConvertSMPToWAV()
+{
+	Sound smp;
+	if (!smp.LoadWAV("SAMP\\MUSIC1.WAV"))
+		return false;
+
+//	if (!smp.LoadSMP("SAMP\\SOUND1.SMP"))
+//		return false;
+	if (!smp.SaveWAV("Localization\\Sound1.wav"))
+		return false;
+
 	return true;
 }
 
@@ -181,7 +197,7 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	const bool loadOriginal = false;
+	const bool loadOriginal = true;
 	if (loadOriginal)
 	{
 
@@ -192,11 +208,12 @@ int main(int argc, char* argv[])
 		//std::ostringstream oss;
 		//BuildFileList(entries, oss);
 		//string s = oss.str();
-		TexturesToText();
+		ConvertSMPToWAV();
+		ConvertTexturesToText();
 	}
 	else
 	{
-		if (!TextToTextures())
+		if (!ConvertTextToTextures())
 		{
 			cerr << "An error occurred during text baking." << endl;
 			return 2;
