@@ -14,5 +14,10 @@
 *.prb filter=lfs diff=lfs merge=lfs -text
 *.spl filter=lfs diff=lfs merge=lfs -text
 
+# Image formats
 *.bmp filter=lfs diff=lfs merge=lfs -text
 *.tga filter=lfs diff=lfs merge=lfs -text
+*.jpg filter=lfs diff=lfs merge=lfs -text
+*.jpeg filter=lfs diff=lfs merge=lfs -text
+*.dds filter=lfs diff=lfs merge=lfs -text
+*.gif filter=lfs diff=lfs merge=lfs -text

@@ -263,6 +263,16 @@ struct TGAHeader {
 };
 #pragma pack(pop)
 
+enum class TGAImageType: uint8_t
+{
+	NoImageData = 0,
+	ColorMappedImage = 1,
+	TrueColorImage = 2,
+	GrayscaleImage = 3,
+	RLEColorMappedImage = 9,
+	RLETrueColorImage = 10,
+	RLEGrayscaleImage = 11
+};
 
 bool Texture::SaveTGA(const char* outFile, const Palette& palette) const
 {
@@ -301,7 +311,26 @@ bool Texture::LoadTGA(const char* fileName, const Palette& palette)
 
 	TGAHeader header;
 	FileUtils::FileRead(fIn, &header, sizeof(header));
+	TGAImageType imageType = static_cast<TGAImageType>(header.imageType);
+	switch (imageType)
+	{
+	case TGAImageType::TrueColorImage:
+	case TGAImageType::GrayscaleImage:
+		break; // these formats are OK and handled below
+	case TGAImageType::RLETrueColorImage:
+	case TGAImageType::RLEGrayscaleImage:
+		cerr << "Compressed TGA formats are no supported. Please re-save without RLE. File '" << fileName << "'" << endl;
+		return false;
+	case TGAImageType::ColorMappedImage:
+	case TGAImageType::RLEColorMappedImage:
+		cerr << "Paletted TGA formats are no supported. Please re-save as True Color image. File '" << fileName << "'" << endl;
+		return false;
+	case TGAImageType::NoImageData:
+	default:
+		cerr << "Invalid Image type " << static_cast<int>(imageType) << " in .TGA file '" << fileName << "'" << endl;
+		return false;
 
+	}
 	width = header.imageWidth;
 	height = header.imageHeight;
 	offsetX = header.xOrigin;
@@ -317,14 +346,22 @@ bool Texture::LoadTGA(const char* fileName, const Palette& palette)
 			uint8_t& index = flippedVert ? data[(height - 1 - y) * width + x] : data[y * width + x];
 			const Palette::PaletteEntry& pal = palette.m_palette[index];
 
-			// swap RB
 			uint8_t R, G, B, A;
-			fread(&B, 1, 1, fIn);
-			fread(&G, 1, 1, fIn);
-			fread(&R, 1, 1, fIn);
-			if (header.pixelDepth == 32)
+			if (imageType == TGAImageType::GrayscaleImage)
 			{
-				fread(&A, 1, 1, fIn);
+				fread(&R, 1, 1, fIn);
+				G = B = R;
+			}
+			else
+			{
+				// swap RB
+				fread(&B, 1, 1, fIn);
+				fread(&G, 1, 1, fIn);
+				fread(&R, 1, 1, fIn);
+				if (header.pixelDepth == 32)
+				{
+					fread(&A, 1, 1, fIn);
+				}
 			}
 			index = palette.FindBestEntry(R, G, B);
 		}
