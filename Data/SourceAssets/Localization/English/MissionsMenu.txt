@@ -1,6 +1,6 @@
-Traingslevel
+Training
 50
-Die Kristallkugel
+The Crystal Ball
 29,30,31,32,33,36,34,35
-Die Rettung von Grant
+Rescue of Grant
 9,10,11,12,13,14,15,16,17,18,90,19,20,21,22,23,24,97,25,26,END

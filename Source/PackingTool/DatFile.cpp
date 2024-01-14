@@ -53,9 +53,16 @@ void DatFile::DirEntry::WriteEntry(FILE* fOut, __int16 magicXor) const
 bool DatFile::DirEntry::LoadContent()
 {
 	string n(Filename());
-	OPEN_OR_RETURN(n.c_str(), nullptr);
+	string absPath;
+	OPEN_OR_RETURN(n.c_str(), &absPath);
 
+	auto fileSizeControl = std::filesystem::file_size(absPath);
 	m_fileLength = FileUtils::GetFileSize(fIn);
+	if (m_fileLength == 0 || m_fileLength != fileSizeControl)
+	{
+		cerr << "Content of file '" << absPath << "' reported to have invalid file size." << endl;
+		return false;
+	}
 	m_content.resize(m_fileLength);
 	fread(m_content.data(), 1, m_fileLength, fIn);
 	fclose(fIn);

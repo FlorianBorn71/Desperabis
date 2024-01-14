@@ -1,4 +1,4 @@
-Enter the room right in front of you
+Betrete den Raum vor Dir
 Stelle Dich unmittelbar vor die Tr.\Drcke ûEnter
 Nimm den Schlssel
 Der Schlssel liegt nun im Inventar.\Die Tr l„sst sich nun ”ffnen

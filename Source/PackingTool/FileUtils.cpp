@@ -10,6 +10,11 @@ filesystem::path g_outputDirectory;
 void FileUtils::AddInputDirectory(std::filesystem::path path, bool insertAtTop)
 {
 	path = filesystem::absolute(path);
+	if (!filesystem::exists(path) || !filesystem::is_directory(path))
+	{
+		cerr << "Input directory not found: " << path << endl;
+		return;
+	}
 	if (insertAtTop)
 	{
 		cout << "Inserted input data directory " << path << endl;
@@ -116,5 +121,7 @@ bool FileUtils::PlainCopy(std::filesystem::path srcFile, std::filesystem::path d
 	while ((bytesRead = fread(buffer, 1, sizeof(buffer), fIn)) > 0) {
 		fwrite(buffer, 1, bytesRead, fOut);
 	}
+	fclose(fOut);
+	fclose(fIn);
 	return true;
 }
