@@ -20,7 +20,7 @@ namespace FileUtils
 
 	void AddInputDirectory(std::filesystem::path path, bool insertAtTop = false);
 	void SetOutputDirectory(std::filesystem::path path);
-	FILE* OpenFile(const std::filesystem::path& path, std::string* out_fullPath = nullptr);
+	FILE* OpenFile(const std::filesystem::path& path, std::string* out_fullPath = nullptr, bool warningOnFileNotFound = true);
 	FILE* CreateFile(const std::filesystem::path& path, std::string* out_fullPath = nullptr);
 	bool FileRead(FILE* f, void* buffer, int count);
 	void SkipBytes(FILE* fIn, int bytes);

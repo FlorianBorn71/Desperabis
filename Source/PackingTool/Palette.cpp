@@ -53,3 +53,14 @@ int Palette::FindBestEntry(uint8_t R, uint8_t G, uint8_t B) const
 	}
 	return bestIndex;
 }
+
+void Palette::BuildGrayscale(int maxIndex /*= 7*/)
+{
+	m_numValidEntries = maxIndex + 1;
+	for (int i = 0; i < m_numValidEntries; i++)
+	{
+		uint8_t val = static_cast<uint8_t>(i * 255 / maxIndex);
+		m_palette[i].Set(val, val, val, i == 0 ? 0 : 255);
+	}
+
+}

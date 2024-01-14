@@ -11,6 +11,7 @@
 
 #include "FileLists.h"
 #include "Texture.h"
+#include "TextureAnim.h"
 #include "Sound.h"
 #include "DatFile.h"
 #include "FileUtils.h"
@@ -59,12 +60,26 @@ bool ConvertTextToTextures()
 bool ConvertTGAToGraphics()
 {
 	Texture t;
-	Palette standardPal;
+	Palette standardPal, grayScalePal;
 	SUCCEED_OR_RETURN(standardPal.Load("GRAFIK\\BACKGR1.PAL"));
+	grayScalePal.BuildGrayscale();
 
 	SUCCEED_OR_RETURN(t.LoadTGA("PressAnyKey.tga", standardPal));
 	SUCCEED_OR_RETURN(t.Save("GRAFIK\\TASTE.256"));
 	SUCCEED_OR_RETURN(t.SaveTGA("ConversionResult\\PressAnyKey.tga", standardPal)); // output image as it would show in the game
+
+
+	TextureAnim anim;
+	SUCCEED_OR_RETURN(anim.Load("ANIMS\\VORSPANN.AN2"));
+	SUCCEED_OR_RETURN(anim.ReplaceWithTGAs("IntroText", standardPal, true));
+	SUCCEED_OR_RETURN(anim.Save("ANIMS\\VORSPANN.AN2"));
+	SUCCEED_OR_RETURN(anim.SaveTGAs("ConversionResult\\IntroText", standardPal));
+
+	SUCCEED_OR_RETURN(anim.Load("ANIMS\\TXTBILD.AN2"));
+	SUCCEED_OR_RETURN(anim.ReplaceWithTGAs("StoryImage", grayScalePal, true));
+	SUCCEED_OR_RETURN(anim.Save("ANIMS\\TXTBILD.AN2"));
+	SUCCEED_OR_RETURN(anim.SaveTGAs("ConversionResult\\StoryImage", grayScalePal));
+
 	return true;
 }
 
@@ -129,14 +144,27 @@ bool ConvertSMPToWAV()
 
 bool ConvertGraphicsToTGA()
 {
-	Texture t;
-	Palette standardPal;
+	Palette standardPal, grayScalePal;
+	grayScalePal.BuildGrayscale();
+
 	SUCCEED_OR_RETURN(standardPal.Load("GRAFIK\\BACKGR1.PAL"));
-//	SUCCEED_OR_RETURN(t.Load("GRAFIK\\TASTE.256"));
-//	SUCCEED_OR_RETURN(t.SaveTGA("PressAnyKey.tga", standardPal));
+
+	TextureAnim anim;
+	SUCCEED_OR_RETURN(anim.Load("ANIMS\\VORSPANN.AN2"));
+	SUCCEED_OR_RETURN(anim.SaveTGAs("IntroText", standardPal));
+
+//	SUCCEED_OR_RETURN(anim.Load("ANIMS\\FACKEL1.AN2"));
+//	SUCCEED_OR_RETURN(anim.SaveTGAs("Fackeln", standardPal));
+
+	SUCCEED_OR_RETURN(anim.Load("ANIMS\\TXTBILD.AN2"));
+	SUCCEED_OR_RETURN(anim.SaveTGAs("StoryImage", grayScalePal));
+
+	/*
+	Texture t;
 	SUCCEED_OR_RETURN(t.LoadTGA("TestTGA.tga", standardPal));
-	//SUCCEED_OR_RETURN(t.SaveTGA("TestTGA-result.tga", standardPal));
 	SUCCEED_OR_RETURN(t.Save("GRAFIK\\TASTE.256"));
+	*/
+
 	return true;
 }
 

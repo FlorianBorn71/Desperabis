@@ -135,6 +135,7 @@
     <ClCompile Include="Palette.cpp" />
     <ClCompile Include="Sound.cpp" />
     <ClCompile Include="Texture.cpp" />
+    <ClCompile Include="TextureAnim.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="DatFile.h" />
@@ -143,6 +144,7 @@
     <ClInclude Include="Palette.h" />
     <ClInclude Include="Sound.h" />
     <ClInclude Include="Texture.h" />
+    <ClInclude Include="TextureAnim.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

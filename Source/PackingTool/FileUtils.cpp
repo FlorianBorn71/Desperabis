@@ -34,7 +34,7 @@ void FileUtils::SetOutputDirectory(std::filesystem::path path)
 	g_outputDirectory = std::move(path);
 }
 
-FILE* FileUtils::OpenFile(const std::filesystem::path& path, std::string* out_fullPath)
+FILE* FileUtils::OpenFile(const std::filesystem::path& path, std::string* out_fullPath, bool warningOnFileNotFound)
 {
 	for (const filesystem::path& p : g_inputDirectories)
 	{
@@ -48,7 +48,10 @@ FILE* FileUtils::OpenFile(const std::filesystem::path& path, std::string* out_fu
 		}
 	}
 
-	cerr << "File not found: " << path << endl;
+	if (warningOnFileNotFound)
+	{
+		cerr << "File not found: " << path << endl;
+	}
 	return nullptr;
 }
 

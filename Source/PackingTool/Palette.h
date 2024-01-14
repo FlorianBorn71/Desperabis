@@ -20,6 +20,7 @@ public:
 
 	bool Load(const char* fileName);
 	int FindBestEntry(uint8_t R, uint8_t G, uint8_t B) const;
+	void BuildGrayscale(int maxIndex = 7);
 
 	int m_numValidEntries = 256;
 	PaletteEntry m_palette[256] = {0};

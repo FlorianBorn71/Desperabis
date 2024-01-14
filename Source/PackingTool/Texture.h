@@ -9,10 +9,11 @@ struct Texture
 	std::vector<unsigned char> m_data;
 	bool hasAlpha = false;
 
-	void Read(FILE* fIn);
+	void Read(FILE* fIn, bool includeOfs = false);
 	bool Load(const char* fileName);
-	bool LoadTGA(const char* fileName, const Palette& palette);
+	bool LoadTGA(const char* fileName, const Palette& palette, bool retainOffsets = true);
 
+	void Write(FILE* fOut, bool includeOfs = false) const;
 	bool Save(const char* outFile) const;
 	bool SaveTGA(const char* outFile, const Palette& palette) const;
 	bool ToText(const char* outFile) const;

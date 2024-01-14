@@ -7,9 +7,16 @@
 
 using namespace std;
 
-void Texture::Read(FILE* fIn)
+void Texture::Read(FILE* fIn, bool includeOfs)
 {
 	__int16 w, h;
+	if (includeOfs)
+	{
+		FileUtils::FileRead(fIn, &w, sizeof(w));
+		FileUtils::FileRead(fIn, &h, sizeof(h));
+		offsetX = w;
+		offsetY = h;
+	}
 	FileUtils::FileRead(fIn, &w, sizeof(w));
 	FileUtils::FileRead(fIn, &h, sizeof(h));
 	assert(w < 512 && h < 512);
@@ -31,9 +38,15 @@ bool Texture::Load(const char* fileName)
 	return true;
 }
 
-bool Texture::Save(const char* fileName) const
+
+
+void Texture::Write(FILE* fOut, bool includeOfs /*= false*/) const
 {
-	CREATE_OR_RETURN(fileName, nullptr);
+	if (includeOfs)
+	{
+		__int16 offset[2] = { static_cast<__int16>(offsetX), static_cast<__int16>(offsetY) };
+		fwrite(offset, sizeof(offset), 1, fOut);
+	}
 
 	__int16 w = width - 1, h = height - 1;
 	fwrite(&w, sizeof(w), 1, fOut);
@@ -41,6 +54,12 @@ bool Texture::Save(const char* fileName) const
 	int count = width * height;
 	fwrite(m_data.data(), count, 1, fOut);
 
+}
+
+bool Texture::Save(const char* fileName) const
+{
+	CREATE_OR_RETURN(fileName, nullptr);
+	Write(fOut);
 	fclose(fOut);
 	return true;
 }
@@ -305,7 +324,7 @@ bool Texture::SaveTGA(const char* outFile, const Palette& palette) const
 	return true;
 }
 
-bool Texture::LoadTGA(const char* fileName, const Palette& palette)
+bool Texture::LoadTGA(const char* fileName, const Palette& palette, bool retainOffsets)
 {
 	OPEN_OR_RETURN(fileName, nullptr);
 
@@ -333,8 +352,11 @@ bool Texture::LoadTGA(const char* fileName, const Palette& palette)
 	}
 	width = header.imageWidth;
 	height = header.imageHeight;
-	offsetX = header.xOrigin;
-	offsetY = height - 1 - header.yOrigin;
+	if (!retainOffsets)
+	{
+		offsetX = header.xOrigin;
+		offsetY = height - 1 - header.yOrigin;
+	}
 	bool flippedVert = (header.imageDescriptor & 0x20) == 0;
 	int count = width * height;
 	m_data.resize(count);
