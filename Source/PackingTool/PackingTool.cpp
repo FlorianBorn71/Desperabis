@@ -19,6 +19,14 @@ using namespace std;
 
 #define SUCCEED_OR_RETURN(_f) if (!(_f)) return false;
 
+bool PlainCopyFiles()
+{
+	SUCCEED_OR_RETURN(FileUtils::PlainCopy("Items.txt", "LEVEL\\BEZEICH.TXT"));
+	SUCCEED_OR_RETURN(FileUtils::PlainCopy("StartMsg.txt", "LEVEL\\STARTMSG.TXT"));
+	SUCCEED_OR_RETURN(FileUtils::PlainCopy("EndMsg.txt", "LEVEL\\ENDMSG.TXT"));
+	SUCCEED_OR_RETURN(FileUtils::PlainCopy("Story.txt", "LEVEL\\TEXTE.TXT"));
+	return true;
+}
 
 bool ConvertTexturesToText()
 {
@@ -92,11 +100,13 @@ bool ConvertWAVToSMP()
 
 int main(int argc, char* argv[])
 {
+	std::filesystem::path tempPath, outputPath;
 	if (argc <= 1)
 	{
 		std::cout << "Command line args: " << std::endl;
-		std::cout << "  -s <folder> : adds one source root folder (absolute path) under which the unpacked game assets are located" << std::endl;
-		std::cout << "  -d <file> : absolute file path of the destination file (.DAT)." << std::endl;
+		std::cout << "  -s <folder> : Adds one source root folder (absolute path) under which the unpacked game assets are located" << std::endl;
+		std::cout << "  -t <folder> : Temp folder to create the patch files." << std::endl;
+		std::cout << "  -o <folder> : Output folder for the .DAT files." << std::endl;
 		return 0;
 	}
 	else
@@ -111,9 +121,14 @@ int main(int argc, char* argv[])
 				FileUtils::AddInputDirectory(argv[i + 1]);
 				i++;
 			}
-			if (_stricmp(argv[i], "-d") == 0 && i < argc - 1)
+			if (_stricmp(argv[i], "-o") == 0 && i < argc - 1)
 			{
-				FileUtils::SetOutputDirectory(argv[i + 1]);
+				outputPath = argv[i + 1];
+				i++;
+			}
+			if (_stricmp(argv[i], "-t") == 0 && i < argc - 1)
+			{
+				tempPath = argv[i + 1];
 				i++;
 			}
 		}
@@ -122,6 +137,7 @@ int main(int argc, char* argv[])
 	const bool extractFromOriginal = false;
 	if (extractFromOriginal)
 	{
+		FileUtils::SetOutputDirectory(tempPath);
 		// Some playground code to do the inverse operations, not executed by actual tool
 		string snd = DatFile::BuildFileList("SOUNDS.DAT", "SOUNDS");
 		string music = DatFile::BuildFileList("MUSIC.DAT", "MUSIC");
@@ -141,42 +157,64 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
-		cout << "Start packaging of text files...";
-		if (!ConvertTextToTextures())
+		// Conversion pass
+		if (!tempPath.empty())
 		{
-			cerr << "An error occurred during text baking." << endl;
-			return 2;
-		}
-		cout << "success." << endl;
+			FileUtils::SetOutputDirectory(tempPath);
+			cout << "Plain copy files...";
+			if (!PlainCopyFiles())
+			{
+				cerr << "An error occurred during file copy stage." << endl;
+				return 2;
+			}
+			cout << "success." << endl;
 
-		cout << "Start packaging of sound files...";
-		if (!ConvertWAVToSMP())
-		{
-			cerr << "An error occurred during sound baking." << endl;
-			return 3;
-		}
-		cout << "success." << endl;
+			cout << "Start packaging of text files...";
+			if (!ConvertTextToTextures())
+			{
+				cerr << "An error occurred during text baking." << endl;
+				return 3;
+			}
+			cout << "success." << endl;
 
+			cout << "Start packaging of sound files...";
+			if (!ConvertWAVToSMP())
+			{
+				cerr << "An error occurred during sound baking." << endl;
+				return 4;
+			}
+			cout << "success." << endl;
+		}
 
-		string datOutFile;
-		if (!DatFile::Game.PackageAndSave(&datOutFile))
+		// Packaging path
+		if (!outputPath.empty())
 		{
-			cerr << "An error occurred during packaging GAME.DAT." << endl;
-			return 101;
+			if (!tempPath.empty())
+			{
+				// the scratch path is the topmost input path
+				FileUtils::AddInputDirectory(tempPath, true);
+			}
+			FileUtils::SetOutputDirectory(outputPath);
+			string datOutFile;
+			if (!DatFile::Game.PackageAndSave(&datOutFile))
+			{
+				cerr << "An error occurred during packaging GAME.DAT." << endl;
+				return 101;
+			}
+			cout << "Package successfully written to: " << datOutFile.c_str() << endl;
+			if (!DatFile::Sounds.PackageAndSave(&datOutFile))
+			{
+				cerr << "An error occurred during packaging SOUNDS.DAT." << endl;
+				return 101;
+			}
+			cout << "Package successfully written to : " << datOutFile.c_str() << endl;
+			if (!DatFile::Music.PackageAndSave(&datOutFile))
+			{
+				cerr << "An error occurred during packaging MUSIC.DAT." << endl;
+				return 101;
+			}
+			cout << "Package successfully written to: " << datOutFile.c_str() << endl;
 		}
-		cout << "Package successfully written to: " << datOutFile.c_str() << endl;
-		if (!DatFile::Sounds.PackageAndSave(&datOutFile))
-		{
-			cerr << "An error occurred during packaging SOUNDS.DAT." << endl;
-			return 101;
-		}
-		cout << "Package successfully written to : " << datOutFile.c_str() << endl;
-		if (!DatFile::Music.PackageAndSave(&datOutFile))
-		{
-			cerr << "An error occurred during packaging MUSIC.DAT." << endl;
-			return 101;
-		}
-		cout << "Package successfully written to: " << datOutFile.c_str() << endl;
 	}
 
 	cout << "All successful." << endl;

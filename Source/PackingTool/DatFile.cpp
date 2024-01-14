@@ -137,6 +137,12 @@ bool DatFile::PackageAndSave(string* out_path) const
 }
 
 
+std::string_view DatFile::GetFileAtOffset(int ofs, int& ofsWithin) const
+{
+	ofsWithin = 0;
+	return "<file not found>";
+}
+
 bool DatFile::ExploreFilesInDAT(const char* fileIn, vector<DatFile::DirEntry>& entries)
 {
 	OPEN_OR_RETURN(fileIn, nullptr);

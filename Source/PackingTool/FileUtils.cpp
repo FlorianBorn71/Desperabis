@@ -7,21 +7,25 @@ using namespace std;
 static vector<filesystem::path> g_inputDirectories;
 filesystem::path g_outputDirectory;
 
-void FileUtils::AddInputDirectory(std::filesystem::path path)
+void FileUtils::AddInputDirectory(std::filesystem::path path, bool insertAtTop)
 {
 	path = filesystem::absolute(path);
-	cout << "Added input data directory " << path << endl;
-	g_inputDirectories.push_back(std::move(path));
+	if (insertAtTop)
+	{
+		cout << "Inserted input data directory " << path << endl;
+		g_inputDirectories.insert(g_inputDirectories.begin(), path);
+	}
+	else
+	{
+		cout << "Added input data directory " << path << endl;
+		g_inputDirectories.push_back(std::move(path));
+	}
 }
 
 void FileUtils::SetOutputDirectory(std::filesystem::path path)
 {
 	path = filesystem::absolute(path);
 	cout << "Set output data directory " << path << endl;
-	if (!g_outputDirectory.empty())
-	{
-		cerr << "Warning: An output directory was already set." << endl;
-	}
 	g_outputDirectory = std::move(path);
 }
 
@@ -100,4 +104,17 @@ int FileUtils::GetFileSize(FILE* fIn)
 	int fileLength = ftell(fIn);
 	fseek(fIn, 0, SEEK_SET);
 	return fileLength;
+}
+
+bool FileUtils::PlainCopy(std::filesystem::path srcFile, std::filesystem::path destFile)
+{
+	OPEN_OR_RETURN(srcFile, nullptr);
+	CREATE_OR_RETURN(destFile, nullptr);
+
+	char buffer[1024];
+	size_t bytesRead;
+	while ((bytesRead = fread(buffer, 1, sizeof(buffer), fIn)) > 0) {
+		fwrite(buffer, 1, bytesRead, fOut);
+	}
+	return true;
 }

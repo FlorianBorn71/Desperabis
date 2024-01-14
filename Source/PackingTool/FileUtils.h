@@ -18,12 +18,14 @@ namespace FileUtils
 	}
 
 
-	void AddInputDirectory(std::filesystem::path path);
+	void AddInputDirectory(std::filesystem::path path, bool insertAtTop = false);
 	void SetOutputDirectory(std::filesystem::path path);
 	FILE* OpenFile(const std::filesystem::path& path, std::string* out_fullPath = nullptr);
 	FILE* CreateFile(const std::filesystem::path& path, std::string* out_fullPath = nullptr);
 	bool FileRead(FILE* f, void* buffer, int count);
 	void SkipBytes(FILE* fIn, int bytes);
 	int GetFileSize(FILE* fIn);
+
+	bool PlainCopy(std::filesystem::path srcFile, std::filesystem::path destFile);
 };
 

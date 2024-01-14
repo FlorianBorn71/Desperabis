@@ -10,6 +10,7 @@ public:
 	DatFile(std::string_view name, const std::string_view* fileList, size_t numFiles);
 
 	bool PackageAndSave(std::string* out_path = nullptr) const;
+	std::string_view GetFileAtOffset(int ofs, int& ofsWithin) const;
 
 	static const DatFile Game;
 	static const DatFile Sounds;
