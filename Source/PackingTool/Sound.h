@@ -20,6 +20,7 @@ private:
 	static const uint32_t ChunkID_FORMAT = ' tmf';  // "fmt "
 	static const uint32_t ChunkID_DATA = 'atad';  // "data"
 
+#pragma pack(push, 1) // Pack the struct tightly to ensure correct header size
 	struct ChunkHeader
 	{
 		uint32_t chunkID = 0;
@@ -42,6 +43,7 @@ private:
 		HeaderWAVFormat format;
 		ChunkHeader dataChunk = { ChunkID_DATA, 0 };
 	};
+#pragma pack(pop)
 
 	std::vector<unsigned char> m_buffer;
 };

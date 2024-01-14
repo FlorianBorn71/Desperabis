@@ -13,3 +13,6 @@
 *.smp filter=lfs diff=lfs merge=lfs -text
 *.prb filter=lfs diff=lfs merge=lfs -text
 *.spl filter=lfs diff=lfs merge=lfs -text
+
+*.bmp filter=lfs diff=lfs merge=lfs -text
+*.tga filter=lfs diff=lfs merge=lfs -text

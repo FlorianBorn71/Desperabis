@@ -25,6 +25,7 @@ bool Texture::Load(const char* fileName)
 {
 	OPEN_OR_RETURN(fileName, nullptr);
 
+	offsetX = offsetY = 0;
 	Read(fIn);
 	fclose(fIn);
 	return true;
@@ -134,6 +135,7 @@ bool Texture::FromText(const char* fileName)
 	OPEN_OR_RETURN(fileName, nullptr);
 
 	height = width = 0;
+	offsetX = offsetY = 0;
 
 	char buffer[1024];
 	vector<TextLine> lines;
@@ -174,6 +176,7 @@ bool Texture::FromMissionText(const char* fileName)
 	OPEN_OR_RETURN(fileName, nullptr);
 
 	height = width = 0;
+	offsetX = offsetY = 0;
 
 	// first load all lines
 	char buffer[1024];
@@ -241,3 +244,94 @@ bool Texture::FromMissionText(const char* fileName)
 
 	return true;
 }
+
+
+#pragma pack(push, 1) // Pack the struct tightly to ensure correct header size
+struct TGAHeader {
+	uint8_t idLength = 0;
+	uint8_t colorMapType = 0;
+	uint8_t imageType = 2;
+	uint16_t colorMapOrigin = 0;
+	uint16_t colorMapLength = 0;
+	uint8_t colorMapDepth = 0;
+	uint16_t xOrigin = 0;
+	uint16_t yOrigin = 0;
+	uint16_t imageWidth = 0;
+	uint16_t imageHeight = 0;
+	uint8_t pixelDepth = 24;
+	uint8_t imageDescriptor = 0x20;
+};
+#pragma pack(pop)
+
+
+bool Texture::SaveTGA(const char* outFile, const Palette& palette) const
+{
+	CREATE_OR_RETURN(outFile, nullptr);
+
+	TGAHeader header;
+	header.xOrigin = offsetX;
+	header.yOrigin = height - 1 - offsetY;
+	header.imageWidth = width;
+	header.imageHeight = height;
+
+	fwrite(&header, sizeof(header), 1, fOut);
+
+	const uint8_t* data = m_data.data();
+	for (int y = 0; y < height; y++)
+	{
+		for (int x = 0; x < width; x++)
+		{
+			uint8_t index = data[y * width + x];
+			const Palette::PaletteEntry& pal = palette.m_palette[index];
+
+			// swap RB
+			fwrite(&pal.b, 1, 1, fOut);
+			fwrite(&pal.g, 1, 1, fOut);
+			fwrite(&pal.r, 1, 1, fOut);
+		}
+	}
+
+	fclose(fOut);
+	return true;
+}
+
+bool Texture::LoadTGA(const char* fileName, const Palette& palette)
+{
+	OPEN_OR_RETURN(fileName, nullptr);
+
+	TGAHeader header;
+	FileUtils::FileRead(fIn, &header, sizeof(header));
+
+	width = header.imageWidth;
+	height = header.imageHeight;
+	offsetX = header.xOrigin;
+	offsetY = height - 1 - header.yOrigin;
+	bool flippedVert = (header.imageDescriptor & 0x20) == 0;
+	int count = width * height;
+	m_data.resize(count);
+	uint8_t* data = m_data.data();
+	for (int y = 0; y < height; y++)
+	{
+		for (int x = 0; x < width; x++)
+		{
+			uint8_t& index = flippedVert ? data[(height - 1 - y) * width + x] : data[y * width + x];
+			const Palette::PaletteEntry& pal = palette.m_palette[index];
+
+			// swap RB
+			uint8_t R, G, B, A;
+			fread(&B, 1, 1, fIn);
+			fread(&G, 1, 1, fIn);
+			fread(&R, 1, 1, fIn);
+			if (header.pixelDepth == 32)
+			{
+				fread(&A, 1, 1, fIn);
+			}
+			index = palette.FindBestEntry(R, G, B);
+		}
+	}
+
+	fclose(fIn);
+
+	return true;
+}
+

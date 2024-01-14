@@ -15,9 +15,25 @@
 #include "DatFile.h"
 #include "FileUtils.h"
 
+/*
+TODO:
+- GRAFIK\TASTE.256
+- GRAFIK\TXTBILD.AN2
+   - (0,0) = "Z"
+   - (0,1) = "ENDE"
+- GRAFIK\VORSPANN.AN2
+- wav files conversion to target format with ffmpeg
+*/
+
+
 using namespace std;
 
 #define SUCCEED_OR_RETURN(_f) if (!(_f)) return false;
+
+////////////////////////////////////////////////////////////////////////////
+/// Conversion functions from Input->Desperabis 
+////////////////////////////////////////////////////////////////////////////
+
 
 bool PlainCopyFiles()
 {
@@ -25,19 +41,6 @@ bool PlainCopyFiles()
 	SUCCEED_OR_RETURN(FileUtils::PlainCopy("StartMsg.txt", "LEVEL\\STARTMSG.TXT"));
 	SUCCEED_OR_RETURN(FileUtils::PlainCopy("EndMsg.txt", "LEVEL\\ENDMSG.TXT"));
 	SUCCEED_OR_RETURN(FileUtils::PlainCopy("Story.txt", "LEVEL\\TEXTE.TXT"));
-	return true;
-}
-
-bool ConvertTexturesToText()
-{
-	Texture t;
-	SUCCEED_OR_RETURN(t.Load("GRAFIK\\TUR38.256"));
-	SUCCEED_OR_RETURN(t.ToText("IngameKjarthan.txt"));
-	SUCCEED_OR_RETURN(t.Load("GRAFIK\\TUR39.256"));
-	SUCCEED_OR_RETURN(t.ToText("IngameTrainingInstructions.txt"));
-
-	SUCCEED_OR_RETURN(t.Load("GRAFIK\\HERZ.256"));
-	SUCCEED_OR_RETURN(t.ToMissionText("MissionsMenu.txt"));
 	return true;
 }
 
@@ -53,30 +56,18 @@ bool ConvertTextToTextures()
 	return true;
 }
 
-
-bool ConvertSMPToWAV()
+bool ConvertTGAToGraphics()
 {
-	Sound smp;
-//	if (!smp.LoadWAV("SAMP\\MUSIC1.WAV"))
-//		return false;
+	Texture t;
+	Palette standardPal;
+	SUCCEED_OR_RETURN(standardPal.Load("GRAFIK\\BACKGR1.PAL"));
 
-//	if (!smp.LoadSMP("SAMP\\SOUND1.SMP"))
-//		return false;
-
-	// Witch sounds (samples 109..116):
-	for (int i = 0; i < 8; i++)
-	{
-		std::ostringstream smpName, wavName;
-		smpName << "SAMP\\SOUND" << i + 109 << ".SMP";
-		wavName << "Witch" << i << ".wav";
-		string s = smpName.str();
-		SUCCEED_OR_RETURN(smp.LoadSMP(s.c_str()));
-		s = wavName.str();
-		SUCCEED_OR_RETURN(smp.SaveWAV(s.c_str()));
-	}
-
+	SUCCEED_OR_RETURN(t.LoadTGA("PressAnyKey.tga", standardPal));
+	SUCCEED_OR_RETURN(t.Save("GRAFIK\\TASTE.256"));
+	SUCCEED_OR_RETURN(t.SaveTGA("ConversionResult\\PressAnyKey.tga", standardPal)); // output image as it would show in the game
 	return true;
 }
+
 
 bool ConvertWAVToSMP()
 {
@@ -97,6 +88,57 @@ bool ConvertWAVToSMP()
 	return true;
 }
 
+////////////////////////////////////////////////////////////////////////////
+/// Conversion functions from Desperabis -> Input
+///		Needed as a once-off step to populate the Localization folder.
+///     See extractFromOriginal flag.
+////////////////////////////////////////////////////////////////////////////
+
+
+bool ConvertTexturesToText()
+{
+	Texture t;
+	SUCCEED_OR_RETURN(t.Load("GRAFIK\\TUR38.256"));
+	SUCCEED_OR_RETURN(t.ToText("IngameKjarthan.txt"));
+	SUCCEED_OR_RETURN(t.Load("GRAFIK\\TUR39.256"));
+	SUCCEED_OR_RETURN(t.ToText("IngameTrainingInstructions.txt"));
+
+	SUCCEED_OR_RETURN(t.Load("GRAFIK\\HERZ.256"));
+	SUCCEED_OR_RETURN(t.ToMissionText("MissionsMenu.txt"));
+	return true;
+}
+
+bool ConvertSMPToWAV()
+{
+	Sound smp;
+
+	// Witch sounds (samples 109..116):
+	for (int i = 0; i < 8; i++)
+	{
+		std::ostringstream smpName, wavName;
+		smpName << "SAMP\\SOUND" << i + 109 << ".SMP";
+		wavName << "Witch" << i << ".wav";
+		string s = smpName.str();
+		SUCCEED_OR_RETURN(smp.LoadSMP(s.c_str()));
+		s = wavName.str();
+		SUCCEED_OR_RETURN(smp.SaveWAV(s.c_str()));
+	}
+
+	return true;
+}
+
+bool ConvertGraphicsToTGA()
+{
+	Texture t;
+	Palette standardPal;
+	SUCCEED_OR_RETURN(standardPal.Load("GRAFIK\\BACKGR1.PAL"));
+//	SUCCEED_OR_RETURN(t.Load("GRAFIK\\TASTE.256"));
+//	SUCCEED_OR_RETURN(t.SaveTGA("PressAnyKey.tga", standardPal));
+	SUCCEED_OR_RETURN(t.LoadTGA("TestTGA.tga", standardPal));
+	//SUCCEED_OR_RETURN(t.SaveTGA("TestTGA-result.tga", standardPal));
+	SUCCEED_OR_RETURN(t.Save("GRAFIK\\TASTE.256"));
+	return true;
+}
 
 int main(int argc, char* argv[])
 {
@@ -139,6 +181,7 @@ int main(int argc, char* argv[])
 	{
 		FileUtils::SetOutputDirectory(tempPath);
 		// Some playground code to do the inverse operations, not executed by actual tool
+		/*
 		string snd = DatFile::BuildFileList("SOUNDS.DAT", "SOUNDS");
 		string music = DatFile::BuildFileList("MUSIC.DAT", "MUSIC");
 		string game = DatFile::BuildFileList("GAME.DAT", "GAME");
@@ -153,6 +196,13 @@ int main(int argc, char* argv[])
 			cerr << "An error occurred during texture to text extraction." << endl;
 			return 3;
 		}
+		*/
+		if (!ConvertGraphicsToTGA())
+		{
+			cerr << "An error occurred during texture to text extraction." << endl;
+			return 4;
+		}
+
 		cout << "Extracting localizable files was successful." << endl;;
 	}
 	else
@@ -177,11 +227,20 @@ int main(int argc, char* argv[])
 			}
 			cout << "success." << endl;
 
+			cout << "Start converting graphics files...";
+			if (!ConvertTGAToGraphics())
+			{
+				cerr << "An error occurred during graphics conversion." << endl;
+				return 4;
+			}
+			cout << "success." << endl;
+			
+
 			cout << "Start packaging of sound files...";
 			if (!ConvertWAVToSMP())
 			{
 				cerr << "An error occurred during sound baking." << endl;
-				return 4;
+				return 5;
 			}
 			cout << "success." << endl;
 		}
