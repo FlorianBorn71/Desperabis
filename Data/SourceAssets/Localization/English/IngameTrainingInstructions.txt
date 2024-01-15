@@ -1,5 +1,5 @@
 Enter the room right in front of you.
-Stand right in front of the door.\Press Ã»Return.
+Stand right in front of the door.\Press ûReturn.
 Pick up the key.
 The key now is in your inventory.\You can now open the door.
 Pull the lever on the wall\to briefly open the door.
@@ -7,7 +7,7 @@ In this room there is a secret\passage hidden behind the wall.
 Pull all levers.
 Move through the fire quickly to\take least possible damage.
 Now take the healing potion\to restore your health.
-Press F2 to bring up the inventory \and drag the healing potion unto \the icon Ã»knife and fork.
+Press F2 to bring up the inventory \and drag the healing potion unto \the icon ûknife and fork.
 Pick up all weapons in this room.\You will need them...
 Climb the ladder using \the JUMP hotkey.
 Jump into the water.
