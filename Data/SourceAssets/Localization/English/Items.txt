@@ -128,17 +128,17 @@
 
 
 (This is not for sale.
-(One arrow costs  = Gold coins
-(The fireballs cost    = Gold coins
-(One stone costs  = Gold coins
+(One arrow costs = Gold coins
+(The fireballs cost = Gold coins
+(One stone costs = Gold coins
 (The medicine costs = Gold coins
-(The blade costs  = Gold coins
-(The sword costs    = Gold coins
-(The crossbow costs  = Gold coins
-(The rat trap costs     = Gold coins
-(The conductor ball costs  = Gold coins
-(The shovel costs    = Gold coins
-(The arrow poison is  = Gold coins
+(The blade costs = Gold coins
+(The sword costs = Gold coins
+(The crossbow costs = Gold coins
+(The rat trap costs = Gold coins
+(The conductor ball costs = Gold coins
+(The shovel costs = Gold coins
+(The arrow poison is = Gold coins
 (Foil
 (Vase
 (Mirror
