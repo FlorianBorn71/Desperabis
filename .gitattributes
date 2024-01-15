@@ -21,3 +21,6 @@
 *.jpeg filter=lfs diff=lfs merge=lfs -text
 *.dds filter=lfs diff=lfs merge=lfs -text
 *.gif filter=lfs diff=lfs merge=lfs -text
+
+# Game-related text assets must be in ANSI, not UTF-8
+Data/*.txt encoding=iso-8859-1
