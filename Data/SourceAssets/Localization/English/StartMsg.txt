@@ -4,7 +4,7 @@ email:fburn@gmx.de
 Hotkeys :
 #
          1..9 : Choose weapon
-           F1 : Main menue
-           F2 : Backpack
+           F1 : Main menu
+           F2 : Inventory
 
 RETURN...|
