@@ -1,9 +1,9 @@
-(Gift
-(Medizin
+(Poison
+(Medicine
  Gold
 
 
-(Schl《sel
+(Key
 
 
 
@@ -42,7 +42,7 @@
 
 
 
- Karte
+ Map
 
 
 
@@ -97,28 +97,28 @@
 
 
 
-(Ende
-(Pfeil
-(Feuerkraft
-(Stein
-(Linsen
-(Dolch
-(Schwert
-(Armbrust
-(Falle
-(Konduktorkugel
-(Schaufel
-(Knochen
-(Folie
+(End 
+(Arrow
+(Fire power
+(Stone
+(Lenses
+(Blade
+(Sword  
+(Crossbow
+(Trap 
+(Conductor ball
+(Shovel  
+(Bones  
+(Foil 
 (Vase
-(Spiegel
-(Linsen
-(Eimer
-(Sarg
-(Sense
-(Stange
-(Fackel
-(brennende Fackel
+(Mirror 
+(Lenses
+(Pail 
+(Coffin
+(Scyth
+(Pole  
+(Torch 
+(burning torch
 
 
 
@@ -127,27 +127,27 @@
 
 
 
-(Das ist unverkеflich
-(Ein Pfeil kostet = Goldst…ke
-(Die Feuerb�lle kosten = Goldst…ke
-(Ein Stein kostet = Goldst…ke
-(Die Medizin kostet = Goldst…ke
-(Der Dolch kostet = Goldst…ke
-(Das Schwert kostet = Goldst…ke
-(Die Armbrust kostet = Goldst…ke
-(Die Rattenfalle kostet = Goldst…ke
-(Die Konduktorkugel kostet = Goldst…ke
-(Die Schaufel kostet = Goldst…ke
-(Das Pfeilgift kostet = Goldst…ke
-(Folie
+(This is not for sale.
+(One arrow costs  = Gold coins
+(The fireballs cost    = Gold coins
+(One stone costs  = Gold coins
+(The medicine costs = Gold coins
+(The blade costs  = Gold coins
+(The sword costs    = Gold coins
+(The crossbow costs  = Gold coins
+(The rat trap costs     = Gold coins
+(The conductor ball costs  = Gold coins
+(The shovel costs    = Gold coins
+(The arrow poison is  = Gold coins
+(Foil
 (Vase
-(Spiegel
-(Linsen
-(Eimer
-(Sarg
-(Sense
-(Stange
-(Fackel
-(brennende Fackel
+(Mirror
+(Lenses
+(Bucket
+(Coffin
+(Scythe
+(Pole
+(Torch 
+(burning torch
 
 @
