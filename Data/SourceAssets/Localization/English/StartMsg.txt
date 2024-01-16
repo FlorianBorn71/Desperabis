@@ -1,10 +1,10 @@
-DESPERABIS - geschrieben von Florian Born 
+DESPERABIS - written by Florian Born 
 email:fburn@gmx.de
 
-Tasten :
+Hotkeys :
 #
-         1..9 : Waffe ausw„hlen
-           F1 : Hauptmenue
-           F2 : Rucksack
+         1..9 : Choose weapon
+           F1 : Main menu
+           F2 : Inventory
 
 RETURN...|

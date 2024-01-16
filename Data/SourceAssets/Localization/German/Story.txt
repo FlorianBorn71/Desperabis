@@ -40,10 +40,10 @@ schlecht, sie sah elend aus, Husten und Fieber plagten sie, wie auch so
 viele andere Menschen im Dorf.
 #+Einige Dorfbewohner glaubten, der Grund fr
 die unheilvolle Krankheit sei in der Burg zu finden, die ber dem kleinen
-verschlafenen Weiler tronte.
+verschlafenen Weiler thronte.
 #+Doch Kjarthan wusste es besser!
 #+Gewiss war sein
-Meister, der alte Grant, ein groáer Magier und ebenso gewiss basaá er sehr
+Meister, der alte Grant, ein groáer Magier und ebenso gewiss besaá er sehr
 viel Macht, doch an dem Ausbruch der unheimlichen Seuche war er nicht schuld!
 #+
 Viele Male bat Kjarthan Meister Grant, sich fr die Dorfbewohner einzusetzen
@@ -140,7 +140,7 @@ nach. Endlich, der Zugang ist frei! Du ”ffnest die beiden Flgel der
 goldbeschlag=enen Tr und trittst in die Grabkammer ein. Kalte abge=standene
 Luft weht Dir ent=gegen, und mit vorsichtigen Schritten gehst Du auf die
 Stein=platte des Sarges zu. Nur keine Falle ausl”sen! Nachdem Du Deine Waffe
-an die bemoste Wand gelehnt hast, willst Du die Platte vom Sarkophag
+an die bemooste Wand gelehnt hast, willst Du die Platte vom Sarkophag
 schieben. Doch sie sitzt fest! Du verschnaufst einen Augen=blick und stemmst
 Dich erneut dagegen. Erst mit aller Kraft gelingt es Dir, sie doch noch zu
 bewegen. Jetzt bloá nicht aufh”ren! Du schiebst weiter und kannst schon
@@ -156,7 +156,7 @@ bis ans Ende des Korridors, aber irgend etwas muss da sein. Schon seit einiger
 Zeit ver=nimmst Du das Knirschen und Rascheln, was aus dem tiefen Schlund
 der Dunkelheit an Dein Ohr dringt. Aber Du gehst weiter, steigst ber
 Seile und gespannte F„den. Alles klebt! Dann erkennst Du das Ende des Weges
-und Dein Fuá st”át an einen blechernden Gegen=stand. Nur ein verbeulter
+und Dein Fuá st”át an einen blechernen Gegen=stand. Nur ein verbeulter
 Helm! Im Schein Deiner Fackel erkennst Du auch den ehemaligen Besitzer.
 Nur noch eine abgemagerte Gestalt, die sich in den Seilen verfangen hat.
 Und doch geht ein Zucken durch den K”rper. Nicht er selbst bewegt sich,

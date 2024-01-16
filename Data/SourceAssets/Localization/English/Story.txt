@@ -6,28 +6,28 @@
 #şO                   şO#++++++şO                  şO#++++++şO                  şO
 #_şO                   şO#++++++şO#++++++şO                  şO
 @50
-#   şK Trainingslevel
+#   şK Training level
 #+++
-Folge den Anweisungen im Spiel! Tren werden mit
-der Taste zum Aufheben von Gegenst„nden - Voreinstellung Enter - ge”ffnet,
-ebenso werden Hebel gezogen.
-#+Wenn Du Gegen=st„nde ein=sammelst, befinden diese
-sich anschlieáend im Inventar, das Du Dir mit der F2-Taste anzeigen
-lassen kannst. Im Inventar=fenster kannst Du die Gegen=st„nde dann
-mit der Enter-Taste anw„hlen und ver=schieben.
-#++Wenn Du Medizin gefunden hast und diese ein=nehmen willst,
-dann bewege die Medizin=flasche aus dem Inventar auf das Symbol
-,,Messer und Gabelïï.
-#++Waffen, die Du benutzen m”chtest, mssen auch auf einem Hand-Symbol liegen.
-Mit der Waffen-Taste, Vor=einstellung Leertaste, benutzt Du die
-Waffe im Spiel: Du schl„gst mit dem Schwert zu, schieát mit der Armbrust
-oder stellst eine Falle auf...
-#+Die Waffen k”nnen vom Spiel aus, sofern sie berhaupt gefunden wurden,
-auch mit den Ziffern=tasten aufgerufen werden.
+Follow the instructions in the game! Doors can
+be opened using the key to pick up items - default value is Return. Do use
+the same key to pull levers.
+#+If you pick up am item, it will be placed in the 
+inventory, which you can open by pressing your ,,F2ïï-key.  In your
+inventory window you can choose and move items using the Enter and
+arrow keys.
+#++If you have found a medicine potion, placed it in your inventory 
+and want to use it, open the inventory and drag the potion from the 
+backpack slot unto the ,,knife and forkïï icon. 
+#++Weapons you want to use, need to be present on one of the ,,Handïï icons. 
+With the hotkey for weapons, Space bar by default, you use the weapon 
+in hand: You strike with the sword, shoot the crossbow or set up a trap.
+
+#+During the game, you can also use the numbers on the Numpad to equip a 
+weapon, given, you have it in the inventory, of course.
 ##
 @80
                Teil 1
-#++         şL Die Kristallkugel
+#++         şL The Crystal Ball
 #++++şA#
        u einer Zeit, als die Welt
 #        noch friedlich und sorglos zu schlafen schien,
