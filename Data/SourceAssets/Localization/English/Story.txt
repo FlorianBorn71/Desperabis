@@ -1,0 +1,493 @@
+@101
+#
+##+++++       şN
+##
+@102
+#şO                   şO#++++++şO                  şO#++++++şO                  şO
+#_şO                   şO#++++++şO#++++++şO                  şO
+@50
+#   şK Training level
+#+++
+Follow the instructions in the game! Doors can
+be opened using the key to pick up items - default value is Return. Do use
+the same key to pull levers.
+#+If you pick up am item, it will be placed in the 
+inventory, which you can open by pressing your ,,F2ïï-key.  In your
+inventory window you can choose and move items using the Enter and
+arrow keys.
+#++If you have found a medicine potion, placed it in your inventory 
+and want to use it, open the inventory and drag the potion from the 
+backpack slot unto the ,,knife and forkïï icon. 
+#++Weapons you want to use, need to be present on one of the ,,Handïï icons. 
+With the hotkey for weapons, Space bar by default, you use the weapon 
+in hand: You strike with the sword, shoot the crossbow or set up a trap.
+
+#+During the game, you can also use the numbers on the Numpad to equip a 
+weapon, given, you have it in the inventory, of course.
+##
+@80
+               Teil 1
+#++         şL The Crystal Ball
+#++++şA#
+       u einer Zeit, als die Welt
+#        noch friedlich und sorglos zu schlafen schien,
+besuchte der junge Kjarthan, der bei dem erfahrenen Hexen=meister Grant
+seine Lehr=jahre ver=brachte, seine erkrankte Geliebte Tin, die Tochter des
+T”pfers, wie schon an den letzten Abenden zuvor.
+#+Doch zu seiner Bestrzung
+fand er sie in einem besorgnis=erregen=den Zustand vor! Es ging ihr sehr
+schlecht, sie sah elend aus, Husten und Fieber plagten sie, wie auch so
+viele andere Menschen im Dorf.
+#+Einige Dorfbewohner glaubten, der Grund fr
+die unheilvolle Krankheit sei in der Burg zu finden, die ber dem kleinen
+verschlafenen Weiler tronte.
+#+Doch Kjarthan wusste es besser!
+#+Gewiss war sein
+Meister, der alte Grant, ein groáer Magier und ebenso gewiss basaá er sehr
+viel Macht, doch an dem Ausbruch der unheimlichen Seuche war er nicht schuld!
+#+
+Viele Male bat Kjarthan Meister Grant, sich fr die Dorfbewohner einzusetzen
+und seine heilenden Knste einzu=setzen. Besonders um Tins Wohl war er sehr
+besorgt!
+#+Aber Meister Grant war verbittert und seinen For=schun=gen und
+Experimen=ten ergeben. Viele Jahre der Streitigkeiten und der
+Aus=ein=andersetzung mit den D”rflern hatten sein Herz erh„rtet und
+un=empfind=lich gemacht. Er war der Auffassung, dass das Schicksal der Leute im
+Dorf, in deren eigenen H„nden l„ge und sie fr sich selbst verantwortlich
+seien...
+#+
+Dies sah Kjarthan anders! An jenem Abend, als er sehen musste, dass es seiner
+ge=lieb=ten Tin immer schlechter erging, entschloss er sich dazu, selbst die
+Initiative zu ergreifen. Nicht umsonst hatte er die vielen harten Jahre
+als Zauberlehrling bei Meister Grant durch=ge=standen. Sie sollten ihm jetzt
+nutzen! Noch in derselben Nacht schlich er sich in die Arbeitsgem„cher seines
+Meisters. Das Objekt seiner Begierde war eine Kugel aus Kristallquarz, die
+ein Gewicht zum Guten auf der Waage zwischen Licht und Finsternis bildete
+und fr das Wohlergehen der Menschen einen un=sch„tzbaren Wert hatte. Ihre
+Magie, die Kjarthans Meister stets so dienlich war, sollte nun auch ihm
+helfen, seine Ziele zu erreichen...
+#
+@81
+               Teil 2
+#++         şLDie Zeit der Dunkelheit
+#++++
+Mit der Kugel in den H„nden betrat Kjarthan Tins Schlaf=gemach. All seine
+Gedanken und Hoffnungen drehten sich um seine Liebste und die Quarzkugel.
+#+Voller Konzentra=tion begann er mit dem Zauber.
+##+Schweiá perlte von seiner Stirn, als er wieder und wieder die magischen
+Formeln sprach, die H„nde um die Kugel gelegt und am ganzen K”rper zitternd.
+#+Er hatte seine Ausbildung schon fast abgeschlossen und doch fehlten ihm
+Erfahrung und Weisheit, welche not=wendig waren, um diesen Zauber zu
+vollenden.
+#+Tin b„umte sich unter Schmer=zen auf. Sie presste Arme und Beine in ihr
+Kranken=lager, w„hrend „chzende Laute aus ihrer Kehle drangen. Kjarthan
+betete um ihr Wohlergehen, doch sie war zu schwach und er noch kein
+richtiger Zauberer!
+#+Sie verlor den Kampf und ihr Geist ver=lieá Ihren K”rper. Verzweifelt
+und voller Zorn rannte Kjarthan hinaus ins Freie, aber auch die kalte
+Nachtluft konnte seinen Schmerz nicht lindern. Auáer sich vor Wut
+schleuderte er die Quarzkugel, die ihn so im Stich gelassen hatte, zu
+Boden.
+#+Zu sp„t erkannte er seinen Fehler, als er die zerbroch=en=en Teile zu
+seinen Fáen erblickte...
+#+Das Gleichgewicht der Kr„fte war zerst”rt! Das B”se ge=wann die Oberhand
+und schickte Dorgar, seinen D„mon und Ritter der Dunkelheit. Er kam als
+schwarzer Nebel, der das ganze Dorf einhllte und die Menschen mit sich
+nahm, lieá Tote den Gr„bern entstei=gen, Monster auferstehen und gab den
+Tieren un=still=baren Blutdurst.
+#+Selbst die nahe Umgebung passte er seinen Wnschen an. Aber er
+nahm nicht nur die D”rfler mit sich, seine Auf=merk=samkeit galt besonders
+dem alten Grant. Ihn konnte er nicht einfach verschwinden lassen, zu groá
+war die Macht des Zauber=meisters. Fr ihn hatte er einen Kerker er=sonnen,
+weit weg an einem verborgenen Ort! So war das Dorf leer und verlassen, der
+Zauberer war ver=schwunden und mit ihm der einzige, dessen Macht aus=reichen
+wrde, sich dem D„monen zu stellen und das Gleichgewicht der M„chte wieder
+herzu=stellen...
+#+
+Nur Kjarthan blieb als ein=ziger ver=schont, da er Dorgar aus der Unterwelt
+befreit hatte - und er wusste, dass die Verantwortung, seinen Meister zu
+finden und das B”se zu zerst”ren, bei ihm liegt...
+#
+   şC #
+#
+
+@1
+ şK Das Schloss
+#                     şD
+#Als Du das Schloss
+#betrittst, umgibt Dich
+#zun„chst nur die Dun-
+#kelheit, bis sich Deine
+#Fackel mit einem Pras-
+#seln entzndet und die Umgebung leicht
+erhellt. Nackte, kalte Mau=ern um=geben Dich, Ratten huschen in die hinteren
+Winkel der Mau=ern um im Schatten unterzu=tauchen. Du gehst weiter und Deine
+Schritte ver=hallen in den alten Ge=w”l=ben.
+#+Die ganze Zeit hast Du das
+bedrckende Gefhl, als ob Dich irgendwas oder irgendwer beobachtet. Aber
+im flackern=den Schein der Flamme er=kennst Du nur Schatten an den W„nden.
+Pl”tzlich be=merkst Du ein Knirschen unter Deinem Fuá. Als Du hinunterschaust,
+erkennst Du die bleichen Knochen einer menschlichen Hand. Du blickst Dich
+um weil Du hinter Dir eine Bewegung wahrnimmst und f„hrst zu=sammen, als
+die Hand am Bo=den Deinen Kn”chel ergreift...
+#
+@2
+Mit beiden H„nden ergreifst Du den Hebel, um Dich mit ganzer Kraft dagegen
+zu stemmen. Langsam „chzend gibt dieser nach und der Mechanismus setzt sich
+in Gang. Die verstaubten Zahn=r„der greifen ineinander und morsche Seile
+werden ge=spannt. Stck fr Stck gibt der Balken, der die Tr ver=sperrt,
+nach. Endlich, der Zugang ist frei! Du ”ffnest die beiden Flgel der
+goldbeschlag=enen Tr und trittst in die Grabkammer ein. Kalte abge=standene
+Luft weht Dir ent=gegen, und mit vorsichtigen Schritten gehst Du auf die
+Stein=platte des Sarges zu. Nur keine Falle ausl”sen! Nachdem Du Deine Waffe
+an die bemoste Wand gelehnt hast, willst Du die Platte vom Sarkophag
+schieben. Doch sie sitzt fest! Du verschnaufst einen Augen=blick und stemmst
+Dich erneut dagegen. Erst mit aller Kraft gelingt es Dir, sie doch noch zu
+bewegen. Jetzt bloá nicht aufh”ren! Du schiebst weiter und kannst schon
+einen Blick ins innere des Grabmals wer=fen. Was Du erkennst, sind alte
+Bandagen, Knochen und das rote Glhen in den Augen des Toten, das immer
+heller zu werden scheint...
+#^           şM
+@3
+Wiedereinmal entfernst Du die klebrigen Fetzen aus Deinem Gesicht und von
+Deiner Rst=ung. Die W„nde sehen aus, als seien sie mit durchsichtigen
+grauen Stoff=resten behangen. Leider reicht der Schein Deiner Fackel nicht
+bis ans Ende des Korridors, aber irgend etwas muss da sein. Schon seit einiger
+Zeit ver=nimmst Du das Knirschen und Rascheln, was aus dem tiefen Schlund
+der Dunkelheit an Dein Ohr dringt. Aber Du gehst weiter, steigst ber
+Seile und gespannte F„den. Alles klebt! Dann erkennst Du das Ende des Weges
+und Dein Fuá st”át an einen blechernden Gegen=stand. Nur ein verbeulter
+Helm! Im Schein Deiner Fackel erkennst Du auch den ehemaligen Besitzer.
+Nur noch eine abgemagerte Gestalt, die sich in den Seilen verfangen hat.
+Und doch geht ein Zucken durch den K”rper. Nicht er selbst bewegt sich,
+sondern vielmehr die Seile, an denen sich ein gewaltiger Leib mit acht
+behaarten Beinen n„hert...
+#
+@4
+Du erwachst! Nur fr kurze Zeit konntest Du Dich aus=ruhen. Deine Gelenke
+schmer=zen, als Du Dich reckst. Mit der Waffe in der Hand machst Du Dich
+daran, Deinen Weg durch die kargen Gew”lbe fort=zu=setzen.
+#+Noch immer taucht
+Deine Fackel die W„nde in ein zuckendes Spiel aus Schattenmustern und Licht.
+Nur ein ein=zelner Schatten bleibt bewegungslos, ver=harrt auf der Stelle,
+als ob er zum Sprung ansetzt. Du erkennst das boshafte teuflische Glhen
+in den Augen, die Dich an=starren und immer n„her kommen...
+#^             şM
+@5
+Du betrittst einen riesigen Raum. Jedoch bleibt die
+frische Luft, die Du erwartet hast, aus.
+#++Seit einiger Zeit begleitet Dich
+ein stechender Schwefelgeruch und er weicht auch hier nicht.
+Nein, im Gegenteil, er nimmt stetig zu und wird penetranter.
+#++Dein Blick schweift umher und bleibt an einigen Schuppen h„ngen,
+die eine kolossale Gestalt berziehen. Die Gestalt w„chst stetig an,
+stemmt sich in die H”he und richtet sich auf.
+Gleichzeitig breiten sich die gewaltigen Schwingen aus und der
+drachengleiche Kopf wendet sich Dir zu...
+#^             şM
+@6
+ şK   Der Wald
+#                     şE
+#Eint”nig klingt der
+#Rhythmus der dumpfen
+#Trommelschl„ge. Die
+#grne undurchsichtige
+#H”lle l„sst Dich nur
+#erahnen, ob Du alleine bist oder nicht. Feucht und
+zum schneiden z„h ist die tropische Luft.
+Schw„r=me von Moskitos lassen Dir keine Ruhe!
+Irgendwo in der Ferne h”rst Du ein tiefes Grol=len,
+und auch das leichte Be=ben unter Deinen Fáen spricht fr vulkanische
+Aktivi=t„t. Seit Du die Gem„uer ver=lassen hast, schl„gst Du Dich durch das
+fremd=artige Dick=icht. Die Umwelt muss sich ebenfalls ver„ndert haben, denn
+Dir ist diese Gegend an=ders in Er=innerung.
+#+Nicht nur auf die Vegetation
+hat die Magie Aus=wirkung gehabt, auch auf die Lebens=formen, denkst Du gerade,
+als ein Un=getm von einem Affen un=mittel=bar aus einer Baum=krone vor Deinen
+Fáen landet. Das Trommeln der F„uste und das Gebrll hallen durch die
+Baumkronen und ein Schwarm bunter V”gel steigt erschrocken in die Lfte
+auf...
+#
+@7
+şL Die Vulkanh”hle
+#                     şF
+#Diese H”hle scheint
+#ein sicher=er Ort zu
+#sein. Endlich Ausruhen!
+#Nach einiger Zeit un-
+#ruhigen Schlafes und
+#ein paar sp„rlichen Vorrats=resten geht es weiter.
+Die Grotte scheint tiefer in den Berg zu fhren. Dieser Weg scheint Dich
+Deinem Ziel n„her zu bringen! Du gehst tiefer in das Labyrinth der G„nge,
+kletterst ber Fels=spalten, steigst ber Abs„tze und musst das eine oder
+an=dere Mal einen anderen Weg ein=schlagen. Je tiefer Du in die H”hle
+eindringst, desto ”fter gelangst Du an unterirdische Gew„sser. Kristallklare
+Seen und B„che, an denen Du Deinen Durst stillst. Aber allm„hlich dr„ngt es
+Dich, weiter zu kommen. Das bedeutet aber auch, dieses eiskalte Nass zu
+durchqueren. Ob es hier wohl gef„hrliche Monster gibt, fragst Du Dich, als
+Du Deinen Fuá ins Wasser setzt. Aber Du hast ja bisher ganz andere Ge=fahren
+gemeistert... ~
+@8
+Wie gewaltige Z„hne eines Mauls ragen die Tropfsteine von Decke und Boden.
+Die schwefelhaltige warme Luft l„sst erahnen, dass unter=irdische Lava,
+Vulkanspalten oder „hnliches nicht fern sind. Du bist hungrig, mde und
+sehnst Dich nach einer Pause um auszuruhen. Aber Du weiát auch, dass dieser
+Platz mit seinen engen Felsspalten, G„ngen und Ger”llhaufen nicht zum
+verweilen einl„dt. Auch l„sst ein st„ndiges leichtes Er=schttern der
+Um=gebung immer wieder Stein=brocken herab=strzen. Dein einziges Ziel ist es,
+bald=m”glichst dieses H”hlen=labyrinth zu verlassen und an die frische
+n„chtliche Luft zu ge=langen. Aber halt! Da hat sich vor Dir doch ge=rade
+etwas bewegt...
+#^             şM
+@90
+Der Schacht fhrt aus der H”hle in eine einsame Htte. Es scheint ein
+Ort zu sein, der von der finsteren Macht verschont wurde, als wrde er
+von einer weiteren Macht beschtzt.
+#+Als Du den einzigen Raum der Htte betrittst, wirst Du einer Person gewahr, die
+mde in der Ecke steht, und die Dich fast neben=s„chlich zur Kenntnis nimmt.
+#+Es ist eine alte Frau und Du merkst schnell, dass sie magische F„hig=keiten
+haben muss. Offen=sichtlich war ihre Macht zu groá, um von Dorgar gebrochen
+zu werden, aber nun wirkt sie ersch”pft und apathisch.
+#+Du sprst zwar das
+Bedrfnis, ihr alles zu erz„hlen, doch schon bei Deinem ersten Ansatz
+unterbricht sie Dich. ,,Was Du brauchstïï, f„hrt sie fort, ,,werde ich Dir
+gnstig verkaufen, aber verschwinde bald wieder aus meinem Haus!ïï
+#
+@9
+ şL  Die Kathedrale
+#                     şG
+#Dichter Nebel legt sich
+#ber die Felder. Endlich
+#hast Du wieder freien
+#Himmel ber Deinem
+#Haupt und konntest die
+#Dunkelheit hinter Dir lassen. Es riecht nach Morgen=tau
+und frischem Laub. Irgendwo in der Ferne steigt
+ein Schwarm Kr„hen auf und unregelm„áig klingt das L„uten einer
+Kirchen=glocke im Wind. Du erblickst die strohbedeckten D„cher einiger H”fe
+und Htten, die zwischen den faulenden Feldern aufragen. Vielleicht kannst
+Du hier ein Lager aufschlagen. Ein trock=ener Platz und eine warme Mahlzeit
+am Feuer w„ren genau das, was Du jetzt brauchst. Ob Du dem Frieden trauen
+kannst? Auáer dem L„uten der Glocke vernimmst Du auch ein heiseres Bellen,
+das der Wind von den H”fen zu Dir herbertr„gt...
+#
+@10
+Bleiche Steingesichter schauen von der Empore auf Dich herab. Durch das
+Rosenfenster fallen unz„hlige farbige Licht=streifen der Abendsonne auf den
+alten Steinaltar. Von der ehemaligen Pracht der alten Gem„lde ist nicht viel
+brig ge=blieben, zu lange schon ist dieser Ort ver=waist. Du schauderst!
+#+In Kirchen hast Du Dich sonst immer beschtzt gefhlt, aufgehoben und in
+Sicherheit. Hier ist es anders - so, wie die leeren morschen Holzb„nke in
+der D„mmerung dastehen, erinnern sie Dich vielmehr an aneinandergereihte
+Gr„ber. Und die steinernen Engel an den S„ulen wirken mit ihren grotesken
+K”rperformen und Trompeten wie unheil=bringen=de Boten. Irgendetwas hat
+diesen Ort verdorben, und Du wirst nicht eher weichen, bis Du ihm
+gegenberstehst...
+#             şM
+@11
+şL Die Kanalisation
+#                      şH
+#Ein bler Gestank von
+#F„ulnis, Verwesung und
+#Tod geht von diesem
+#Platz aus. Schleimig
+#glitzernde Moose ziehen
+#sich wie Pilzgeflechte ber die gew”lbte
+Decke. Quietschend ver=schwin=den einige
+Ratten in einem Zu=flussrohr, als Du Dich ihnen n„herst. Im knisternden
+Flammen=schein Deiner Fackel erkennst Du eine Abzweigung. Beide Wege fhren
+weiter in die Dunkelheit. Du berlegst gerade, fr welchen Weg Du Dich
+entscheiden sollst, als ein Ger„usch Dich aufhorchen l„sst. Es klingt wie
+ein Zischen! In den nied=ri=gen G„ngen hallt es noch nach wie der blei=bende
+Eindruck eines b”sen Traumes. Aus welcher Rich=tung ist es gekommen?
+Pl”tz=lich ist wieder ein Ger„usch zu h”ren, dieses Mal deutlich n„her.
+Vielleicht ist es besser, schnell weg zu kommen, ber=legst Du, als Du ein
+Fauchen vernimmst.
+#Deine Augen suchen die G„nge ab, w„hrend Deine Gedanken
+nach einem Fluchtweg suchen...
+#^             şM
+@12
+Noch immer watest Du durch die stin=ken=den G„nge der Ka=nalisation.
+Mittlerweile nimmst Du die beiáenden D„mpfe und den blen Geruch kaum
+noch wahr. Deine Gedanken kreisen nur um die Beendigung Deiner Aufgabe.
+Du weiát, weit bist Du vom Ziel nicht mehr ent=fernt. Die Ge=fahren zu
+ber=winden hat stetig mehr Kraft gekostet, und Du bist mde und hungrig.
+#
+@13
+şL  Das Bergwerk
+#                      şI
+#Endlich hast Du wieder
+#festen Boden unter den
+#Fáen. Zwar nehmen die
+#G„nge und Tunnel kein
+#Ende, aber hier scheinen
+#fleiáige H„nde am Werk ge=wesen zu
+sein. Die Stollen sind mit Sttzen befestigt und das Gestein sauber
+herausge=schla=gen. Nicht nur das feine Glitzern der silbrigen Adern im
+Felsen verr„t, dass hier einmal lohnender Bergbau betrieben wurde, auch
+findest Du andere Zeugnisse harter Arbeit. Zer=brochene Spitz=hacken,
+rostige Schau=feln und den einen oder den anderen Helm. Besonders die
+Schienen, die wie ein eisernes Band in die Dunkelheit fhren, wecken Dein
+Interesse. Nachdem Du ihnen eine Weile gefolgt bist, triffst Du auf eine
+verbeulte Lore. Mit Spinn=weben ber=zogen und staubbedeckt scheint sie hier
+schon Jahr=zehnte auf Deine Ankunft zu warten.
+#+Dieses Vehikel k”nnte Dir
+helfen, schneller vorw„rts zu kommen und somit bald an Dein Ziel zu
+gelangen. Hoffent=lich halten die rostigen Bolzen und Schrauben die
+Belastung aus, denkst Du, als Du hinein=kletterst.
+#+Die Bremsen kreischen auf, als Du die Fahrt drosselst, um nicht mit
+voller Geschwindig=keit auf die Holzkonstruktion zuzurasen,  die den
+Abgrund berspannt...
+#
+@14
+şK Der Sumpf
+#                  şJ
+#Aus dem Bergwerk
+#fhrt der Schacht
+#direkt in eine kleine
+#Htte, wo Du ein
+#paar Lebensmittel
+#findest und Dich ein
+wenig ausruhst. Als Du
+das Haus verl„sst, stellst Du fest, dass es tiefe Nacht ist.
+Noch stark be=nom=men be=merkst Du zun„chst nur den fauligen Geruch
+des Moores. Dann siehst Du den Mond, der die Land=schaft in
+ein fahles Licht hllt und im Wasser der nahe=gelegenen Seen
+wie Diamanten glitzert. Dichter Nebel liegt ber
+den Smpfen und Seen und be=deckt sie wie ein weiáes Leichen=tuch.
+#+Du be=obachtest den klaren Sternen=himmel und ent=deckst pl”tz=lich
+einige Stern=schnuppen.
+#+Du sprst jetzt die An=wesen=heit Deines Meisters Grant ganz deutlich,
+das Ver=steck von Dorgar muss ganz in der N„he sein. Du machst Dich sofort
+auf den Weg...~
+@15
+Nachdem Du aus Deiner Ohn=macht er=wacht bist und Dir Deinen schmerzenden Kopf
+h„ltst, wirst Du den stechenden Geruch gewahr. šberall um Dich herum
+schlagen Flammen in den Himmel und alles ist in Rauch gehllt.
+#+Das Feuer prasselt und flackert zwischen den umge=rissenen Baumst„mmen.
+Du liegst inmitten eines Trmmer=feldes, das einmal ein Turm gewesen war.
+#+Hinter den Flammen und dem Rauch w”lbt sich bedrohlich der Rand eines gewaltigen
+Kraters ber die Ebene. Dieser Ort scheint das Zentrum der Verwstung zu
+sein. Was wird mich dort erwarten?!, fragst Du Dich, als Du aufbrichst,
+um das R„tsel zu l”sen...
+#^             şM
+@16
+          Das Versteck von
+#               Dorgar
+#         şL
+#+++
+Der Sturz in die Erdspalte verlief glimpflich. Als Du die
+Fels=w„nde nach einer M”glich=keit zum rauf=klettern ab=suchst,
+ent=deckst Du - ganz un=schein=bar - den Ein=gang zu einer H”hle.
+#+All das kann kein Zu=fall sein, denkst Du, viel=mehr hast Du das
+Gefhl er=wartet zu werden...
+#
+@30
+#    şK   Der Park
+##++
+šber das Hauptportal in das
+Innere zu gelangen ist aussichtslos, denn es ist streng bewacht.
+#Du weiát aber von einem geheimen Eingang, durch den man von der Rckseite
+in das Schloss gelangen kann. So machst Du Dich auf den Weg und betrittst den imposanten,
+sehr kunstvoll angelegten Schlosspark jenseits des Sees.
+##Die untergehende Sonne taucht den
+Park in ein rot-goldenes Licht. Ein Geruch nach frisch geschnittenem Gras
+h„ngt in der Luft.
+#+Dein Blick streift die grnen Wiesen und Weiden,
+die sich bis zum Horizont fortsetzen. Der Anblick der Natur l„sst Dich fr
+einen Augenblick Deine Sorge um Tin vergessen...
+#
+@31
+Du hast den geheimen Eingang gefunden und be=findest Dich
+nun in einem unter=irdischen Tunnel. Du fr”stelst wegen der feuchten K„lte
+dort.
+#+Vermutlich verl„uft der Gang unter dem See hinter dem Schloss
+entlang.
+#+Ein Geruch nach Moder und Ver=wesung schl„gt Dir entgegen.
+Von der Decke ragen Baum=wurzeln auf Dich herab. Erst langsam gew”hnen
+Deine Augen sich an das Zwielicht, das die ver=einzelten Fackeln spenden.
+#+++#Das Gefhl der Enge und Ein=ge=schlossen=heit legt sich etwas als Du eine
+groáe Halle betrittst.
+#
+@32
+Du kletterst an Metallsprossen einen schmalen Schacht empor und gelangst in
+eine kleine Station auf dem Grund des Sees. Beim Blick nach drauáen
+erscheint durch die dicken Scheiben alles ein wenig verzerrt.
+#Du erinnerst Dich, dass Grant oft
+von seinen Forschungen der Tier- und Pflanzenwelt des Sees
+sprach und folgerst daraus, dass es von dieser Unter=wasser=station
+eine Verbindung zum Schloss geben muss.
+#
+@33
+       şK  Das Schloss
+#++++Mit viel Mhe kannst Du Dich aus dem Uboot befreien und gelangst
+durch die Schleuse ins Schlossinnere. In diesem Teil des Schlosses bist
+Du noch nie gewesen...
+#
+@36
+#++Inzwischen ist ein Gewitter aufgezogen, und dunkle Wolken bedecken den
+Abendhimmel. Als Du die Tr zum Dach ”ffnest schl„gt Dir ein kalter und
+nasser Wind entgegen.
+#
+@34
+#++
+Endlich befindest Du Dich wieder im Schloss=inneren. Du weiát, dass es
+keine leichte Aufgabe sein wird, den Kristall zu finden. Grant hat alles
+unternommen um das Schloss w„hrend seiner Abwesenheit gegen
+Eindringlinge abzusichern. Du wirst all Deine
+Erfahrung einsetzen mssen, um das Versteck ausfindig zu machen.
+Aber Vorsicht, die Gefahr lauert berall!
+#
+@
+---------------------------------------------
+@93
+*2#++++
+#++Jetzt bist Du gut vorbereitet und kannst die Mission beginnen!
+#
+@94
+#Du hast die Kristallkugel gefunden und kehrst ins Dorf zurck. Du hast schon
+viel Zeit verloren. Die magische Kugel wird Dir nun helfen, Tin zu retten.
+*3#++++
+       Ende Teil 1
+#
+@95
+#\
+Noch einmal denkst Du an Tin, an Deinen Fehler, an die seltsamen Orte die
+Du gesehen hast...
+#++
+Und Du weiát, tief in Deinem Inneren wird sie nie sterben...
+##
+          şB ü_#
+#
+@96
+Endlich, Grant ist befreit !!! Noch immer haftet der Geruch von Blut und Tod an
+Dir, denn Du musstest viele Gefahren bestehen, bevor Du Dein Ziel
+erreicht hast. Deine Gedanken sind bei Tin, deretwegen Du damals einen so
+groáen Fehler be=gangen hast.
+#+Nun hast Du es wieder gut=ge=macht, das B”se ist
+besiegt!
+#+Mit der Vernichtung des D„monen kann das Dimensions=gefge wieder
+geheilt werden...
+#_
+Ein grauer wolken=verhangen=er Morgen bricht an, als ihr die alten Stufen
+hinaufsteigt. Ihr fahrt aus den H”hlen hinauf auf ein Plateau, das einen
+Aus=blick auf das ganze Land gew„hrt.
+#+Der alte Mann wirkt mde! Mit lang=samen Bewegungen zeichnen seine
+faltigen H„nde magische Symbole in die Luft. Unter seinen geschlossenen
+Lidern flackert der Blick seiner Augen. Dann beginnt er leise einen
+heiseren Singsang anzustimmen w„hrend seine Arme einen Kreisbogen
+gen Himmel beschreiben.
+#+In diesem Augenblick bricht die Wolken=decke ber den Felsen auf und
+ein starkes Leuchten geht von Grant aus. Ein Zittern durchstr”mt die
+Felsen unter euch, w„hrend der Wind sich zu einem Sturm erhebt...
+#+
+Pl”tzlich wirst Du von den Beinen ge=rissen. Das Wolken=loch hat sich weiter
+ge”ffnet und Grant erstrahlt in einer S„ule aus Licht. Sekunden sp„ter
+er=schttert eine zweite Detonation die Umgebung und eine Welle aus Licht
+und Magie breitet sich ber das Land unter euch aus. Ihr steht im Zentrum
+auf dem Felsplateau und beobachtet, wie der Zau=ber die Dunkelheit von
+Erden vertreibt und den Dimen=sions=riss schlieát...
+#
+
+@
+@@@@
