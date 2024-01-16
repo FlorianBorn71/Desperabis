@@ -24,3 +24,5 @@
 
 # Game-related text assets must be in ANSI, not UTF-8
 Data/*.txt encoding=iso-8859-1
+# Above does not work, trying something else
+*.txt		text working-tree-encoding=iso-8859-1
