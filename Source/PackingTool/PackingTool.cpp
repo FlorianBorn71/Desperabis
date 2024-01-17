@@ -15,14 +15,17 @@
 #include "Sound.h"
 #include "DatFile.h"
 #include "FileUtils.h"
+#include "PatchedEXE.h"
 
 /*
+BUGS:
+- fburn logo at intro end is broken (RLE compressed?)
+- English EXE: dark/medium/light: all same length
+
 TODO:
-- GRAFIK\TASTE.256
-- GRAFIK\TXTBILD.AN2
-   - (0,0) = "Z"
-   - (0,1) = "ENDE"
-- GRAFIK\VORSPANN.AN2
+- Exe patching
+
+IDEAS:
 - wav files conversion to target format with ffmpeg
 */
 
@@ -168,6 +171,23 @@ bool ConvertGraphicsToTGA()
 	return true;
 }
 
+bool ExtractKeysFromEXE()
+{
+	PatchedEXE exe, patched;
+	SUCCEED_OR_RETURN(exe.Load("DESPERAB.EXE"));
+	SUCCEED_OR_RETURN(patched.Load("DESPERAB.EXE"));
+	Patch patch;
+	SUCCEED_OR_RETURN(exe.Extract(patch));
+	SUCCEED_OR_RETURN(patched.Apply(patch));
+	if (!exe.IsEqual(patched))
+	{
+		cerr << "EXE looks different after identity patching." << endl;
+		return false;
+	}
+	SUCCEED_OR_RETURN(patch.Save("EXEPatch.txt"));
+	return true;
+}
+
 int main(int argc, char* argv[])
 {
 	std::filesystem::path tempPath, outputPath;
@@ -204,7 +224,7 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	const bool extractFromOriginal = false;
+	const bool extractFromOriginal = true;
 	if (extractFromOriginal)
 	{
 		FileUtils::SetOutputDirectory(tempPath);
@@ -224,13 +244,18 @@ int main(int argc, char* argv[])
 			cerr << "An error occurred during texture to text extraction." << endl;
 			return 3;
 		}
-		*/
+
 		if (!ConvertGraphicsToTGA())
 		{
 			cerr << "An error occurred during texture to text extraction." << endl;
 			return 4;
 		}
-
+		*/
+		if (!ExtractKeysFromEXE())
+		{
+			cerr << "An error occurred during key extraction from EXE." << endl;
+			return 5;
+		}
 		cout << "Extracting localizable files was successful." << endl;;
 	}
 	else

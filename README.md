@@ -60,7 +60,7 @@ To use them, you need to copy them next to the DESPERAB.EXE in the games folder.
 
 ## Music
 
-I was looking for a good fit for royalty-free music that I can use. It was just good coincidence that a close friend of mine recorded their own music CD, the album "Et". I got permissions to put the [full album on YouTube](https://www.youtube.com/watch?v=rZwh6bSWDDQ&list=PLmkuT--rMY1qd7M4o5UknBGlGjppDSUeU). For completeness, .mp3 files in high quality and full length are also stored in this repo: [Data/Menestrels](Data/Menestrels).
+I was looking for a good fit for royalty-free music that I can use. It was just good coincidence that a close friend of mine recorded their own music CD, the album "Et". I got permissions to put the [full album on YouTube](https://www.youtube.com/watch?v=AVbM_BTHybo&list=PLmkuT--rMY1qd7M4o5UknBGlGjppDSUeU&index=1). For completeness, .mp3 files in high quality and full length are also stored in this repo: [Data/Menestrels](Data/Menestrels).
 
 ## Contributing
 
