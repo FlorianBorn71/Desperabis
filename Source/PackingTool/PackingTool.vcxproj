@@ -129,6 +129,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="CameraPath.cpp" />
     <ClCompile Include="DatFile.cpp" />
     <ClCompile Include="FileUtils.cpp" />
     <ClCompile Include="PackingTool.cpp" />
@@ -139,6 +140,7 @@
     <ClCompile Include="TextureAnim.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="CameraPath.h" />
     <ClInclude Include="DatFile.h" />
     <ClInclude Include="FileLists.h" />
     <ClInclude Include="FileUtils.h" />

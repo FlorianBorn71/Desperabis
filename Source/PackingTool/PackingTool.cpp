@@ -10,6 +10,7 @@
 #include <direct.h>
 
 #include "FileLists.h"
+#include "CameraPath.h"
 #include "Texture.h"
 #include "TextureAnim.h"
 #include "Sound.h"
@@ -156,17 +157,8 @@ bool ConvertGraphicsToTGA()
 	SUCCEED_OR_RETURN(anim.Load("ANIMS\\VORSPANN.AN2"));
 	SUCCEED_OR_RETURN(anim.SaveTGAs("IntroText", standardPal));
 
-//	SUCCEED_OR_RETURN(anim.Load("ANIMS\\FACKEL1.AN2"));
-//	SUCCEED_OR_RETURN(anim.SaveTGAs("Fackeln", standardPal));
-
 	SUCCEED_OR_RETURN(anim.Load("ANIMS\\TXTBILD.AN2"));
 	SUCCEED_OR_RETURN(anim.SaveTGAs("StoryImage", grayScalePal));
-
-	/*
-	Texture t;
-	SUCCEED_OR_RETURN(t.LoadTGA("TestTGA.tga", standardPal));
-	SUCCEED_OR_RETURN(t.Save("GRAFIK\\TASTE.256"));
-	*/
 
 	return true;
 }
@@ -185,6 +177,25 @@ bool ExtractKeysFromEXE()
 		return false;
 	}
 	SUCCEED_OR_RETURN(patch.Save("EXEPatch.txt"));
+	return true;
+}
+
+
+bool ExtractCameraPaths()
+{
+	CameraPath path;
+	SUCCEED_OR_RETURN(path.Load("LEVEL\\DEMO0.KOO"));
+	/*
+	SUCCEED_OR_RETURN(path.Load("LEVEL\\DEMO1.KOO"));
+	SUCCEED_OR_RETURN(path.Load("LEVEL\\DEMO2.KOO"));
+	SUCCEED_OR_RETURN(path.Load("LEVEL\\DEMO3.KOO"));
+	SUCCEED_OR_RETURN(path.Load("LEVEL\\DEMO4.KOO"));
+	SUCCEED_OR_RETURN(path.Load("LEVEL\\DEMO5.KOO"));
+	SUCCEED_OR_RETURN(path.Load("LEVEL\\DEMO6.KOO"));
+	SUCCEED_OR_RETURN(path.Load("LEVEL\\DEMO7.KOO"));
+	SUCCEED_OR_RETURN(path.Load("LEVEL\\DEMO10.KOO"));
+	*/
+	//SUCCEED_OR_RETURN(path.SaveCSV("CameraPath0.csv"));
 	return true;
 }
 
@@ -256,6 +267,13 @@ int main(int argc, char* argv[])
 			cerr << "An error occurred during key extraction from EXE." << endl;
 			return 5;
 		}
+
+/*		if (!ExtractCameraPaths())
+		{
+			cerr << "An error occurred during camera path extraction." << endl;
+			return 6;
+		}
+		*/
 		cout << "Extracting localizable files was successful." << endl;;
 	}
 	else

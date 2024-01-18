@@ -17,7 +17,7 @@ struct PatchEntryDef
 
 const PatchEntryDef defs[] =
 {
-"$PressAnyKey",0xad50,17,"","", false,
+"$PressAnyKey",0xad50,17,"... ","", false,
 "$SoundblasterNotFound",0xad62,27,"","", false,
 "$IOError",0xad7e,18,""," :", false,
 "$InvalidSaveGame",0xad91,25,""," STAND", false,
@@ -29,12 +29,12 @@ const PatchEntryDef defs[] =
 "$Off", 0xb1ef, 13, "", "", true,
 "$VolumeSlider", 0xb1fd, 14, "", "~\"", true,
 "$Keyboard", 0xb20c, 9, "", "", true,
-"$Joystick", 0xb216, 9, "","",true,
-"$Mouse", 0xb220, 9, "","",true,
+"$Joystick", 0xb216, 9, "", "", true,
+"$Mouse", 0xb220, 9, "","", true,
 "$Fullscreen", 0xb22a, 10, "","", true,
 "$FullscreenWithUI", 0xb235, 10, "","", true,
 "$Meters", 0xb240, 6, " ","", false,
-"$Gamma.Dark", 0xb247, 6, "","",true,
+"$Gamma.Dark", 0xb247, 6, "","", true,
 "$Gamma.Medium", 0xb24e, 6, "", "", true,
 "$Gamma.Bright", 0xb255, 5, "","", true,
 
@@ -61,7 +61,7 @@ const PatchEntryDef defs[] =
 "$Key.ShiftLeft", 0xb8d2, 11, "","", false,
 "$Key.CTRL", 0xb8de, 4, "","", false,
 "$Key.Alt", 0xb8e3, 3, "","", false,
-"$Key.Keymapping", 0xbbf9, 16, ""," :", false,
+"$Menu.Keymapping", 0xbbf9, 16, ""," :", false,
 
 "$Menu.LoadASavegameHeadline", 0xcc29, 16, "", "", false,
 "$Menu.SaveASavegameHeadline", 0xcde7, 20, "", "", false,
@@ -73,6 +73,59 @@ const PatchEntryDef defs[] =
 "$Menu.Configuration", 0xd28a,13, "", "", false,
 "$Menu.BackToDOS", 0xd298,13, "", "", false,
 
+"$SoundOn", 0xf6c3, 9, "","", false,
+"$SoundOff", 0xf6cd, 9, "", "", false,
+"$AmbientOn", 0xf6d7, 13, "", "", false,
+"$AmbientOff", 0xf6e5, 13, "", "", false,
+"$Keyboard", 0xf6f3, 8, "", "", false,
+"$Joystick", 0xf6fc, 8 , "", "", false,
+"$Mouse", 0xf705, 4, "", "", false,
+"$AmbientVolume", 0xf70e, 15, "", " ", false,
+
+"$IO.ERROR", 0x11901, 8, "", " : ", false,
+"$IO.ReadError", 0x1190a, 24, "", " ", false,
+"$IO.WriteProtection", 0x11923, 16, ". ", "?", false,
+"$IO.XMS", 0x11934, 24, "", "", false,
+"$IO.XMS.Further", 0x1194d, 8,  "", " ", false,
+"$IO.XMS.Required", 0x11956, 15, "K ", "", false,
+"$IO.XMS.UnknownError", 0x11966, 23, "", " ", false,
+
+"$Inventory.Health", 0x12276, 11, "", ":", false,
+"$Inventory.Gold", 0x12282, 5, "", ":", false,
+
+"$Door.Locked", 0x175ad, 13, "", "", false,
+"$Door.WrongKey", 0x175bb, 18, "", "", false,
+// the following menu items can probably be max 15, because they from an array? (See offset diffs)
+"$Menu.Sounds", 0x31750, 6, "", "", false,
+"$Menu.Ambient", 0x31760, 9, "", "", false,
+"$Menu.Control", 0x31770, 7, "", "", false,
+"$Menu.Screen", 0x31780, 10, "", "", false,
+"$Menu.RedTint", 0x31790, 10, "", "", false,
+"$Menu.ViewRange", 0x317a0, 10, "", "", false,
+"$Menu.Brightness", 0x317b0, 10, "", "", false,
+"$Menu.Done", 0x317c0, 6, "", "", false,
+
+// the following menu items can probably be at least 20, because they from an array? (See offset diffs)
+"$Move.Forward", 0x317d8, 3, "", "", false,
+"$Move.Back", 0x317ed, 6, "", "", false,
+"$Move.RotateLeft", 0x31802, 12, "", "", false,
+"$Move.RotateRight", 0x31817, 13, "", "", false,
+"$Move.StrafeLeft", 0x3182c, 11, "", "", false,
+"$Move.StrafeRight", 0x31841, 12, "", "", false,
+"$Move.Crouch", 0x31856, 6, "", "", false,
+"$Move.Jump", 0x3186b, 8, "", "", false,
+"$Move.LookUp", 0x31880, 11, "", "", false,
+"$Move.LookDown", 0x31895, 13, "", "", false,
+"$Move.LookStraight", 0x318aa, 9, "", "", false,
+"$Move.UseWeapon", 0x318bf, 14, "", "", false,
+"$Move.PickUp", 0x318d4, 8, "", "", false,
+"$Move.SwapHands", 0x318e9, 14, "", "", false,
+
+"$Menu.SoundCard", 0x3190e, 10, "", "", false,
+"$Menu.JoystickCalib", 0x31976, 14, "", "", false,
+"$Menu.Keymapping", 0x31990, 14, "", "", false,
+"$Menu.ChangeKeymapping", 0x319aa, 15, "", "", false,
+"$Menu.Done", 0x319c4, 6, "", "", false,
 };
 
 
@@ -85,7 +138,7 @@ public:
 		
 	}
 
-	int FindEntryByKey(string_view key) const;
+	const PatchEntryDef* FindEntryByKey(string_view key) const;
 	bool Extract(const vector<uint8_t>& content, Patch& patch) const;
 	bool Apply(vector<uint8_t>& content, const Patch& patch) const;
 	bool ApplyEntry(vector<uint8_t>& content, const Patch::PatchEntry& entry) const;
@@ -94,14 +147,14 @@ private:
 };
 
 
-int PatchDefinition::FindEntryByKey(string_view key) const
+const PatchEntryDef* PatchDefinition::FindEntryByKey(string_view key) const
 {
 	for (int i = 0; i < m_entries.size(); i++)
 	{
 		if (m_entries[i].key == key)
-			return i;
+			return &m_entries[i];
 	}
-	return -1;
+	return nullptr;
 }
 
 bool PatchDefinition::Extract(const vector<uint8_t>& content, Patch& patch) const
@@ -226,7 +279,7 @@ bool PatchedEXE::Load(const char* fileName)
 }
 
 
-
+// Save the patched .EXE
 bool PatchedEXE::Save(const char* fileName) const
 {
 	CREATE_OR_RETURN(fileName, nullptr);
@@ -266,22 +319,34 @@ bool PatchedEXE::Apply(const Patch& patch)
 }
 
 
-
+// Load a patch file
 bool Patch::Load(const char* fileName)
 {
 	OPEN_OR_RETURN(fileName, nullptr);
-
+	//TODO
 	fclose(fIn);
 	return true;
 }
 
+// Load a patch file
 bool Patch::Save(const char* fileName) const
 {
 	CREATE_OR_RETURN(fileName, nullptr);
 
+	PatchDefinition defTable;
 	std::ostringstream oss;
 	for (const Patch::PatchEntry& entry : m_entries)
 	{
+		if (const PatchEntryDef* def = defTable.FindEntryByKey(entry.m_key))
+		{
+			int availableMax = static_cast<int>(def->maxCharacters - def->prefixString.length() - def->postfixString.length());
+			oss << "# Maximum length : " << availableMax << " characters." << endl;
+
+		}
+		else
+		{
+			oss << "# Error: key  '"<< entry.m_key << "' does not exist in definition." << endl;
+		}
 		oss << entry.m_key << ":" << entry.m_value << endl;
 	}
 	string s = oss.str();
