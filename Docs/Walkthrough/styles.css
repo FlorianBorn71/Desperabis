@@ -1,0 +1,27 @@
+body {
+    background-color: #000000; /* Light gray background for the entire document */
+    color: #bbbbbb; /* Default text color */
+    font-family: Century Gothic; /* Default font family */
+    margin: 20px; /* Optional margin for better readability */
+}
+
+/* Style for Heading 1 */
+h1 {
+    color: #ff8800;
+    font-size: 24px;
+    font-variant: small-caps;
+}
+
+/* Style for Heading 2 */
+h2 {
+    color: #ff8800;
+    font-size: 20px;
+    font-variant: small-caps;
+}
+
+/* Style for Heading 3 */
+h3 {
+    color: #ff8800;
+    font-size: 18px;
+    font-variant: small-caps;
+}
