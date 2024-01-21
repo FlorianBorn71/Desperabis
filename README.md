@@ -2,7 +2,9 @@
 
 Hello adventurers and friends of good old DOS games!
 
-Back in the times when file extensions still had 3 characters, and the full game assets were smaller than an exception string output, good games existed. This is the story of _Desperabis_.
+Back in the times when file extensions still had 3 characters, and the full game assets were smaller than an average exception string output today, good games existed. This is the story of
+
+![Desperabis title](docs/media/desperabis-title.png)
 
 ## About
 
@@ -30,7 +32,9 @@ Due to the lack of affordable(!) industry standards for 3D tooling, I wrote all 
 
 ### Source Code
 
-Before you ask: No, I lost it! It's a pity because it would have allowed me to do a full port of the game to modern graphics, including the gameplay code. Anyway, reverse engineering all the asset parts was a fun endeavor, as it brought back all the good memories!
+Before you ask: No, I lost it!
+
+It's a pity because it would have allowed me to do a full port of the game to modern graphics, including the gameplay code. Anyway, reverse engineering all the asset parts was a fun endeavor, as it brought back all the good memories!
 
 ### License
 
@@ -40,27 +44,64 @@ This repo is Open Source using the permissive "MIT License", which essentially m
 
 Given that _Desperabis_ is a pure MS-DOS game, it needs to run in an emulator, such as famous [DosBox](https://www.dosbox.com/). The self-contained game binaries is part of this repo and can be found here: [Game/Original](Game/Original).
 
-### English version
+### Dosbox Settings
 
-- coming soon
+DOSBox comes with various options to tweak the performance. It turns out that the default options are not too well suited and cause the game to run in very low framerate and with stuttering sound. It's not only necessary to increase the number of CPU cycles, but also to set the core to 'dynamic'. The following settings work well for me:
 
-### Dosbox settings
+```ddl
+core=dynamic
+cputype=auto
+cycles=fixed 800000
+```
 
-- coming soon
+Individual settings might vary in the sweet spot for the cycle count (increase/decrease while the game is running and find a good number where the game runs fluently _and_ the sounds plays flawlessly). But the `core=dynamic` part is crucial for acceptable performance.
+
+You can put these settings into DOSBox' config file (under the [cpu] tag).
+
+It's also advisable to mount the directories to point to the DESPERAB.EXE. I added this to the `autoexec` section of the .conf file:
+
+```ddl
+[autoexec]
+# Lines in this section will be run at startup.
+# You can put your MOUNT lines here.
+mount d <path to Desperabis repo>\Game\Original
+mount e <path to Desperabis repo>\Game\English
+```
+
+...just so I can switch to drive `D:` for the original version and `E:` for the English version. `<path to Desperabis repo>` needs to be replaced by the absolute path of your local checkout of the Desperabis repo.
+
+### English Version
+
+An English version of the original game can be found here: [Game/English](Game/English). See [localization chapter](#localization) for more information about how this was done.
 
 ### Savegames
 
 This repo comes with a bunch of save games, essentially one for every level in the game. The files are located within the [Data/SaveGames](Data/SaveGames) folder of this repo.
 
-To use them, you need to copy them next to the DESPERAB.EXE in the games folder. Since the in-game UI is limited to listing only 10 files (named STAND1..10.SPL), they are separated in folders and you need to copy them over the existing 10 files.
+To use them, you need to copy them next to the DESPERAB.EXE in the games folder. Since the in-game UI is limited to listing only 10 files at a time (named STAND1..10.SPL), they are grouped in folders and you need to copy them over the existing 10 files.
+
+### Walkthrough
+
+Back in the days, I wrote a walkthrough in German language. Thanks again [@Sir John](https://github.com/ungesundes-halbwissen) for restoring, correcting, and providing an English version of it. You can find the walkthrough documentation here:
+
+- [German walkthrough](Docs/Walkthrough/Walkthrough-German.md)
+- [English walkthrough](Docs/Walkthrough/Walkthrough-English.md)
 
 ## Localization
 
-- coming soon
+The original game was in German language and it had not been designed with localization in mind. Accordingly, localization would have been quite tedious, by editing the binary files with a hex editor. This would have been difficult enough for all the texts, but impossible for the graphics that need localization. Note that patching a binary file requires that you get along with the same number of characters/bytes, or fewer.
+
+That's when I decided to write a simple tool that extracts/converts the game binaries to standard formats (.txt for texts, .tga for graphics, .wav for sound) and then allows to re-pack them to a runnable EXE/data files. The result of the English translation can be found here: [Game/English](Game/English).
+
+![The English version of the main menu](Docs/media/desperab_lolcalized_mainmenu.png)
+
+The C++ source code of the conversion tool is part of this repo. It's a self-contained Visual Studio solution [here](Source/).
+
+With this simple workflow, it's now straight-forward to create other localizations as well. Just contact me if you are interested.
 
 ## Music
 
-I was looking for a good fit for royalty-free music that I can use. It was just good coincidence that a close friend of mine recorded their own music CD, the album "Et". I got permissions to put the [full album on YouTube](https://www.youtube.com/watch?v=AVbM_BTHybo&list=PLmkuT--rMY1qd7M4o5UknBGlGjppDSUeU&index=1). For completeness, .mp3 files in high quality and full length are also stored in this repo: [Data/Menestrels](Data/Menestrels).
+When creating the game, I was looking for a good fit for royalty-free music that I can use. It was just good coincidence that a close friend of mine recorded their own music CD, the album "Et". I got permissions to put the [full album on YouTube](https://www.youtube.com/watch?v=AVbM_BTHybo&list=PLmkuT--rMY1qd7M4o5UknBGlGjppDSUeU&index=1). For completeness, .mp3 files in high quality and full length are also stored in this repo: [Data/Menestrels](Data/Menestrels).
 
 ## Contributing
 
