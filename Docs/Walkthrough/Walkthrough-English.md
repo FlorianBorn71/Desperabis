@@ -9,7 +9,7 @@
 
 # Desperabis Walkthrough
 
-<!-- toc -->
+<!-- TOC -->
 
 ## Part 1 - The Crystal Ball
 
