@@ -9,6 +9,8 @@
 
 # Desperabis Walkthrough
 
+<!-- toc -->
+
 ## Part 1 - The Crystal Ball
 
 ### Level 1 - The Park
