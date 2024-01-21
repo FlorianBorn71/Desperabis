@@ -29,8 +29,13 @@ _Desperabis_ is a DOS-based 3D adventure game, published in 1999. It had been do
 
 Here are some in-game impressions:
 
-| ![In-game screenshot](docs/media/ingame-screenshot-00.png) | ![In-game screenshot](docs/media/ingame-screenshot-01.png) |
-| ---------------------------------------------------------- | ---------------------------------------------------------- |
+| ![In-game screenshot](Docs/media/ingame-screenshot-00.png) | ![In-game screenshot](Docs/media/ingame-screenshot-01.png) | ![In-game screenshot](Docs/media/ingame-screenshot-02.png) | ![In-game screenshot](Docs/media/ingame-screenshot-03.png) |
+| ------ | ------ | ------ | ------ |
+
+| ![In-game screenshot](Docs/media/ingame-screenshot-04.png) | ![In-game screenshot](Docs/media/ingame-screenshot-05.png) |
+| ![In-game screenshot](Docs/media/ingame-screenshot-06.png) | ![In-game screenshot](Docs/media/ingame-screenshot-07.png) |
+| ![In-game screenshot](Docs/media/ingame-screenshot-08.png) | ![In-game screenshot](Docs/media/ingame-screenshot-09.png) |
+| ![In-game screenshot](Docs/media/ingame-screenshot-10.png) | ![In-game screenshot](Docs/media/ingame-screenshot-11.png) |
 
 Other 3D games had been on the market for years already, but _Desperabis_ was acclaimed for its dense atmosphere, embedded into a captivating story. Creepy atmosphere instead of splatter! Hitchcock, not Saw.
 
