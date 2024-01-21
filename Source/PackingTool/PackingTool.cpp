@@ -20,7 +20,6 @@
 
 /*
 BUGS:
-- fburn logo at intro end is broken (RLE compressed?)
 - English EXE: dark/medium/light: all same length
 
 TODO:
@@ -235,7 +234,7 @@ int main(int argc, char* argv[])
 		}
 	}
 
-	const bool extractFromOriginal = true;
+	const bool extractFromOriginal = false;
 	if (extractFromOriginal)
 	{
 		FileUtils::SetOutputDirectory(tempPath);

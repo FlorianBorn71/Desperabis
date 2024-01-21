@@ -4,7 +4,7 @@ Hello adventurers and friends of good old DOS games!
 
 Back in the times when file extensions still had 3 characters, and the full game assets were smaller than an average exception string output today, good games existed. This is the story of
 
-![Desperabis title](docs/media/desperabis-title.png)
+![Desperabis title](Docs/media/desperabis-title.png)
 
 ## About
 
