@@ -47,10 +47,6 @@ In this article:
 
 ### Level 1 - The Park
 
-<div style="float: right; margin: 0px 0px 10px 10px;">
-  <img src="../media/ingame-screenshot-00.png" alt="Alt text for your image" width="360">
-</div>
-
 Keys must be found in the hedge maze to open the gates. One gate opens access to another key hiding place. Beware of the snakes and other small animals. But first you have to get the scythe, which you can and must use to get through *small* hedges. A key is also hidden in a knothole on the large tree (climb up the ladder). After some back and forth you leave the labyrinth and find yourself at a well. Behind the hedge by the well is a switch that you can use to switch on the well. Then go to the fenced-off pasture, which has a gate and where a belligerent bull is waiting. You have to avoid the bull (you can't defeat him) and take the bucket with you. Fill up the bucket at the fountain (simply walk through the fountain with the bucket in your hand) and walk with the filled bucket to the dead tree with the gate in it. A few steps in front of this tree, the earth is slightly churned up, as the switch that opens the gate is buried there. This is exactly where you need to pour out the water to uncover the switch. Complete the level through the gate in the tree.
 
 ### Level 2 - Under Ground
