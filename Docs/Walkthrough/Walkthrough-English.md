@@ -9,7 +9,39 @@
 
 # Desperabis Walkthrough
 
-<!-- TOC -->
+In this article:
+- [Desperabis Walkthrough](#desperabis-walkthrough)
+  - [Part 1 - The Crystal Ball](#part-1---the-crystal-ball)
+    - [Level 1 - The Park](#level-1---the-park)
+    - [Level 2 - Under Ground](#level-2---under-ground)
+      - [Action 1:](#action-1)
+      - [Action 2:](#action-2)
+      - [Action 3:](#action-3)
+    - [Level 3 - Underwater Station](#level-3---underwater-station)
+    - [Level 4 - The Castle (1)](#level-4---the-castle-1)
+    - [Level 5 - The Castle Roof](#level-5---the-castle-roof)
+    - [Level 6 - The Castle (2)](#level-6---the-castle-2)
+    - [Level 7 - The Castle (3)](#level-7---the-castle-3)
+  - [Part 2 - The Rescue Of Grant](#part-2---the-rescue-of-grant)
+    - [Level 1 - The abandoned Village](#level-1---the-abandoned-village)
+    - [Level 2 - In the Castle (1)](#level-2---in-the-castle-1)
+    - [Level 3 - In the Castle (2)](#level-3---in-the-castle-2)
+    - [Level 4 - In the Castle (3)](#level-4---in-the-castle-3)
+    - [Level 5 - In the Castle (4)](#level-5---in-the-castle-4)
+    - [Level 6 - Fighting the Dragon](#level-6---fighting-the-dragon)
+    - [Level 7 - In the Woods](#level-7---in-the-woods)
+    - [Level 8 - Limestone Cave (1)](#level-8---limestone-cave-1)
+    - [Level 9 - Limestone Cave (2)](#level-9---limestone-cave-2)
+    - [Level 10 - The Witch](#level-10---the-witch)
+    - [Level 11 - The Cementery](#level-11---the-cementery)
+    - [Level 12 - The Cathedral](#level-12---the-cathedral)
+    - [Level 13 - The Sewers (1)](#level-13---the-sewers-1)
+    - [Level 14 - The Sewers (2)](#level-14---the-sewers-2)
+    - [Level 15 - The Mine](#level-15---the-mine)
+    - [Level 16 - The Swamp in the Woods](#level-16---the-swamp-in-the-woods)
+    - [Level 17 - The Wildfire](#level-17---the-wildfire)
+    - [Level 18 - Dorgar's Lair](#level-18---dorgars-lair)
+
 
 ## Part 1 - The Crystal Ball
 

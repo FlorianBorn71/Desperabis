@@ -6,7 +6,22 @@ Back in the times when file extensions still had 3 characters, and the full game
 
 ![Desperabis title](Docs/media/desperabis-title.png)
 
-<!-- TOC -->
+In this article:
+- [Desperabis](#desperabis)
+  - [About](#about)
+    - [About the Author](#about-the-author)
+    - [About the Game](#about-the-game)
+    - [Source Code](#source-code)
+    - [License](#license)
+  - [Running the Game](#running-the-game)
+    - [Dosbox Settings](#dosbox-settings)
+    - [English Version](#english-version)
+    - [Savegames](#savegames)
+    - [Walkthrough](#walkthrough)
+  - [Localization](#localization)
+  - [Music](#music)
+  - [Contributing](#contributing)
+  - [Future Plans](#future-plans)
 
 ## About
 

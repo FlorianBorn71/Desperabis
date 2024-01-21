@@ -7,8 +7,40 @@
 </head>
 <body>
 
-
 # Desperabis Lösungsbuch
+
+Inhalt:
+- [Desperabis Lösungsbuch](#desperabis-lösungsbuch)
+  - [Spielteil 1 - Die Kristallkugel](#spielteil-1---die-kristallkugel)
+    - [Level 1 - der Park](#level-1---der-park)
+    - [Level 2 - Unter der Erde](#level-2---unter-der-erde)
+      - [Aktion 1:](#aktion-1)
+      - [Aktion 2:](#aktion-2)
+      - [Aktion 3:](#aktion-3)
+    - [Level 3 - Die Unterwasserstation](#level-3---die-unterwasserstation)
+    - [Level 4 - Das Schloss (1)](#level-4---das-schloss-1)
+    - [Level 5 - Das Schlossdach](#level-5---das-schlossdach)
+    - [Level 6 - Das Schloss (2)](#level-6---das-schloss-2)
+    - [Level 7 - Das Schloss (3)](#level-7---das-schloss-3)
+  - [Spielteil 2 - Die Rettung von Grant](#spielteil-2---die-rettung-von-grant)
+    - [Level 1 - Das verlassene Dorf](#level-1---das-verlassene-dorf)
+    - [Level 2 - Im Schloss (1)](#level-2---im-schloss-1)
+    - [Level 3 - Im Schloss (2)](#level-3---im-schloss-2)
+    - [Level 4 - Im Schloss (3)](#level-4---im-schloss-3)
+    - [Level 5 - Im Schloss (4)](#level-5---im-schloss-4)
+    - [Level 6 - Kampf gegen den Drachen](#level-6---kampf-gegen-den-drachen)
+    - [Level 7 - Im Wald](#level-7---im-wald)
+    - [Level 8 - Tropfsteinhöhle (1)](#level-8---tropfsteinhöhle-1)
+    - [Level 9 - Tropfsteinhöhle (2)](#level-9---tropfsteinhöhle-2)
+    - [Level 10 - Die Hexe](#level-10---die-hexe)
+    - [Level 11 - Friedhof der Kathedrale](#level-11---friedhof-der-kathedrale)
+    - [Level 12 - Die Kathedrale](#level-12---die-kathedrale)
+    - [Level 13 - Die Kanalisation (1)](#level-13---die-kanalisation-1)
+    - [Level 14 - Die Kanalisation (2)](#level-14---die-kanalisation-2)
+    - [Level 15 - Das Bergwerk](#level-15---das-bergwerk)
+    - [Level 16 - Der Sumpf im Wald](#level-16---der-sumpf-im-wald)
+    - [Level 17 - Der Waldbrand](#level-17---der-waldbrand)
+    - [Level 18 - Die Höhle von Dorgar](#level-18---die-höhle-von-dorgar)
 
 ## Spielteil 1 - Die Kristallkugel
 
