@@ -6,6 +6,8 @@ Back in the times when file extensions still had 3 characters, and the full game
 
 ![Desperabis title](Docs/media/desperabis-title.png)
 
+<!-- TOC -->
+
 ## About
 
 _Desperabis_ is a DOS-based 3D adventure game, published in 1999. It had been downloaded multiple hundred thousand times and it has also been on numerous cover disks of well known print magazines.
