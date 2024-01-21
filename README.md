@@ -27,6 +27,11 @@ In this article:
 
 _Desperabis_ is a DOS-based 3D adventure game, published in 1999. It had been downloaded multiple hundred thousand times and it has also been on numerous cover disks of well known print magazines.
 
+Here are some in-game impressions:
+
+| ![In-game screenshot](docs/media/ingame-screenshot-00.png) | ![In-game screenshot](docs/media/ingame-screenshot-01.png) |
+| ---------------------------------------------------------- | ---------------------------------------------------------- |
+
 Other 3D games had been on the market for years already, but _Desperabis_ was acclaimed for its dense atmosphere, embedded into a captivating story. Creepy atmosphere instead of splatter! Hitchcock, not Saw.
 
 Beside the unique atmosphere, it came up with some not-so-common rendering features, such as dynamic lighting or water reflections.
