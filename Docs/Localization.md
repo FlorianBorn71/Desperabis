@@ -40,6 +40,7 @@ There are a couple of files in the localization folder, so here is a complete li
 |Items.txt| The list of items in the game. Keep the line numbering intact (also empty lines!) and also keep the '(' for some items.
 |MissionsMenu.txt|The 3 missions in the main menu when you start a new game. The numbers below every mission denote the internal level indices. Keep them unchanged, or play with it ;-)|
 |Story.txt| All chapters in the story shown before every level. There are some special characters being used. Some are for formatting, others are mandatory. See dedicated paragraph below.|
+|EXEPatch.txt|A string table to patch the strings that are compiled into DESPERAB.EXE. See detailed info in the paragraph below.|
 |PressAnyKey.tga|Shows the 'Press any key" prompt in the auto-run levels.|
 |IntroText.\*.\*.tga|The credits in the museum intro sequence.|
 |StoryImage.0.0.tga|In the story book, the first chapter begins with an ornate version of character 'Z'. This special character is a graphics and there are no other characters of this type in the font. If character 'Z' does not fit with your story, change this graphics. The grayscale defines the intensity.
@@ -65,10 +66,22 @@ However, there are some special characters defined which have the following mean
 
 |Character|Meaning|
 | --- | --- |
+| // | Comments in story.txt start with '//'. Comments are for users during localization only and are not converted to output file. Comments can be inserted into any line of the text, but it must be a full new line for each comment. Adding '//' to the end of an actual text line will not be treated as a comment.
 | @\<number> | Defines the anchor for each level (level number). These are mandatory, so keep them in.|
 | #, #+, #++, ...| Formatting: Inserts new line(s), where the number of '+' defines the paragraph spacing.|
 | þ\<char> (þ = hexcode 0xFE) | Inserts a graphics into the page, where the following character defines which one from a set of images. It's most commonly used for the underline ornament for each headline: There are two versions of the underline ornament, one for 'short' headlines (þK) and one for 'long' headlines (þL). It's recommended to keep all the graphics in place.|
 | = | While line break happens automatically on whitespaces, the '=' character denotes a placement hint for hyphenation in a word. If not needed for a line break, it's ignored.|
+
+### Patching the .Exe
+
+Patching the strings that are compiled into in the .EXE is a very error prone process, because it requires some understanding where to patch, where to set the new string length, and finding the maximum string length. Usually, the new string may not be longer than the original one but there are exceptions (arrays of strings). **Flawed patching may cause the game to crash randomly at any point.**
+
+To make this process less error prone, the tool abstracts away the actual patching and instead reads the strings from a string table text file. This string table file is named `EXEPatch.txt`. It consists of name/value pairs, where each entry is of the form:
+```
+# Maximum length : 13 characters.
+$PressAnyKey:Press any key
+```
+The comment line that starts with '#' is just a hint for the user to inform about the maximum length of the string. The next line is a key/value pair, separated by colon. The key describes (roughly) what the string is used for. The conversion tool has a table of keys/file offsets so it knows where to patch the strings. It handles string length limitations accordingly and outputs an error where exceeded.
 
 ## Localization tool source
 
