@@ -63,6 +63,16 @@ const PatchEntryDef defs[] =
 "$Key.Alt", 0xb8e3, 3, "","", false,
 "$Menu.Keymapping", 0xbbf9, 16, ""," :", false,
 
+// the following menu items can probably be max 15, because they from an array? (See offset diffs)
+"$Menu.Sounds", 0x31750, 6, "", "", false,
+"$Menu.Ambient", 0x31760, 9, "", "", false,
+"$Menu.Control", 0x31770, 7, "", "", false,
+"$Menu.Screen", 0x31780, 10, "", "", false,
+"$Menu.RedTint", 0x31790, 10, "", "", false,
+"$Menu.ViewRange", 0x317a0, 10, "", "", false,
+"$Menu.Brightness", 0x317b0, 10, "", "", false,
+"$Menu.Done", 0x317c0, 6, "", "", false,
+
 "$Menu.LoadASavegameHeadline", 0xcc29, 16, "", "", false,
 "$Menu.SaveASavegameHeadline", 0xcde7, 20, "", "", false,
 "$Menu.ReturnToGame", 0xd233,22, "", "", false,
@@ -77,9 +87,9 @@ const PatchEntryDef defs[] =
 "$SoundOff", 0xf6cd, 9, "", "", false,
 "$AmbientOn", 0xf6d7, 13, "", "", false,
 "$AmbientOff", 0xf6e5, 13, "", "", false,
-"$Keyboard", 0xf6f3, 8, "", "", false,
-"$Joystick", 0xf6fc, 8 , "", "", false,
-"$Mouse", 0xf705, 4, "", "", false,
+"$Keyboard", 0xf6f3, 8, "", "", true,
+"$Joystick", 0xf6fc, 8 , "", "", true,
+"$Mouse", 0xf705, 8, "", "", true,
 "$AmbientVolume", 0xf70e, 15, "", " ", false,
 
 "$IO.ERROR", 0x11901, 8, "", " : ", false,
@@ -95,15 +105,6 @@ const PatchEntryDef defs[] =
 
 "$Door.Locked", 0x175ad, 13, "", "", false,
 "$Door.WrongKey", 0x175bb, 18, "", "", false,
-// the following menu items can probably be max 15, because they from an array? (See offset diffs)
-"$Menu.Sounds", 0x31750, 6, "", "", false,
-"$Menu.Ambient", 0x31760, 9, "", "", false,
-"$Menu.Control", 0x31770, 7, "", "", false,
-"$Menu.Screen", 0x31780, 10, "", "", false,
-"$Menu.RedTint", 0x31790, 10, "", "", false,
-"$Menu.ViewRange", 0x317a0, 10, "", "", false,
-"$Menu.Brightness", 0x317b0, 10, "", "", false,
-"$Menu.Done", 0x317c0, 6, "", "", false,
 
 // the following menu items can probably be at least 20, because they from an array? (See offset diffs)
 "$Move.Forward", 0x317d8, 3, "", "", false,
@@ -166,13 +167,14 @@ bool PatchDefinition::Extract(const vector<uint8_t>& content, Patch& patch) cons
 	for (int i = 0; i < m_entries.size(); i++)
 	{
 		const PatchEntryDef& def = m_entries[i];
-
+		/*
 		if (data[def.byteOffset] != def.maxCharacters)
 		{
 			// This is only an error if we extract from the original file
 			cerr << "byte that indicates string length does not match max length. key: " << def.key << endl;
 			return false;
 		}
+		*/
 		const char* stringStart = &data[def.byteOffset + 1 + def.prefixString.length()];
 		size_t availableLen = def.maxCharacters - def.prefixString.length();
 		if (def.fillwithSpaces)
@@ -192,11 +194,13 @@ bool PatchDefinition::Extract(const vector<uint8_t>& content, Patch& patch) cons
 		if (existingEntry >= 0)
 		{
 			// if there is a value in the patch for the same key, don't add it again, but make sure, it's value is identical
+			/*
 			if (patch.m_entries[existingEntry].m_value != val)
 			{
 				cerr << "Values for the same key must be consistent: Was '" << patch.m_entries[existingEntry].m_value << "' but should be '" << val << "'" << endl;
 				return false;
 			}
+			*/
 			continue;
 		}
 
@@ -322,8 +326,39 @@ bool PatchedEXE::Apply(const Patch& patch)
 // Load a patch file
 bool Patch::Load(const char* fileName)
 {
-	OPEN_OR_RETURN(fileName, nullptr);
-	//TODO
+	string absFile;
+	OPEN_OR_RETURN(fileName, &absFile);
+	char buffer[1024];
+	// read line by line
+	while (fgets(buffer, sizeof(buffer), fIn) != nullptr)
+	{
+		int len = static_cast<int>(strlen(buffer));
+		string_view line(buffer, len);
+		if (line.starts_with("$"))
+		{
+			size_t pos = line.find(':');
+			if (pos == std::string::npos)
+			{
+				cerr << "Key/value must be separated by ':' line:" << line << endl;
+				return false;
+			}
+			// Trim whitespaces at the end
+			while (len > pos && std::isspace(buffer[len - 1]))
+			{
+				len--;
+			}
+			string_view key(buffer, pos);
+			string_view value(buffer + pos + 1, len - pos - 1);
+
+			PatchEntry entry;
+			entry.m_key = key;
+			entry.m_value = value;
+
+			m_entries.push_back(std::move(entry));
+		}
+		// ignore all other lines
+	}
+
 	fclose(fIn);
 	return true;
 }

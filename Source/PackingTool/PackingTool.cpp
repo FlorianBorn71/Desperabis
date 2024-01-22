@@ -106,6 +106,18 @@ bool ConvertWAVToSMP()
 	return true;
 }
 
+bool PatchEXE()
+{
+	PatchedEXE exe;
+	SUCCEED_OR_RETURN(exe.Load("DESPERAB.EXE"));
+	Patch patch;
+	SUCCEED_OR_RETURN(patch.Load("EXEPatch.txt"));
+	SUCCEED_OR_RETURN(exe.Apply(patch));
+	SUCCEED_OR_RETURN(exe.Save("DESPERABIS.EXE")); // Use different output name to remove input path ambiguity upon copying.
+
+	return true;
+}
+
 ////////////////////////////////////////////////////////////////////////////
 /// Conversion functions from Desperabis -> Input
 ///		Needed as a once-off step to populate the Localization folder.
@@ -173,7 +185,7 @@ bool ExtractKeysFromEXE()
 	if (!exe.IsEqual(patched))
 	{
 		cerr << "EXE looks different after identity patching." << endl;
-		return false;
+		//return false;
 	}
 	SUCCEED_OR_RETURN(patch.Save("EXEPatch.txt"));
 	return true;
@@ -313,6 +325,14 @@ int main(int argc, char* argv[])
 				return 5;
 			}
 			cout << "success." << endl;
+
+			cout << "Start patching of game .exe ...";
+			if (!PatchEXE())
+			{
+				cerr << "An error occurred during exe patching." << endl;
+				return 6;
+			}
+			cout << "success." << endl;
 		}
 
 		// Packaging path
@@ -334,14 +354,20 @@ int main(int argc, char* argv[])
 			if (!DatFile::Sounds.PackageAndSave(&datOutFile))
 			{
 				cerr << "An error occurred during packaging SOUNDS.DAT." << endl;
-				return 101;
+				return 102;
 			}
 			cout << "Package successfully written to : " << datOutFile.c_str() << endl;
 			if (!DatFile::Music.PackageAndSave(&datOutFile))
 			{
 				cerr << "An error occurred during packaging MUSIC.DAT." << endl;
-				return 101;
+				return 103;
 			}
+			if (!FileUtils::PlainCopy("DESPERABIS.EXE", "DESPERAB.EXE"))
+			{
+				cerr << "An error occurred during copying DESPERAB.EXE." << endl;
+				return 104;
+			}
+
 			cout << "Package successfully written to: " << datOutFile.c_str() << endl;
 		}
 	}

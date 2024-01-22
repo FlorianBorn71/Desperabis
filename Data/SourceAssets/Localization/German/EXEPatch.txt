@@ -1,0 +1,184 @@
+# Maximum length : 13 characters.
+$PressAnyKey:Taste drÅcken
+# Maximum length : 27 characters.
+$SoundblasterNotFound:Soundblaster nicht gefunden
+# Maximum length : 16 characters.
+$IOError:Read/Write Error
+# Maximum length : 19 characters.
+$InvalidSaveGame:Fehler in der Datei
+# Maximum length : 22 characters.
+$InvalidVersionNumber:Falsche Versionsnummer
+# Maximum length : 5 characters.
+$File:Datei
+# Maximum length : 5 characters.
+$Missing:fehlt
+# Maximum length : 3 characters.
+$Off:aus
+# Maximum length : 3 characters.
+$On:ein
+# Maximum length : 12 characters.
+$VolumeSlider:Vol. 
+# Maximum length : 9 characters.
+$Keyboard:Tastatur
+# Maximum length : 9 characters.
+$Joystick:Joystick
+# Maximum length : 9 characters.
+$Mouse:Maus
+# Maximum length : 10 characters.
+$Fullscreen:Vollbild 1
+# Maximum length : 10 characters.
+$FullscreenWithUI:Vollbild 2
+# Maximum length : 5 characters.
+$Meters:Meter
+# Maximum length : 6 characters.
+$Gamma.Dark:dunkel
+# Maximum length : 6 characters.
+$Gamma.Medium:mittel
+# Maximum length : 5 characters.
+$Gamma.Bright:hell
+# Maximum length : 17 characters.
+$CalibrateJoystick.1:Joystick mehrmals
+# Maximum length : 16 characters.
+$CalibrateJoystick.2:im Kreis bewegen
+# Maximum length : 13 characters.
+$CalibrateJoystick.3:Knopf drÅcken
+# Maximum length : 20 characters.
+$CalibrateJoystick.4:Joystick stillhalten
+# Maximum length : 6 characters.
+$Key.Return:Return
+# Maximum length : 3 characters.
+$Key.Backspace:Del
+# Maximum length : 3 characters.
+$Key.Tab:Tab
+# Maximum length : 5 characters.
+$Key.Space:Space
+# Maximum length : 11 characters.
+$Key.CursorUp:Cursor hoch
+# Maximum length : 13 characters.
+$Key.CursorDown:Cursor runter
+# Maximum length : 12 characters.
+$Key.CursorLeft:Cursor links
+# Maximum length : 13 characters.
+$Key.CursorRight:Cursor rechts
+# Maximum length : 11 characters.
+$Key.PgDn:Bild runter
+# Maximum length : 9 characters.
+$Key.PgUp:Bild hoch
+# Maximum length : 5 characters.
+$Key.Pos1:Pos 1
+# Maximum length : 4 characters.
+$Key.End:Ende
+# Maximum length : 5 characters.
+$Key.Insert:Einfg
+# Maximum length : 4 characters.
+$Key.Del:Entf
+# Maximum length : 12 characters.
+$Key.ShiftRight:Shift rechts
+# Maximum length : 11 characters.
+$Key.ShiftLeft:Shift links
+# Maximum length : 4 characters.
+$Key.CTRL:Strg
+# Maximum length : 3 characters.
+$Key.Alt:Alt
+# Maximum length : 14 characters.
+$Menu.Keymapping:Tastenbelegung
+# Maximum length : 6 characters.
+$Menu.Sounds:Sounds
+# Maximum length : 9 characters.
+$Menu.Ambient:GerÑusche
+# Maximum length : 7 characters.
+$Menu.Control:Control
+# Maximum length : 10 characters.
+$Menu.Screen:Bildschirm
+# Maximum length : 10 characters.
+$Menu.RedTint:RotfÑrbung
+# Maximum length : 10 characters.
+$Menu.ViewRange:Sichtweite
+# Maximum length : 10 characters.
+$Menu.Brightness:Helligkeit
+# Maximum length : 6 characters.
+$Menu.Done:fertig
+# Maximum length : 16 characters.
+$Menu.LoadASavegameHeadline:Spielstand laden
+# Maximum length : 20 characters.
+$Menu.SaveASavegameHeadline:Spielstand speichern
+# Maximum length : 22 characters.
+$Menu.ReturnToGame:Zum Spiel zurÅckkehren
+# Maximum length : 11 characters.
+$Menu.NewGame:Neues Spiel
+# Maximum length : 16 characters.
+$Menu.LoadGame:Spielstand laden
+# Maximum length : 20 characters.
+$Menu.SaveGame:Spielstand speichern
+# Maximum length : 13 characters.
+$Menu.Settings:Einstellungen
+# Maximum length : 13 characters.
+$Menu.Configuration:Konfiguration
+# Maximum length : 13 characters.
+$Menu.BackToDOS:ZurÅck zu DOS
+# Maximum length : 9 characters.
+$SoundOn:Sound ein
+# Maximum length : 9 characters.
+$SoundOff:Sound aus
+# Maximum length : 13 characters.
+$AmbientOn:GerÑusche ein
+# Maximum length : 13 characters.
+$AmbientOff:GerÑusche aus
+# Maximum length : 14 characters.
+$AmbientVolume:GerÑusche Vol.
+# Maximum length : 5 characters.
+$IO.ERROR:ERROR
+# Maximum length : 23 characters.
+$IO.ReadError:Lesefehler in der Datei
+# Maximum length : 13 characters.
+$IO.WriteProtection:Schreibschutz
+# Maximum length : 24 characters.
+$IO.XMS:XMS-Treiber erforderlich
+# Maximum length : 7 characters.
+$IO.XMS.Further:Weitere
+# Maximum length : 13 characters.
+$IO.XMS.Required:Heap benîtigt
+# Maximum length : 22 characters.
+$IO.XMS.UnknownError:Unbekannter Fehler Nr.
+# Maximum length : 10 characters.
+$Inventory.Health:Gesundheit
+# Maximum length : 4 characters.
+$Inventory.Gold:Gold
+# Maximum length : 13 characters.
+$Door.Locked:abgeschlossen
+# Maximum length : 18 characters.
+$Door.WrongKey:Falscher SchlÅssel
+# Maximum length : 3 characters.
+$Move.Forward:vor
+# Maximum length : 6 characters.
+$Move.Back:zurÅck
+# Maximum length : 12 characters.
+$Move.RotateLeft:drehen links
+# Maximum length : 13 characters.
+$Move.RotateRight:drehen rechts
+# Maximum length : 11 characters.
+$Move.StrafeLeft:gehen links
+# Maximum length : 12 characters.
+$Move.StrafeRight:gehen rechts
+# Maximum length : 6 characters.
+$Move.Crouch:ducken
+# Maximum length : 8 characters.
+$Move.Jump:springen
+# Maximum length : 11 characters.
+$Move.LookUp:hochschauen
+# Maximum length : 13 characters.
+$Move.LookDown:runterschauen
+# Maximum length : 9 characters.
+$Move.LookStraight:geradeaus
+# Maximum length : 14 characters.
+$Move.UseWeapon:Waffe benutzen
+# Maximum length : 8 characters.
+$Move.PickUp:aufheben
+# Maximum length : 14 characters.
+$Move.SwapHands:HÑnde tauschen
+# Maximum length : 10 characters.
+$Menu.SoundCard:Soundkarte
+# Maximum length : 14 characters.
+$Menu.JoystickCalib:Joystick Calib
+# Maximum length : 15 characters.
+$Menu.ChangeKeymapping:Belegung Ñndern
