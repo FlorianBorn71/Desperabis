@@ -27,5 +27,6 @@ namespace FileUtils
 	int GetFileSize(FILE* fIn);
 
 	bool PlainCopy(std::filesystem::path srcFile, std::filesystem::path destFile);
+	bool CopyWithStrippedComments(std::filesystem::path srcFile, std::filesystem::path destFile);
 };
 

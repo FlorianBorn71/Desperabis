@@ -44,7 +44,7 @@ bool PlainCopyFiles()
 	SUCCEED_OR_RETURN(FileUtils::PlainCopy("Items.txt", "LEVEL\\BEZEICH.TXT"));
 	SUCCEED_OR_RETURN(FileUtils::PlainCopy("StartMsg.txt", "LEVEL\\STARTMSG.TXT"));
 	SUCCEED_OR_RETURN(FileUtils::PlainCopy("EndMsg.txt", "LEVEL\\ENDMSG.TXT"));
-	SUCCEED_OR_RETURN(FileUtils::PlainCopy("Story.txt", "LEVEL\\TEXTE.TXT"));
+	SUCCEED_OR_RETURN(FileUtils::CopyWithStrippedComments("Story.txt", "LEVEL\\TEXTE.TXT"));
 	return true;
 }
 

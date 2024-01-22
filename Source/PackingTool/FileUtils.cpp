@@ -128,3 +128,25 @@ bool FileUtils::PlainCopy(std::filesystem::path srcFile, std::filesystem::path d
 	fclose(fIn);
 	return true;
 }
+
+bool FileUtils::CopyWithStrippedComments(std::filesystem::path srcFile, std::filesystem::path destFile)
+{
+	OPEN_OR_RETURN(srcFile, nullptr);
+	CREATE_OR_RETURN(destFile, nullptr);
+	char buffer[1024];
+	// read line by line
+	while (fgets(buffer, sizeof(buffer), fIn) != nullptr)
+	{
+		size_t len = strlen(buffer);
+		string_view line(buffer, len);
+		if (line.starts_with("//"))
+		{
+			continue;
+		}
+		fwrite(buffer, 1, len, fOut);
+	}
+
+	fclose(fOut);
+	fclose(fIn);
+	return true;
+}
