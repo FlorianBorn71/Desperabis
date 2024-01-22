@@ -74,7 +74,7 @@ However, there are some special characters defined which have the following mean
 
 ### Patching the .Exe
 
-Patching the strings that are compiled into in the .EXE is a very error prone process, because it requires some understanding where to patch, where to set the new string length, and finding the maximum string length. Usually, the new string may not be longer than the original one but there are exceptions (arrays of strings). **Flawed patching may cause the game to crash randomly at any point.**
+Patching the strings that are compiled into the .EXE is a very error prone process, because it requires some understanding where to patch, where to set the new string length, and finding the maximum string length. Usually, the new string may not be longer than the original one but there are exceptions (arrays of strings). **Flawed patching may cause the game to crash randomly at any point.**
 
 To make this process less error prone, the tool abstracts away the actual patching and instead reads the strings from a string table text file. This string table file is named `EXEPatch.txt`. It consists of name/value pairs, where each entry is of the form:
 ```
