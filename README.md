@@ -53,7 +53,7 @@ I have stayed within the industry since then. Today, I'm working as a developmen
 
 _Desperabis_ was my first game that can be considered finished. It was written in the years 1996-1999, started as a pet project alongside my studies and soon evolved due to overwhelming feedback. Programming-wise, at the time I hadn't transitioned to C/C++, so the game was written in Turbo Pascal 7.0 with major parts hand-optimized through inline assembler.
 
-Due to the lack of affordable(!) industry standards for 3D tooling, I wrote all the tools myself: A texture editor, a 3D modeling/animation tool, and an in-game level/mission editor. Unfortunately, it's all gone - see next paragraph.
+Due to the lack of affordable(!) industry standards for 3D tooling, I wrote all the tooling myself: A texture editor, a 3D modeling/animation tool, and an in-game level/mission editor. Unfortunately, it's all gone - see next paragraph.
 
 ### Source Code
 
@@ -67,7 +67,7 @@ This repo is Open Source using the permissive "MIT License", which essentially m
 
 ## Running the Game
 
-Given that _Desperabis_ is a pure MS-DOS game, it needs to run in an emulator, such as famous [DosBox](https://www.dosbox.com/). The self-contained game binaries is part of this repo and can be found here: [Game/Original](Game/Original).
+Given that _Desperabis_ is a pure MS-DOS game, it needs to run in an emulator, such as famous [DosBox](https://www.dosbox.com/). The self-contained game binaries are part of this repo and can be found here: [Game/Original](Game/Original).
 
 ### Dosbox Settings
 
