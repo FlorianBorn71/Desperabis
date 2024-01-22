@@ -120,7 +120,7 @@ That's when I decided to write a simple tool that extracts/converts the game bin
 
 ![The English version of the main menu](Docs/media/desperab_lolcalized_mainmenu.png)
 
-The C++ source code of the conversion tool is part of this repo. It's a self-contained Visual Studio solution [here](Source/).
+Detailed information about the localization process can be found in the [dedicated localization page](Docs/Localization.md).
 
 With this simple workflow, it's now straight-forward to create other localizations as well. Just contact me if you are interested.
 
