@@ -24,6 +24,7 @@
     <ProjectGuid>{1118c580-dbb5-43dc-9355-e0e3229015ad}</ProjectGuid>
     <RootNamespace>DesperabisOpenXrDX11</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <ProjectName>Desperabis-OpenXr-DX11</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">

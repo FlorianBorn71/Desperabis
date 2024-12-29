@@ -11,7 +11,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "libraries", "libraries", "{
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DesperabisBaseLib", "NewRenderer\BaseLibrary\DesperabisBaseLib.vcxproj", "{175C94FD-9C87-445A-8608-8CC4D7935797}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DesperabisOpenXr-DX11", "NewRenderer\DesperabisOpenXr-DX11\DesperabisOpenXr-DX11.vcxproj", "{1118C580-DBB5-43DC-9355-E0E3229015AD}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Desperabis-OpenXr-DX11", "NewRenderer\DesperabisOpenXr-DX11\DesperabisOpenXr-DX11.vcxproj", "{1118C580-DBB5-43DC-9355-E0E3229015AD}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "GenerateBuiltInCpps", "NewRenderer\GenerateBuiltInCpps\GenerateBuiltInCpps.vcxproj", "{7A0708E8-E066-4715-8708-1AA61D1085B3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -87,6 +89,26 @@ Global
 		{1118C580-DBB5-43DC-9355-E0E3229015AD}.Release|x64.Build.0 = Release|x64
 		{1118C580-DBB5-43DC-9355-E0E3229015AD}.Release|x86.ActiveCfg = Release|Win32
 		{1118C580-DBB5-43DC-9355-E0E3229015AD}.Release|x86.Build.0 = Release|Win32
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Debug|Any CPU.Build.0 = Debug|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Debug|ARM.ActiveCfg = Debug|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Debug|ARM.Build.0 = Debug|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Debug|ARM64.ActiveCfg = Debug|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Debug|ARM64.Build.0 = Debug|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Debug|x64.ActiveCfg = Debug|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Debug|x64.Build.0 = Debug|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Debug|x86.ActiveCfg = Debug|Win32
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Debug|x86.Build.0 = Debug|Win32
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Release|Any CPU.ActiveCfg = Release|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Release|Any CPU.Build.0 = Release|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Release|ARM.ActiveCfg = Release|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Release|ARM.Build.0 = Release|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Release|ARM64.ActiveCfg = Release|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Release|ARM64.Build.0 = Release|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Release|x64.ActiveCfg = Release|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Release|x64.Build.0 = Release|x64
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Release|x86.ActiveCfg = Release|Win32
+		{7A0708E8-E066-4715-8708-1AA61D1085B3}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -94,6 +116,7 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{CC62B897-1CB6-4CE6-8729-E6BE2636F37A} = {32902354-CFB2-4749-9644-78F8C6EAD0ED}
 		{175C94FD-9C87-445A-8608-8CC4D7935797} = {32AE7772-E675-423D-A388-A4C8A6B6A70A}
+		{7A0708E8-E066-4715-8708-1AA61D1085B3} = {32902354-CFB2-4749-9644-78F8C6EAD0ED}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {87620056-AB69-4CD4-BF5E-E2F1AF16B828}
