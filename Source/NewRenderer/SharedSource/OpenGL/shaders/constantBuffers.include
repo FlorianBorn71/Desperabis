@@ -1,0 +1,48 @@
+layout (std140, binding = 0) uniform Globals
+{
+    mat4 WorldViewMatLeftRight[2]; // world to view
+    mat4 ViewWorldMatLeftRight[2]; // view back to world
+    mat4 ProjMatLeftRight[2];
+    mat4 WorldViewProjMatLeftRight[2];
+    float Gamma, InverseGamma, fPadding1, fPadding2;
+    vec4 RenderTargetSize; // xy=size, zw=1/size
+    vec4 AmbientColor; // xyz = color, w = contribution of up-normal
+    vec4 FogParameter; // xyz = color, w = fog scale
+    vec4 LightmapScaleOfs; // worldpos->lm coord
+    int NumVisibleLights; // number of entries in LightListConstantBuffer
+    int g_padding1, g_padding2, g_padding3;
+};
+
+layout (std140, binding = 1) uniform InstanceConstantBuffer
+{
+    mat4 ModelToWSMat;
+    float UniformScale;
+    int VertexOfs;  // vertex offset of primary model
+    int VertexOfs2; // vertex offset of secondary model
+    float BlendWeight; // blend factor between two models
+
+#ifdef _DEBUG
+    float DebugColorTint; // only in debug mode
+    float inst_padding1, inst_padding2, inst_padding3;
+#endif
+};
+
+
+layout (std140, binding = 2) uniform PositionArray
+{
+    vec4 positionBuffer[512];
+};
+
+
+layout (std140, binding = 3) uniform TextureAtlasConstantBuffer
+{
+    vec4 textureAtlasData; // scale U/V, ofs UV
+    vec4 spriteCorners; // xy, zw
+};
+
+layout (std140, binding = 4) uniform MaterialConstantBuffer
+{
+    float Transparency; // for transparent objects the alpha modulo (0..1)
+    float ApplyLighting; // 0 or 1, whether lighting should be applied
+    float mat_padding1, mat_padding2;
+};

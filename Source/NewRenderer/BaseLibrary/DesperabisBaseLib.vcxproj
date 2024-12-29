@@ -1,0 +1,262 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>16.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{175c94fd-9c87-445a-8608-8cc4d7935797}</ProjectGuid>
+    <RootNamespace>DesperabisBaseLib</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>D_EXPORT;_DEBUG;WIN32;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)\..\SharedSource\base</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/await</AdditionalOptions>
+      <DisableSpecificWarnings>4251</DisableSpecificWarnings>
+      <TreatWarningAsError>true</TreatWarningAsError>
+    </ClCompile>
+    <Link>
+      <SubSystem>
+      </SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>D_EXPORT;NDEBUG;WIN32;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)\..\SharedSource\base</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/await</AdditionalOptions>
+      <DisableSpecificWarnings>4251</DisableSpecificWarnings>
+      <TreatWarningAsError>true</TreatWarningAsError>
+    </ClCompile>
+    <Link>
+      <SubSystem>
+      </SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>D_EXPORT;_DEBUG;_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)\..\SharedSource\base</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/await</AdditionalOptions>
+      <DisableSpecificWarnings>4251</DisableSpecificWarnings>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <SubSystem>
+      </SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>D_EXPORT;NDEBUG;NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)\..\SharedSource\base</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalOptions>/await</AdditionalOptions>
+      <DisableSpecificWarnings>4251</DisableSpecificWarnings>
+      <TreatWarningAsError>true</TreatWarningAsError>
+    </ClCompile>
+    <Link>
+      <SubSystem>
+      </SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="..\SharedSource\base\Asset\AnimationSequence.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\AssetBase.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\AssetManager.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\DebugGeometry.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\GridCellArray.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\Level.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\LevelInfo.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\Model.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\ModelAnim.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\ModelGeometry.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\Palette.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\RawGameObject.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\TextInclude.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\Texture.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\TextureAnim.h" />
+    <ClInclude Include="..\SharedSource\base\CommonDefines.h" />
+    <ClInclude Include="..\SharedSource\base\DesperabisCommon.h" />
+    <ClInclude Include="..\SharedSource\base\GamePlay\GamePlay.h" />
+    <ClInclude Include="..\SharedSource\base\GamePlay\SimpleBehavior.h" />
+    <ClInclude Include="..\SharedSource\base\IO\FileManager.h" />
+    <ClInclude Include="..\SharedSource\base\Math\Math.h" />
+    <ClInclude Include="..\SharedSource\base\Physics\PhysicsInterface.h" />
+    <ClInclude Include="..\SharedSource\base\Renderer\Camera.h" />
+    <ClInclude Include="..\SharedSource\base\Renderer\DrawCall.h" />
+    <ClInclude Include="..\SharedSource\base\Renderer\GlobalSettings.h" />
+    <ClInclude Include="..\SharedSource\base\Renderer\IGraphicsRuntimeObject.h" />
+    <ClInclude Include="..\SharedSource\base\Renderer\LightSource.h" />
+    <ClInclude Include="..\SharedSource\base\Renderer\Renderable.h" />
+    <ClInclude Include="..\SharedSource\base\Renderer\RenderableInstance.h" />
+    <ClInclude Include="..\SharedSource\base\Renderer\Renderer.h" />
+    <ClInclude Include="..\SharedSource\base\Renderer\RendererCommon.h" />
+    <ClInclude Include="..\SharedSource\base\Renderer\Visibility.h" />
+    <ClInclude Include="..\SharedSource\base\Renderer\VisibilityTileGrid.h" />
+    <ClInclude Include="..\SharedSource\base\Scene\AnimationPose.h" />
+    <ClInclude Include="..\SharedSource\base\Scene\GameObject.h" />
+    <ClInclude Include="..\SharedSource\base\Scene\Scene.h" />
+    <ClInclude Include="..\SharedSource\base\Scene\Transformable.h" />
+    <ClInclude Include="framework.h" />
+    <ClInclude Include="pch.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\SharedSource\base\Asset\AnimationSequence.cpp" />
+    <ClCompile Include="..\SharedSource\base\Asset\AssetBase.cpp" />
+    <ClCompile Include="..\SharedSource\base\Asset\AssetManager.cpp" />
+    <ClCompile Include="..\SharedSource\base\Asset\DebugGeometry.cpp" />
+    <ClCompile Include="..\SharedSource\base\Asset\GridCellArray.cpp" />
+    <ClCompile Include="..\SharedSource\base\Asset\Level.cpp" />
+    <ClCompile Include="..\SharedSource\base\Asset\LevelInfo.cpp" />
+    <ClCompile Include="..\SharedSource\base\Asset\Model.cpp" />
+    <ClCompile Include="..\SharedSource\base\Asset\ModelAnim.cpp" />
+    <ClCompile Include="..\SharedSource\base\Asset\ModelGeometry.cpp" />
+    <ClCompile Include="..\SharedSource\base\Asset\Palette.cpp" />
+    <ClCompile Include="..\SharedSource\base\Asset\TextInclude.cpp" />
+    <ClCompile Include="..\SharedSource\base\Asset\Texture.cpp" />
+    <ClCompile Include="..\SharedSource\base\Asset\TextureAnim.cpp" />
+    <ClCompile Include="..\SharedSource\base\GamePlay\GamePlay.cpp" />
+    <ClCompile Include="..\SharedSource\base\GamePlay\SimpleBehavior.cpp" />
+    <ClCompile Include="..\SharedSource\base\IO\FileManager.cpp" />
+    <ClCompile Include="..\SharedSource\base\Math\Math.cpp" />
+    <ClCompile Include="..\SharedSource\base\Physics\PhysicsInterface.cpp" />
+    <ClCompile Include="..\SharedSource\base\Renderer\Camera.cpp" />
+    <ClCompile Include="..\SharedSource\base\Renderer\DrawCall.cpp" />
+    <ClCompile Include="..\SharedSource\base\Renderer\GlobalSettings.cpp" />
+    <ClCompile Include="..\SharedSource\base\Renderer\LightSource.cpp" />
+    <ClCompile Include="..\SharedSource\base\Renderer\Renderable.cpp" />
+    <ClCompile Include="..\SharedSource\base\Renderer\RenderableInstance.cpp" />
+    <ClCompile Include="..\SharedSource\base\Renderer\Renderer.cpp" />
+    <ClCompile Include="..\SharedSource\base\Renderer\Visibility.cpp" />
+    <ClCompile Include="..\SharedSource\base\Renderer\VisibilityTileGrid.cpp" />
+    <ClCompile Include="..\SharedSource\base\Scene\AnimationPose.cpp" />
+    <ClCompile Include="..\SharedSource\base\Scene\GameObject.cpp" />
+    <ClCompile Include="..\SharedSource\base\Scene\Scene.cpp" />
+    <ClCompile Include="..\SharedSource\base\Scene\Transformable.cpp" />
+    <ClCompile Include="DesperabisBaseLib.cpp" />
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\SharedSource\base\Renderer\Renderer.inl" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

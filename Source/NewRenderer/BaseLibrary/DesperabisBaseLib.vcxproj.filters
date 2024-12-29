@@ -1,0 +1,269 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Desperabis">
+      <UniqueIdentifier>{f80e3305-b8c8-41e3-a20c-5ea6766c171c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Desperabis\Asset">
+      <UniqueIdentifier>{527b681a-056a-445c-a657-3869b746ad83}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Desperabis\IO">
+      <UniqueIdentifier>{75fa12a3-4fb9-4f60-a9dd-24988d6f2029}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Desperabis\Math">
+      <UniqueIdentifier>{84628744-7e1e-4988-9d61-f9e36b952e07}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Desperabis\Renderer">
+      <UniqueIdentifier>{3e429696-2c30-4bf3-812a-472a44081b19}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Desperabis\Scene">
+      <UniqueIdentifier>{55852812-0425-483d-8c71-df95a33cd684}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Desperabis\GamePlay">
+      <UniqueIdentifier>{02708cb3-6588-4ba5-9b9a-87612da40114}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Desperabis\Physics">
+      <UniqueIdentifier>{6fe3218b-677c-4fce-afef-f4c3d233c5b0}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="framework.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="pch.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\AnimationSequence.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\AssetBase.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\AssetManager.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\Model.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\ModelAnim.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\ModelGeometry.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\Palette.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\Texture.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\IO\FileManager.h">
+      <Filter>Desperabis\IO</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Math\Math.h">
+      <Filter>Desperabis\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Renderer\Camera.h">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Renderer\DrawCall.h">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Renderer\IGraphicsRuntimeObject.h">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Renderer\Renderable.h">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Renderer\RenderableInstance.h">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Renderer\Renderer.h">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Renderer\Visibility.h">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Scene\AnimationPose.h">
+      <Filter>Desperabis\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Scene\GameObject.h">
+      <Filter>Desperabis\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Scene\Scene.h">
+      <Filter>Desperabis\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Scene\Transformable.h">
+      <Filter>Desperabis\Scene</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\LevelInfo.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\Level.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\TextureAnim.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\GamePlay\GamePlay.h">
+      <Filter>Desperabis\GamePlay</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\RawGameObject.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\DebugGeometry.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Renderer\LightSource.h">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\GamePlay\SimpleBehavior.h">
+      <Filter>Desperabis\GamePlay</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Renderer\RendererCommon.h">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\GridCellArray.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\TextInclude.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Physics\PhysicsInterface.h">
+      <Filter>Desperabis\Physics</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Renderer\VisibilityTileGrid.h">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Renderer\GlobalSettings.h">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\CommonDefines.h">
+      <Filter>Desperabis</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\DesperabisCommon.h">
+      <Filter>Desperabis</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="DesperabisBaseLib.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="pch.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Asset\AnimationSequence.cpp">
+      <Filter>Desperabis\Asset</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Asset\AssetBase.cpp">
+      <Filter>Desperabis\Asset</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Asset\AssetManager.cpp">
+      <Filter>Desperabis\Asset</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Asset\Model.cpp">
+      <Filter>Desperabis\Asset</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Asset\ModelAnim.cpp">
+      <Filter>Desperabis\Asset</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Asset\ModelGeometry.cpp">
+      <Filter>Desperabis\Asset</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Asset\Palette.cpp">
+      <Filter>Desperabis\Asset</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Asset\Texture.cpp">
+      <Filter>Desperabis\Asset</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\IO\FileManager.cpp">
+      <Filter>Desperabis\IO</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Math\Math.cpp">
+      <Filter>Desperabis\Math</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Renderer\Camera.cpp">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Renderer\DrawCall.cpp">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Renderer\Renderable.cpp">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Renderer\RenderableInstance.cpp">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Renderer\Renderer.cpp">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Renderer\Visibility.cpp">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Scene\AnimationPose.cpp">
+      <Filter>Desperabis\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Scene\GameObject.cpp">
+      <Filter>Desperabis\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Scene\Scene.cpp">
+      <Filter>Desperabis\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Scene\Transformable.cpp">
+      <Filter>Desperabis\Scene</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Asset\Level.cpp">
+      <Filter>Desperabis\Asset</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Asset\LevelInfo.cpp">
+      <Filter>Desperabis\Asset</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Asset\TextureAnim.cpp">
+      <Filter>Desperabis\Asset</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\GamePlay\GamePlay.cpp">
+      <Filter>Desperabis\GamePlay</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Asset\DebugGeometry.cpp">
+      <Filter>Desperabis\Asset</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Renderer\LightSource.cpp">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\GamePlay\SimpleBehavior.cpp">
+      <Filter>Desperabis\GamePlay</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Asset\GridCellArray.cpp">
+      <Filter>Desperabis\Asset</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Asset\TextInclude.cpp">
+      <Filter>Desperabis\Asset</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Physics\PhysicsInterface.cpp">
+      <Filter>Desperabis\Physics</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Renderer\VisibilityTileGrid.cpp">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Renderer\GlobalSettings.cpp">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\SharedSource\base\Renderer\Renderer.inl">
+      <Filter>Desperabis\Renderer</Filter>
+    </None>
+  </ItemGroup>
+</Project>
