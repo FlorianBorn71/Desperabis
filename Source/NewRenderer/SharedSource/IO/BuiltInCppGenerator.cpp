@@ -90,7 +90,8 @@ void BuiltInCppFileGenerator::AddSingleFile(std::ofstream& outCpp, const std::ve
 	
 	// stringify the path properly so it can go into source file without escaping
 	std::replace(name.begin(), name.end(), '\\', '/');
-	if (name == "LEVEL/WŽNDE.AN2") // special case handling for broken ASCII filenames
+	// Special case handling for broken ASCII filenames
+	if (name == "LEVEL/WŽNDE.AN2")
 	{
 		name = "LEVEL/WAENDE.AN2";
 	}

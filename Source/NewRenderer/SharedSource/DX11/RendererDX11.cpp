@@ -80,9 +80,9 @@ FUTURE(void) RendererDX11::Initialize(ID3D11Device3* device, ID3D11DeviceContext
         int sizeY = 2048;
         mirrorRt->Create(m_d3dDevice.Get(), m_d3dContext.Get(), sizeX, sizeY);
 
-        CO_AWAIT m_mirrorNormalMap.LoadFromDDS(device, L"external\\water-normal.dds");
-        CO_AWAIT m_coronaTexture.LoadFromDDS(device, L"external\\mainlens.dds");
-        CO_AWAIT m_coronaTextureFog.LoadFromDDS(device, L"external\\flare13.dds");
+        CO_AWAIT m_mirrorNormalMap.LoadFromDDS(device, L"textures\\water-normal.dds");
+        CO_AWAIT m_coronaTexture.LoadFromDDS(device, L"textures\\mainlens.dds");
+        CO_AWAIT m_coronaTextureFog.LoadFromDDS(device, L"textures\\flare13.dds");
 
         // framebuffer copy for refraction effects
         if (m_mainRT->m_width > 0)

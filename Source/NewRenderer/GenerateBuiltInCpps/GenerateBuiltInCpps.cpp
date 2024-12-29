@@ -12,7 +12,7 @@ int main()
     //////////////////////////////////////////////////////////////////////
     // Shared Desp files
     //////////////////////////////////////////////////////////////////////
-    if (true)
+    if (false)
     {
 #define ADD_ASSETFOLDER(folder)						\
             std::cout << "Generate "folder"\n";     \
@@ -41,18 +41,20 @@ int main()
     //////////////////////////////////////////////////////////////////////
     // DX11 CSO (Release)
     //////////////////////////////////////////////////////////////////////
-    if (false)
+    if (true)
     {
         std::cout << "Generate DX11 Shaders\n";
         // shaders:
         std::filesystem::path csoPath = cwd;
-		//csoPath.append("..\\DesperabisAR\\x64\\Release\\ilc\\in"); // for the release shaders, the path is different
 		csoPath.append("..\\x64\\Debug\\DesperabisAR\\AppX"); // for simplicity, we use Debug here
-        std::string csoRootPath = csoPath.lexically_normal().string();
+        std::filesystem::path additionalAssetPath = cwd;
+        additionalAssetPath.append("..\\AdditionalAssets");
+
         std::filesystem::path cppOutPath = cwd;
         cppOutPath.append("..\\SharedSource\\DX11");
 		assert(std::filesystem::exists(cppOutPath));
-		assert(std::filesystem::exists(csoPath));
+        assert(std::filesystem::exists(additionalAssetPath));
+        assert(std::filesystem::exists(csoPath));
 
 		std::vector<std::filesystem::path> listOfFiles;
 		std::vector<std::string> outFiles;
@@ -66,9 +68,9 @@ int main()
 		listOfFiles.push_back(csoPath / "InFlames_VS.cso"); outFiles.push_back("InFlames_VS.cso");
 		listOfFiles.push_back(csoPath / "InFlames_PS.cso"); outFiles.push_back("InFlames_PS.cso");
 
-        listOfFiles.push_back(csoPath / "water-normal.dds"); outFiles.push_back("external/water-normal.dds");
-        listOfFiles.push_back(csoPath / "mainlens.dds"); outFiles.push_back("external/mainlens.dds");
-        listOfFiles.push_back(csoPath / "flare13.dds"); outFiles.push_back("external/flare13.dds");
+        listOfFiles.push_back(additionalAssetPath / "textures/water-normal.dds"); outFiles.push_back("textures/water-normal.dds");
+        listOfFiles.push_back(additionalAssetPath / "textures/mainlens.dds"); outFiles.push_back("textures/mainlens.dds");
+        listOfFiles.push_back(additionalAssetPath / "textures/flare13.dds"); outFiles.push_back("textures/flare13.dds");
 
         BuiltInCppFileGenerator::GenerateCpp(
             cppOutPath / "BuiltInShaders_Release.cpp",
