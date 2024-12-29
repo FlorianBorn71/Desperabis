@@ -131,5 +131,6 @@
     <None Include="..\SharedSource\DX11\RenderContextDX11.inl">
       <Filter>Desperabis - Source\DX11</Filter>
     </None>
+    <None Include="readme.md" />
   </ItemGroup>
 </Project>

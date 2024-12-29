@@ -238,5 +238,6 @@
     <None Include="..\SharedSource\DX11\RenderContextDX11.inl">
       <Filter>DX11</Filter>
     </None>
+    <None Include="..\DesperabisDesktopPlayer\readme.md" />
   </ItemGroup>
 </Project>

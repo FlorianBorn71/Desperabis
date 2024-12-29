@@ -227,6 +227,7 @@
     <ClInclude Include="Source\OpenXr\platformplugin.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\DesperabisDesktopPlayer\readme.md" />
     <None Include="..\SharedSource\DX11\RenderContextDX11.inl" />
   </ItemGroup>
   <ItemGroup>

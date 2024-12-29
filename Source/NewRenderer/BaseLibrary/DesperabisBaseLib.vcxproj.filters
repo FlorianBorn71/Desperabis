@@ -265,5 +265,6 @@
     <None Include="..\SharedSource\base\Renderer\Renderer.inl">
       <Filter>Desperabis\Renderer</Filter>
     </None>
+    <None Include="readme.md" />
   </ItemGroup>
 </Project>

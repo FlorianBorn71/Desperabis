@@ -255,6 +255,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\SharedSource\base\Renderer\Renderer.inl" />
+    <None Include="readme.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
