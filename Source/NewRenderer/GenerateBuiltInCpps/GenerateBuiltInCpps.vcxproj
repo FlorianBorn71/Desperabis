@@ -146,6 +146,11 @@
     <ClInclude Include="..\SharedSource\IO\BuiltInCppGenerator.h" />
     <ClInclude Include="pch.h" />
   </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ShaderCompiler-DX11\ShaderCompiler-DX11.vcxproj">
+      <Project>{4a756a5a-3ea0-4800-8d32-125c524d5340}</Project>
+    </ProjectReference>
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

@@ -46,7 +46,7 @@ int main()
         std::cout << "Generate DX11 Shaders\n";
         // shaders:
         std::filesystem::path csoPath = cwd;
-		csoPath.append("..\\x64\\Debug\\DesperabisAR\\AppX"); // for simplicity, we use Debug here
+		csoPath.append("..\\AdditionalAssets\\shaderbins");
         std::filesystem::path additionalAssetPath = cwd;
         additionalAssetPath.append("..\\AdditionalAssets");
 
