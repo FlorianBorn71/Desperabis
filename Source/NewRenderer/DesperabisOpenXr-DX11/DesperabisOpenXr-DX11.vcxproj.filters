@@ -1,0 +1,243 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="OpenXr">
+      <UniqueIdentifier>{c18833a6-dac7-4658-81e0-3bf659036736}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="OpenXr\common">
+      <UniqueIdentifier>{001edd86-21b6-4e01-a34a-282d2b3dbb07}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="DX11">
+      <UniqueIdentifier>{20da54b8-e671-4408-b61a-bc3e13b4d3ac}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="IO">
+      <UniqueIdentifier>{22a401a8-1864-4a41-9efc-cb4f1e14a6e8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="IO\builtin">
+      <UniqueIdentifier>{6f4ca498-d5f6-43f1-a2a2-6408261b8f50}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Sample">
+      <UniqueIdentifier>{c8f7b82b-035d-44c7-a7cd-29d230e2e7f0}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Source\OpenXr\openxr_program.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\OpenXr\graphicsplugin_vulkan.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\OpenXr\logger.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\OpenXr\pch.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\OpenXr\platformplugin_android.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\OpenXr\platformplugin_factory.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\OpenXr\platformplugin_posix.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\OpenXr\platformplugin_win32.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\OpenXr\d3d_common.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\OpenXr\graphicsplugin_d3d11.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\OpenXr\graphicsplugin_d3d12.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\OpenXr\graphicsplugin_factory.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\OpenXr\graphicsplugin_metal.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\OpenXr\graphicsplugin_opengl.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\OpenXr\graphicsplugin_opengles.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\OpenXr\common\object_info.cpp">
+      <Filter>OpenXr</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\DX11\BuiltInShaders_Release.cpp">
+      <Filter>DX11</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\DX11\NativeTextureDX11.cpp">
+      <Filter>DX11</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\DX11\RenderContextDX11.cpp">
+      <Filter>DX11</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\DX11\RendererDX11.cpp">
+      <Filter>DX11</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\IO\FileManagerBuiltIn.cpp">
+      <Filter>IO</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInANIMS.cpp">
+      <Filter>IO\builtin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInGRAFIK.cpp">
+      <Filter>IO\builtin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInLEVEL.cpp">
+      <Filter>IO\builtin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInVEKT.cpp">
+      <Filter>IO\builtin</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\graphicsplugin_desperabis_d3d11.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\Sample\FreeCamera.cpp">
+      <Filter>Sample</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\Sample\LevelScene.cpp">
+      <Filter>Sample</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\Sample\RemoteScene.cpp">
+      <Filter>Sample</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\Sample\SampleScene.cpp">
+      <Filter>Sample</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\Sample\SpiderObject.cpp">
+      <Filter>Sample</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\DesperabisOpenXr-DX11.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\DesperabisOpenXrCamera.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Source\OpenXr\openxr_program.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\check.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\common.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\d3d_common.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\geometry.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\graphicsapi.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\graphicsplugin.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\logger.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\options.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\pch.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\platformdata.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\platformplugin.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\common\extra_algorithms.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\common\gfxwrapper_opengl.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\common\hex_and_handles.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\common\object_info.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\common\platform_utils.hpp">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\common\stdfs_conditions.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\common\unique_asset.h">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\common\vulkan_debug_object_namer.hpp">
+      <Filter>OpenXr</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\common\xr_linear.h">
+      <Filter>OpenXr\common</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\OpenXr\common\xr_dependencies.h">
+      <Filter>OpenXr\common</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\DX11\DX11Decls.h">
+      <Filter>DX11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\DX11\NativeTextureDX11.h">
+      <Filter>DX11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\DX11\RenderContextDX11.h">
+      <Filter>DX11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\DX11\RendererDX11.h">
+      <Filter>DX11</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\IO\FileManagerBuiltIn.h">
+      <Filter>IO</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\Sample\FreeCamera.h">
+      <Filter>Sample</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\Sample\LevelScene.h">
+      <Filter>Sample</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\Sample\RemoteScene.h">
+      <Filter>Sample</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\Sample\SampleScene.h">
+      <Filter>Sample</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\Sample\SpiderObject.h">
+      <Filter>Sample</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\DesperabisOpenXrCamera.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\SharedSource\DX11\RenderContextDX11.inl">
+      <Filter>DX11</Filter>
+    </None>
+    <None Include="readme.md" />
+  </ItemGroup>
+</Project>
