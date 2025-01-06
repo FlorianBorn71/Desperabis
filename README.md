@@ -30,6 +30,8 @@ In this article:
 - While the executables have been tested, you use it **at your own risk**.
 - Please review the source code and build it yourself if you have any concerns about security or reliability.
   
+That said, you might want to fast-forward to the [new renderer section](Docs/NewRenderer.md)!
+
 ## About
 
 _Desperabis_ is a DOS-based 3D adventure game, published in 1999. It had been downloaded multiple hundred thousand times and it has also been on numerous cover disks of well known print magazines.
