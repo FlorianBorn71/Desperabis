@@ -35,9 +35,7 @@ The use case that I had in mind was using Desperabis through [Meta Quest's built
 
 It works great!
 
-<video src="media/quest-live-link-level20.mp4" loop autoplay muted playsinline>
-  Your browser does not support the video tag.
-</video>
+<iframe width="560" height="315" src="https://www.youtube.com/embed/tKSlyRfoi4k?loop=1&playlist=tKSlyRfoi4k" frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
 
 To try it out yourself, start the `Desperabis-OpenXr-DX11.exe` while the Quest OpenXr runtime is installed (see online documentation linked above). You should find yourself in a Desperabis level at room scale. You can move around with the thumbstick and toggle the levels with the `X` and `Y` controller buttons.
 
