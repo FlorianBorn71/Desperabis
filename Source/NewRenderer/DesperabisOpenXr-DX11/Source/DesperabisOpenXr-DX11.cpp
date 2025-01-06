@@ -1,11 +1,8 @@
 // DesperabisOpenXr-DX11.cpp : This file contains the 'main' function. Program execution begins and ends there.
 //
 
-// TODO:
-// - lighting too bright -> SRGB
-// - Refraction(?) in trainingslevel CopyResource Error
-
 #include <iostream>
+#include <conio.h>
 #include "pch.h"
 #include "common.h"
 #include "options.h"
@@ -152,10 +149,13 @@ int main()
 	}
 	catch (const std::exception& ex) {
 		Log::Write(Log::Level::Error, ex.what());
+		Log::Write(Log::Level::Info, "Press any key to exit...");
+		_getch(); // Waits for a keypress
+
 		return 1;
 	}
 	catch (...) {
 		Log::Write(Log::Level::Error, "Unknown Error");
-		return 1;
+		return 2;
 	}
 }

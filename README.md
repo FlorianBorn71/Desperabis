@@ -141,6 +141,6 @@ Any feedback and/or contribution is highly appreciated! Feel free to fork this r
 
 ## New Renderer
 
-The original game used its own software-based rasterizer. I was curious how the original game assets would look like when using a modern GPU-based renderer.
+The original game used its own software-based rasterizer. I was curious to see how the original game assets would look like when using a modern GPU-based renderer.
 Since I lost all related original source code projects, the shipped binary data was all that was left. So I went ahead, reverse engineered all the binary file formats and then wrote a new renderer from scratch.
 See [this chapter](Docs/NewRenderer.md) for more information and screenshots.
