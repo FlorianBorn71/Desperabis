@@ -2,6 +2,10 @@
 *.vcxproj.user
 *.csproj.user
 *.suo
+*.pdb
+*.exp
+*.lib
+**/Debug/
 **/x64/
 **/.vs/
 

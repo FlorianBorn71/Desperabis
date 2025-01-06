@@ -1,6 +1,6 @@
 # Desperabis Desktop Player
 
-This is the main executable that renders Desperabis on your Windows Desktop using a DX-11 based renderer but using only old assets.
+This is a standalone executable that renders Desperabis on your Windows Desktop using a DX-11 based renderer but based on original assets.
 It mimics the original rendering features such as billboarding but adds modern capabilities where necessary, e.g. real water reflections
 or fully dynamic lighting.
 

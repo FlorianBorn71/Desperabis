@@ -8,6 +8,7 @@ Back in the times when file extensions still had 3 characters, and the full game
 
 In this article:
 - [Desperabis](#desperabis)
+  - [Important](#important)
   - [About](#about)
     - [About the Author](#about-the-author)
     - [About the Game](#about-the-game)
@@ -21,8 +22,14 @@ In this article:
   - [Localization](#localization)
   - [Music](#music)
   - [Contributing](#contributing)
-  - [Future Plans](#future-plans)
+  - [New Renderer](#new-renderer)
 
+## Important
+
+- This repository includes pre-built executable files.
+- While the executables have been tested, you use it **at your own risk**.
+- Please review the source code and build it yourself if you have any concerns about security or reliability.
+  
 ## About
 
 _Desperabis_ is a DOS-based 3D adventure game, published in 1999. It had been downloaded multiple hundred thousand times and it has also been on numerous cover disks of well known print magazines.
@@ -71,7 +78,7 @@ Given that _Desperabis_ is a pure MS-DOS game, it needs to run in an emulator, s
 
 ### Dosbox Settings
 
-DOSBox comes with various options to tweak the performance. It turns out that the default options are not too well suited and cause the game to run in very low framerate and with stuttering sound. It's not only necessary to increase the number of CPU cycles, but also to set the core to 'dynamic'. The following settings work well for me:
+DOSBox comes with various options to tweak the performance. It turns out that the default options are not too well suited and cause the game to run at very low framerate and with stuttering sound. It's not only necessary to increase the number of CPU cycles, but also to set the core to 'dynamic'. The following settings work well for me:
 
 ```ddl
 core=dynamic
@@ -132,8 +139,8 @@ When creating the game, I was looking for a good fit for royalty-free music that
 
 Any feedback and/or contribution is highly appreciated! Feel free to fork this repo and make contributions via pull requests.
 
-## Future Plans
+## New Renderer
 
-I have written a new renderer that uses the old assets as is. I'm in the process of cleaning it all up and then I'll release it here. 
-
-A lot more to come very soon, stay tuned!
+The original game used its own software-based rasterizer. I was curious how the original game assets would look like when using a modern GPU-based renderer.
+Since I lost all related original source code projects, the shipped binary data was all that was left. So I went ahead, reverse engineered all the binary file formats and then wrote a new renderer from scratch.
+See [this chapter](Docs/NewRenderer.md) for more information and screenshots.
