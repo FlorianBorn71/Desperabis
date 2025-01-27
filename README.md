@@ -32,6 +32,10 @@ In this article:
   
 That said, you might want to fast-forward to the [new renderer section](Docs/NewRenderer.md)!
 
+## Git Large File Storage (LFS)
+
+This repository uses [Git LFS](https://git-lfs.github.com/) to manage large files, such as the game binaries.
+
 ## About
 
 _Desperabis_ is a DOS-based 3D adventure game, published in 1999. It had been downloaded multiple hundred thousand times and it has also been on numerous cover disks of well known print magazines.
