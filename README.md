@@ -9,6 +9,7 @@ Back in the times when file extensions still had 3 characters, and the full game
 In this article:
 - [Desperabis](#desperabis)
   - [Important](#important)
+  - [Git Large File Storage (LFS)](#git-large-file-storage-lfs)
   - [About](#about)
     - [About the Author](#about-the-author)
     - [About the Game](#about-the-game)
@@ -39,6 +40,8 @@ This repository uses [Git LFS](https://git-lfs.github.com/) to manage large file
 ## About
 
 _Desperabis_ is a DOS-based 3D adventure game, published in 1999. It had been downloaded multiple hundred thousand times and it has also been on numerous cover disks of well known print magazines.
+
+[Play _Desperabis_ in browser on dosgamesarchive.com](https://www.dosgamesarchive.com/play/desperabis)
 
 Here are some in-game impressions:
 
@@ -81,6 +84,8 @@ This repo is Open Source using the permissive "MIT License", which essentially m
 ## Running the Game
 
 Given that _Desperabis_ is a pure MS-DOS game, it needs to run in an emulator, such as famous [DosBox](https://www.dosbox.com/). The self-contained game binaries are part of this repo and can be found here: [Game/Original](Game/Original).
+
+Furthermore [dosgamesarchive](https://www.dosgamesarchive.com) did a fantastic job at getting [Desperabis running smoothly in the browser](https://www.dosgamesarchive.com/play/desperabis).
 
 ### Dosbox Settings
 
