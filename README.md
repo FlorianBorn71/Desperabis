@@ -155,3 +155,25 @@ Any feedback and/or contribution is highly appreciated! Feel free to fork this r
 The original game used its own software-based rasterizer. I was curious to see how the original game assets would look like when using a modern GPU-based renderer.
 Since I lost all related original source code projects, the shipped binary data was all that was left. So I went ahead, reverse engineered all the binary file formats and then wrote a new renderer from scratch.
 See [this chapter](Docs/NewRenderer.md) for more information and screenshots.
+
+## AAA game artwork using AI
+
+As a small fun test, I used AI to bring some of the old DOS screenshots into the present. It's amazing how well some of the results capture the atmosphere in the gams.
+
+Do you recognize the levels?
+
+
+![In-game screenshot](Docs/media/AIConcepts/Castle-outside.png) 
+![In-game screenshot](Docs/media/AIConcepts/Castle-level1.png) 
+![In-game screenshot](Docs/media/AIConcepts/Level3-Spider.png) 
+![In-game screenshot](Docs/media/AIConcepts/Forest-Gorilla.png) 
+![In-game screenshot](Docs/media/AIConcepts/Forest-Lake.png) 
+![In-game screenshot](Docs/media/AIConcepts/Cave-Anaconda.png) 
+![In-game screenshot](Docs/media/AIConcepts/Cave-Lake.png) 
+![In-game screenshot](Docs/media/AIConcepts/witch.png) 
+![In-game screenshot](Docs/media/AIConcepts/graveyard.png) 
+![In-game screenshot](Docs/media/AIConcepts/Cathedral.png) 
+![In-game screenshot](Docs/media/AIConcepts/Bull-2.png) 
+![In-game screenshot](Docs/media/AIConcepts/Swamp-2.png) 
+![In-game screenshot](Docs/media/AIConcepts/forest-burning.png) 
+
