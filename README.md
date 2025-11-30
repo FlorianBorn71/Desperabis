@@ -158,7 +158,7 @@ See [this chapter](Docs/NewRenderer.md) for more information and screenshots.
 
 ## AAA game artwork using AI
 
-As a small fun test, I used AI to bring some of the old DOS screenshots into the present. It's amazing how well some of the results capture the atmosphere in the gams.
+As a fun test, I used AI to bring some of the old DOS screenshots into the present. It's amazing how well some of the results capture the atmosphere in the game.
 
 Do you recognize the levels?
 
