@@ -440,6 +440,7 @@ public:
     void Load(const float* source);
 
     void CreateProjection(float aspectRatio, float fovAngleY = 70.0f * Math::Pi / 180.0f, float nearClip = 0.05f, float farClip = 30.0f);
+    void CreateOrthographic(float viewWidth, float viewHeight, float nearClip = 0.05f, float farClip = 200.0f);
     void BuildFrustum(Frustum& frustum) const;
 
     Matrix4 operator* (const Matrix4& rhs) const;

@@ -57,6 +57,7 @@
 #define ID_RENDERER_GRIDVISIBILITY      32816
 #define ID_REMOTECONNECTION_CONNECT     32824
 #define ID_CAMERA_GRAVITY               32825
+#define ID_GAME_CREATEMAPSCREENSHOT     32826
 #define IDC_STATIC                      -1
 
 // Next default values for new objects
@@ -65,7 +66,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NO_MFC                     1
 #define _APS_NEXT_RESOURCE_VALUE        129
-#define _APS_NEXT_COMMAND_VALUE         32828
+#define _APS_NEXT_COMMAND_VALUE         32829
 #define _APS_NEXT_CONTROL_VALUE         1000
 #define _APS_NEXT_SYMED_VALUE           110
 #endif

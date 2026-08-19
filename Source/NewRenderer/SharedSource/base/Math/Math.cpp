@@ -190,6 +190,11 @@ void Matrix4::CreateProjection(float aspectRatio, float fovAngleY /*= 70.0f * Ma
     m_matrix = XMMatrixPerspectiveFovRH(fovAngleY, aspectRatio, nearClip, farClip);
 }
 
+void Matrix4::CreateOrthographic(float viewWidth, float viewHeight, float nearClip /*= 0.05f*/, float farClip /*= 200.0f*/)
+{
+    m_matrix = XMMatrixOrthographicRH(viewWidth, viewHeight, nearClip, farClip);
+}
+
 Matrix4 Matrix4::operator* (const Matrix4& rhs) const
 {
     Matrix4 res;

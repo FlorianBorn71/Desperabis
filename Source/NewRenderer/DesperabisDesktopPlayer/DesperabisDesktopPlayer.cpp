@@ -7,6 +7,8 @@
 
 #include <DesperabisCommon.h>
 #include <Asset/AssetManager.h>
+#include <Asset/GridCellArray.h>
+#include <Asset/Level.h>
 #include <DX11/RendererDX11.h>
 #include <IO/FileManagerBuiltIn.h>
 #include <IO/BuiltInCppGenerator.h>
@@ -21,19 +23,27 @@
 HINSTANCE hInst;                                // current instance
 WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
 WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
+const wchar_t* g_mapWindowClass = L"DesperabisMapScreenshotWindow";
 
 
 namespace // DX
 {
     HWND hWnd = NULL;
+    HWND hWndMap = NULL;
     ComPtr<ID3D11Device3> g_d3dDevice;
     ComPtr<ID3D11DeviceContext3> g_d3dContext;
     ComPtr<IDXGISwapChain1> g_swapChain;
+    ComPtr<IDXGISwapChain1> g_mapSwapChain;
     ComPtr<ID3D11RenderTargetView1> g_d3dRenderTargetView;
+    ComPtr<ID3D11RenderTargetView1> g_mapRenderTargetView;
     ComPtr<ID3D11DepthStencilView> g_d3dDepthStencilView;
+    ComPtr<ID3D11DepthStencilView> g_mapDepthStencilView;
     int g_outputResX = 0;
     int g_outputResY = 0;
+    int g_mapOutputResX = 0;
+    int g_mapOutputResY = 0;
     D3D11_VIEWPORT g_screenViewport = {};
+    D3D11_VIEWPORT g_mapViewport = {};
     D3D_FEATURE_LEVEL g_d3dFeatureLevel = D3D_FEATURE_LEVEL_1_0_CORE;
 
     // DESP
@@ -60,6 +70,8 @@ namespace // DX
 
     std::unique_ptr<RemoteScene> g_desperabisScene;
     std::unique_ptr<FreeCamera> g_freeCam;
+    std::shared_ptr<Camera> g_mainCamera;
+    std::shared_ptr<Camera> g_mapCamera;
     CameraMode g_useFreeCam = CameraMode::FreeCamera;
 
 
@@ -226,6 +238,11 @@ namespace // DX
 
         if (g_useFreeCam == CameraMode::FreeCamera && g_freeCam != nullptr)
         {
+            if (g_mainCamera != nullptr)
+            {
+                Renderer::Instance().SetCamera(g_mainCamera);
+            }
+
             // mouse and keyboard input
             POINT p;
             float forward = 0.f;
@@ -296,7 +313,10 @@ namespace // DX
 
 		LoadLevel(ID_LEVEL_TRAININGSLEVEL);
 
-        if (Camera* cam = Renderer::Instance().GetOrCreateCamera().get())
+        g_mainCamera = Renderer::Instance().GetOrCreateCamera();
+        g_mapCamera = std::make_shared<Camera>();
+
+        if (Camera* cam = g_mainCamera.get())
         {
             Matrix4 projMat;
             float aspectRt = g_screenViewport.Width / g_screenViewport.Height;
@@ -313,11 +333,16 @@ namespace // DX
     {
         g_desperabisScene.reset();
         g_freeCam.reset();
+        g_mainCamera.reset();
+        g_mapCamera.reset();
 
         AssetManager::Instance().Deinitialize();
         g_RendererDX11.Deinitialize();
         g_FileManager.Deinitialize();
         
+        g_mapRenderTargetView.Reset();
+        g_mapDepthStencilView.Reset();
+        g_mapSwapChain.Reset();
         g_d3dRenderTargetView.Reset();
         g_d3dDepthStencilView.Reset();
         g_d3dContext.Reset();
@@ -340,31 +365,38 @@ namespace // DX
 
     }
 
-    void UpdateRenderTargetSize()
+    void UpdateRenderTargetSize(HWND targetWindow, int& outResX, int& outResY)
     {
         RECT winRect;
-        GetClientRect(hWnd, &winRect);
-        g_outputResX = winRect.right - winRect.left;
-        g_outputResY = winRect.bottom - winRect.top;
+        GetClientRect(targetWindow, &winRect);
+        outResX = __max(1, winRect.right - winRect.left);
+        outResY = __max(1, winRect.bottom - winRect.top);
     }
 
-    void CreateDXWindowResources()
+    void CreateDXWindowResources(
+        HWND targetWindow,
+        ComPtr<IDXGISwapChain1>& targetSwapChain,
+        ComPtr<ID3D11RenderTargetView1>& targetRenderTarget,
+        ComPtr<ID3D11DepthStencilView>& targetDepthStencil,
+        D3D11_VIEWPORT& targetViewport,
+        int& outResX,
+        int& outResY)
     {
         // Clear the previous window size specific context.
         ID3D11RenderTargetView* nullViews[] = { nullptr };
         g_d3dContext->OMSetRenderTargets(ARRAYSIZE(nullViews), nullViews, nullptr);
-        g_d3dRenderTargetView = nullptr;
-        g_d3dDepthStencilView = nullptr;
+        targetRenderTarget = nullptr;
+        targetDepthStencil = nullptr;
         g_d3dContext->Flush1(D3D11_CONTEXT_TYPE_ALL, nullptr);
 
-        UpdateRenderTargetSize();
+        UpdateRenderTargetSize(targetWindow, outResX, outResY);
 
-        if (g_swapChain != nullptr)
+        if (targetSwapChain != nullptr)
         {
             // If the swap chain already exists, resize it.
-            HRESULT hr = g_swapChain->ResizeBuffers(
+            HRESULT hr = targetSwapChain->ResizeBuffers(
                 2, // Double-buffered swap chain.
-                g_outputResX, g_outputResY,
+                outResX, outResY,
                 DXGI_FORMAT_B8G8R8A8_UNORM,
                 0
             );
@@ -418,11 +450,11 @@ namespace // DX
                 swapChainDesc.Flags = 0;
                 swapChainDesc.Scaling = DXGI_SCALING_NONE;
                 swapChainDesc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
-                ThrowIfFailed(dxgiFactory->CreateSwapChainForHwnd(g_d3dDevice.Get(), hWnd, &swapChainDesc, nullptr, nullptr, &swapChain));
+                ThrowIfFailed(dxgiFactory->CreateSwapChainForHwnd(g_d3dDevice.Get(), targetWindow, &swapChainDesc, nullptr, nullptr, &swapChain));
             }
 
             ThrowIfFailed(
-                swapChain.As(&g_swapChain)
+                swapChain.As(&targetSwapChain)
             );
 
             // Ensure that DXGI does not queue more than one frame at a time. This both reduces latency and
@@ -436,22 +468,22 @@ namespace // DX
         // Create a render target view of the swap chain back buffer.
         ComPtr<ID3D11Texture2D1> backBuffer;
         ThrowIfFailed(
-            g_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer))
+            targetSwapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer))
         );
 
         ThrowIfFailed(
             g_d3dDevice->CreateRenderTargetView1(
                 backBuffer.Get(),
                 nullptr,
-                &g_d3dRenderTargetView
+                &targetRenderTarget
             )
         );
 
         // Create a depth stencil view for use with 3D rendering if needed.
         CD3D11_TEXTURE2D_DESC1 depthStencilDesc(
             DXGI_FORMAT_D24_UNORM_S8_UINT,
-            g_outputResX,
-            g_outputResY,
+            outResX,
+            outResY,
             1, // This depth stencil view has only one texture.
             1, // Use a single mipmap level.
             D3D11_BIND_DEPTH_STENCIL
@@ -477,19 +509,32 @@ namespace // DX
             g_d3dDevice->CreateDepthStencilView(
                 depthStencil.Get(),
                 &depthStencilViewDesc,
-                &g_d3dDepthStencilView
+                &targetDepthStencil
             )
         );
 
         // Set the 3D rendering viewport to target the entire window.
-        g_screenViewport = CD3D11_VIEWPORT(
+        targetViewport = CD3D11_VIEWPORT(
             0.0f,
             0.0f,
-            (float)g_outputResX,
-            (float)g_outputResY
+            (float)outResX,
+            (float)outResY
         );
 
-        g_d3dContext->RSSetViewports(1, &g_screenViewport);
+        g_d3dContext->RSSetViewports(1, &targetViewport);
+    }
+
+    void CreateMainDXWindowResources()
+    {
+        CreateDXWindowResources(hWnd, g_swapChain, g_d3dRenderTargetView, g_d3dDepthStencilView, g_screenViewport, g_outputResX, g_outputResY);
+    }
+
+    void CreateMapDXWindowResources()
+    {
+        if (hWndMap != nullptr)
+        {
+            CreateDXWindowResources(hWndMap, g_mapSwapChain, g_mapRenderTargetView, g_mapDepthStencilView, g_mapViewport, g_mapOutputResX, g_mapOutputResY);
+        }
     }
 
     void InitDX(HWND hwnd)
@@ -582,11 +627,134 @@ namespace // DX
             g_d3dDevice.As(&dxgiDevice)
         );
 
-        CreateDXWindowResources();
+        CreateMainDXWindowResources();
+    }
+
+    bool OpenMapScreenshotWindow()
+    {
+        if (hWndMap != nullptr && IsWindow(hWndMap))
+        {
+            ShowWindow(hWndMap, SW_SHOW);
+            SetForegroundWindow(hWndMap);
+            return true;
+        }
+
+        constexpr DWORD mapWindowStyle = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+        RECT rect = { 0, 0, 900, 900 };
+        AdjustWindowRect(&rect, mapWindowStyle, FALSE);
+
+        hWndMap = CreateWindowW(
+            g_mapWindowClass,
+            L"Map Screenshot",
+            mapWindowStyle,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            nullptr,
+            nullptr,
+            hInst,
+            nullptr);
+
+        if (hWndMap == nullptr)
+        {
+            return false;
+        }
+
+        ShowWindow(hWndMap, SW_SHOW);
+        UpdateWindow(hWndMap);
+
+        CreateMapDXWindowResources();
+        return true;
+    }
+
+    void UpdateMapCamera()
+    {
+        if (g_mapCamera == nullptr)
+        {
+            return;
+        }
+
+        const GridCellArray* grid = (g_desperabisScene != nullptr) ? g_desperabisScene->GetGrid() : nullptr;
+        if (grid == nullptr)
+        {
+            return;
+        }
+
+        const float worldMinX = grid->GridPosX(0);
+        const float worldMaxX = grid->GridPosX(grid->m_sizeX);
+        const float worldMinZ = grid->GridPosY(0);
+        const float worldMaxZ = grid->GridPosY(grid->m_sizeZ);
+
+        const float spanX = fabsf(worldMaxX - worldMinX);
+        const float spanZ = fabsf(worldMaxZ - worldMinZ);
+        const float centerX = 0.5f * (worldMinX + worldMaxX);
+        const float centerZ = 0.5f * (worldMinZ + worldMaxZ);
+
+        const float camDistance = (__max(spanX, spanZ) + 10.0f) * 2.0f;
+        Vector eye(centerX, camDistance, centerZ, 1.0f);
+        Vector target(centerX, 0.0f, centerZ, 1.0f);
+        Vector upRef(0.0f, 0.0f, 1.0f, 0.0f);
+
+        Vector forward = target - eye;
+        forward.Normalize();
+        Vector right = upRef.GetCross(forward);
+        right.Normalize();
+        Vector up = right.GetCross(forward);
+        up.Normalize();
+        Vector backDir(-forward.GetX(), -forward.GetY(), -forward.GetZ(), 0.0f);
+
+        Matrix4 cameraTransform;
+        cameraTransform.Create(eye, right, up, backDir);
+        g_mapCamera->SetCameraTransformMatrix(cameraTransform);
+
+        float aspect = (g_mapViewport.Height > 0.0f) ? (g_mapViewport.Width / g_mapViewport.Height) : 1.0f;
+        float orthoHeight = __max(spanZ, (aspect > 0.0f) ? (spanX / aspect) : spanZ) * 1.1f;
+        orthoHeight = __max(orthoHeight, 1.0f);
+        Matrix4 projection;
+        projection.CreateOrthographic(orthoHeight * aspect, orthoHeight, 0.1f, 500.0f);
+        g_mapCamera->SetProjectionMatrix(projection);
+    }
+
+    void RenderMapWindow()
+    {
+        if (hWndMap == nullptr || g_mapSwapChain == nullptr || g_mapRenderTargetView == nullptr || g_mapDepthStencilView == nullptr)
+        {
+            return;
+        }
+
+        UpdateMapCamera();
+
+        g_RendererDX11.ReInitialize(g_mapRenderTargetView.Get(), g_mapDepthStencilView.Get(), g_mapViewport);
+
+        g_d3dContext->RSSetViewports(1, &g_mapViewport);
+        ID3D11RenderTargetView* const targets[1] = { g_mapRenderTargetView.Get() };
+        g_d3dContext->OMSetRenderTargets(1, targets, g_mapDepthStencilView.Get());
+
+        const float clearCol[] = { 0.03f, 0.03f, 0.04f, 1.0f };
+        g_d3dContext->ClearRenderTargetView(g_mapRenderTargetView.Get(), clearCol);
+        g_d3dContext->ClearDepthStencilView(g_mapDepthStencilView.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+
+        GlobalSettings& settings = GlobalSettings::Instance();
+        bool restoreFog = settings.useFog;
+        settings.useFog = false;
+
+        if (g_mapCamera != nullptr)
+        {
+            Renderer::Instance().SetCamera(g_mapCamera);
+        }
+        Renderer::Instance().SetCurrentTime(g_currentTime);
+        Renderer::Instance().RenderScene(g_desperabisScene.get(), nullptr);
+
+        settings.useFog = restoreFog;
+
+        g_mapSwapChain->Present(1, 0);
     }
 
     void RenderDX()
     {
+        g_RendererDX11.ReInitialize(g_d3dRenderTargetView.Get(), g_d3dDepthStencilView.Get(), g_screenViewport);
+
         g_d3dContext->RSSetViewports(1, &g_screenViewport);
         ID3D11RenderTargetView* const targets[1] = { g_d3dRenderTargetView.Get() };
         g_d3dContext->OMSetRenderTargets(1, targets, g_d3dDepthStencilView.Get());
@@ -606,19 +774,32 @@ namespace // DX
         g_d3dContext->ClearDepthStencilView(g_d3dDepthStencilView.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
         // render desp scene:
+        if (g_mainCamera != nullptr)
+        {
+            Renderer::Instance().SetCamera(g_mainCamera);
+        }
         Renderer::Instance().SetCurrentTime(g_currentTime);
         Renderer::Instance().RenderScene(g_desperabisScene.get(), &g_profilingStats);
         g_profilingStats.Update();
 
         g_swapChain->Present(1, 0);
+
+        RenderMapWindow();
+
+        if (g_mainCamera != nullptr)
+        {
+            Renderer::Instance().SetCamera(g_mainCamera);
+        }
     }
 }
 
 
 // Forward declarations of functions included in this code module:
 ATOM                MyRegisterClass(HINSTANCE hInstance);
+ATOM                MyRegisterMapClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
+LRESULT CALLBACK    MapWndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
@@ -635,6 +816,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
     LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
     LoadStringW(hInstance, IDC_DESPERABISREMOTEPLAYER, szWindowClass, MAX_LOADSTRING);
     MyRegisterClass(hInstance);
+    MyRegisterMapClass(hInstance);
 
     // Perform application initialization:
     if (!InitInstance (hInstance, nCmdShow))
@@ -687,6 +869,26 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
     wcex.lpszMenuName   = MAKEINTRESOURCEW(IDC_DESPERABISREMOTEPLAYER);
     wcex.lpszClassName  = szWindowClass;
     wcex.hIconSm        = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+
+    return RegisterClassExW(&wcex);
+}
+
+ATOM MyRegisterMapClass(HINSTANCE hInstance)
+{
+    WNDCLASSEXW wcex = {};
+    wcex.cbSize = sizeof(WNDCLASSEX);
+
+    wcex.style = CS_HREDRAW | CS_VREDRAW;
+    wcex.lpfnWndProc = MapWndProc;
+    wcex.cbClsExtra = 0;
+    wcex.cbWndExtra = 0;
+    wcex.hInstance = hInstance;
+    wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_DESPERABISREMOTEPLAYER));
+    wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+    wcex.lpszMenuName = nullptr;
+    wcex.lpszClassName = g_mapWindowClass;
+    wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
 
     return RegisterClassExW(&wcex);
 }
@@ -775,6 +977,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             case ID_GAME_CREATESNAPSHOT:
                 RemoteScene::ScheduleSnapshot();
                 break;
+            case ID_GAME_CREATEMAPSCREENSHOT:
+                OpenMapScreenshotWindow();
+                break;
             case ID_RENDERER_ORIGINALASSETS:
                 settings.assetQuality = GlobalSettings::AssetQuality::Original;
                 UpdateGlobalSettings();
@@ -836,6 +1041,38 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     default:
         return DefWindowProc(hWnd, message, wParam, lParam);
     }
+    return 0;
+}
+
+LRESULT CALLBACK MapWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+{
+    UNREFERENCED_PARAMETER(wParam);
+    UNREFERENCED_PARAMETER(lParam);
+
+    switch (message)
+    {
+    case WM_SIZE:
+        if (hWnd == hWndMap && g_d3dDevice != nullptr)
+        {
+            CreateMapDXWindowResources();
+        }
+        break;
+    case WM_CLOSE:
+        DestroyWindow(hWnd);
+        return 0;
+    case WM_DESTROY:
+        if (hWnd == hWndMap)
+        {
+            hWndMap = nullptr;
+            g_mapRenderTargetView.Reset();
+            g_mapDepthStencilView.Reset();
+            g_mapSwapChain.Reset();
+        }
+        return 0;
+    default:
+        return DefWindowProc(hWnd, message, wParam, lParam);
+    }
+
     return 0;
 }
 
