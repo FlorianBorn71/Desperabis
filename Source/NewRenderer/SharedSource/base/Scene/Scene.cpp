@@ -6,6 +6,7 @@
 #include <Renderer/RenderableInstance.h>
 #include <Asset/AssetManager.h>
 #include <Asset/TextureAnim.h>
+#include <GamePlay/GamePlay.h>
 
 Scene::Scene()
 {
@@ -125,7 +126,7 @@ void Scene::AddDebugGeometry(const std::vector<DebugLine>& lineBuffer)
     if (std::shared_ptr<Renderable> renderable = GeometryUtils::CreateDebugGeometry(lineBuffer))
     {
         m_debugGeometry.push_back(renderable);
-        RenderableInstancePtr inst = std::make_shared<RenderableInstance>(renderable.get());
+        RenderableInstancePtr inst = std::make_shared<RenderableInstance>(renderable.get(), (uint32_t)GamePlay::VisibilityFilter::DebugGeometry);
         AddRenderableInstance(inst);
         inst->SetDebugName("Debug geometry");
     }

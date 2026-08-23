@@ -130,6 +130,7 @@ enum class VertexStretchMode
     Sprite = 1,
     TexturedLine = 2,
     FlameSprite = 3,
+    CameraBillboard = 4, // screen aligned quad, uses the camera up vector instead of the world up vector
 };
 
 enum class ShaderType
@@ -145,6 +146,7 @@ struct ModelVertex
     void SetUntextured(uint16_t v0, const Color4& color);
     void SetTextured(uint16_t v0, const Color4& color, const Vector2& tc);
     void SetSprite(uint16_t v0, const Color4& color, const Vector2& corner, float scale, bool flipU, bool isFlame = false);
+    void SetCameraBillboard(uint16_t v0, const Color4& color, const Vector2& corner, float width, float height);
     void SetTexturedLine(uint16_t v0, uint16_t v1, const Color4& color, const Vector2& tc, float strength);
 
     inline int GetPositionIndex1() const
@@ -294,6 +296,8 @@ namespace GeometryUtils
     void SmoothNormals(ModelConversionContext& context, const std::vector<DrawCall>& drawCalls, int vertexOfs);
 
     std::shared_ptr<Renderable> CreateSpriteMesh(bool flipU);
+    // screen aligned (camera facing) quad, e.g. to highlight items in a top down view
+    std::shared_ptr<Renderable> CreateCameraBillboardQuadMesh(float width, float height, const Color4& col = { 255,255,255,255 });
     std::shared_ptr<Renderable> CreateCubeMesh(float radiusX, float radiusY, float radiusZ, const Color4& col = { 255,255,255,255 }, float thickness = 0.75f);
     std::shared_ptr<Renderable> CreateDebugGeometry(const std::vector<DebugLine>& lineBuffer);
     std::shared_ptr<Renderable> CreateBurningObjectMesh(int maxPositions);

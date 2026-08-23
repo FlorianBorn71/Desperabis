@@ -3,6 +3,9 @@
 
 #include <Asset/AssetManager.h>
 #include <Asset/Level.h>
+#include <Renderer/RenderableInstance.h>
+#include <Scene/GameObject.h>
+#include <GamePlay/GamePlay.h>
 
 LevelScene::LevelScene(int levelIndex)
     : m_levelIndex(levelIndex)
@@ -18,11 +21,10 @@ FUTURE(void) LevelScene::CreateScene()
     bool isSaveGame = false;
     AssetManager& assets = AssetManager::Instance();
 #ifdef SINGLE_OBJECT
-
 	// test one debug model:
 	std::shared_ptr<ModelAnim> modelAnim = CO_AWAIT assets.LoadAsset<ModelAnim>(L"VEKT\\VEKT62.3DA");
 	Model* model = modelAnim->GetModel(0, 0);
-	RenderableInstancePtr inst = std::make_shared<RenderableInstance>(model);
+	RenderableInstancePtr inst = std::make_shared<RenderableInstance>(model, (uint32_t)GamePlay::VisibilityFilter::GameObjects);
 	this->AddRenderableInstance(inst);
 #else
     if (isSaveGame)
@@ -33,9 +35,14 @@ FUTURE(void) LevelScene::CreateScene()
     {
         m_level = CO_AWAIT assets.LoadLevel(m_levelIndex);
     }
-    CO_AWAIT m_level->PopulateScene(*this, m_createGameObjects);
+    CO_AWAIT m_level->PopulateScene(*this, m_createGameObjects, m_createMapIcons);
 #endif
     m_sceneReady = true;
+}
+
+void LevelScene::ClearScene()
+{
+    Scene::ClearScene();
 }
 
 void LevelScene::Update(double elapsedTime)

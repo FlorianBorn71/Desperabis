@@ -293,7 +293,7 @@ void RemoteScene::Update(double elapsedTime)
 			bool firstAssignment = false;
 			if (m_renderableInst[i] == nullptr)
 			{
-				m_renderableInst[i] = std::make_shared<RenderableInstance>(nullptr);
+				m_renderableInst[i] = std::make_shared<RenderableInstance>(nullptr, (uint32_t)GamePlay::VisibilityFilter::GameObjects);
 				m_gameObj[i] = GamePlay::CreateGameObject(*this, m_currentObjState[i]);
 				if (m_gameObj[i] != nullptr)
 				{

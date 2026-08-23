@@ -7,9 +7,10 @@
 class D_IMPEXP RenderableInstance
 {
 public:
-    RenderableInstance(const Renderable* renderable = nullptr)
+    RenderableInstance(const Renderable* renderable = nullptr, uint32_t visibilityFilterMask = 0xffffffff)
     {
         SetRenderable(renderable, nullptr);
+        m_visibilityFilterMask = visibilityFilterMask;
     }
     ~RenderableInstance() = default;
 
@@ -59,6 +60,9 @@ public:
     // visible
     void SetVisible(bool status) { m_visible = status; }
     bool GetVisible() const { return m_visible; }
+    
+    void SetVisibilityFilterMask(uint32_t mask) { m_visibilityFilterMask = mask; }
+    uint32_t GetVisibilityFilterMask() const { return m_visibilityFilterMask; }
 
     // transform
 	const BoundingVolume& GetGlobalBounds() const { return m_globalBounds; }
@@ -93,6 +97,7 @@ protected:
     bool m_visible = true;
 	bool m_globalBoundsDirty = true;
 	bool m_subInstancesDirty = true;
+	uint32_t m_visibilityFilterMask = 0xffffffff;
     TransparencyModeMask m_usedTransparencies = TransparencyModeMask::None; // used transparencies across all draw calls
 	Vector m_localPos, m_localOri; // only relevant for sub instances
     Matrix4 m_transform;

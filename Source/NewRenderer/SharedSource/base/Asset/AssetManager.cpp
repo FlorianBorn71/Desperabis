@@ -138,7 +138,8 @@ FUTURE(void) AssetManager::CreateDefaultShapes()
     m_cubeRenderable = GeometryUtils::CreateCubeMesh(0.5f, 0.5f, 0.5f);
 
     m_burningObjectMesh = GeometryUtils::CreateBurningObjectMesh(1024);
-    
+	m_cameraFacingQuadRenderable = GeometryUtils::CreateCameraBillboardQuadMesh(1.0f, 1.0f);
+
     m_weaponAnim = CO_AWAIT LoadAsset<TextureAnim>(L"ANIMS\\ANIM4.AN2");
     TextureAnimFrame* burning0 = m_weaponAnim->GetFrame(0, 0);
 	TextureAnimFrame* burning1 = m_weaponAnim->GetFrame(0, 1);

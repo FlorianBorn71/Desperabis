@@ -56,7 +56,7 @@ public:
     template <typename CONTEXT_TYPE>
     inline void RenderScene_Impl(const VisibilityResult& elements, ProfilingStats& stats);
 
-    void RenderScene(const Scene* scene, ProfilingStats* out_stats = nullptr); // helper function, uses default camera and visibility context
+    void RenderScene(const Scene* scene, uint32_t filterMask, ProfilingStats* out_stats = nullptr); // helper function, uses default camera and visibility context
 
     virtual void RenderSceneElements(const VisibilityResult& elements, ProfilingStats& out_stats) = 0;
     virtual void CreateTexture(Texture& tex, TextureLoadingContext& data) = 0;

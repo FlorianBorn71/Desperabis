@@ -15,6 +15,7 @@ out vec4 VertexColor;
 #define STRETCHMODE_None 0
 #define STRETCHMODE_Sprite 1
 #define STRETCHMODE_StretchedLine 2
+#define STRETCHMODE_CameraBillboard 4
 
 void main()
 {
@@ -57,6 +58,18 @@ void main()
         vec3 up = (WorldViewMat * vec4(0, -1, 0, 0)).xyz;
         vec3 right = normalize(cross(viewPos.xyz, up));
         viewPos.xyz += up * spriteOfs.y + right * spriteOfs.x;
+        worldSpacePos = ViewWorldMat * viewPos;
+        gl_Position = ProjMat * viewPos;
+    }
+    else if (stretchMode == STRETCHMODE_CameraBillboard)
+    {
+        // Fully screen aligned quad. Unlike STRETCHMODE_Sprite this does not use the world's up vector,
+        // but the camera's up vector, so the quad stays fully visible in a top down view.
+        // stretchParams directly holds the corner offset of the quad, relative to its center.
+        vec2 quadOfs = vertex_stretchParams.xy * UniformScale;
+        const vec3 up = vec3(0, -1, 0); // view space up (matches the sprite convention)
+        const vec3 right = vec3(1, 0, 0);
+        viewPos.xyz += up * quadOfs.y + right * quadOfs.x;
         worldSpacePos = ViewWorldMat * viewPos;
         gl_Position = ProjMat * viewPos;
     }

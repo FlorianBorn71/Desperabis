@@ -17,7 +17,7 @@ public:
     FUTURE(void) Load(int index, const LevelInfo& info);
     FUTURE(void) LoadFromSaveGame(std::wstring_view filename, const std::vector<LevelInfo>& infos);
 
-    FUTURE(void) PopulateScene(Scene& scene, bool createGameObjects);
+    FUTURE(void) PopulateScene(Scene& scene, bool createGameObjects, bool addMapIcons);
 	void ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& rawGO) const;
     RenderableInstancePtr CreatePlayerObject();
 	float GetHeightAtPos(const Vector& pos) const 

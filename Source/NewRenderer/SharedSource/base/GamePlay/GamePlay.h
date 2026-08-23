@@ -304,6 +304,24 @@ namespace GamePlay
         Showel = 8
     };
 
+	enum class VisibilityFilter : uint32_t
+	{
+        Walls = 0x00000001,
+        GameObjects = 0x00000002,
+		Sky = 0x00000004,
+        ReflectionReceiver = 0x00000008,
+        PlayerObject = 0x00000010,
+		Coronas = 0x00000020,
+
+        DebugGeometry = 0x00010000,
+        MapIcons = 0x00020000,
+
+		NormalRendering = Walls | GameObjects | Sky | ReflectionReceiver | PlayerObject | Coronas | DebugGeometry,
+		MapRendering = Walls | GameObjects | Sky | ReflectionReceiver | PlayerObject | DebugGeometry | MapIcons,
+
+		All = 0xffffffff
+	};
+
     const char* BehaviorTypeToString(BehaviorType t);
     const char* CollisionTypeToString(CollisionType t);
     const char* WeaponTypeTypeToString(WeaponType t);

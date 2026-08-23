@@ -201,6 +201,7 @@ float3 ApplyFog(float3 currentColor, float fogCoord)
 #define STRETCHMODE_Sprite 1
 #define STRETCHMODE_StretchedLine 2
 #define STRETCHMODE_Flame 3
+#define STRETCHMODE_CameraBillboard 4
 
 
 // Vertex shader for common geometry
@@ -291,6 +292,22 @@ PixelShaderInput vs_main(VertexShaderInput In)
         const float roundness = -1.f;
         float4 viewNormal = float4(up.x, up.y, up.z + roundness, 0);
         wsNormal = normalize(mul(viewNormal, ViewWorldMat).xyz);
+#endif
+    }
+    else if (stretchMode == STRETCHMODE_CameraBillboard)
+    {
+        // Fully screen aligned quad. Unlike STRETCHMODE_Sprite this does not use the world's up vector,
+        // but the camera's up vector, so the quad stays fully visible in a top down view.
+        // stretchParams directly holds the corner offset of the quad, relative to its center.
+        float2 quadOfs = In.stretchParams.xy * UniformScale;
+        const float3 up = float3(0, 1, 0); // view space up (matches the sprite convention)
+        const float3 right = float3(1, 0, 0);
+        viewPos.xyz += up * quadOfs.y + right * quadOfs.x;
+        worldSpacePos = mul(viewPos, ViewWorldMat);
+        Out.position = mul(viewPos, ProjMat);
+
+#ifdef ENABLE_ADVANCED_RENDERING
+        wsNormal = normalize(mul(float4(0, 0, 1, 0), ViewWorldMat).xyz);
 #endif
     }
     else //if (stretchMode == STRETCHMODE_Flame)

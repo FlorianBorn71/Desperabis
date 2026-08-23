@@ -330,7 +330,8 @@ struct DesperabisD3D11GraphicsPlugin : public IGraphicsPlugin {
             cam->SetViewMatrix(despView);
 
             g_RendererDX11.SetCurrentTime(g_currentTime);
-            g_RendererDX11.RenderScene(g_desperabisScene.get(), &g_profilingStats);
+            uint32_t filterMask = 0xffffffff;
+            g_RendererDX11.RenderScene(g_desperabisScene.get(), filterMask, &g_profilingStats);
             g_profilingStats.Update();
         }
 

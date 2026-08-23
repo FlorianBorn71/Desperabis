@@ -84,7 +84,7 @@ void IVisibilityContext::SortCollection(VisibilityResult::InstanceCollection& li
 
 extern float g_debugValue;
 
-void DefaultVisibilityContext::DetermineVisibleInstances(VisibilityResult& result, VisibilityResult::VisibleInstances& target, const Scene* scene, const Vector& cameraPos, const Frustum& camFrustum, const VisibilityTileGrid* grid, bool collectWaterReceiver)
+void DefaultVisibilityContext::DetermineVisibleInstances(VisibilityResult& result, VisibilityResult::VisibleInstances& target, const Scene* scene, const Vector& cameraPos, const Frustum& camFrustum, const VisibilityTileGrid* grid, uint32_t filterMask, bool collectWaterReceiver)
 {
     target.m_visibleTransparencyTypes = TransparencyModeMask::None;
 
@@ -161,7 +161,7 @@ void DefaultVisibilityContext::DetermineVisibleInstances(VisibilityResult& resul
     const auto& instances = scene->GetRenderableInstances();
     for (const auto inst : instances)
     {
-        if (!inst->IsValid() || !inst->GetVisible())
+        if (!inst->IsValid() || !inst->GetVisible() || (inst->GetVisibilityFilterMask() & filterMask) == 0)
         {
             continue;
         }
@@ -211,7 +211,7 @@ void DefaultVisibilityContext::DetermineVisibleInstances(VisibilityResult& resul
 #endif
 }
 
-void DefaultVisibilityContext::ComputeResultFor(const Camera* camera, const Scene* scene, VisibilityResult& result, ProfilingStats& out_stats)
+void DefaultVisibilityContext::ComputeResultFor(const Camera* camera, const Scene* scene, VisibilityResult& result, uint32_t filterMask, ProfilingStats& out_stats)
 {
     result.Reset();
     result.m_scene = scene;
@@ -287,7 +287,7 @@ void DefaultVisibilityContext::ComputeResultFor(const Camera* camera, const Scen
 #endif
    
     // determine visible instances in normal view
-    DetermineVisibleInstances(result, result.m_visibleInstances, scene, cameraPos, m_frustum, grid, true);
+    DetermineVisibleInstances(result, result.m_visibleInstances, scene, cameraPos, m_frustum, grid, filterMask, true);
 
 #ifdef ENABLE_ADVANCED_RENDERING
     // water rendering
@@ -312,7 +312,7 @@ void DefaultVisibilityContext::ComputeResultFor(const Camera* camera, const Scen
         {
             water.m_mirrorCamera.CreateMirrored(*camera, water.m_waterHeight);
             water.m_mirrorCamera.BuildFrustum(m_mirrorFrustum);
-            DetermineVisibleInstances(result, water.m_visibleInstancesInMirror, scene, water.m_mirrorCamera.GetCameraPosition(), m_mirrorFrustum, grid, false);
+            DetermineVisibleInstances(result, water.m_visibleInstancesInMirror, scene, water.m_mirrorCamera.GetCameraPosition(), m_mirrorFrustum, grid, filterMask, false);
         }
     }
 #endif

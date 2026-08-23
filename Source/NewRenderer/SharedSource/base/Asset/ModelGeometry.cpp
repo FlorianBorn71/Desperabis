@@ -73,6 +73,21 @@ void ModelVertex::SetSprite(uint16_t v0, const Color4& color, const Vector2& cor
     StretchParams = { corner.x, scale };
 }
 
+void ModelVertex::SetCameraBillboard(uint16_t v0, const Color4& color, const Vector2& corner, float width, float height)
+{
+    assert(v0 < MaxAddressablePositions);
+    PositionIndex = v0;
+    SecondPosition = 0;
+    StretchMode = (uint16_t)VertexStretchMode::CameraBillboard;
+
+#ifdef USE_VERTEX_COLOR
+    Color = color;
+#endif
+    TexCoord = corner;
+    // the shader uses the stretch params directly as the screen space corner offset
+    StretchParams = { (corner.x - 0.5f) * width, (corner.y - 0.5f) * height };
+}
+
 void ModelVertex::SetTexturedLine(uint16_t v0, uint16_t v1, const Color4& color, const Vector2& tc, float strength)
 {
     assert(v0 < MaxAddressablePositions);
@@ -335,6 +350,31 @@ namespace
 		indices.push_back((uint16_t)(vertexStart + 2));
 		indices.push_back((uint16_t)(vertexStart + 3));
 	}
+
+    void AddCameraBillboardQuad(ModelConversionContext& context, uint16_t i0, float width, float height, const Color4& col)
+    {
+        const VertexPosition* vertexPositions = &context.m_input.m_vertexPos[context.m_modelPositionOfs];
+        auto& vertices(context.m_vertices);
+        auto& indices(context.m_indices);
+
+        int vertexStart = (int)vertices.size();
+
+        uint16_t p = i0 - 1;
+        context.AddToBounds(vertexPositions[p], std::max(width, height));
+
+        vertices.emplace_back().SetCameraBillboard(p, col, Vector2{ 0, 1 }, width, height); // left/bottom
+        vertices.emplace_back().SetCameraBillboard(p, col, Vector2{ 1, 1 }, width, height); // right/bottom
+        vertices.emplace_back().SetCameraBillboard(p, col, Vector2{ 1, 0 }, width, height); // right/top
+        vertices.emplace_back().SetCameraBillboard(p, col, Vector2{ 0, 0 }, width, height); // left/top
+
+        indices.push_back((uint16_t)(vertexStart + 0));
+        indices.push_back((uint16_t)(vertexStart + 1));
+        indices.push_back((uint16_t)(vertexStart + 2));
+
+        indices.push_back((uint16_t)(vertexStart + 0));
+        indices.push_back((uint16_t)(vertexStart + 2));
+        indices.push_back((uint16_t)(vertexStart + 3));
+    }
 
     void AddTexturedQuad(ModelConversionContext& context, uint16_t i0, uint16_t i1, uint16_t i2, uint16_t i3, const TextureTransform& textureAtlas, bool flipU, bool wall)
     {
@@ -867,6 +907,36 @@ std::shared_ptr<Renderable> GeometryUtils::CreateSpriteMesh(bool flipU)
 
     dc.m_firstIndex = 0;
     dc.m_primitiveCount = (int)conversion.m_indices.size() / 3;
+    conversion.GenerateBoundingVolume(renderable->m_localBounds);
+
+    return renderable;
+}
+
+std::shared_ptr<Renderable> GeometryUtils::CreateCameraBillboardQuadMesh(float width, float height, const Color4& col)
+{
+    ModelLoadingContext context;
+    context.m_vertexPos.push_back(VertexPosition{ 0,0,0 });
+    context.m_vertexPos.push_back(VertexPosition{ 0,0,0 }); // two positions to avoid constant buffer warning
+    ModelConversionContext conversion(context);
+
+    AddCameraBillboardQuad(conversion, 1, width, height, col);
+    conversion.m_sortedIndices = conversion.m_indices;
+
+    std::shared_ptr<Renderable> renderable = std::make_shared<Renderable>();
+    renderable->m_runtime = Renderer::Instance().CreateModelBuffers(conversion);
+    renderable->m_vertexOfs = 0;
+    DrawCall& dc = renderable->m_drawCalls.emplace_back();
+    dc.m_material.m_transparencyType = TransparencyMode::Opaque;
+    dc.m_material.m_opacity = 1.f;
+    dc.m_material.m_textureSlot = -1;
+    dc.m_material.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
+    dc.m_material.m_applyLighting = false;
+    dc.m_material.m_useAlphaTest = true;
+    dc.m_material.ComputeHash();
+
+    dc.m_firstIndex = 0;
+    dc.m_primitiveCount = (int)conversion.m_indices.size() / 3;
+
     conversion.GenerateBoundingVolume(renderable->m_localBounds);
 
     return renderable;

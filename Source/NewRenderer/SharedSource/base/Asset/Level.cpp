@@ -452,11 +452,11 @@ namespace
 	};
 
 
-    RenderableInstancePtr CreateSpriteInstance(GamePlay::DisplayType display, Texture* texture, char textureSlot, float scale, bool flipU)
+    RenderableInstancePtr CreateSpriteInstance(GamePlay::DisplayType display, Texture* texture, char textureSlot, float scale, bool flipU, GamePlay::VisibilityFilter visibilityFilterMask)
     {
         AssetManager& assets = AssetManager::Instance();
         RenderablePtr spriteMesh = assets.GetSpriteRenderable(flipU);
-        RenderableInstancePtr inst = std::make_shared<RenderableInstance>(spriteMesh.get());
+        RenderableInstancePtr inst = std::make_shared<RenderableInstance>(spriteMesh.get(), (uint32_t)visibilityFilterMask);
         inst->m_uniformScale = scale;
         if (scale == 0.f)
         {
@@ -523,7 +523,7 @@ void Level::AddStaticCellObject(int x, int y, byte rawVal, HeightLevel atHeight)
             Vector3 p = m_cellArray.GetCenterPos(x, y, atHeight);
             center.Set(p.x, p.y, p.z);
             Matrix4 matrix = Matrix4::CreateTransform(center, euler);
-            std::shared_ptr<RenderableInstance> inst = std::make_shared<RenderableInstance>(tile);
+            std::shared_ptr<RenderableInstance> inst = std::make_shared<RenderableInstance>(tile, (uint32_t)GamePlay::VisibilityFilter::Walls);
             m_levelInfo.AssignLevelTextures(*inst);
             inst->SetTransform(matrix);
             inst->UpdateGlobalBounds();
@@ -974,7 +974,7 @@ void Level::CreateWallGeometry()
             r->m_vertexOfs = 0;
             GeometryUtils::ComputeBoundingVolume(r->m_localBounds, r->m_drawCalls, islandWalls.m_conversion.m_vertices, islandWalls.m_conversion.m_input.m_vertexPos, islandWalls.m_conversion.m_sortedIndices);
             m_wallRenderables.push_back(r);
-            std::shared_ptr<RenderableInstance> inst = std::make_shared<RenderableInstance>(r.get());
+            std::shared_ptr<RenderableInstance> inst = std::make_shared<RenderableInstance>(r.get(), (uint32_t)GamePlay::VisibilityFilter::Walls);
             m_levelInfo.AssignLevelTextures(*inst);
             // transform stays at (0,0,0)
             // 
@@ -990,7 +990,7 @@ void Level::CreateWallGeometry()
                 float radius = r->m_boundingRadius;
                 std::shared_ptr<Renderable> cube = GeometryUtils::CreateCubeMesh(radius, radius, radius, { 255,255,0,255 }, 3.f);
                 m_wallRenderables.push_back(cube);
-                RenderableInstancePtr boxInst = std::make_shared<RenderableInstance>(cube.get());
+                RenderableInstancePtr boxInst = std::make_shared<RenderableInstance>(cube.get(),  (uint32_t)GamePlay::VisibilityFilter::Walls);
                 boxInst->m_transform.Create(Vector(0, 0, 0), Vector(0, 0, 0)); // unrotated, unscaled box
                 m_wallGeometry.push_back(boxInst);
             }
@@ -1029,7 +1029,7 @@ bool Level::CreateObjectRenderInstance(Scene& scene, std::shared_ptr<LevelGameOb
         }
 
         assert(model->m_drawCalls.size() < 16);
-        RenderableInstancePtr inst = std::make_shared<RenderableInstance>(model);
+        RenderableInstancePtr inst = std::make_shared<RenderableInstance>(model, (uint32_t)GamePlay::VisibilityFilter::GameObjects);
         go->m_renderInst = inst;
         inst->m_uniformScale = 1.f; // not scalable  rawGO.GetScale();
         inst->SetTransform(prop.GetTransform());
@@ -1077,7 +1077,7 @@ bool Level::CreateObjectRenderInstance(Scene& scene, std::shared_ptr<LevelGameOb
             const bool isDepthSprite = display == GamePlay::DisplayType::DepthSprite;
             spriteTex = isDepthSprite ? texAnim->GetFrameWithDepth(anim, frame) : texAnim->GetFrame(anim, frame);
         }
-        RenderableInstancePtr inst = CreateSpriteInstance(display, spriteTex, textureSlot, scale, flipped);
+        RenderableInstancePtr inst = CreateSpriteInstance(display, spriteTex, textureSlot, scale, flipped, GamePlay::VisibilityFilter::GameObjects);
         go->m_renderInst = inst;
         inst->SetTransform(prop.GetScaledTransform());
 		inst->m_materialOverride[0].SetOpacity(prop.GetSpriteTransparency());
@@ -1181,7 +1181,7 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
             spriteTex = isDepthSprite ? texAnim->GetFrameWithDepth(anim, frame) : texAnim->GetFrame(anim, frame);
         }
         // TODO: This is super inefficient as it allocates a new sprite every frame
-        RenderableInstancePtr inst2 = CreateSpriteInstance(display, spriteTex, textureSlot, scale, flipped);
+        RenderableInstancePtr inst2 = CreateSpriteInstance(display, spriteTex, textureSlot, scale, flipped, GamePlay::VisibilityFilter::GameObjects);
         inst->m_materialOverride = inst2->m_materialOverride;
         inst->SetRenderable(inst2->GetRenderable(), inst2->GetBlendTargetRenderable());
         inst->m_uniformScale = inst2->m_uniformScale;
@@ -1218,12 +1218,12 @@ RenderableInstancePtr Level::CreatePlayerObject()
     // create a white sprite
     float scale = 25.f;
     AssetManager& assets = AssetManager::Instance();
-    RenderableInstancePtr inst = CreateSpriteInstance(GamePlay::DisplayType::SpriteNormal, assets.GetPointTexture(), -1, scale, false);
+    RenderableInstancePtr inst = CreateSpriteInstance(GamePlay::DisplayType::SpriteNormal, assets.GetPointTexture(), -1, scale, false, GamePlay::VisibilityFilter::GameObjects);
     return inst;
 }
 
 
-FUTURE(void) Level::PopulateScene(Scene& scene, bool createGameObjects)
+FUTURE(void) Level::PopulateScene(Scene& scene, bool createGameObjects, bool addMapIcons)
 {
     AssetManager& assets = AssetManager::Instance();
 
@@ -1247,7 +1247,7 @@ FUTURE(void) Level::PopulateScene(Scene& scene, bool createGameObjects)
     CreateSkyGeometry();
     if (m_skyRenderable != nullptr)
     {
-        RenderableInstancePtr skyInst = std::make_shared<RenderableInstance>(m_skyRenderable.get());
+        RenderableInstancePtr skyInst = std::make_shared<RenderableInstance>(m_skyRenderable.get(), (uint32_t)GamePlay::VisibilityFilter::Sky);
         scene.AddRenderableInstance(skyInst);
 
         // global sunlight
@@ -1318,7 +1318,7 @@ FUTURE(void) Level::PopulateScene(Scene& scene, bool createGameObjects)
             if (display == GamePlay::DisplayType::Hidden)
             {
                 float scale = 5.f;
-                RenderableInstancePtr inst = CreateSpriteInstance(GamePlay::DisplayType::SpriteTransparent, assets.GetPointTexture(), -1, scale, false);
+                RenderableInstancePtr inst = CreateSpriteInstance(GamePlay::DisplayType::SpriteTransparent, assets.GetPointTexture(), -1, scale, false, GamePlay::VisibilityFilter::GameObjects);
                 go->m_renderInst = inst;
                 inst->SetTransform(props.GetTransform());
                 // register renderable
@@ -1328,7 +1328,7 @@ FUTURE(void) Level::PopulateScene(Scene& scene, bool createGameObjects)
             {
                 // create a white sprite
                 float scale = 16.f;
-                RenderableInstancePtr inst = CreateSpriteInstance(GamePlay::DisplayType::SpriteNormal, assets.GetPointTexture(), -1, scale, false);
+                RenderableInstancePtr inst = CreateSpriteInstance(GamePlay::DisplayType::SpriteNormal, assets.GetPointTexture(), -1, scale, false, GamePlay::VisibilityFilter::GameObjects);
                 go->m_renderInst = inst;
                 inst->SetTransform(props.GetTransform());
                 // register renderable
@@ -1344,11 +1344,33 @@ FUTURE(void) Level::PopulateScene(Scene& scene, bool createGameObjects)
                     float cy = props.CollisionRadiusY();
                     std::shared_ptr<Renderable> cube = GeometryUtils::CreateCubeMesh(cx, cy, cx, { 255,255,0,0 });
                     go->m_debugGeometry = cube;
-                    RenderableInstancePtr boxInst = std::make_shared<RenderableInstance>(cube.get());
+                    RenderableInstancePtr boxInst = std::make_shared<RenderableInstance>(cube.get(), (uint32_t)GamePlay::VisibilityFilter::DebugGeometry);
                     Vector center = props.GetTransform().GetTranslation();
                     boxInst->SetTransform(center, Vector(0,0,0)); // unrotated, unscaled box
                     scene.AddRenderableInstance(boxInst);
                 }
+            }
+
+            // items for map
+            if (addMapIcons)
+            { 
+                RenderablePtr quadMesh = AssetManager::Instance().GetCameraFacingQuadRenderable();
+                RenderableInstancePtr mapInst = std::make_shared<RenderableInstance>(quadMesh.get(), (uint32_t)GamePlay::VisibilityFilter::MapIcons);
+                mapInst->SetDebugName("ItemHighlight");
+                mapInst->m_tintColor = { 0, 255, 0, 255 };
+                Vector pos = go->GetPosition();
+                pos.Set(pos.GetX(), pos.GetY(), pos.GetZ());
+                mapInst->SetTransform(pos, Vector(0, 0, 0));
+                mapInst->m_uniformScale = 50.f * DespToFloat;
+                DrawCallMaterial& overrideMat = mapInst->m_materialOverride.emplace_back();
+                overrideMat = quadMesh->m_drawCalls[0].m_material;
+                overrideMat.m_transparencyType = TransparencyMode::Opaque;
+                overrideMat.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
+                overrideMat.m_opacity = 1.f;
+                overrideMat.m_applyLighting = false;
+                overrideMat.ComputeHash();
+
+                scene.AddRenderableInstance(mapInst);
             }
 
             // draw lines between doors and keys/switches

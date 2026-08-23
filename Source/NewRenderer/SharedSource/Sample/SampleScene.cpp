@@ -69,7 +69,7 @@ FUTURE(void) SampleScene::InstantiateScene()
         ModelAnim* anim = assets.GetAsset<ModelAnim>(singleO);
         Model* model = anim->GetModel(0, 0);
 
-        m_singleObj = std::make_shared<RenderableInstance>(model);
+        m_singleObj = std::make_shared<RenderableInstance>(model, (uint32_t)GamePlay::VisibilityFilter::GameObjects);
         m_singleObj->m_blendWeight = 0.5f;
         m_singleObj->m_blendToRenderable = anim->GetModel(0, 1);
 
@@ -96,7 +96,7 @@ FUTURE(void) SampleScene::InstantiateScene()
                 model = anim->GetModel(0, 2); // forest
             }
 
-            RenderableInstancePtr inst = std::make_shared<RenderableInstance>(model);
+            RenderableInstancePtr inst = std::make_shared<RenderableInstance>(model, (uint32_t)GamePlay::VisibilityFilter::GameObjects);
             this->AddRenderableInstance(inst);
 
             float scale = 0.5f;
@@ -111,7 +111,6 @@ FUTURE(void) SampleScene::InstantiateScene()
     m_sceneReady = true;
     CO_RETURN;
 }
-
 
 void SampleScene::Update(double elapsedTime)
 {

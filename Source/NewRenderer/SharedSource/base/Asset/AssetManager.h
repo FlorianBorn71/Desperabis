@@ -39,6 +39,7 @@ public:
 	Texture* GetFlameTexture(int frame) { return m_weaponAnim->GetFrame(0, frame);}
     int GetNumFlameFrames() const { return 2; }
     std::shared_ptr<Renderable> GetSpriteRenderable(bool flipped) { return m_spriteRenderable[flipped ? 1 : 0]; }
+    std::shared_ptr<Renderable> GetCameraFacingQuadRenderable() { return m_cameraFacingQuadRenderable; }
     std::shared_ptr<Renderable> GetCubeRenderable() { return m_cubeRenderable; }
     std::shared_ptr<Renderable> GetBurningObjectRenderable() { return m_burningObjectMesh; }
     uint32_t CreateNewAssetId() { return m_assetIdCounter++; }
@@ -59,6 +60,7 @@ private:
     Texture m_coronaTex;
     std::shared_ptr<Renderable> m_spriteRenderable[2]; // flipped or not
     std::shared_ptr<Renderable> m_cubeRenderable;
+    std::shared_ptr<Renderable> m_cameraFacingQuadRenderable;
 	std::shared_ptr<Renderable> m_burningObjectMesh; // a list of quads, each referencing a position index
     std::shared_ptr<TextureAnim> m_weaponAnim;
 

@@ -744,7 +744,8 @@ namespace // DX
             Renderer::Instance().SetCamera(g_mapCamera);
         }
         Renderer::Instance().SetCurrentTime(g_currentTime);
-        Renderer::Instance().RenderScene(g_desperabisScene.get(), nullptr);
+        uint32_t filterMask = (uint32_t)GamePlay::VisibilityFilter::MapRendering;
+        Renderer::Instance().RenderScene(g_desperabisScene.get(), filterMask, nullptr);
 
         settings.useFog = restoreFog;
 
@@ -779,7 +780,8 @@ namespace // DX
             Renderer::Instance().SetCamera(g_mainCamera);
         }
         Renderer::Instance().SetCurrentTime(g_currentTime);
-        Renderer::Instance().RenderScene(g_desperabisScene.get(), &g_profilingStats);
+        uint32_t filterMask = (uint32_t)GamePlay::VisibilityFilter::NormalRendering;
+        Renderer::Instance().RenderScene(g_desperabisScene.get(), filterMask, &g_profilingStats);
         g_profilingStats.Update();
 
         g_swapChain->Present(1, 0);
