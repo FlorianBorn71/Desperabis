@@ -494,6 +494,17 @@ namespace
         return inst;
     }
 
+    Texture* GetTextureForMapIcon(const RawGameObject& rawGO)
+    {
+        GamePlay::PropertyAccessorBase props(rawGO);
+        if (props.GetCollisionType() == GamePlay::CollisionType::Key)
+        {
+            return AssetManager::Instance().GetPlainWhiteTexture();
+        }
+        // Implementation needed
+        return nullptr;
+    }
+
 } // anonymous namespace
 
 
@@ -1353,24 +1364,27 @@ FUTURE(void) Level::PopulateScene(Scene& scene, bool createGameObjects, bool add
 
             // items for map
             if (addMapIcons)
-            { 
-                RenderablePtr quadMesh = AssetManager::Instance().GetCameraFacingQuadRenderable();
-                RenderableInstancePtr mapInst = std::make_shared<RenderableInstance>(quadMesh.get(), (uint32_t)GamePlay::VisibilityFilter::MapIcons);
-                mapInst->SetDebugName("ItemHighlight");
-                mapInst->m_tintColor = { 0, 255, 0, 255 };
-                Vector pos = go->GetPosition();
-                pos.Set(pos.GetX(), pos.GetY(), pos.GetZ());
-                mapInst->SetTransform(pos, Vector(0, 0, 0));
-                mapInst->m_uniformScale = 50.f * DespToFloat;
-                DrawCallMaterial& overrideMat = mapInst->m_materialOverride.emplace_back();
-                overrideMat = quadMesh->m_drawCalls[0].m_material;
-                overrideMat.m_transparencyType = TransparencyMode::Opaque;
-                overrideMat.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
-                overrideMat.m_opacity = 1.f;
-                overrideMat.m_applyLighting = false;
-                overrideMat.ComputeHash();
+            {
+                if (Texture* mapIconTexture = GetTextureForMapIcon(rawGO))
+                {
+                    RenderablePtr quadMesh = AssetManager::Instance().GetCameraFacingQuadRenderable();
+                    RenderableInstancePtr mapInst = std::make_shared<RenderableInstance>(quadMesh.get(), (uint32_t)GamePlay::VisibilityFilter::MapIcons);
+                    mapInst->SetDebugName("ItemHighlight");
+                    mapInst->m_tintColor = { 0, 255, 0, 255 };
+                    Vector pos = go->GetPosition();
+                    pos.Set(pos.GetX(), pos.GetY(), pos.GetZ());
+                    mapInst->SetTransform(pos, Vector(0, 0, 0));
+                    mapInst->m_uniformScale = 50.f * DespToFloat;
+                    DrawCallMaterial& overrideMat = mapInst->m_materialOverride.emplace_back();
+                    overrideMat = quadMesh->m_drawCalls[0].m_material;
+                    overrideMat.m_transparencyType = TransparencyMode::Opaque;
+                    overrideMat.m_texture = mapIconTexture;
+                    overrideMat.m_opacity = 1.f;
+                    overrideMat.m_applyLighting = false;
+                    overrideMat.ComputeHash();
 
-                scene.AddRenderableInstance(mapInst);
+                    scene.AddRenderableInstance(mapInst);
+                }
             }
 
             // draw lines between doors and keys/switches

@@ -323,7 +323,6 @@ void DefaultVisibilityContext::ComputeResultFor(const Camera* camera, const Scen
     {
 		result.m_ambientColor = { 1,1,1 };
 		result.m_ambientNrmlContribution = 0.0f;
-
     }
     else
     {
