@@ -37,9 +37,9 @@ void RendererOGL::Deinitialize()
 }
 
 
-void RendererOGL::RenderSceneElements(const VisibilityResult& elements, ProfilingStats& stats)
+void RendererOGL::RenderSceneElements(const VisibilityResult& elements, const RenderingSettings& renderSettings, ProfilingStats& stats)
 {
-    RenderScene_Impl<RenderContextOGL>(elements, stats);
+    RenderScene_Impl<RenderContextOGL>(elements, renderSettings, stats);
 }
 
 void RendererOGL::CreateTexture(Texture& tex, TextureLoadingContext& data)

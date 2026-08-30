@@ -26,8 +26,8 @@ static const DepthWriteMode BlendModeToDepthMode[(int)TransparencyMode::Transpar
 };
 
 
-RenderContextOGL::RenderContextOGL(Renderer& renderer, const VisibilityResult& elements, ProfilingStats& profiling)
-    : RenderContext(renderer, elements, profiling)
+RenderContextOGL::RenderContextOGL(Renderer& renderer, const VisibilityResult& elements, const RenderingSettings& settings, ProfilingStats& profiling)
+    : RenderContext(renderer, elements, settings, profiling)
     , m_rendererOGL((RendererOGL&)renderer)
 {
 }
@@ -86,7 +86,7 @@ void RenderContextOGL::TrackGlobals()
     assert(renderTarget != nullptr);
     m_isStereo = camera->IsStereo();
 
-	const GlobalSettings& settings = GlobalSettings::Instance();
+	const RenderingSettings& settings = m_settings;
 	Renderer::GlobalsData& globals(m_rendererOGL.m_globalsData);
 
 	if (m_renderTargetPass == RenderTargetPassType::MainView)

@@ -1,9 +1,9 @@
 #pragma once
 
 template <typename CONTEXT_TYPE>
-inline void Renderer::RenderScene_Impl(const VisibilityResult& elements, ProfilingStats& stats)
+inline void Renderer::RenderScene_Impl(const VisibilityResult& elements, const RenderingSettings& renderSettings, ProfilingStats& stats)
 {
-    CONTEXT_TYPE context(*this, elements, stats);
+    CONTEXT_TYPE context(*this, elements, renderSettings, stats);
 
     stats.ResetRenderStats();
     ProfilingScope _(stats.m_duration_rendering);

@@ -185,6 +185,7 @@
     <ClInclude Include="..\SharedSource\base\Asset\Palette.h" />
     <ClInclude Include="..\SharedSource\base\Asset\RawGameObject.h" />
     <ClInclude Include="..\SharedSource\base\Asset\TextInclude.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\AssetSettings.h" />
     <ClInclude Include="..\SharedSource\base\Asset\Texture.h" />
     <ClInclude Include="..\SharedSource\base\Asset\TextureAnim.h" />
     <ClInclude Include="..\SharedSource\base\CommonDefines.h" />
@@ -196,7 +197,8 @@
     <ClInclude Include="..\SharedSource\base\Physics\PhysicsInterface.h" />
     <ClInclude Include="..\SharedSource\base\Renderer\Camera.h" />
     <ClInclude Include="..\SharedSource\base\Renderer\DrawCall.h" />
-    <ClInclude Include="..\SharedSource\base\Renderer\GlobalSettings.h" />
+    <ClInclude Include="..\SharedSource\base\Renderer\RenderingSettings.h" />
+    <ClInclude Include="..\SharedSource\base\Renderer\VisibilitySettings.h" />
     <ClInclude Include="..\SharedSource\base\Renderer\IGraphicsRuntimeObject.h" />
     <ClInclude Include="..\SharedSource\base\Renderer\LightSource.h" />
     <ClInclude Include="..\SharedSource\base\Renderer\Renderable.h" />
@@ -225,6 +227,7 @@
     <ClCompile Include="..\SharedSource\base\Asset\ModelGeometry.cpp" />
     <ClCompile Include="..\SharedSource\base\Asset\Palette.cpp" />
     <ClCompile Include="..\SharedSource\base\Asset\TextInclude.cpp" />
+    <ClCompile Include="..\SharedSource\base\Asset\AssetSettings.cpp" />
     <ClCompile Include="..\SharedSource\base\Asset\Texture.cpp" />
     <ClCompile Include="..\SharedSource\base\Asset\TextureAnim.cpp" />
     <ClCompile Include="..\SharedSource\base\GamePlay\GamePlay.cpp" />
@@ -234,7 +237,7 @@
     <ClCompile Include="..\SharedSource\base\Physics\PhysicsInterface.cpp" />
     <ClCompile Include="..\SharedSource\base\Renderer\Camera.cpp" />
     <ClCompile Include="..\SharedSource\base\Renderer\DrawCall.cpp" />
-    <ClCompile Include="..\SharedSource\base\Renderer\GlobalSettings.cpp" />
+    <ClCompile Include="..\SharedSource\base\Renderer\RenderingSettings.cpp" />
     <ClCompile Include="..\SharedSource\base\Renderer\LightSource.cpp" />
     <ClCompile Include="..\SharedSource\base\Renderer\Renderable.cpp" />
     <ClCompile Include="..\SharedSource\base\Renderer\RenderableInstance.cpp" />

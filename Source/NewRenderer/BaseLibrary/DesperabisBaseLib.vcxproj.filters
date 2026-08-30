@@ -66,6 +66,9 @@
     <ClInclude Include="..\SharedSource\base\Asset\Palette.h">
       <Filter>Desperabis\Asset</Filter>
     </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\AssetSettings.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
     <ClInclude Include="..\SharedSource\base\Asset\Texture.h">
       <Filter>Desperabis\Asset</Filter>
     </ClInclude>
@@ -147,7 +150,10 @@
     <ClInclude Include="..\SharedSource\base\Renderer\VisibilityTileGrid.h">
       <Filter>Desperabis\Renderer</Filter>
     </ClInclude>
-    <ClInclude Include="..\SharedSource\base\Renderer\GlobalSettings.h">
+    <ClInclude Include="..\SharedSource\base\Renderer\RenderingSettings.h">
+      <Filter>Desperabis\Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Renderer\VisibilitySettings.h">
       <Filter>Desperabis\Renderer</Filter>
     </ClInclude>
     <ClInclude Include="..\SharedSource\base\CommonDefines.h">
@@ -183,6 +189,9 @@
       <Filter>Desperabis\Asset</Filter>
     </ClCompile>
     <ClCompile Include="..\SharedSource\base\Asset\Palette.cpp">
+      <Filter>Desperabis\Asset</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\Asset\AssetSettings.cpp">
       <Filter>Desperabis\Asset</Filter>
     </ClCompile>
     <ClCompile Include="..\SharedSource\base\Asset\Texture.cpp">
@@ -257,7 +266,7 @@
     <ClCompile Include="..\SharedSource\base\Renderer\VisibilityTileGrid.cpp">
       <Filter>Desperabis\Renderer</Filter>
     </ClCompile>
-    <ClCompile Include="..\SharedSource\base\Renderer\GlobalSettings.cpp">
+    <ClCompile Include="..\SharedSource\base\Renderer\RenderingSettings.cpp">
       <Filter>Desperabis\Renderer</Filter>
     </ClCompile>
   </ItemGroup>

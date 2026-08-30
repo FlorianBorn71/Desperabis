@@ -36,7 +36,7 @@ std::shared_ptr<IVisibilityContext> Renderer::GetOrCreateVisibilityContext()
 
 
 
-void Renderer::RenderScene(const Scene* scene, uint32_t filterMask, ProfilingStats* out_stats)
+void Renderer::RenderScene(const Scene* scene, const RenderingSettings& renderSettings, const VisibilitySettings& visSettings, ProfilingStats* out_stats)
 {
     if (scene != nullptr && scene->IsReady())
     {
@@ -57,11 +57,11 @@ void Renderer::RenderScene(const Scene* scene, uint32_t filterMask, ProfilingSta
                 vis = GetOrCreateVisibilityContext().get();
             }
             ConfigureVisibility(*vis);
-            vis->ComputeResultFor(cam, scene, m_internalVisResult, filterMask, *out_stats);
+            vis->ComputeResultFor(cam, scene, m_internalVisResult, renderSettings, visSettings, *out_stats);
         }
 
         // complete scene rendering
-        RenderSceneElements(m_internalVisResult, stats);
+        RenderSceneElements(m_internalVisResult, renderSettings, stats);
     }
 }
 

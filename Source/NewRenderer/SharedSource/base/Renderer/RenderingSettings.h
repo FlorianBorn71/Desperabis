@@ -1,20 +1,14 @@
 #pragma once
 #include <DesperabisCommon.h>
 
-struct GlobalSettings
+/// <summary>
+/// Tweakables that control how a scene is rendered.
+/// The application owns the instances and passes them into the renderer,
+/// so different views (e.g. main view and map view) can use different settings.
+/// </summary>
+struct RenderingSettings
 {
 public:
-	enum class AssetQuality
-	{
-		Original,
-		WithHighRes,
-		OnlyHighRes,
-		COUNT
-	};
-
-	// global tweakables:
-
-	AssetQuality assetQuality = AssetQuality::Original;
 	bool useFog = true;
 	bool fullbrightRendering = false;
 	bool dynamicLights = true;
@@ -22,9 +16,6 @@ public:
 	bool gridVisibility = true;
 	float gamma = 1.0f;
 
-	static GlobalSettings& Instance();
-
 	/// Needs to be called before anything is loaded
 	static void SetRelativeGeometryScaling(float scale);
 };
-

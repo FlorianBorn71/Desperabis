@@ -10,7 +10,7 @@ class RendererDX11;
 class RenderContextDX11 : public RenderContext
 {
 public:
-    RenderContextDX11(Renderer& renderer, const VisibilityResult& elements, ProfilingStats& profiling);
+    RenderContextDX11(Renderer& renderer, const VisibilityResult& elements, const RenderingSettings& settings, ProfilingStats& profiling);
     ~RenderContextDX11() = default;
 
     template<GeometryPassType PASSTYPE>

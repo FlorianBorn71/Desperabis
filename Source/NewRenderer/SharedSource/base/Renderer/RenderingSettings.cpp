@@ -1,7 +1,5 @@
 #include "pch.h"
-#include <Renderer/GlobalSettings.h>
-
-static GlobalSettings g_Settings;
+#include <Renderer/RenderingSettings.h>
 
 float DespRelativeScaling = 1.0f; // for all the distances/values that are already tweaked with the defaults below
 float DespRelativeInvScaling = 1.0f; // for all the distances/values that are already tweaked with the defaults below
@@ -10,12 +8,7 @@ float DespVertToFloat = DespToFloat * 0.1f;   // vertex positions
 float DespSpriteToFloat = DespToFloat / 64.f;   // sprite texture extent
 
 
-GlobalSettings& GlobalSettings::Instance()
-{
-	return g_Settings;
-}
-
-void GlobalSettings::SetRelativeGeometryScaling(float scale)
+void RenderingSettings::SetRelativeGeometryScaling(float scale)
 {
 	DespRelativeScaling = scale;
 	DespRelativeInvScaling = 1.f / DespRelativeScaling;

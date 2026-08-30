@@ -14,7 +14,8 @@
 #include <DesperabisCommon.h>
 #include <IO/FileManagerBuiltIn.h>
 #include <Physics/PhysicsInterface.h>
-#include <Renderer/GlobalSettings.h>
+#include <Renderer/RenderingSettings.h>
+#include <Renderer/VisibilitySettings.h>
 #include <Sample/LevelScene.h>
 
 std::shared_ptr<IGraphicsPlugin> CreateGraphicsPlugin_DesperabisD3D11(const std::shared_ptr<Options>& options, std::shared_ptr<IPlatformPlugin> platformPlugin);
@@ -22,6 +23,8 @@ std::shared_ptr<IGraphicsPlugin> CreateGraphicsPlugin_DesperabisD3D11(const std:
 FileManagerBuiltIn g_FileManager;
 NullPhysicsModule g_Physics;
 ProfilingStats g_profilingStats;
+RenderingSettings g_renderSettings;
+VisibilitySettings g_visSettings;
 std::unique_ptr<Scene> g_desperabisScene;
 std::chrono::steady_clock::time_point g_startTime;
 //XrVector3f g_playerPos = { -3.35817671f,0,18.9653301f }; // g_InitialLevel = 24 (Swamp);
@@ -72,9 +75,8 @@ namespace
 
 int main()
 {
-	GlobalSettings::SetRelativeGeometryScaling(g_globalScale);
-	GlobalSettings& settings = GlobalSettings::Instance();
-	settings.gamma = g_gamma;
+	RenderingSettings::SetRelativeGeometryScaling(g_globalScale);
+	g_renderSettings.gamma = g_gamma;
 
 	try {
 		// Parse command-line arguments into Options.

@@ -13,7 +13,7 @@ class RendererOGL;
 class RenderContextOGL : public RenderContext
 {
 public:
-    RenderContextOGL(Renderer& renderer, const VisibilityResult& elements, ProfilingStats& profiling);
+    RenderContextOGL(Renderer& renderer, const VisibilityResult& elements, const RenderingSettings& settings, ProfilingStats& profiling);
     ~RenderContextOGL() = default;
 
     template<GeometryPassType PASSTYPE>

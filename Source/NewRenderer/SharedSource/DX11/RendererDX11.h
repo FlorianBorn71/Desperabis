@@ -24,7 +24,7 @@ public:
     void Deinitialize();
 	void ReInitialize(ID3D11RenderTargetView1* colorView, ID3D11DepthStencilView* dsView, const D3D11_VIEWPORT& viewport);
 
-    virtual void RenderSceneElements(const VisibilityResult& elements, ProfilingStats& stats) override final;
+    virtual void RenderSceneElements(const VisibilityResult& elements, const RenderingSettings& renderSettings, ProfilingStats& stats) override final;
 
     virtual void CreateTexture(Texture& tex, TextureLoadingContext& data) override final;
     virtual void CloneTextureRuntime(Texture& tex, Texture& sourcetex) override final;

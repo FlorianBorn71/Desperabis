@@ -3,6 +3,8 @@
 #include <Renderer/VisibilityTileGrid.h>
 #include <Renderer/RendererCommon.h>
 #include <Renderer/RenderableInstance.h>
+#include <Renderer/RenderingSettings.h>
+#include <Renderer/VisibilitySettings.h>
 #include <Renderer/LightSource.h>
 #include <Renderer/Camera.h>
 
@@ -93,7 +95,7 @@ public:
     IVisibilityContext() = default;
     virtual ~IVisibilityContext() = default;
 
-    virtual void ComputeResultFor(const Camera* camera, const Scene* scene, VisibilityResult& result, uint32_t filterMask, ProfilingStats& out_stats) = 0;
+    virtual void ComputeResultFor(const Camera* camera, const Scene* scene, VisibilityResult& result, const RenderingSettings& renderSettings, const VisibilitySettings& visSettings, ProfilingStats& out_stats) = 0;
 
     Limits& AccessLimits() { return m_limits; }
 protected:
@@ -108,10 +110,10 @@ public:
     DefaultVisibilityContext() = default;
     virtual ~DefaultVisibilityContext() = default;
 
-    virtual void ComputeResultFor(const Camera* camera, const Scene* scene, VisibilityResult& result, uint32_t filterMask, ProfilingStats& out_stats) override;
+    virtual void ComputeResultFor(const Camera* camera, const Scene* scene, VisibilityResult& result, const RenderingSettings& renderSettings, const VisibilitySettings& visSettings, ProfilingStats& out_stats) override;
 
 protected:
-    void DetermineVisibleInstances(VisibilityResult& result, VisibilityResult::VisibleInstances& target, const Scene* scene, const Vector& cameraPos, const Frustum& camFrustum, const VisibilityTileGrid* grid, uint32_t filterMask, bool collectWaterReceiver);
+    void DetermineVisibleInstances(VisibilityResult& result, VisibilityResult::VisibleInstances& target, const Scene* scene, const Vector& cameraPos, const Frustum& camFrustum, const VisibilityTileGrid* grid, const VisibilitySettings& visSettings, bool collectWaterReceiver);
     bool m_performFrustumClipping = true;
     Frustum m_frustum;
     Frustum m_mirrorFrustum;

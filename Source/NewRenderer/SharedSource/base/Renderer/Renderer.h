@@ -1,6 +1,7 @@
 #pragma once
 #include <DesperabisCommon.h>
 #include <Renderer/RendererCommon.h>
+#include <Renderer/RenderingSettings.h>
 #include <Renderer/Visibility.h>
 #include <Renderer/DrawCall.h>
 #include <Renderer/IGraphicsRuntimeObject.h>
@@ -9,9 +10,10 @@
 class RenderContext
 {
 public:
-    RenderContext(Renderer& renderer, const VisibilityResult& elements, ProfilingStats& profiling)
+    RenderContext(Renderer& renderer, const VisibilityResult& elements, const RenderingSettings& settings, ProfilingStats& profiling)
         : m_baseRenderer(renderer)
         , m_elements(elements)
+        , m_settings(settings)
         , m_profiling(profiling)
     {
         m_passTypeStack[0] = RenderTargetPassType::MainView;
@@ -25,6 +27,7 @@ public:
 public:
     Renderer& m_baseRenderer;
     const VisibilityResult& m_elements;
+    const RenderingSettings& m_settings;
     ProfilingStats& m_profiling;
     bool m_isStereo = false;
     RenderTargetPassType m_renderTargetPass = RenderTargetPassType::MainView; // current pass type
@@ -54,11 +57,12 @@ public:
     void SetCurrentTime(double sec) { m_currentTime = sec; }
 
     template <typename CONTEXT_TYPE>
-    inline void RenderScene_Impl(const VisibilityResult& elements, ProfilingStats& stats);
+    inline void RenderScene_Impl(const VisibilityResult& elements, const RenderingSettings& renderSettings, ProfilingStats& stats);
 
-    void RenderScene(const Scene* scene, uint32_t filterMask, ProfilingStats* out_stats = nullptr); // helper function, uses default camera and visibility context
+    // helper function, uses default camera and visibility context
+    void RenderScene(const Scene* scene, const RenderingSettings& renderSettings, const VisibilitySettings& visSettings, ProfilingStats* out_stats = nullptr);
 
-    virtual void RenderSceneElements(const VisibilityResult& elements, ProfilingStats& out_stats) = 0;
+    virtual void RenderSceneElements(const VisibilityResult& elements, const RenderingSettings& renderSettings, ProfilingStats& out_stats) = 0;
     virtual void CreateTexture(Texture& tex, TextureLoadingContext& data) = 0;
     virtual void CloneTextureRuntime(Texture& tex, Texture& sourcetex) = 0;
     virtual std::shared_ptr<IGraphicsRuntimeObject> CreateModelBuffers(ModelConversionContext& data) = 0;

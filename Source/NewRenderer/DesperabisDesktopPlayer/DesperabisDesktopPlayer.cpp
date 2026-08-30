@@ -15,7 +15,9 @@
 #include <Sample/FreeCamera.h>
 #include <Sample/LevelScene.h>
 #include <Sample/RemoteScene.h>
-#include <Renderer/GlobalSettings.h>
+#include <Renderer/RenderingSettings.h>
+#include <Renderer/VisibilitySettings.h>
+#include <Asset/AssetSettings.h>
 
 #define MAX_LOADSTRING 100
 
@@ -59,6 +61,14 @@ namespace // DX
     bool g_timerRestart = true;
     bool g_connectToDOS = false;
     bool g_cameraGravity = false;
+
+    // settings for the main view:
+    RenderingSettings g_renderSettings;
+    VisibilitySettings g_visSettings{ (uint32_t)GamePlay::VisibilityFilter::NormalRendering };
+
+    // settings for the map view:
+    RenderingSettings g_mapRenderSettings;
+    VisibilitySettings g_mapVisSettings{ (uint32_t)GamePlay::VisibilityFilter::MapRendering };
 
     enum class CameraMode
     {
@@ -110,8 +120,8 @@ namespace // DX
 
     void UpdateGlobalSettings()
     {
-		GlobalSettings& settings = GlobalSettings::Instance();
-        MENUITEMINFO menuItem = { 0 };
+		RenderingSettings& settings = g_renderSettings;
+		MENUITEMINFO menuItem = { 0 };
 		menuItem.cbSize = sizeof(MENUITEMINFO);
 		menuItem.fMask = MIIM_STATE;
 		HMENU menu = GetMenu(hWnd);
@@ -122,15 +132,15 @@ namespace // DX
 				menuItem.fState = flag ? MFS_CHECKED : MFS_UNCHECKED;
 				SetMenuItemInfo(menu, id, FALSE, &menuItem);
 			};
-        auto SetQualityCheckmark = [&](int id, GlobalSettings::AssetQuality mode)
+		auto SetQualityCheckmark = [&](int id, AssetSettings::AssetQuality mode)
 			{
-                SetCheckState(id, mode == GlobalSettings::Instance().assetQuality);
+				SetCheckState(id, mode == AssetSettings::Instance().assetQuality);
 			};
 
 
-		SetQualityCheckmark(ID_RENDERER_ORIGINALASSETS, GlobalSettings::AssetQuality::Original);
-		SetQualityCheckmark(ID_RENDERER_WITHHIGHRES, GlobalSettings::AssetQuality::WithHighRes);
-        SetQualityCheckmark(ID_RENDERER_ONLYHIGHRES, GlobalSettings::AssetQuality::OnlyHighRes);
+		SetQualityCheckmark(ID_RENDERER_ORIGINALASSETS, AssetSettings::AssetQuality::Original);
+		SetQualityCheckmark(ID_RENDERER_WITHHIGHRES, AssetSettings::AssetQuality::WithHighRes);
+		SetQualityCheckmark(ID_RENDERER_ONLYHIGHRES, AssetSettings::AssetQuality::OnlyHighRes);
 
         SetCheckState(ID_CAMERA_GRAVITY, g_cameraGravity);
 		SetCheckState(ID_RENDERER_USEFOG, settings.useFog);
@@ -291,13 +301,17 @@ namespace // DX
 
     FUTURE(void) Desp_Init()
     {
-		GlobalSettings::SetRelativeGeometryScaling(g_globalScale);
+		RenderingSettings::SetRelativeGeometryScaling(g_globalScale);
 
         g_FileManager.Initialize();
         g_FileManager.AddExternalDataDir("D:\\privat\\repos\\SheetMusicOverlay\\Desperabis\\DeperabisBrowser\\Experimental\\AI.Nero");
 
-		GlobalSettings& settings = GlobalSettings::Instance();
-        settings.gridVisibility = false;
+		g_renderSettings.gridVisibility = false;
+
+		// the map is rendered as a top down overview, so no fog and always fullbright
+		g_mapRenderSettings = g_renderSettings;
+		g_mapRenderSettings.useFog = false;
+		g_mapRenderSettings.fullbrightRendering = true;
 
         // we need the renderer first...
         CO_AWAIT g_RendererDX11.Initialize(
@@ -735,19 +749,12 @@ namespace // DX
         g_d3dContext->ClearRenderTargetView(g_mapRenderTargetView.Get(), clearCol);
         g_d3dContext->ClearDepthStencilView(g_mapDepthStencilView.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
-        GlobalSettings& settings = GlobalSettings::Instance();
-        bool restoreFog = settings.useFog;
-        settings.useFog = false;
-
         if (g_mapCamera != nullptr)
         {
             Renderer::Instance().SetCamera(g_mapCamera);
         }
         Renderer::Instance().SetCurrentTime(g_currentTime);
-        uint32_t filterMask = (uint32_t)GamePlay::VisibilityFilter::MapRendering;
-        Renderer::Instance().RenderScene(g_desperabisScene.get(), filterMask, nullptr);
-
-        settings.useFog = restoreFog;
+        Renderer::Instance().RenderScene(g_desperabisScene.get(), g_mapRenderSettings, g_mapVisSettings, nullptr);
 
         g_mapSwapChain->Present(1, 0);
     }
@@ -760,7 +767,7 @@ namespace // DX
         ID3D11RenderTargetView* const targets[1] = { g_d3dRenderTargetView.Get() };
         g_d3dContext->OMSetRenderTargets(1, targets, g_d3dDepthStencilView.Get());
 
-        const GlobalSettings& settings = GlobalSettings::Instance();
+        const RenderingSettings& settings = g_renderSettings;
 
         // clear
 		Vector4 clearCol = { 0.05f, 0.06f, 0.08f, 1.f };
@@ -780,8 +787,7 @@ namespace // DX
             Renderer::Instance().SetCamera(g_mainCamera);
         }
         Renderer::Instance().SetCurrentTime(g_currentTime);
-        uint32_t filterMask = (uint32_t)GamePlay::VisibilityFilter::NormalRendering;
-        Renderer::Instance().RenderScene(g_desperabisScene.get(), filterMask, &g_profilingStats);
+        Renderer::Instance().RenderScene(g_desperabisScene.get(), g_renderSettings, g_visSettings, &g_profilingStats);
         g_profilingStats.Update();
 
         g_swapChain->Present(1, 0);
@@ -939,7 +945,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 //
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	GlobalSettings& settings = GlobalSettings::Instance();
+	RenderingSettings& settings = g_renderSettings;
     switch (message)
     {
     case WM_COMMAND:
@@ -982,22 +988,25 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             case ID_GAME_CREATEMAPSCREENSHOT:
                 OpenMapScreenshotWindow();
                 break;
-            case ID_RENDERER_ORIGINALASSETS:
-                settings.assetQuality = GlobalSettings::AssetQuality::Original;
-                UpdateGlobalSettings();
-                break;
-            case ID_RENDERER_WITHHIGHRES:
-				settings.assetQuality = GlobalSettings::AssetQuality::WithHighRes;
+			case ID_RENDERER_ORIGINALASSETS:
+				AssetSettings::Instance().assetQuality = AssetSettings::AssetQuality::Original;
+				UpdateGlobalSettings();
+				break;
+			case ID_RENDERER_WITHHIGHRES:
+				AssetSettings::Instance().assetQuality = AssetSettings::AssetQuality::WithHighRes;
 				UpdateGlobalSettings();
 				break;
 			case ID_RENDERER_ONLYHIGHRES:
-				settings.assetQuality = GlobalSettings::AssetQuality::OnlyHighRes;
+				AssetSettings::Instance().assetQuality = AssetSettings::AssetQuality::OnlyHighRes;
 				UpdateGlobalSettings();
 				break;
-            case ID_RENDERER_TOGGLEASSETMODE:
-				settings.assetQuality = (settings.assetQuality== GlobalSettings::AssetQuality::Original) ? GlobalSettings::AssetQuality::WithHighRes : GlobalSettings::AssetQuality::Original;
+			case ID_RENDERER_TOGGLEASSETMODE:
+			{
+				AssetSettings::AssetQuality& quality = AssetSettings::Instance().assetQuality;
+				quality = (quality == AssetSettings::AssetQuality::Original) ? AssetSettings::AssetQuality::WithHighRes : AssetSettings::AssetQuality::Original;
 				UpdateGlobalSettings();
 				break;
+			}
             case ID_RENDERER_USEFOG:
                 settings.useFog = !settings.useFog;
 				UpdateGlobalSettings();

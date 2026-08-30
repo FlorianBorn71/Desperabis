@@ -228,9 +228,9 @@ void RendererDX11::Deinitialize()
 }
 
 
-void RendererDX11::RenderSceneElements(const VisibilityResult& elements, ProfilingStats& stats)
+void RendererDX11::RenderSceneElements(const VisibilityResult& elements, const RenderingSettings& renderSettings, ProfilingStats& stats)
 {
-    RenderScene_Impl<RenderContextDX11>(elements, stats);
+    RenderScene_Impl<RenderContextDX11>(elements, renderSettings, stats);
 }
 
 void RendererDX11::CreateAtlasDataCB(Texture& tex, NativeTextureObjectDX11& runtime)

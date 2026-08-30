@@ -128,7 +128,7 @@ using RenderablePtr = std::shared_ptr<Renderable>;
 using RenderableInstancePtr = std::shared_ptr<RenderableInstance>;
 using byte = unsigned char;
 
-// See also GlobalSettings::SetRelativeGeometryScaling
+// See also RenderingSettings::SetRelativeGeometryScaling
 extern float DespToFloat;
 extern float DespVertToFloat;
 extern float DespSpriteToFloat;

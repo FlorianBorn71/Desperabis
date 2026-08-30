@@ -2,7 +2,7 @@
 #include <DesperabisCommon.h>
 #include <Asset/AssetBase.h>
 #include <Asset/ModelGeometry.h>
-#include <Renderer/GlobalSettings.h>
+#include <Asset/AssetSettings.h>
 
 struct TextureLoadingContext
 {
@@ -35,9 +35,9 @@ public:
     template<typename T>
     inline T* GetNativeRuntimeObj() const 
     { 
-        if (GlobalSettings::Instance().assetQuality == GlobalSettings::AssetQuality::Original)
+		if (AssetSettings::Instance().assetQuality == AssetSettings::AssetQuality::Original)
 			return static_cast<T*>(m_runtime.get());
-		if (GlobalSettings::Instance().assetQuality == GlobalSettings::AssetQuality::OnlyHighRes || m_runtimeHighres != nullptr)
+		if (AssetSettings::Instance().assetQuality == AssetSettings::AssetQuality::OnlyHighRes || m_runtimeHighres != nullptr)
 			return static_cast<T*>(m_runtimeHighres.get());
 		return static_cast<T*>(m_runtime.get());
     }

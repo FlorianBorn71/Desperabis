@@ -26,8 +26,8 @@ static const DepthWriteMode BlendModeToDepthMode[(int)TransparencyMode::Transpar
 };
 
 
-RenderContextDX11::RenderContextDX11(Renderer& renderer, const VisibilityResult& elements, ProfilingStats& profiling)
-    : RenderContext(renderer, elements, profiling)
+RenderContextDX11::RenderContextDX11(Renderer& renderer, const VisibilityResult& elements, const RenderingSettings& settings, ProfilingStats& profiling)
+    : RenderContext(renderer, elements, settings, profiling)
     , m_rendererDX11((RendererDX11&)renderer)
 {
     m_d3dContext = m_rendererDX11.m_d3dContext;
@@ -105,7 +105,7 @@ void RenderContextDX11::TrackGlobals()
     assert(renderTarget != nullptr);
     m_isStereo = camera->IsStereo();
 
-	const GlobalSettings& settings = GlobalSettings::Instance();
+	const RenderingSettings& settings = m_settings;
     Renderer::GlobalsData& globals(m_rendererDX11.m_globalsData);
     if (m_renderTargetPass == RenderTargetPassType::MainView)
     {

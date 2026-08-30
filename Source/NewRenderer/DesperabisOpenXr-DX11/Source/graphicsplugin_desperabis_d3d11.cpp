@@ -21,10 +21,13 @@
 #include <Asset/GridCellArray.h>
 #include <DX11/RendererDX11.h>
 #include <IO/FileManager.h>
-#include <Renderer/GlobalSettings.h>
+#include <Renderer/RenderingSettings.h>
+#include <Renderer/VisibilitySettings.h>
 
 RendererDX11 g_RendererDX11;
 extern ProfilingStats g_profilingStats;
+extern RenderingSettings g_renderSettings;
+extern VisibilitySettings g_visSettings;
 extern std::unique_ptr<Scene> g_desperabisScene;
 extern double g_currentTime;
 extern XrVector3f g_playerPos;
@@ -76,8 +79,7 @@ struct DesperabisD3D11GraphicsPlugin : public IGraphicsPlugin {
 
 	FUTURE(void) Desp_Init()
 	{
-		GlobalSettings& settings = GlobalSettings::Instance();
-		settings.gridVisibility = false;
+		g_renderSettings.gridVisibility = false;
 
 		ComPtr<ID3D11Device3> d3dDevice;
 		ComPtr<ID3D11DeviceContext3> d3dContext;
@@ -279,7 +281,7 @@ struct DesperabisD3D11GraphicsPlugin : public IGraphicsPlugin {
 
         ComPtr<ID3D11DepthStencilView> depthStencilView = GetDepthStencilView(colorTexture);
 
-		const GlobalSettings& settings = GlobalSettings::Instance();
+		const RenderingSettings& settings = g_renderSettings;
         if (g_desperabisScene != nullptr && g_desperabisScene->IsReady())
         {
             Vector4 clearCol = g_desperabisScene->GetClearColor();
@@ -330,8 +332,7 @@ struct DesperabisD3D11GraphicsPlugin : public IGraphicsPlugin {
             cam->SetViewMatrix(despView);
 
             g_RendererDX11.SetCurrentTime(g_currentTime);
-            uint32_t filterMask = 0xffffffff;
-            g_RendererDX11.RenderScene(g_desperabisScene.get(), filterMask, &g_profilingStats);
+            g_RendererDX11.RenderScene(g_desperabisScene.get(), g_renderSettings, g_visSettings, &g_profilingStats);
             g_profilingStats.Update();
         }
 
