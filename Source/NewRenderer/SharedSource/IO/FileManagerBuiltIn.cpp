@@ -16,6 +16,7 @@ void RegisterFiles_BuiltInGRAFIK();
 void RegisterFiles_BuiltInLEVEL();
 void RegisterFiles_BuiltInVEKT();
 void RegisterFiles_BuiltInSAMP();
+void RegisterFiles_BuiltInMapIcons();
 
 void FileManagerBuiltIn::Initialize()
 {
@@ -25,6 +26,7 @@ void FileManagerBuiltIn::Initialize()
 	RegisterFiles_BuiltInGRAFIK();
 	RegisterFiles_BuiltInLEVEL();
 	RegisterFiles_BuiltInVEKT();
+	RegisterFiles_BuiltInMapIcons();
 }
 
 void FileManagerBuiltIn::Deinitialize()

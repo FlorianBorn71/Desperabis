@@ -18,6 +18,8 @@ FUTURE(void) AssetManager::Initialize()
     m_pointTex.CreatePointTexture();
     m_coronaTex.CreateCoronaTexture();
 
+    CO_AWAIT LoadMapIcons();
+
     CO_AWAIT CreateDefaultShapes();
                     
     m_isReady = true;
@@ -26,6 +28,10 @@ FUTURE(void) AssetManager::Initialize()
 
 void AssetManager::Deinitialize()
 {
+    for (auto& icon : m_mapIcons)
+    {
+        icon = nullptr;
+    }
     m_loadedAssets.clear();
     m_plainWhiteTex.Reset();
     m_pointTex.Reset();
@@ -130,6 +136,15 @@ FUTURE(void) AssetManager::LoadLevelInfo()
 #endif
 }
 
+FUTURE(void) AssetManager::LoadMapIcons()
+{
+    m_mapIcons[(int)MapIconType::Key] = CO_AWAIT LoadAsset<TextureTGA>(L"textures\\mapicons\\key.tga");
+    m_mapIcons[(int)MapIconType::Medicine] = CO_AWAIT LoadAsset<TextureTGA>(L"textures\\mapicons\\medicine.tga");
+    m_mapIcons[(int)MapIconType::Gold] = CO_AWAIT LoadAsset<TextureTGA>(L"textures\\mapicons\\gold.tga");
+    m_mapIcons[(int)MapIconType::Fireball] = CO_AWAIT LoadAsset<TextureTGA>(L"textures\\mapicons\\fireballs.tga");
+    m_mapIcons[(int)MapIconType::Stone] = CO_AWAIT LoadAsset<TextureTGA>(L"textures\\mapicons\\stone.tga");
+}
+
 FUTURE(void) AssetManager::CreateDefaultShapes()
 {
     m_spriteRenderable[0] = GeometryUtils::CreateSpriteMesh(false);
@@ -138,7 +153,8 @@ FUTURE(void) AssetManager::CreateDefaultShapes()
     m_cubeRenderable = GeometryUtils::CreateCubeMesh(0.5f, 0.5f, 0.5f);
 
     m_burningObjectMesh = GeometryUtils::CreateBurningObjectMesh(1024);
-	m_cameraFacingQuadRenderable = GeometryUtils::CreateCameraBillboardQuadMesh(1.0f, 1.0f);
+	// alpha=0 avoids billboard emissive term washing icon RGB to white
+	m_cameraFacingQuadRenderable = GeometryUtils::CreateCameraBillboardQuadMesh(1.0f, 1.0f, { 255,255,255,0 });
 
     m_weaponAnim = CO_AWAIT LoadAsset<TextureAnim>(L"ANIMS\\ANIM4.AN2");
     TextureAnimFrame* burning0 = m_weaponAnim->GetFrame(0, 0);

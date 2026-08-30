@@ -51,3 +51,12 @@ public:
 	std::shared_ptr<IGraphicsRuntimeObject> m_runtimeHighres;
 };
 
+
+// A texture that is loaded from an uncompressed true color .tga file.
+// Pure black pixels are used as color key and become fully transparent.
+class D_IMPEXP TextureTGA : public Texture
+{
+public:
+	virtual void Read(AssetStream& stream) override;
+};
+

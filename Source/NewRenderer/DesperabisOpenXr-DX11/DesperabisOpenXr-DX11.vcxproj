@@ -151,6 +151,7 @@
     <ClCompile Include="..\SharedSource\IO\builtin\BuiltInGRAFIK.cpp" />
     <ClCompile Include="..\SharedSource\IO\builtin\BuiltInLEVEL.cpp" />
     <ClCompile Include="..\SharedSource\IO\builtin\BuiltInVEKT.cpp" />
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInMapIcons.cpp" />
     <ClCompile Include="..\SharedSource\IO\FileManagerBuiltIn.cpp" />
     <ClCompile Include="..\SharedSource\Sample\FreeCamera.cpp" />
     <ClCompile Include="..\SharedSource\Sample\LevelScene.cpp" />

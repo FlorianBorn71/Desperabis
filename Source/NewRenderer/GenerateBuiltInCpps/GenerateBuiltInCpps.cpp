@@ -81,6 +81,35 @@ int main()
     }
 
     //////////////////////////////////////////////////////////////////////
+    // Map icons
+    //////////////////////////////////////////////////////////////////////
+    if (true)
+    {
+        std::cout << "Generate MapIcons\n";
+        std::filesystem::path additionalAssetPath = cwd;
+        additionalAssetPath.append("..\\AdditionalAssets");
+        std::filesystem::path cppOutPath = cwd;
+        cppOutPath.append("..\\SharedSource\\IO\\builtin");
+        assert(std::filesystem::exists(additionalAssetPath));
+        assert(std::filesystem::exists(cppOutPath));
+
+        std::vector<std::filesystem::path> listOfFiles;
+        std::vector<std::string> outFiles;
+        listOfFiles.push_back(additionalAssetPath / "textures/mapicons/key.tga"); outFiles.push_back("textures/mapicons/key.tga");
+        listOfFiles.push_back(additionalAssetPath / "textures/mapicons/medicine.tga"); outFiles.push_back("textures/mapicons/medicine.tga");
+        listOfFiles.push_back(additionalAssetPath / "textures/mapicons/gold.tga"); outFiles.push_back("textures/mapicons/gold.tga");
+        listOfFiles.push_back(additionalAssetPath / "textures/mapicons/fireballs.tga"); outFiles.push_back("textures/mapicons/fireballs.tga");
+        listOfFiles.push_back(additionalAssetPath / "textures/mapicons/stone.tga"); outFiles.push_back("textures/mapicons/stone.tga");
+
+        BuiltInCppFileGenerator::GenerateCpp(
+            cppOutPath / "BuiltInMapIcons.cpp",
+            "RegisterFiles_BuiltInMapIcons",
+            listOfFiles,
+            outFiles
+        );
+    }
+
+    //////////////////////////////////////////////////////////////////////
     // OpenGL
     //////////////////////////////////////////////////////////////////////
     if (false)

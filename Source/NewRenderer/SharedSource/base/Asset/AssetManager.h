@@ -9,6 +9,18 @@
 #include <IO/FileManager.h>
 #include <Renderer/Renderer.h>
 
+// icons that are shown on the map for collectable items
+enum class MapIconType
+{
+    Key,
+    Medicine,
+    Gold,
+    Fireball,
+    Stone,
+
+    Count
+};
+
 class D_IMPEXP AssetManager
 {
 public:
@@ -36,6 +48,7 @@ public:
     Texture* GetPlainWhiteTexture() { return &m_plainWhiteTex; }
     Texture* GetPointTexture() { return &m_pointTex; }
     Texture* GetCoronaTexture() { return &m_coronaTex; }
+    Texture* GetMapIconTexture(MapIconType type) { return m_mapIcons[(int)type].get(); }
 	Texture* GetFlameTexture(int frame) { return m_weaponAnim->GetFrame(0, frame);}
     int GetNumFlameFrames() const { return 2; }
     std::shared_ptr<Renderable> GetSpriteRenderable(bool flipped) { return m_spriteRenderable[flipped ? 1 : 0]; }
@@ -51,6 +64,7 @@ private:
     template<typename ASSET_TYPE>
     FUTURE(std::shared_ptr<ASSET_TYPE>) LoadAssetImpl(std::shared_ptr<ASSET_TYPE> asset, std::wstring_view filename);
     FUTURE(void) LoadLevelInfo();
+    FUTURE(void) LoadMapIcons();
     FUTURE(void) CreateDefaultShapes();
 
     std::mutex m_loadingMutex;
@@ -58,6 +72,7 @@ private:
     Texture m_plainWhiteTex;
     Texture m_pointTex;
     Texture m_coronaTex;
+    std::shared_ptr<TextureTGA> m_mapIcons[(int)MapIconType::Count];
     std::shared_ptr<Renderable> m_spriteRenderable[2]; // flipped or not
     std::shared_ptr<Renderable> m_cubeRenderable;
     std::shared_ptr<Renderable> m_cameraFacingQuadRenderable;

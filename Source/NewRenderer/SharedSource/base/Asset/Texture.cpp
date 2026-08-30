@@ -209,3 +209,102 @@ void Texture::CreateCoronaTexture()
 
     Renderer::Instance().CreateTexture(*this, thisData);
 }
+
+namespace
+{
+#pragma pack(push, 1)
+    struct TGAHeader
+    {
+        uint8_t idLength;
+        uint8_t colorMapType;
+        uint8_t imageType;
+        uint16_t colorMapOrigin;
+        uint16_t colorMapLength;
+        uint8_t colorMapDepth;
+        uint16_t xOrigin;
+        uint16_t yOrigin;
+        uint16_t imageWidth;
+        uint16_t imageHeight;
+        uint8_t pixelDepth;
+        uint8_t imageDescriptor;
+    };
+#pragma pack(pop)
+    static_assert(sizeof(TGAHeader) == 18);
+
+    constexpr uint8_t TGAColorMappedImage = 1;
+    constexpr uint8_t TGATrueColorImage = 2;
+
+    Color4 ReadTGAColor(AssetStream& stream, bool hasAlphaChannel)
+    {
+        byte b = stream.Read<byte>();
+        byte g = stream.Read<byte>();
+        byte r = stream.Read<byte>();
+        byte a = hasAlphaChannel ? stream.Read<byte>() : (byte)255;
+        if (r == 0 && g == 0 && b == 0)
+        {
+            a = 0;
+        }
+        return { r, g, b, a };
+    }
+}
+
+void TextureTGA::Read(AssetStream& stream)
+{
+    TGAHeader header = {};
+    if (stream.Read((char*)&header, sizeof(header)) != sizeof(header))
+    {
+        assert(false && "Not a valid .tga file");
+        return;
+    }
+
+    const bool isTrueColor = header.colorMapType == 0 && header.imageType == TGATrueColorImage
+        && (header.pixelDepth == 24 || header.pixelDepth == 32);
+    const bool isColorMapped = header.colorMapType == 1 && header.imageType == TGAColorMappedImage
+        && header.pixelDepth == 8 && (header.colorMapDepth == 24 || header.colorMapDepth == 32)
+        && (uint32_t)header.colorMapOrigin + header.colorMapLength <= 256;
+    if (!isTrueColor && !isColorMapped)
+    {
+        assert(false && "Only uncompressed true color or 8-bit color mapped .tga files are supported");
+        return;
+    }
+
+    // skip the optional image id field
+    for (int i = 0; i < (int)header.idLength; i++)
+    {
+        stream.Read<byte>();
+    }
+
+    Color4 colorMap[256] = {};
+    if (isColorMapped)
+    {
+        const bool colorMapHasAlpha = header.colorMapDepth == 32;
+        for (int i = 0; i < header.colorMapLength; i++)
+        {
+            colorMap[header.colorMapOrigin + i] = ReadTGAColor(stream, colorMapHasAlpha);
+        }
+    }
+
+    m_width = header.imageWidth;
+    m_height = header.imageHeight;
+    if (m_width == 0 || m_height == 0)
+        return;
+
+    TextureLoadingContext context;
+    context.m_rgbaData.resize((int)m_width * (int)m_height);
+
+    const bool topDown = (header.imageDescriptor & 0x20) != 0;
+    const bool trueColorHasAlpha = header.pixelDepth == 32;
+    for (int y = 0; y < m_height; y++)
+    {
+        const int destRow = topDown ? y : (m_height - 1 - y);
+        Color4* dest = context.m_rgbaData.data() + destRow * m_width;
+        for (int x = 0; x < m_width; x++, dest++)
+        {
+            *dest = isColorMapped ? colorMap[stream.Read<byte>()] : ReadTGAColor(stream, trueColorHasAlpha);
+            m_hasAlpha |= dest->a != 255;
+        }
+    }
+
+    SetDefaultParams();
+    Renderer::Instance().CreateTexture(*this, context);
+}

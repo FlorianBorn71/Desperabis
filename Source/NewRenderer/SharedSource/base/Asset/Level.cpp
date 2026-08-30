@@ -497,12 +497,28 @@ namespace
     Texture* GetTextureForMapIcon(const RawGameObject& rawGO)
     {
         GamePlay::PropertyAccessorBase props(rawGO);
-        if (props.GetCollisionType() == GamePlay::CollisionType::Key)
+        switch (props.GetCollisionType())
         {
-            return AssetManager::Instance().GetPlainWhiteTexture();
+        case GamePlay::CollisionType::Key:
+            return AssetManager::Instance().GetMapIconTexture(MapIconType::Key);
+        case GamePlay::CollisionType::Medicine:
+            return AssetManager::Instance().GetMapIconTexture(MapIconType::Medicine);
+        case GamePlay::CollisionType::Gold:
+            return AssetManager::Instance().GetMapIconTexture(MapIconType::Gold);
+        case GamePlay::CollisionType::Weapon:
+        case GamePlay::CollisionType::Ammo:
+            switch (GamePlay::PropertyAccessorWeapon(rawGO).GetWeaponType())
+            {
+            case GamePlay::WeaponType::Fireball:
+                return AssetManager::Instance().GetMapIconTexture(MapIconType::Fireball);
+            case GamePlay::WeaponType::Stone:
+                return AssetManager::Instance().GetMapIconTexture(MapIconType::Stone);
+            default:
+                return nullptr;
+            }
+        default:
+            return nullptr;
         }
-        // Implementation needed
-        return nullptr;
     }
 
 } // anonymous namespace
@@ -1370,14 +1386,14 @@ FUTURE(void) Level::PopulateScene(Scene& scene, bool createGameObjects, bool add
                     RenderablePtr quadMesh = AssetManager::Instance().GetCameraFacingQuadRenderable();
                     RenderableInstancePtr mapInst = std::make_shared<RenderableInstance>(quadMesh.get(), (uint32_t)GamePlay::VisibilityFilter::MapIcons);
                     mapInst->SetDebugName("ItemHighlight");
-                    mapInst->m_tintColor = { 0, 255, 0, 255 };
+                    mapInst->m_tintColor = { 255, 255, 255, 255 };
                     Vector pos = go->GetPosition();
-                    pos.Set(pos.GetX(), pos.GetY(), pos.GetZ());
+                    pos.Set(pos.GetX(), pos.GetY() + 200.f * DespToFloat, pos.GetZ());
                     mapInst->SetTransform(pos, Vector(0, 0, 0));
-                    mapInst->m_uniformScale = 50.f * DespToFloat;
+                    mapInst->m_uniformScale = 100.f * DespToFloat;
                     DrawCallMaterial& overrideMat = mapInst->m_materialOverride.emplace_back();
                     overrideMat = quadMesh->m_drawCalls[0].m_material;
-                    overrideMat.m_transparencyType = TransparencyMode::Opaque;
+                    overrideMat.m_transparencyType = TransparencyMode::AlphaBlended;
                     overrideMat.m_texture = mapIconTexture;
                     overrideMat.m_opacity = 1.f;
                     overrideMat.m_applyLighting = false;

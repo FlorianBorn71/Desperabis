@@ -83,7 +83,7 @@ void ModelVertex::SetCameraBillboard(uint16_t v0, const Color4& color, const Vec
 #ifdef USE_VERTEX_COLOR
     Color = color;
 #endif
-    TexCoord = corner;
+    TexCoord = { corner.x, 1.f - corner.y };
     // the shader uses the stretch params directly as the screen space corner offset
     StretchParams = { (corner.x - 0.5f) * width, (corner.y - 0.5f) * height };
 }
