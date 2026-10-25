@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "fileName": "DESPERAB.EXE",
+  "sha256": "219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318",
+  "fileBytes": 203760,
+  "format": "DOS MZ",
+  "headerBytes": 11584,
+  "declaredImageBytes": 203760,
+  "loadModuleBytes": 192176,
+  "trailingBytes": 0,
+  "relocationTableFileOffset": 28,
+  "relocationCount": 2888,
+  "relocationTargetsValidated": true,
+  "overlayNumber": 0,
+  "minimumExtraParagraphs": 4937,
+  "maximumExtraParagraphs": 45897,
+  "entryPoint": {
+    "moduleRelativeSegmentOffset": "0000:ED60",
+    "moduleLinearOffset": 60768,
+    "fileOffset": 72352,
+    "bytes": "9A 00 00 E4 2C 9A AD 09 E4 2C 9A 00 00 82 2C 9A 4C 03 3A 2C 9A 00 00 39 2C 9A BC DE 48 1E 9A B3"
+  },
+  "initialStack": {
+    "moduleRelativeSegment": "3E34",
+    "offset": "4000"
+  }
+}

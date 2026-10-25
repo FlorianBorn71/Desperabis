@@ -1,0 +1,4 @@
+# Local tool installations, Ghidra databases, and runtime captures.
+/tools/
+/projects/
+/captures/

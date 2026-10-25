@@ -1,0 +1,41 @@
+Desperabis original executable: initial Ghidra import
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Format: Old-style DOS Executable (MZ)
+Language: x86:LE:16:Real Mode
+Compiler spec: default
+Analysis: disabled (-noanalysis); no inferred function boundaries
+Module load segment in this analysis: 1000 (not a runtime observation)
+Module-relative entry: 0000:ED60; file offset: 0x11AA0
+Ghidra entry: 1000:ed60
+Entry relocation verified: far-call segment 2CE4 -> 3CE4
+Relocated entry bytes: 9A 00 00 E4 3C 9A AD 09 E4 3C 9A 00 00 82 3C 9A 4C 03 3A 3C 9A 00 00 39 3C 9A BC DE 48 2E 9A B3
+
+Memory blocks (Ghidra addresses):
+CODE_0 1000:0000..1000:eeff size=0xEF00 initialized=true
+CODE_1 1ef0:0000..1ef0:1bbf size=0x1BC0 initialized=true
+CODE_2 20ac:0000..20ac:d9bf size=0xD9C0 initialized=true
+CODE_3 2e48:0000..2e48:df19 size=0xDF1A initialized=true
+CODE_4 3c39:000a..3c39:000f size=0x6 initialized=true
+CODE_5 3c3a:0000..3c3a:036f size=0x370 initialized=true
+CODE_6 3c71:0000..3c71:010f size=0x110 initialized=true
+CODE_7 3c82:0000..3c82:061f size=0x620 initialized=true
+CODE_8 3ce4:0000..3ce4:1b9f size=0x1BA0 initialized=true
+CODE_9 3e9e:0000..3e9e:04cf size=0x4D0 initialized=true
+DATA 3e9e:04d0..5000:233f size=0x13490 initialized=false
+HEADER HEADER::00000000..HEADER::00002d3f size=0x2D40 initialized=true
+
+First 12 entry instructions (ephemeral decoding, not function recovery):
+1000:ed60  CALLF 0x3000:ce40
+1000:ed65  CALLF 0x3000:d7ed
+1000:ed6a  CALLF 0x3000:c820
+1000:ed6f  CALLF 0x3000:c6ec
+1000:ed74  CALLF 0x3000:c390
+1000:ed79  CALLF 0x3000:c33c
+1000:ed7e  CALLF 0x2000:e473
+1000:ed83  CALLF 0x2000:0aaf
+1000:ed88  ENTER 0x200,0x0
+1000:ed8c  MOV DI,0xed42
+1000:ed8f  PUSH CS
+1000:ed90  PUSH DI
+
+Verification: PASS
