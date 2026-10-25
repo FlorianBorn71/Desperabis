@@ -1,0 +1,2509 @@
+{
+  "schemaVersion": 1,
+  "executableSha256": "219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318",
+  "rendererHeaderSha256": "64dd0ede9185311cf385f7477cd988f86cb2c77bf4ca72e29c08e0bf60e342c4",
+  "functionEntry": "0000:1094",
+  "selectorLoad": "0000:114D",
+  "commonPostprocessing": "0000:5110",
+  "specificCaseCount": 186,
+  "sentinelCaseCount": 1,
+  "referenceScope": "Reachable instructions inside each case, stopping before common postprocessing; callees not followed. Direct absolute DS operands only.",
+  "cases": [
+    {
+      "value": 0,
+      "name": "None",
+      "namedInRenderer": true,
+      "hasSpecificCase": false,
+      "entry": "0000:5110",
+      "reachableInstructionCount": 0,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 1,
+      "name": "Behavior_1",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:1167",
+      "reachableInstructionCount": 14,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:2A2E"
+      ]
+    },
+    {
+      "value": 2,
+      "name": "Behavior_2",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:1198",
+      "reachableInstructionCount": 84,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:07F2",
+        "10AC:10F5",
+        "1E48:2B33"
+      ]
+    },
+    {
+      "value": 3,
+      "name": "Behavior_3",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:1297",
+      "reachableInstructionCount": 14,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:24A7"
+      ]
+    },
+    {
+      "value": 4,
+      "name": "Behavior_4",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:12C8",
+      "reachableInstructionCount": 51,
+      "directGlobals": [
+        "DS:8284",
+        "DS:8288",
+        "DS:D4D2",
+        "DS:D4D4",
+        "DS:D4D6"
+      ],
+      "directCalls": [
+        "10AC:2182",
+        "1E48:D001",
+        "1E48:D15C"
+      ]
+    },
+    {
+      "value": 5,
+      "name": "Behavior_5",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:1369",
+      "reachableInstructionCount": 7,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 6,
+      "name": "Behavior_6",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:1386",
+      "reachableInstructionCount": 44,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 7,
+      "name": "Behavior_7",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:1416",
+      "reachableInstructionCount": 28,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 8,
+      "name": "Pillar",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:146B",
+      "reachableInstructionCount": 7,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:387B"
+      ]
+    },
+    {
+      "value": 9,
+      "name": "LightSource",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1488",
+      "reachableInstructionCount": 39,
+      "directGlobals": [
+        "DS:05D0",
+        "DS:05D2",
+        "DS:DC34"
+      ],
+      "directCalls": [
+        "10AC:0000",
+        "1E48:D15C",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 10,
+      "name": "Door",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:14FF",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:3F56"
+      ]
+    },
+    {
+      "value": 11,
+      "name": "Behavior_11",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:1515",
+      "reachableInstructionCount": 46,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:0767",
+        "1E48:0A25",
+        "1E48:1B45",
+        "1E48:CF49"
+      ]
+    },
+    {
+      "value": 12,
+      "name": "Frog",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:15C1",
+      "reachableInstructionCount": 14,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:8BC4"
+      ]
+    },
+    {
+      "value": 13,
+      "name": "RatAndSnake",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:15EF",
+      "reachableInstructionCount": 14,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:3058"
+      ]
+    },
+    {
+      "value": 14,
+      "name": "BatIndoor",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:161D",
+      "reachableInstructionCount": 24,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:3391"
+      ]
+    },
+    {
+      "value": 15,
+      "name": "IdleAnimation",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1666",
+      "reachableInstructionCount": 13,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 16,
+      "name": "Flies",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1690",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:C9EC"
+      ]
+    },
+    {
+      "value": 17,
+      "name": "BatOutdoor",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:16A3",
+      "reachableInstructionCount": 21,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:5BE7"
+      ]
+    },
+    {
+      "value": 18,
+      "name": "Behavior_18",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:16E5",
+      "reachableInstructionCount": 62,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:00B5"
+      ]
+    },
+    {
+      "value": 19,
+      "name": "FireFly",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:17A6",
+      "reachableInstructionCount": 40,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:3391",
+        "1E48:00B5",
+        "1E48:0AA0",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 21,
+      "name": "Behavior_21",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:181E",
+      "reachableInstructionCount": 56,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:384E",
+        "1E48:00B5",
+        "1E48:0A6C",
+        "2CE4:0E1C",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 22,
+      "name": "BurningFireplace",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:18C6",
+      "reachableInstructionCount": 96,
+      "directGlobals": [
+        "DS:05D2"
+      ],
+      "directCalls": [
+        "10AC:0000",
+        "10AC:091C",
+        "1E48:D001",
+        "1E48:D15C",
+        "2CE4:0E1C",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 23,
+      "name": "PulsatingLight",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:19CD",
+      "reachableInstructionCount": 66,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:0000",
+        "1E48:0000",
+        "1E48:0A6C",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 24,
+      "name": "SmokeFading",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1A9D",
+      "reachableInstructionCount": 43,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:384E",
+        "1E48:0A6C"
+      ]
+    },
+    {
+      "value": 25,
+      "name": "Behavior_25",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:1B24",
+      "reachableInstructionCount": 17,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 26,
+      "name": "DestroyableBarrier",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1B64",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:8F1E"
+      ]
+    },
+    {
+      "value": 27,
+      "name": "VerticalConcreteSlab",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1B77",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:8FCA"
+      ]
+    },
+    {
+      "value": 28,
+      "name": "Behavior_28",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:1B8A",
+      "reachableInstructionCount": 9,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:0000",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 29,
+      "name": "RollingRock",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1BAD",
+      "reachableInstructionCount": 18,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:5DEC"
+      ]
+    },
+    {
+      "value": 30,
+      "name": "Skeleton",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1BE9",
+      "reachableInstructionCount": 14,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:4DAB"
+      ]
+    },
+    {
+      "value": 31,
+      "name": "Cockroach",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1C17",
+      "reachableInstructionCount": 14,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:7764"
+      ]
+    },
+    {
+      "value": 33,
+      "name": "Behavior_33",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:1C45",
+      "reachableInstructionCount": 27,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 34,
+      "name": "RollingRockSlope",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1CA6",
+      "reachableInstructionCount": 17,
+      "directGlobals": [
+        "DS:D504",
+        "DS:D506"
+      ],
+      "directCalls": [
+        "1E48:CF8B"
+      ]
+    },
+    {
+      "value": 35,
+      "name": "Mummie",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1CE2",
+      "reachableInstructionCount": 22,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:5FE0"
+      ]
+    },
+    {
+      "value": 36,
+      "name": "SpiderLarge",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1D25",
+      "reachableInstructionCount": 21,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:6567"
+      ]
+    },
+    {
+      "value": 37,
+      "name": "Harvestman",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1D62",
+      "reachableInstructionCount": 16,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:6BB3"
+      ]
+    },
+    {
+      "value": 38,
+      "name": "Devil",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1D94",
+      "reachableInstructionCount": 15,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:7149"
+      ]
+    },
+    {
+      "value": 39,
+      "name": "Gorilla",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1DC4",
+      "reachableInstructionCount": 22,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:5FE0"
+      ]
+    },
+    {
+      "value": 40,
+      "name": "ShootArrows",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1E07",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:8A15"
+      ]
+    },
+    {
+      "value": 41,
+      "name": "FlyingArrow",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1E1A",
+      "reachableInstructionCount": 17,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:47BA"
+      ]
+    },
+    {
+      "value": 42,
+      "name": "MercuryLamp",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1E53",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:C432"
+      ]
+    },
+    {
+      "value": 43,
+      "name": "Scorpion",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1E66",
+      "reachableInstructionCount": 16,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:6567"
+      ]
+    },
+    {
+      "value": 44,
+      "name": "SpearOnGroundTrap",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1E98",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:8AD3"
+      ]
+    },
+    {
+      "value": 45,
+      "name": "Behavior_45",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:1EAB",
+      "reachableInstructionCount": 15,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:7149"
+      ]
+    },
+    {
+      "value": 46,
+      "name": "Behavior_46",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:1EDB",
+      "reachableInstructionCount": 15,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 47,
+      "name": "WalkablePlanks",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1F12",
+      "reachableInstructionCount": 33,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:0051",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 48,
+      "name": "BreakableStoneWallFloodingWater",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1F72",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:90A1"
+      ]
+    },
+    {
+      "value": 49,
+      "name": "WalkableDrawBridge",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1F85",
+      "reachableInstructionCount": 25,
+      "directGlobals": [
+        "DS:05D0"
+      ],
+      "directCalls": [
+        "1E48:0A6C",
+        "1E48:D15C"
+      ]
+    },
+    {
+      "value": 50,
+      "name": "Switch1",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:1FDD",
+      "reachableInstructionCount": 39,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 51,
+      "name": "SwitchGrouped",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2065",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:CAEC"
+      ]
+    },
+    {
+      "value": 52,
+      "name": "RopeSwitch",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2078",
+      "reachableInstructionCount": 30,
+      "directGlobals": [
+        "DS:DC60"
+      ],
+      "directCalls": [
+        "1E48:0051"
+      ]
+    },
+    {
+      "value": 53,
+      "name": "Switch3",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:20D7",
+      "reachableInstructionCount": 25,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:0A6C"
+      ]
+    },
+    {
+      "value": 54,
+      "name": "UnderwaterPlants",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:212D",
+      "reachableInstructionCount": 66,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:0051",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 55,
+      "name": "Behavior_55",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:21FF",
+      "reachableInstructionCount": 74,
+      "directGlobals": [
+        "DS:D4FC"
+      ],
+      "directCalls": [
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 56,
+      "name": "Switch4",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:22E6",
+      "reachableInstructionCount": 44,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 57,
+      "name": "MetalPole",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:237D",
+      "reachableInstructionCount": 79,
+      "directGlobals": [
+        "DS:05D0",
+        "DS:D4D4"
+      ],
+      "directCalls": [
+        "10AC:044E",
+        "10AC:10F5",
+        "1E48:18CF",
+        "1E48:2049",
+        "1E48:2B33",
+        "1E48:CF8B",
+        "1E48:D15C"
+      ]
+    },
+    {
+      "value": 58,
+      "name": "KeyInBucket",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2484",
+      "reachableInstructionCount": 20,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 60,
+      "name": "Dragon",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:24C3",
+      "reachableInstructionCount": 15,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:5697"
+      ]
+    },
+    {
+      "value": 61,
+      "name": "Behavior_61",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:24F3",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:59B8"
+      ]
+    },
+    {
+      "value": 62,
+      "name": "DragonHead",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2506",
+      "reachableInstructionCount": 3,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:5964"
+      ]
+    },
+    {
+      "value": 63,
+      "name": "DiggableGround",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2516",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:9117"
+      ]
+    },
+    {
+      "value": 64,
+      "name": "Buried",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2529",
+      "reachableInstructionCount": 5,
+      "directGlobals": [
+        "DS:D500"
+      ],
+      "directCalls": [
+        "10AC:AEE0"
+      ]
+    },
+    {
+      "value": 65,
+      "name": "Shark",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2540",
+      "reachableInstructionCount": 14,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:38D6"
+      ]
+    },
+    {
+      "value": 66,
+      "name": "Crab",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:256E",
+      "reachableInstructionCount": 14,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:3BBD"
+      ]
+    },
+    {
+      "value": 67,
+      "name": "DecoFish",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:259C",
+      "reachableInstructionCount": 14,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:B6B2"
+      ]
+    },
+    {
+      "value": 68,
+      "name": "Dog",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:25CA",
+      "reachableInstructionCount": 17,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:93E9"
+      ]
+    },
+    {
+      "value": 69,
+      "name": "DogLeash",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:25FE",
+      "reachableInstructionCount": 6,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:984B"
+      ]
+    },
+    {
+      "value": 70,
+      "name": "TriggerDebris",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2618",
+      "reachableInstructionCount": 17,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:B833"
+      ]
+    },
+    {
+      "value": 71,
+      "name": "FlipTRexHead",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2651",
+      "reachableInstructionCount": 6,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:1FC7"
+      ]
+    },
+    {
+      "value": 72,
+      "name": "Ghost",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2669",
+      "reachableInstructionCount": 14,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:9F31"
+      ]
+    },
+    {
+      "value": 73,
+      "name": "LightRayKillsGhost",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2697",
+      "reachableInstructionCount": 7,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:0000"
+      ]
+    },
+    {
+      "value": 74,
+      "name": "ActivatableLadder",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:26B5",
+      "reachableInstructionCount": 7,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:AE19"
+      ]
+    },
+    {
+      "value": 76,
+      "name": "LiftUp",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:26D6",
+      "reachableInstructionCount": 48,
+      "directGlobals": [
+        "DS:05D0"
+      ],
+      "directCalls": [
+        "1E48:18CF",
+        "1E48:2D63",
+        "1E48:D15C"
+      ]
+    },
+    {
+      "value": 77,
+      "name": "RechargeElectricity",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:277C",
+      "reachableInstructionCount": 18,
+      "directGlobals": [
+        "DS:05D2",
+        "DS:D4CA",
+        "DS:DD44",
+        "DS:DDB6"
+      ],
+      "directCalls": [
+        "0000:A8F7"
+      ]
+    },
+    {
+      "value": 78,
+      "name": "Lorry",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:27B1",
+      "reachableInstructionCount": 6,
+      "directGlobals": [
+        "DS:05CC"
+      ],
+      "directCalls": []
+    },
+    {
+      "value": 79,
+      "name": "MummieGuard",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:27CC",
+      "reachableInstructionCount": 44,
+      "directGlobals": [
+        "DS:04CD"
+      ],
+      "directCalls": [
+        "1E48:0A6C",
+        "1E48:2D63",
+        "1E48:D001",
+        "1E48:D15C"
+      ]
+    },
+    {
+      "value": 80,
+      "name": "BearTrapAmmo",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:285C",
+      "reachableInstructionCount": 14,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:8DD8"
+      ]
+    },
+    {
+      "value": 81,
+      "name": "FireExhauster",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:288D",
+      "reachableInstructionCount": 60,
+      "directGlobals": [
+        "DS:05D0"
+      ],
+      "directCalls": [
+        "10AC:4106",
+        "1E48:D15C"
+      ]
+    },
+    {
+      "value": 82,
+      "name": "Behavior_82",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:2947",
+      "reachableInstructionCount": 25,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:0000"
+      ]
+    },
+    {
+      "value": 83,
+      "name": "BonesToGrab",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:299A",
+      "reachableInstructionCount": 54,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:18CF",
+        "1E48:2B33"
+      ]
+    },
+    {
+      "value": 84,
+      "name": "ItemHiddenInBox",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2A65",
+      "reachableInstructionCount": 6,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 85,
+      "name": "AnancondaHead",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2A80",
+      "reachableInstructionCount": 18,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:7DA3"
+      ]
+    },
+    {
+      "value": 86,
+      "name": "AnancondaTailSegment",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2ABB",
+      "reachableInstructionCount": 14,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:819C"
+      ]
+    },
+    {
+      "value": 87,
+      "name": "Behavior_87",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:2AE9",
+      "reachableInstructionCount": 36,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:0A6C",
+        "1E48:18CF"
+      ]
+    },
+    {
+      "value": 88,
+      "name": "AttachableDamageObject",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2B63",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:8799"
+      ]
+    },
+    {
+      "value": 89,
+      "name": "KrakenHead",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2B76",
+      "reachableInstructionCount": 26,
+      "directGlobals": [
+        "DS:05D2"
+      ],
+      "directCalls": [
+        "10AC:84AA",
+        "1E48:0051",
+        "2CE4:0EBD"
+      ]
+    },
+    {
+      "value": 91,
+      "name": "EndBossHead",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2BC4",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:BAC9"
+      ]
+    },
+    {
+      "value": 92,
+      "name": "EndBossLeg",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2BDA",
+      "reachableInstructionCount": 55,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:10A8"
+      ]
+    },
+    {
+      "value": 93,
+      "name": "EndBossFeeler",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2C97",
+      "reachableInstructionCount": 60,
+      "directGlobals": [],
+      "directCalls": [
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 94,
+      "name": "EndBossBody",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2D5C",
+      "reachableInstructionCount": 9,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 95,
+      "name": "BreakableGround",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2D84",
+      "reachableInstructionCount": 41,
+      "directGlobals": [
+        "DS:05D0"
+      ],
+      "directCalls": [
+        "1E48:2B33",
+        "1E48:D15C",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 96,
+      "name": "Behavior_96",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:2E21",
+      "reachableInstructionCount": 23,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 97,
+      "name": "Behavior_97",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:2E6B",
+      "reachableInstructionCount": 3,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:CC18"
+      ]
+    },
+    {
+      "value": 98,
+      "name": "Behavior_98",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:2E7B",
+      "reachableInstructionCount": 12,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 100,
+      "name": "Moon",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2EAA",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:D828"
+      ]
+    },
+    {
+      "value": 101,
+      "name": "WaterDrop",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2EBD",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:9A2C"
+      ]
+    },
+    {
+      "value": 102,
+      "name": "Behavior_102",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:2ED3",
+      "reachableInstructionCount": 91,
+      "directGlobals": [
+        "DS:D4A8",
+        "DS:D4C4",
+        "DS:D4D2",
+        "DS:D4D6"
+      ],
+      "directCalls": [
+        "10AC:BBD2",
+        "1E48:B74C",
+        "1E48:D001",
+        "1E48:D15C",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 103,
+      "name": "Behavior_103",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:2FE2",
+      "reachableInstructionCount": 38,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:1AF9",
+        "1E48:CF8B"
+      ]
+    },
+    {
+      "value": 104,
+      "name": "UnderwaterColorAnim",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:3064",
+      "reachableInstructionCount": 99,
+      "directGlobals": [
+        "DS:05D2",
+        "DS:D4FC"
+      ],
+      "directCalls": [
+        "10AC:0000",
+        "1E48:0AA0",
+        "1E48:CF8B"
+      ]
+    },
+    {
+      "value": 105,
+      "name": "Behavior_105",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:319B",
+      "reachableInstructionCount": 31,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:00B5"
+      ]
+    },
+    {
+      "value": 106,
+      "name": "Behavior_106",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:31FD",
+      "reachableInstructionCount": 28,
+      "directGlobals": [
+        "DS:05D2"
+      ],
+      "directCalls": [
+        "1E48:00B5",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 108,
+      "name": "Behavior_108",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:3250",
+      "reachableInstructionCount": 29,
+      "directGlobals": [
+        "DS:2B0E",
+        "DS:2B10"
+      ],
+      "directCalls": [
+        "1E48:0A25",
+        "1E48:0AA0",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 109,
+      "name": "LeafParticle1",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:32B4",
+      "reachableInstructionCount": 14,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:9B99"
+      ]
+    },
+    {
+      "value": 110,
+      "name": "FogParticle",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:3405",
+      "reachableInstructionCount": 51,
+      "directGlobals": [
+        "DS:05D2"
+      ],
+      "directCalls": [
+        "1E48:0051",
+        "1E48:0AA0",
+        "1E48:1B45",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 111,
+      "name": "Behavior_111",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:349A",
+      "reachableInstructionCount": 32,
+      "directGlobals": [
+        "DS:05CC",
+        "DS:2B0E",
+        "DS:2B10",
+        "DS:D4C4",
+        "DS:D4D0",
+        "DS:DC4C"
+      ],
+      "directCalls": [
+        "10AC:3D30"
+      ]
+    },
+    {
+      "value": 112,
+      "name": "LeafParticle2",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:32E5",
+      "reachableInstructionCount": 87,
+      "directGlobals": [
+        "DS:2B0E",
+        "DS:2B10"
+      ],
+      "directCalls": [
+        "1E48:0A25",
+        "1E48:1B45",
+        "1E48:CF8B",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 113,
+      "name": "RoofDoorHandler",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:350D",
+      "reachableInstructionCount": 54,
+      "directGlobals": [
+        "DS:D4D2",
+        "DS:D4D4",
+        "DS:D4D6",
+        "DS:DC4C"
+      ],
+      "directCalls": [
+        "10AC:D682",
+        "1E48:0AA0",
+        "1E48:2049",
+        "1E48:2E58",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 114,
+      "name": "Behavior_114",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:35AB",
+      "reachableInstructionCount": 39,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:1B45",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 116,
+      "name": "NeonLights",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:3636",
+      "reachableInstructionCount": 82,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:0000",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 117,
+      "name": "SwimmingParticles",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:372C",
+      "reachableInstructionCount": 6,
+      "directGlobals": [
+        "DS:D500"
+      ],
+      "directCalls": [
+        "10AC:AF92"
+      ]
+    },
+    {
+      "value": 118,
+      "name": "Behavior_118",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:3746",
+      "reachableInstructionCount": 15,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:0A6C",
+        "1E48:18CF"
+      ]
+    },
+    {
+      "value": 119,
+      "name": "BurriedVerticalDoor",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:377F",
+      "reachableInstructionCount": 11,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 120,
+      "name": "Teleporter",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:37B0",
+      "reachableInstructionCount": 12,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:2D63"
+      ]
+    },
+    {
+      "value": 121,
+      "name": "LevelStartOverride",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:37DD",
+      "reachableInstructionCount": 20,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:2D63",
+        "2CE4:1B69"
+      ]
+    },
+    {
+      "value": 122,
+      "name": "DirtFromAbove",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:381A",
+      "reachableInstructionCount": 17,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:AC3E"
+      ]
+    },
+    {
+      "value": 123,
+      "name": "DirtFromAboveShutter",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:3853",
+      "reachableInstructionCount": 17,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:AD6E"
+      ]
+    },
+    {
+      "value": 124,
+      "name": "CeilingConcreteSlab",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:388C",
+      "reachableInstructionCount": 11,
+      "directGlobals": [
+        "DS:D500"
+      ],
+      "directCalls": [
+        "1E48:2B33"
+      ]
+    },
+    {
+      "value": 125,
+      "name": "BurnableOilPuddle",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:38B5",
+      "reachableInstructionCount": 27,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:9DE1"
+      ]
+    },
+    {
+      "value": 126,
+      "name": "CeilingConcreteSlabStake",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:390C",
+      "reachableInstructionCount": 14,
+      "directGlobals": [
+        "DS:D500"
+      ],
+      "directCalls": [
+        "1E48:2D63"
+      ]
+    },
+    {
+      "value": 127,
+      "name": "UnreachableKey",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:393F",
+      "reachableInstructionCount": 18,
+      "directGlobals": [],
+      "directCalls": [
+        "0000:0FDA",
+        "1E48:2B33"
+      ]
+    },
+    {
+      "value": 128,
+      "name": "Behavior_128",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:3987",
+      "reachableInstructionCount": 58,
+      "directGlobals": [
+        "DS:8294",
+        "DS:D4D0",
+        "DS:DC4C"
+      ],
+      "directCalls": [
+        "1E48:2D63",
+        "1E48:D001",
+        "1E48:D15C"
+      ]
+    },
+    {
+      "value": 129,
+      "name": "AttackingBull",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:3A36",
+      "reachableInstructionCount": 15,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:C52E"
+      ]
+    },
+    {
+      "value": 130,
+      "name": "ExtinguishLava",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:3A69",
+      "reachableInstructionCount": 133,
+      "directGlobals": [
+        "DS:05D0",
+        "DS:D500"
+      ],
+      "directCalls": [
+        "10AC:01D6",
+        "1E48:0A25",
+        "1E48:18CF",
+        "1E48:D15C",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 131,
+      "name": "FloodingWater",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:3BF7",
+      "reachableInstructionCount": 17,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:B33C"
+      ]
+    },
+    {
+      "value": 133,
+      "name": "ClimbableLadder",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:3C30",
+      "reachableInstructionCount": 11,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:0A6C"
+      ]
+    },
+    {
+      "value": 134,
+      "name": "CurtainOpens",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:3C5B",
+      "reachableInstructionCount": 12,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:0A6C"
+      ]
+    },
+    {
+      "value": 135,
+      "name": "Meteor",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:3C8B",
+      "reachableInstructionCount": 160,
+      "directGlobals": [
+        "DS:D4B6",
+        "DS:D4D2",
+        "DS:D4D6"
+      ],
+      "directCalls": [
+        "10AC:0000",
+        "10AC:044E",
+        "1E48:00E4",
+        "1E48:18CF",
+        "1E48:2049",
+        "1E48:2EC4",
+        "1E48:B74C",
+        "1E48:D001",
+        "1E48:D15C",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 136,
+      "name": "Behavior_136",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:3E89",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:B5F4"
+      ]
+    },
+    {
+      "value": 137,
+      "name": "Behavior_137",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:3E9C",
+      "reachableInstructionCount": 6,
+      "directGlobals": [],
+      "directCalls": [
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 138,
+      "name": "Behavior_138",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:3EB8",
+      "reachableInstructionCount": 67,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:044E",
+        "10AC:B2C8",
+        "1E48:2049",
+        "1E48:CF8B",
+        "1E48:D001",
+        "1E48:D15C",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 139,
+      "name": "SpawnInCrater",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:3F8A",
+      "reachableInstructionCount": 29,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:044E",
+        "1E48:2049",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 140,
+      "name": "RotatingMachineCenter",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:3FE0",
+      "reachableInstructionCount": 28,
+      "directGlobals": [
+        "DS:05D0"
+      ],
+      "directCalls": [
+        "1E48:D15C"
+      ]
+    },
+    {
+      "value": 141,
+      "name": "Submarine",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4041",
+      "reachableInstructionCount": 6,
+      "directGlobals": [
+        "DS:05CC"
+      ],
+      "directCalls": []
+    },
+    {
+      "value": 142,
+      "name": "GrasingCow",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:405C",
+      "reachableInstructionCount": 46,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:0078",
+        "1E48:0A6C",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 143,
+      "name": "Behavior_143",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:40ED",
+      "reachableInstructionCount": 58,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:2B33",
+        "1E48:CF8B",
+        "2CE4:0E1C",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 144,
+      "name": "CrackingSubmarineWindow",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:41AE",
+      "reachableInstructionCount": 79,
+      "directGlobals": [
+        "DS:2B0E"
+      ],
+      "directCalls": [
+        "1E48:0A6C",
+        "1E48:D001",
+        "1E48:D03F",
+        "1E48:D15C",
+        "1E48:D20C",
+        "1E48:D544",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 145,
+      "name": "PuzzleGameTile",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:42A1",
+      "reachableInstructionCount": 32,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:BEFC",
+        "1E48:00B5"
+      ]
+    },
+    {
+      "value": 146,
+      "name": "Behavior_146",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:4313",
+      "reachableInstructionCount": 58,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:0A6C",
+        "1E48:D001",
+        "1E48:D15C"
+      ]
+    },
+    {
+      "value": 147,
+      "name": "PuzzleGameHandler",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:43D5",
+      "reachableInstructionCount": 26,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:2094",
+        "2CE4:0F85",
+        "2CE4:1B8C"
+      ]
+    },
+    {
+      "value": 148,
+      "name": "Behavior_148",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:441F",
+      "reachableInstructionCount": 25,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:2094",
+        "1E48:2B33"
+      ]
+    },
+    {
+      "value": 149,
+      "name": "PuzzleSpool",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4480",
+      "reachableInstructionCount": 64,
+      "directGlobals": [
+        "DS:05D0"
+      ],
+      "directCalls": [
+        "1E48:0A6C",
+        "1E48:D15C"
+      ]
+    },
+    {
+      "value": 150,
+      "name": "OpeningCreviceWithExit",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4552",
+      "reachableInstructionCount": 16,
+      "directGlobals": [
+        "DS:8294",
+        "DS:D4B6",
+        "DS:D4D8",
+        "DS:D4DA",
+        "DS:DC4C"
+      ],
+      "directCalls": [
+        "1E48:2D63"
+      ]
+    },
+    {
+      "value": 151,
+      "name": "Behavior_151",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:458F",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:CE41"
+      ]
+    },
+    {
+      "value": 152,
+      "name": "OpeningCrevice",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:45A2",
+      "reachableInstructionCount": 4,
+      "directGlobals": [
+        "DS:2B0E"
+      ],
+      "directCalls": []
+    },
+    {
+      "value": 153,
+      "name": "FlushingFishes",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:45B7",
+      "reachableInstructionCount": 50,
+      "directGlobals": [
+        "DS:05D0",
+        "DS:2DE7",
+        "DS:D494"
+      ],
+      "directCalls": [
+        "1E48:0A6C",
+        "1E48:D15C",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 154,
+      "name": "SomethingWithTheFishes",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4652",
+      "reachableInstructionCount": 18,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:B2C8"
+      ]
+    },
+    {
+      "value": 155,
+      "name": "GrandfatherClock",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4691",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:BFE7"
+      ]
+    },
+    {
+      "value": 156,
+      "name": "GrandfatherClockHand",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:46A4",
+      "reachableInstructionCount": 24,
+      "directGlobals": [],
+      "directCalls": [
+        "2CE4:0E37"
+      ]
+    },
+    {
+      "value": 157,
+      "name": "GrandfatherClockPendulum",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:46EB",
+      "reachableInstructionCount": 25,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:0051"
+      ]
+    },
+    {
+      "value": 158,
+      "name": "Behavior_158",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4738",
+      "reachableInstructionCount": 22,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:D001",
+        "1E48:D15C"
+      ]
+    },
+    {
+      "value": 159,
+      "name": "RotateKnightsInClock",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4782",
+      "reachableInstructionCount": 45,
+      "directGlobals": [
+        "DS:05D0"
+      ],
+      "directCalls": [
+        "1E48:D15C"
+      ]
+    },
+    {
+      "value": 161,
+      "name": "Behavior_161",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4816",
+      "reachableInstructionCount": 5,
+      "directGlobals": [],
+      "directCalls": [
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 162,
+      "name": "KnightsCrossbow",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:482D",
+      "reachableInstructionCount": 36,
+      "directGlobals": [
+        "DS:05D0"
+      ],
+      "directCalls": [
+        "10AC:4106",
+        "1E48:D15C"
+      ]
+    },
+    {
+      "value": 163,
+      "name": "Behavior_163",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:48AE",
+      "reachableInstructionCount": 75,
+      "directGlobals": [
+        "DS:05D0",
+        "DS:05D2"
+      ],
+      "directCalls": [
+        "10AC:2124",
+        "1E48:00E4",
+        "1E48:2D63",
+        "1E48:D15C"
+      ]
+    },
+    {
+      "value": 164,
+      "name": "RotatingBlades",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4997",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:D90B"
+      ]
+    },
+    {
+      "value": 165,
+      "name": "ActionObjectToGrab",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:49AD",
+      "reachableInstructionCount": 90,
+      "directGlobals": [
+        "DS:D4D2",
+        "DS:D4D6"
+      ],
+      "directCalls": [
+        "1E48:00B5",
+        "1E48:18CF",
+        "1E48:2EC4"
+      ]
+    },
+    {
+      "value": 166,
+      "name": "PaterNosterLift",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4ABA",
+      "reachableInstructionCount": 8,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:C7C5"
+      ]
+    },
+    {
+      "value": 167,
+      "name": "SqueezingMachine",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4AD6",
+      "reachableInstructionCount": 8,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:C7C5"
+      ]
+    },
+    {
+      "value": 168,
+      "name": "Behavior_168",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:4AF2",
+      "reachableInstructionCount": 8,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:C7C5"
+      ]
+    },
+    {
+      "value": 169,
+      "name": "RoofTopThunderHandler1",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4B0E",
+      "reachableInstructionCount": 26,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:2060",
+        "1E48:D001",
+        "1E48:D15C"
+      ]
+    },
+    {
+      "value": 170,
+      "name": "Behavior_170",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4B66",
+      "reachableInstructionCount": 17,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:BCAE"
+      ]
+    },
+    {
+      "value": 171,
+      "name": "CutSceneCloud",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4B9F",
+      "reachableInstructionCount": 17,
+      "directGlobals": [
+        "DS:2B0A"
+      ],
+      "directCalls": []
+    },
+    {
+      "value": 172,
+      "name": "CeilingBladesComingDown",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4BDC",
+      "reachableInstructionCount": 7,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:CD75"
+      ]
+    },
+    {
+      "value": 173,
+      "name": "PortableCoffin",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4BFD",
+      "reachableInstructionCount": 40,
+      "directGlobals": [
+        "DS:2B0E"
+      ],
+      "directCalls": [
+        "1E48:0A6C",
+        "1E48:18CF",
+        "1E48:2B33"
+      ]
+    },
+    {
+      "value": 174,
+      "name": "BladesFromSide",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4C87",
+      "reachableInstructionCount": 24,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:5DEC"
+      ]
+    },
+    {
+      "value": 175,
+      "name": "ExplodingMachine",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4CD5",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:C88C"
+      ]
+    },
+    {
+      "value": 176,
+      "name": "Behavior_176",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:4CE8",
+      "reachableInstructionCount": 10,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:0A6C"
+      ]
+    },
+    {
+      "value": 177,
+      "name": "PressureIndicator",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4D0C",
+      "reachableInstructionCount": 12,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:0A6C"
+      ]
+    },
+    {
+      "value": 178,
+      "name": "Behavior_178",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4D3C",
+      "reachableInstructionCount": 10,
+      "directGlobals": [
+        "DS:05D2",
+        "DS:D4C4",
+        "DS:D4C6"
+      ],
+      "directCalls": []
+    },
+    {
+      "value": 180,
+      "name": "LargeFish",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4D5D",
+      "reachableInstructionCount": 7,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:D5B4"
+      ]
+    },
+    {
+      "value": 181,
+      "name": "Behavior_181",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:4D7E",
+      "reachableInstructionCount": 43,
+      "directGlobals": [],
+      "directCalls": [
+        "1E48:0A6C",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 182,
+      "name": "DestroyableRoof",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4E0D",
+      "reachableInstructionCount": 6,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:D45F"
+      ]
+    },
+    {
+      "value": 183,
+      "name": "RoofTopThunderHandler2",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4E28",
+      "reachableInstructionCount": 26,
+      "directGlobals": [],
+      "directCalls": [
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 184,
+      "name": "RoofTopThunderHandler3",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4E85",
+      "reachableInstructionCount": 12,
+      "directGlobals": [
+        "DS:2DDC"
+      ],
+      "directCalls": [
+        "1E48:2D63"
+      ]
+    },
+    {
+      "value": 190,
+      "name": "AmbientSoundPosition",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4EAF",
+      "reachableInstructionCount": 25,
+      "directGlobals": [
+        "DS:05D0",
+        "DS:F6BF"
+      ],
+      "directCalls": [
+        "1E48:D15C",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 200,
+      "name": "LavaSmoke",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4EFB",
+      "reachableInstructionCount": 15,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 201,
+      "name": "Behavior_201",
+      "namedInRenderer": true,
+      "hasSpecificCase": false,
+      "entry": "0000:5110",
+      "reachableInstructionCount": 0,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 202,
+      "name": "TrackFireAnimation",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4F34",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:D306"
+      ]
+    },
+    {
+      "value": 204,
+      "name": "Behavior_204",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:4F47",
+      "reachableInstructionCount": 16,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 205,
+      "name": "TriggerObject",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4F84",
+      "reachableInstructionCount": 34,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 206,
+      "name": "Behavior_206",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:4FEB",
+      "reachableInstructionCount": 7,
+      "directGlobals": [
+        "DS:DDB6",
+        "DS:DDB7"
+      ],
+      "directCalls": []
+    },
+    {
+      "value": 207,
+      "name": "WitchHead",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:5007",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:CF64"
+      ]
+    },
+    {
+      "value": 208,
+      "name": "BuyItem",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:501A",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:D3A3"
+      ]
+    },
+    {
+      "value": 209,
+      "name": "Behavior_209",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:502D",
+      "reachableInstructionCount": 24,
+      "directGlobals": [
+        "DS:D772",
+        "DS:D774"
+      ],
+      "directCalls": [
+        "10AC:D306",
+        "2CE4:170A"
+      ]
+    },
+    {
+      "value": 210,
+      "name": "TutorialTrigger",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:5083",
+      "reachableInstructionCount": 13,
+      "directGlobals": [
+        "DS:04CD"
+      ],
+      "directCalls": [
+        "10AC:C302",
+        "1E48:2B33",
+        "1E48:2D63"
+      ]
+    },
+    {
+      "value": 211,
+      "name": "CrystalBallTableInCutScene",
+      "namedInRenderer": true,
+      "hasSpecificCase": false,
+      "entry": "0000:5110",
+      "reachableInstructionCount": 0,
+      "directGlobals": [],
+      "directCalls": []
+    },
+    {
+      "value": 212,
+      "name": "SkullInCutScene",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:50AF",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:D78E"
+      ]
+    },
+    {
+      "value": 255,
+      "name": "Behavior_255",
+      "namedInRenderer": true,
+      "hasSpecificCase": true,
+      "entry": "0000:50C1",
+      "reachableInstructionCount": 20,
+      "directGlobals": [],
+      "directCalls": [
+        "0000:0F13"
+      ]
+    },
+    {
+      "value": 300,
+      "name": "Behavior_300",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:5108",
+      "reachableInstructionCount": 2,
+      "directGlobals": [],
+      "directCalls": [
+        "10AC:29F5"
+      ]
+    },
+    {
+      "value": 65535,
+      "name": "DisabledSentinel",
+      "namedInRenderer": false,
+      "hasSpecificCase": true,
+      "entry": "0000:1156",
+      "reachableInstructionCount": 4,
+      "directGlobals": [],
+      "directCalls": []
+    }
+  ]
+}

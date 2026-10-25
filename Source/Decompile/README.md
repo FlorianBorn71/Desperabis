@@ -4,6 +4,15 @@ Recover the behavior of the original Turbo Pascal 7 DOS game and make it
 available to the modern renderer. This directory holds reproducible analysis,
 not original source code or an assertion that decompiled C is correct.
 
+For the current executable observations, hypotheses, and open questions, see
+[Executable findings](Findings.md).
+For the first control-flow map and the connection to the existing DOSBox
+bridge, see [High-level program structure](HighLevelStructure.md).
+For object layout, the compilable named-handler scaffold, build commands,
+and its explicit limitations, see [Object behavior recovery](BehaviorRecovery.md).
+For the first explained case and shared collision-map pointer, see
+[Pillar](Pillar.md) and its [instruction evidence](pillar-evidence.txt).
+
 ## Directory conventions
 
 - `InspectExecutable.ps1`: read-only DOS MZ inspection and baseline generation.
@@ -14,9 +23,36 @@ not original source code or an assertion that decompiled C is correct.
 - `ImportOriginal.ps1`: first import, with automatic analysis disabled.
 - `ghidra_scripts/VerifyDosImport.java`: verifies the original binary,
   entry-point mapping, relocation, and initial instruction decoding.
+- `ghidra_scripts/InspectCode.java`: bounded read-only decoding with raw bytes,
+  encoded far-call targets, and logical relative-branch targets.
 - `original-executable.json`: generated identity and header baseline for the
   original executable. No timestamps or machine-specific paths.
 - `initial-import.txt`: generated memory map and initial instruction report.
+- `high-level-evidence.txt`: focused instruction evidence for the control-flow map.
+- `Scaffold/`: compilable selector, implemented Pillar/IdleAnimation/SmokeFading/switch/WaterDrop cases,
+  placeholder handlers, and tests.
+- `Scaffold/CollisionMap.cpp`: recovered world-X/Z point writer and explicit
+  200x200 dummy-level creation until proper level loading is recovered.
+- `Scaffold/GameMath.h/.cpp`: shared fixed-point, signed-step, and sign helpers.
+- `Scaffold/Sound.h/.cpp`: named sound effects, original variant-table loading,
+  attenuation, random selection, four-channel admission, and virtual audio interface.
+- `sound-evidence.txt`: exact distance, volume, sample selection, channel
+  policy, table-loading prefix, and random-number instruction ranges.
+- `Scaffold/Heightfield.cpp`: unpacked geometry streams and native floor/room
+  queries, including ceiling presence and special/stacked/repeated surfaces.
+- `heightfield-evidence.txt`: exact WaterDrop, height lookup, and Pascal
+  array-layout instruction ranges.
+- `Scaffold/ObjectInteraction.cpp`: explicit-input pickup/inventory gameplay,
+  grouped-switch arming, and known object-local interactions.
+- `Scaffold/PlayerInteraction.cpp`: world/player overlap queries and the
+  per-update collision-selection/input-interface/interaction path.
+- `inventory-evidence.txt`: inventory/counter initialization, cleanup,
+  input-gated calls, and the original copy-helper contract.
+- `Scaffold/BehaviorMap.json`: case addresses and direct global/call dependencies.
+- `Scaffold/GameEnums.h`: renderer-derived behavior/collision/display/weapon
+  enums with original storage widths and additional binary behavior selectors.
+- `GenerateBehaviorScaffold.ps1`: reproducible extraction with overwrite guards.
+- `build/` (ignored): local CMake build products.
 - `tools/` (ignored): optional workspace-local tool installations.
 - `projects/` (ignored): local Ghidra projects. Back these up separately;
   Git does not preserve them.
@@ -26,6 +62,94 @@ not original source code or an assertion that decompiled C is correct.
 Do not modify the [original executable](../../Game/Original/DESPERAB.EXE).
 Do not use the localized executable interchangeably: patching can change bytes
 and invalidate evidence tied to a hash.
+
+## Continuing on another machine
+
+Commit and push the documentation, scripts, CMake definition, and `Scaffold/`
+sources before moving to another checkout. Local files, including untracked
+files, are not transferred by Git until committed. Chat history is not required
+to understand the recorded findings.
+
+On the other machine:
+
+1. Check out the branch containing that work and retrieve Git LFS content
+   (`git lfs pull`), including the original executable.
+2. Run `InspectExecutable.ps1` and compare its SHA-256 with
+   [the baseline](original-executable.json).
+3. Install CMake and Visual Studio 2026 with the C++ desktop tools, then run
+   `GenerateSolution.bat`. Open `build\DesperabisRecovery.slnx`.
+4. Build and test using the commands in
+   [Object behavior recovery](BehaviorRecovery.md). Use `desperabis-recovery`
+   as the startup project; example arguments: `--behavior BatIndoor --ticks 3`.
+5. For further binary analysis, run `InstallTools.ps1` to obtain the pinned
+   portable Ghidra/JDK installations, or configure equivalent tools explicitly.
+
+The ignored `projects/`, `tools/`, `captures/`, and `build/` directories are
+not included in a checkout. At this stage the Ghidra project contains the
+initial import only; subsequent inspections were read-only. No recovered
+names/types or edited functions exist solely in that database.
+
+To recreate that import without overwriting the checked-in `initial-import.txt`,
+run this from the repository root on a machine without the local project:
+
+```powershell
+$root = Join-Path $PWD 'Source\Decompile'
+New-Item -ItemType Directory -Path (Join-Path $root 'projects') -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $root 'captures') -Force | Out-Null
+.\Source\Decompile\StartGhidra.ps1 -Headless -HeadlessArguments @(
+    (Join-Path $root 'projects'), 'Desperabis',
+    '-import', (Join-Path $root '..\..\Game\Original\DESPERAB.EXE'),
+    '-noanalysis',
+    '-scriptPath', (Join-Path $root 'ghidra_scripts'),
+    '-postScript', 'VerifyDosImport.java',
+    (Join-Path $root 'captures\recreated-import.txt')
+)
+```
+
+Check that the new report ends with `Verification: PASS`. Do not rerun an
+import over an existing annotated project. `ImportOriginal.ps1` intentionally
+refuses an existing report, so it cannot be used unchanged when the tracked
+initial report is already present.
+
+The external DOSBox modification in the sibling `SheetMusicOverlay` repository
+is not part of this checkout. Its relevant hook, address mapping, record-copy
+layout, and source hash are documented in
+[High-level program structure](HighLevelStructure.md). Obtain that external
+source separately if you want to rebuild the bridge; a working emulator
+integration is not currently reproduced by this repository.
+
+The current investigation is [Pillar](Pillar.md), its collision-map writer,
+and the corresponding reader/player-blocking rules. `BatIndoor`'s helper at
+module-relative `10AC:3391` remains a later target.
+Pillar's case and point writer, plus the object-local IdleAnimation and
+SmokeFading cases, two switch behaviors, and WaterDrop are implemented and host-tested.
+`Level::LoadGeometry` accepts the unpacked 50x40 seven-plane geometry prefix;
+the context borrows the level for floor and relative-room-height queries.
+Use `--behavior WaterDrop` for a dummy-room update, or
+`--object drop54.bin --geometry FELD.256` to supply geometry and object state.
+WaterDrop splash requests now use `SoundEffect::Drop` and a virtual
+`AudioHandler`; variant selection, attenuation, and four-channel admission
+are recovered. Add `--sound-table .\Data\SourceAssets\Original\SAMP\S_TAB.PRB`
+to log selected samples/channels (not audible playback). A real host audio
+backend and loading separate special-surface metadata remain outside this
+port; missing required geometry metadata is an explicit error. See
+[Level heights and WaterDrop](BehaviorRecovery.md#level-heights-and-waterdrop).
+See [Sound effects](BehaviorRecovery.md#sound-effects-attenuation-and-four-channel-admission)
+for the actual four-argument playback contract and integration.
+Explicit pickup interactions now populate fourteen inventory objects and
+update the known counters in the game context; grouped-switch interaction
+arms its return timer. Use `--object object54.bin --interact` to request one
+ENTER-style action instead of a behavior update. Add `--player player54.bin`
+to select that target through the original overlap query first; omit
+`--interact` to check overlap without pressing the key. The library exposes
+`UpdatePlayerInteraction(context, input)` and a virtual `InputHandler`
+interface for game integration. Player movement, automatic contact responses,
+inventory use, platform input, UI/interaction audio, and unsupported interactions remain
+explicitly unimplemented. Follow
+[Object behavior recovery](BehaviorRecovery.md) for scope, regeneration
+precautions, and unresolved globals. Before future Ghidra-only edits become
+essential, add tested annotation exports/restoration or transfer a project
+archive separately; the present scripts do not back up arbitrary annotations.
 
 ## Reproduce the baseline
 
@@ -120,9 +244,10 @@ These instructions were decoded without creating function boundaries.
 
 The entry begins with eight far calls, followed by `ENTER 0x200,0x0`.
 **Observed:** this instruction sequence. **Inferred:** the calls may include
-Pascal unit initialization. Their purposes and the main game loop are not yet
-identified. We must inspect the callees and segment setup before assigning
-semantic names.
+Pascal unit initialization. Later tracing established DS setup and found
+the outer dispatcher and gameplay-loop candidates; see
+[High-level program structure](HighLevelStructure.md). Several initialization
+callees still lack semantic identification.
 
 Import and script logs are under `projects/`. The project database has been
 saved there; the reports/scripts are tracked candidates, but nothing has been
@@ -156,6 +281,36 @@ Preserve the stable identity and previous names in exports. Do not assign
 the sample name to an actual Ghidra function until its boundary is verified.
 Use `field_0A` for an unknown field, and `candidate_...` for speculative names.
 
+### Function parameter fidelity
+
+Keep recovered function interfaces as close to the original as the evidence
+allows. Preserve parameter count and order, observed widths and signedness,
+pointer/reference representation, return values, and calling convention.
+Record stack offsets, push order, and caller/callee cleanup where known.
+Do not replace separate coordinates with a vector, hide arguments in a new
+context object, or narrow a parameter merely because only part is consumed.
+
+Distinguish ABI storage from source-language types: a word-sized stack slot
+does not prove a Pascal `Word` parameter, and reading only its low byte does
+not prove a Pascal `Byte` parameter. Mark unresolved types explicitly.
+Conceptual C++ signatures are translations, not proof of original Pascal
+declarations. Preserve original-width arithmetic and truncation separately
+from any modern host ABI; identify necessary renderer adapters explicitly.
+
+For the immutable 54-byte object layout, pass `RawGameObject&` directly to
+recovered handlers and use named members such as `object.posX`. Do not add
+wrappers or field-copy indirection around this known layout. Layout immutability
+does not mean the gameplay values are const.
+
+Use production game terminology for runtime symbols, such as `Desperabis`,
+`Level`, and `GameState`, rather than recovery-stage prefixes or suffixes.
+Track implementation completeness in status values, tests, and analysis
+documentation, not in the names of gameplay types.
+
+Use enum members for gameplay identities, object fields, dispatch, and results.
+Keep numeric conversions at binary/console boundaries; derive display names
+from enum catalog entries rather than duplicating string identities in handlers.
+
 ## Evidence and persistent findings
 
 Ghidra is the working source of truth for names, types, comments, and function
@@ -183,13 +338,14 @@ Do not invent function boundaries or known fields to fill gaps.
 
 ## First investigation
 
-The author remembers the in-memory game object layout and menu/game-loop
-structure; details have not yet been recorded here.
+The first investigation connected the author's menu/game-loop outline and
+external DOSBox bridge to static code addresses. Results and open questions
+are in [High-level program structure](HighLevelStructure.md).
 
-After verifying the import, use one known object layout or recognizable
-behavior as an anchor. Trace a small routine, annotate it, compare it with
-the author's memory, test the hypothesis in the original, and persist the
-result before expanding the scope.
+Next, use the identified object-behavior entry and remembered object layout
+to investigate a small behavior. Compare the instructions with the author's
+memory, test the hypothesis in the original, and persist the result before
+expanding the scope.
 
 Existing leads:
 
