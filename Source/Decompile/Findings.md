@@ -48,7 +48,7 @@ for known meanings, uncertain fields, and binary inspection helpers.
 
 The first explained behavior case is now [Pillar](Pillar.md): it writes `38h`
 to a grid through a far pointer at DS:`69C4`, converting X/Z at 25 raw units
-per sample. Its [C++ helper](Scaffold/CollisionMap.cpp) and
+per sample. Its [C++ helper](Scaffold/GameContext.cpp) and
 [Pillar handler](Scaffold/BehaviorHandlers.cpp) are implemented and host-tested,
 but not yet validated against a DOS runtime capture.
 
@@ -76,7 +76,7 @@ The lower-level reader checks hardcoded column/row limits 0..319/0..239,
 not the map's stored dimensions. A separate helper at `1E48:2A64` reads a
 3x3 neighborhood and uses masked samples to adjust referenced words; its
 callers remain unresolved. `GameContext::GetCollisionMapPixelAtWorldXZ(x, z) const`
-is implemented in [CollisionMap.cpp](Scaffold/CollisionMap.cpp), with the
+is implemented in [GameContext.cpp](Scaffold/GameContext.cpp), with the
 original coordinate bounds, 16-bit address wrapping, and explicit host
 allocation checks. Host tests cover every X/Z word independently and the
 complete accepted grid plus its border across six stride headers. The 3x3
@@ -167,7 +167,9 @@ The host reserves that boundary record but does not add it to the normal
 2..164 candidate range. Its original semantic role remains unknown.
 
 See [the per-update hook](BehaviorRecovery.md#per-update-player-interaction)
-and [implementation](Scaffold/PlayerInteraction.cpp). Collision queries,
+and [frame-hook implementation](Scaffold/PlayerInteraction.cpp).
+The collision queries live in [GameContext.cpp](Scaffold/GameContext.cpp).
+Collision queries,
 signed-word geometry, preference, input gating, and pickups are host-tested.
 Full player movement, automatic contact responses, world behavior scheduling,
 platform keyboard polling, and UI/audio are not implemented by this hook.
@@ -419,7 +421,8 @@ Floor heights start at DS:`4A40`, relative room heights at `5210`; ceiling
 presence and surface flags are also retained because the height queries use
 them. Pascal one-based indexing accounts for the 51-byte bias in instruction
 displacements. [Heightfield.cpp](Scaffold/Heightfield.cpp) loads unpacked
-geometry and implements `1E48:1B45` (effective floor), `1E48:18CF` (terrain),
+geometry; [GameContext.cpp](Scaffold/GameContext.cpp) implements
+`1E48:1B45` (effective floor), `1E48:18CF` (terrain),
 and `1E48:1BA6` (relative room height), including native fixed-point bias,
 stacked-floor selection, and repeated-floor adjustment.
 
@@ -651,7 +654,7 @@ references in code. The existing table has 129 five-byte records, each a
 count plus four sample slots. Actual records use at most three variants;
 Drop uses two, references **5 and 38**.
 
-[Sound.h](Scaffold/Sound.h) and [Sound.cpp](Scaffold/Sound.cpp) implement the
+[Sound.h](Scaffold/Sound.h) and [GameContext.cpp](Scaffold/GameContext.cpp) implement the
 enum, virtual audio interface, table loading, original random arithmetic,
 attenuation, and channel/source policy. WaterDrop is wired to this API.
 Host hardware mixing and sample decoding remain outside the library.

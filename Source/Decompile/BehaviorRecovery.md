@@ -9,17 +9,18 @@ each recovered case an editable, named home without hiding missing behavior.
 [GameContext.h](Scaffold/GameContext.h) now owns the `GameContext` class,
 formerly the `GameState` struct embedded in the dispatch header. Existing
 context-owned operations remain member functions: sound, random numbers,
-collision/height queries, object allocation, and prompts. Their domain-specific
-implementations remain in their existing source files; the allocators are in
-[GameContext.cpp](Scaffold/GameContext.cpp). Public gameplay state remains
+collision/height queries, object allocation, and prompts. All `GameContext`
+member definitions, including application flow and page hooks, live together in
+[GameContext.cpp](Scaffold/GameContext.cpp). Their private implementation helpers
+also live there. Public gameplay state remains
 directly accessible. There is no compatibility alias for the old type name.
 The gameplay free-function and behavior-handler APIs still receive
 `GameContext&`; converting all of them to members is deliberately out of scope.
 
 [ApplicationFlow.h](Scaffold/ApplicationFlow.h) defines `MenuPage`, retaining
 the original application-state numbers, and `MainMenuAction`. The recovered
-outer state machine lives separately in
-[ApplicationFlow.cpp](Scaffold/ApplicationFlow.cpp), implemented as
+outer state machine lives in
+[GameContext.cpp](Scaffold/GameContext.cpp), implemented as
 `GameContext` member functions:
 
 - `RunApplication()` dispatches modal pages until Quit; `RunApplicationStep()`
@@ -441,7 +442,7 @@ frames with explicit resets.
 [Function_Pillar](Scaffold/BehaviorHandlers.cpp) reads the original signed
 X/Z words and calls `GameContext::SetCollisionMapPixelAtWorldXZ(x, z, value)`
 with `CollisionMapValue_BlockingWall` (`0x38`).
-[CollisionMap.cpp](Scaffold/CollisionMap.cpp) implements the helper at
+[GameContext.cpp](Scaffold/GameContext.cpp) implements the helper at
 module-relative `10AC:387B`, retaining the three word-shaped arguments,
 signed divisions, 16-bit wrapping, header-derived stride, and low-byte store.
 
@@ -660,8 +661,9 @@ automatic player-contact cascade remains unimplemented.
 
 ### Per-update player interaction
 
-[PlayerInteraction.cpp](Scaffold/PlayerInteraction.cpp) implements
-`GameContext::FindCollidingObject`, `GameContext::FindPlayerCollision`, and the
+[GameContext.cpp](Scaffold/GameContext.cpp) implements
+`GameContext::FindCollidingObject` and `GameContext::FindPlayerCollision`.
+[PlayerInteraction.cpp](Scaffold/PlayerInteraction.cpp) implements the
 host frame hook `UpdatePlayerInteraction(GameContext&, InputHandler&)`.
 The input interface has virtual `IsKeyPressed(InputKey)` and a virtual
 destructor. Its actions are `ForwardKey`, `BackwardKey`, `StrafeLeftKey`,
@@ -1124,12 +1126,13 @@ behavior itself remains an unimplemented candidate.
 
 ### Level heights and WaterDrop
 
-[Heightfield.cpp](Scaffold/Heightfield.cpp) implements the shared floor and
+[GameContext.cpp](Scaffold/GameContext.cpp) implements the shared floor and
 relative-room-height queries, using the native arithmetic rather than the
 renderer's floating-point interpolation. Evidence is preserved in
 [heightfield-evidence.txt](heightfield-evidence.txt).
 
-`Level::LoadGeometry(data, size)` reads an unpacked geometry stream prefix,
+`Level::LoadGeometry(data, size)` in [Heightfield.cpp](Scaffold/Heightfield.cpp)
+reads an unpacked geometry stream prefix,
 matching the renderer's `ReadLevelData(..., true)`: two little-endian words
 containing width-minus-one and height-minus-one, then seven row-major byte
 planes. Native gameplay requires **50 columns by 40 rows**; other dimensions,
@@ -1261,7 +1264,7 @@ variants, attenuation, and four playback channels. The corresponding
 instructions are now preserved in [sound-evidence.txt](sound-evidence.txt).
 [Sound.h](Scaffold/Sound.h) defines the manually maintained `SoundEffect`
 enum, initially just `Drop=5`, and the virtual `AudioHandler` interface.
-[Sound.cpp](Scaffold/Sound.cpp) implements table loading, sample selection,
+[GameContext.cpp](Scaffold/GameContext.cpp) implements table loading, sample selection,
 attenuation, and channel admission.
 
 **Correction to the earlier call interpretation:** `10AC:202A` takes

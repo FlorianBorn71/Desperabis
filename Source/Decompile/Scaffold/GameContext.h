@@ -170,7 +170,7 @@ namespace Desperabis
     class GameContext
     {
     public:
-        virtual ~GameContext() = default;
+        virtual ~GameContext();
 
         MenuPage GetMenuPage() const;
         void SetMenuPage(MenuPage page);

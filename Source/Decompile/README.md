@@ -34,10 +34,11 @@ For the first explained case and shared collision-map pointer, see
   See [UI architecture](HighLevelStructure.md#ui-pages-shared-helpers-and-element-lists).
 - `ui-chapter-evidence.txt`: chapter-selection cancellation and acceptance,
   including the original new-game initialization call.
-- `Scaffold/GameContext.h/.cpp`: independent context class and shared object
-  allocators; context-owned sound/collision/height/prompt operations are members.
-- `Scaffold/ApplicationFlow.h/.cpp`: native-valued menu enums and outer page
-  dispatch implemented as context members. Page loops and loading remain
+- `Scaffold/GameContext.h/.cpp`: context class with all member definitions in
+  one implementation file: application flow/page hooks, object allocation,
+  sound/random numbers, collision/height queries, and prompts.
+- `Scaffold/ApplicationFlow.h`: native-valued menu enums; outer page dispatch
+  is implemented in `GameContext.cpp`. Page loops and loading remain
   explicit throwing hooks, not rendering or a playable application.
 - `Scaffold/ApplicationFlowTests.cpp`: menu gates, full scripted page flow,
   startup failure handling, and routing coverage for every state word.
@@ -62,24 +63,25 @@ For the first explained case and shared collision-map pointer, see
   the unidentified DS:DC34 accumulator is preserved. No rendering is included.
 - `Scaffold/`: compilable selector, implemented Pillar/LightSource/Door/Flies/IdleAnimation/SmokeFading/switch/WaterDrop cases,
   placeholder handlers, and tests.
-- `Scaffold/CollisionMap.cpp`: recovered world-X/Z point writer and explicit
-  200x200 dummy-level creation until proper level loading is recovered.
+- `Scaffold/CollisionMap.cpp`: explicit 200x200 dummy-level creation until proper
+  level loading is recovered. Collision-map queries/writers are in `GameContext.cpp`.
 - `Scaffold/GameMath.h/.cpp`: shared fixed-point, signed-step, and sign helpers,
   plus both original integer sine tables and the sine/cosine lookup helpers.
 - `rotation-evidence.txt`, `rotation-runtime-evidence.txt`: table initialization,
   masked lookups, and the original x87 sine/rounding path.
-- `Scaffold/Sound.h/.cpp`: named sound effects, original variant-table loading,
-  attenuation, random selection, four-channel admission, and virtual audio interface.
+- `Scaffold/Sound.h`: named sound effects and virtual audio interface.
+  Table loading, attenuation, random selection, and channel admission are in
+  `GameContext.cpp`.
 - `sound-evidence.txt`: exact distance, volume, sample selection, channel
   policy, table-loading prefix, and random-number instruction ranges.
-- `Scaffold/Heightfield.cpp`: unpacked geometry streams and native floor/room
-  queries, including ceiling presence and special/stacked/repeated surfaces.
+- `Scaffold/Heightfield.cpp`: unpacked geometry stream loading for `Level`.
+  Native floor/room queries and special surfaces are in `GameContext.cpp`.
 - `heightfield-evidence.txt`: exact WaterDrop, height lookup, and Pascal
   array-layout instruction ranges.
 - `Scaffold/ObjectInteraction.cpp`: explicit-input pickup/inventory gameplay,
   grouped-switch arming, and known object-local interactions.
-- `Scaffold/PlayerInteraction.cpp`: world/player overlap queries and the
-  per-update collision-selection/input-interface/interaction path.
+- `Scaffold/PlayerInteraction.cpp`: per-update collision-selection/input-interface/
+  interaction path. World/player overlap queries are in `GameContext.cpp`.
 - `inventory-evidence.txt`: inventory/counter initialization, cleanup,
   input-gated calls, and the original copy-helper contract.
 - `Scaffold/BehaviorMap.json`: case addresses and direct global/call dependencies.

@@ -12,15 +12,12 @@ add_library(behavior-recovery STATIC
     Scaffold/GameContext.h
     Scaffold/GameContext.cpp
     Scaffold/ApplicationFlow.h
-    Scaffold/ApplicationFlow.cpp
     Scaffold/BehaviorDispatch.cpp
     Scaffold/CollisionMap.cpp
     Scaffold/Heightfield.cpp
     Scaffold/Lighting.cpp
     Scaffold/Door.cpp
-    Scaffold/UserMessages.cpp
     Scaffold/GameMath.cpp
-    Scaffold/Sound.cpp
     Scaffold/BehaviorHandlers.cpp
     Scaffold/ObjectInteraction.cpp
     Scaffold/PlayerInteraction.cpp

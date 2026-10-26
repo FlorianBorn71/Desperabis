@@ -223,7 +223,7 @@ of some larger routines; an exported range is not a complete function claim.
 **Porting implication:** recover page-state/input/action logic separately from
 overlay descriptions and drawing. We have enough evidence for this skeleton,
 but not yet for a complete widget API, every inventory action, or every page.
-The [outer application-flow skeleton](Scaffold/ApplicationFlow.cpp) is now
+The [outer application-flow skeleton](Scaffold/GameContext.cpp) is now
 implemented as `GameContext` members, with native-valued
 [menu enums](Scaffold/ApplicationFlow.h). Page bodies and complete game
 initialization remain explicit throwing hooks; no UI rendering has been added.

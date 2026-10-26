@@ -17,7 +17,7 @@ map. The exact effects of the marker bits on player movement have not yet
 been followed through the player collision path. No runtime test has been
 performed against the DOS game. The case is now implemented in
 [Function_Pillar](Scaffold/BehaviorHandlers.cpp), calling the recovered helper
-in [CollisionMap.cpp](Scaffold/CollisionMap.cpp). Host tests verify the point
+in [GameContext.cpp](Scaffold/GameContext.cpp). Host tests verify the point
 write and original-width arithmetic; shared preprocessing/postprocessing and
 full-game integration remain unrecovered.
 
@@ -195,7 +195,7 @@ map pointer at DS:`69C4`, converts coordinates using the writer's same
 wrapped subtractions and signed divisions, and calls `1E48:0E8F`.
 This is an original helper, not an abstraction added to the C++ scaffold.
 `GameContext::GetCollisionMapPixelAtWorldXZ(x, z) const` is implemented in
-[CollisionMap.cpp](Scaffold/CollisionMap.cpp), including the lower-level
+[GameContext.cpp](Scaffold/GameContext.cpp), including the lower-level
 reader's bounds and byte-addressing behavior in the same method.
 
 The lower-level reader at `1E48:0E8F` receives column, row, then a far map
