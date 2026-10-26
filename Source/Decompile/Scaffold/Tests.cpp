@@ -141,6 +141,8 @@ namespace
             const bool implemented = entry.type == BehaviorType::Pillar || entry.type == BehaviorType::LightSource ||
                 entry.type == BehaviorType::Door ||
                 entry.type == BehaviorType::Flies ||
+                entry.type == BehaviorType::ExplosionSmokeCloud || entry.type == BehaviorType::SpawnInCrater ||
+                entry.type == BehaviorType::FireParticle || entry.type == BehaviorType::BurningFireplace ||
                 entry.type == BehaviorType::IdleAnimation ||
                 entry.type == BehaviorType::SmokeFading || entry.type == BehaviorType::Switch1 ||
                 entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ||
@@ -3124,16 +3126,17 @@ namespace
             }
             throw std::runtime_error("Selector interpreter exceeded its instruction bound.");
         };
-        RawGameObject object;
-        object.health = 1;
         GameContext context;
         auto level = CreateDummyLevel();
         context.collisionMap = level.collisionMap.get();
         context.level = &level;
-        object.posX = 150;
-        object.posZ = 4050;
         for (int behavior = 0; behavior <= 65535; ++behavior)
         {
+            // Each route needs a fresh active object; a previous handler can legitimately expire it.
+            RawGameObject object;
+            object.health = 1;
+            object.posX = 150;
+            object.posZ = 4050;
             object.behavior = static_cast<BehaviorType>(behavior);
             const auto result = DispatchObjectCase(object, context);
             Check(result.moduleOffset == originalEntry(behavior) && result.behavior == object.behavior,

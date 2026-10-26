@@ -102,7 +102,9 @@ namespace
                 std::cout << static_cast<std::uint16_t>(entry.type) << ' ' << entry.name << " 0000:"
                     << std::hex << std::setw(4) << std::setfill('0') << entry.moduleOffset << std::dec
                     << (entry.type == BehaviorType::Pillar || entry.type == BehaviorType::IdleAnimation ||
-                        entry.type == BehaviorType::SmokeFading || entry.type == BehaviorType::Switch1 ||
+                        entry.type == BehaviorType::SmokeFading || entry.type == BehaviorType::FireParticle ||
+                        entry.type == BehaviorType::BurningFireplace || entry.type == BehaviorType::Switch1 ||
+                        entry.type == BehaviorType::ExplosionSmokeCloud || entry.type == BehaviorType::SpawnInCrater ||
                         entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ?
                         " implemented case (common processing missing)" :
                         entry.hasSpecificCase ? " unrecovered handler" : " common path only") << '\n';
@@ -269,6 +271,33 @@ namespace
             object.posY = WrapSignedWord(context.GetFloorHeight(object.posX, 0, object.posZ) +
                 context.GetRoomHeight(object.posX, object.posZ));
         }
+        if (!haveObjectFile && object.behavior == BehaviorType::BurningFireplace)
+        {
+            // Minimal demo using the swamp fireplace's collision type, radius, and emission intensity.
+            object.health = 1000;
+            object.collisionType = CollisionType::DamageObj;
+            object.posX = 150;
+            object.posZ = 4050;
+            object.collisionRadiusY = 43;
+            object.doorLockOrGroupBitmask = 7;
+        }
+        if (!haveObjectFile && object.behavior == BehaviorType::ExplosionSmokeCloud)
+        {
+            object.posX = 151;
+            object.posY = 20;
+            object.posZ = 4049;
+            context.InitializeDriftingParticle(object, 3, 150, 4050);
+        }
+        if (!haveObjectFile && object.behavior == BehaviorType::SpawnInCrater)
+        {
+            object.health = 1000;
+            object.posX = 150;
+            object.posY = -20;
+            object.posZ = 4050;
+            object.collisionRadiusY = 17;
+            // Guarantee one demo particle per update; real asset records keep their native intensity.
+            object.doorLockOrGroupBitmask = 1000;
+        }
         std::cout << "PARTIAL RECOVERY ONLY: render-list postprocessing and most handlers are NOT IMPLEMENTED.\n";
         if (!haveCollisionMap)
         {
@@ -361,6 +390,35 @@ namespace
             if (object.behavior == BehaviorType::IdleAnimation)
             {
                 std::cout << "Animation blend phase: " << object.blendWeightOrSpriteOpacity << '\n';
+            }
+            if (object.behavior == BehaviorType::BurningFireplace)
+            {
+                std::cout << "Fire intensity: " << object.doorLockOrGroupBitmask << '\n';
+                for (std::size_t slot = 2; slot < context.worldObjects.size(); ++slot)
+                {
+                    const auto& particle = context.worldObjects[slot];
+                    if (particle.behavior != BehaviorType::FireParticle) { continue; }
+                    std::cout << "Fire particle slot " << slot << ": health " << particle.health
+                        << ", Y " << particle.posY << ", vertical velocity " << particle.velocityY
+                        << ", acceleration " << particle.doorLockOrGroupBitmask << '\n';
+                }
+            }
+            if (object.behavior == BehaviorType::ExplosionSmokeCloud)
+            {
+                std::cout << "Drifting particle: fade " << object.blendWeightOrSpriteOpacity
+                    << ", vertical velocity " << object.velocityY << ", phase " << object.itemValue << '\n';
+            }
+            if (object.behavior == BehaviorType::SpawnInCrater)
+            {
+                std::cout << "Crater emission intensity: " << object.doorLockOrGroupBitmask << '\n';
+                for (std::size_t slot = 2; slot < context.worldObjects.size(); ++slot)
+                {
+                    const auto& particle = context.worldObjects[slot];
+                    if (particle.behavior != BehaviorType::SmokeFading) { continue; }
+                    std::cout << "Smoke particle slot " << slot << ": health " << particle.health
+                        << ", Y " << particle.posY << ", vertical velocity " << particle.velocityY
+                        << ", scale " << particle.spriteScale << '\n';
+                }
             }
             if (object.behavior == BehaviorType::Flies)
             {

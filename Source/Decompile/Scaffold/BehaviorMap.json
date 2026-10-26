@@ -236,7 +236,7 @@
     },
     {
       "value": 18,
-      "name": "Behavior_18",
+      "name": "ExplosionSmokeCloud",
       "namedInRenderer": false,
       "hasSpecificCase": true,
       "entry": "0000:16E5",
@@ -263,7 +263,7 @@
     },
     {
       "value": 21,
-      "name": "Behavior_21",
+      "name": "FireParticle",
       "namedInRenderer": false,
       "hasSpecificCase": true,
       "entry": "0000:181E",

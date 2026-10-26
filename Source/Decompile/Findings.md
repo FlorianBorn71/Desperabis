@@ -22,12 +22,29 @@ Evidence:
 - [Project README](../../README.md): author's account of Turbo Pascal 7.0
   and hand-optimized inline assembly. This is historical context, not a
   compiler identification independently established from the binary.
+- [Extracted object-position tables](../../Data/SourceAssets/Original/LEVEL):
+  the author confirms that `OBJPOSxx.DAT` files contain consecutive 54-byte
+  object records. All 38 available files have lengths divisible by 54,
+  totaling 2,920 on-disk records. For example,
+  [OBJPOS10.DAT](../../Data/SourceAssets/Original/LEVEL/OBJPOS10.DAT) has
+  5,346 bytes, or 99 records. The renderer already loads these tables through
+  `Level::ReadGameObjects` in [Level.cpp](../NewRenderer/SharedSource/base/Asset/Level.cpp).
+  Use them to inspect real behavior/collision/parameter combinations and
+  corroborate field hypotheses. These are initial asset records, not runtime
+  captures; do not assume that file record indices equal native world slots,
+  or that initial values alone establish how a field changes during play.
 
 No runtime experiments have been performed. Subsequent static tracing has
 identified a high-level dispatcher, gameplay-loop candidates, and the
 author's object-behavior routine; see [High-level program structure](HighLevelStructure.md)
 and its [instruction evidence](high-level-evidence.txt). Object fields are
 still only partially understood.
+The [allocation discovery](SpawnDiscovery.md) now indexes 25 direct allocator
+call sites across all imported code blocks, including code outside the object
+dispatcher. Bounded provenance tracing links 19 constant behavior-word stores
+to 14 IDs; 12 of those IDs do not occur in the 2,920 initial object records.
+One site remains an explicit local-CFG candidate. Reserved-slot creation,
+copy/reactivation paths, and general behavior transitions are not covered.
 The [UI architecture map](HighLevelStructure.md#ui-pages-shared-helpers-and-element-lists)
 and [UI instruction evidence](ui-evidence.txt) now identify the F2 inventory
 page, shared input/text helpers, registered overlay and resource-meter records,
@@ -36,7 +53,8 @@ evidence for one universal widget/page interpreter.
 The renderer's existing accessors and the author's layout information are now
 connected to the binary in [Object behavior recovery](BehaviorRecovery.md).
 That page also documents the compilable named-handler scaffold. Pillar,
-LightSource, Door, Flies, IdleAnimation, SmokeFading, Switch1, SwitchGrouped, and WaterDrop are implemented; other handlers remain explicit
+LightSource, Door, Flies, behavior 18, FireParticle, BurningFireplace, IdleAnimation,
+SmokeFading, SpawnInCrater, Switch1, SwitchGrouped, and WaterDrop are implemented; other handlers remain explicit
 placeholders.
 The author's Excel object layout has been compared with the renderer accessors
 and added as the canonical 54-byte `RawGameObject` struct in
@@ -399,6 +417,51 @@ The [C++ handler](Scaffold/BehaviorHandlers.cpp) is now implemented and
 host-tested, including complete 16-bit rate/phase coverage at representative
 tick counts and byte-level isolation of its only write. Common object-update
 preprocessing/postprocessing are not claimed to be object-local or implemented.
+
+### BurningFireplace and its fire particles
+
+Behavior 22 (`0000:18C6`) requests fixed sound effect 62, writes a weighted
+5x5 flickering-light sample grid, and probabilistically calls the fragment
+factory at `10AC:091C`. Its collision-49 branch initializes behavior 21
+(`0000:181E`), now named `FireParticle`. Both handlers and the fire-only
+factory path are implemented, with all new context member definitions in
+[GameContext.cpp](Scaffold/GameContext.cpp).
+
+The particles have positive initial Y velocity, signed acceleration, angular
+velocity, fixed-point Y accumulation, and lifetime-driven display modes.
+The generic factory's unrelated fragment branches remain unimplemented.
+All six real fireplace records have collision type 49: five in level 23
+start with intensity zero, and level 24 record 42 starts with intensity seven.
+Zero intensity prevents emission but does not disable flickering light or
+the inclusive 1-in-20 sound check.
+
+See [behavior and field contracts](BehaviorRecovery.md#burningfireplace-and-fireparticle),
+[bounded instruction evidence](fireplace-evidence.txt), and
+[host tests](Scaffold/FireplaceTests.cpp). This is statically traced,
+asset-corroborated and host-tested, not DOS-runtime validated.
+
+### Drifting particles, shared smoke initialization, and crater emission
+
+Behavior 18 (`0000:16E5`) and initializer `10AC:07F2` are now implemented.
+The particle moves in whole units each tick, alternates vertical deceleration,
+fades, and expires only below zero fade; remaining ticks still run after
+expiration. The initializer preserves Y, phase, and all other unwritten bytes.
+Its numeric enum name is retained pending a sufficiently general visual role.
+
+The shared supplied-object smoke initializer `10AC:044E` is also implemented,
+including its four RNG draws, retained low scale byte and fixed-point fraction,
+and final floor-height correction. `SpawnInCrater` (139, `0000:3F8A`) is the
+first fully wired caller in this batch: a per-update signed intensity check
+emits at most one particle, with native post-allocation source reads.
+All context members remain in [GameContext.cpp](Scaffold/GameContext.cpp).
+
+All 28 crater emitters in the initial object tables are in `OBJPOS25.DAT`,
+with Y radius 17 and emission intensities 16, 36 or 46.
+See [contracts and limitations](BehaviorRecovery.md#drifting-particles-and-shared-smoke-creation),
+[clean instruction evidence](particle-spawn-evidence.txt), and
+[full-record host tests](Scaffold/ParticleTests.cpp). Other callers and weapon
+behaviors remain unrecovered; the allocation discovery does not imply they
+are implemented.
 
 ### SmokeFading and shared math
 

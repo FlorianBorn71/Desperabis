@@ -2,6 +2,8 @@
 #include "BehaviorDispatch.h"
 #include "GameMath.h"
 
+#include <algorithm>
+#include <cstdlib>
 #include <iterator>
 #include <stdexcept>
 
@@ -134,9 +136,26 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::BatOutdoor, 0x16A3 };
     }
 
-    DispatchResult Function_Behavior_18(RawGameObject&, GameContext&)
+    DispatchResult Function_ExplosionSmokeCloud(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_18, 0x16E5 };
+        // This particle uses whole-unit movement per tick, not the fire particle's fixed-point motion.
+        for (int tick = 0; tick < context.tickCount; ++tick)
+        {
+            object.posX = WrapSignedWord(object.posX + object.velocityX);
+            object.posY = WrapSignedWord(object.posY + object.velocityY);
+            object.posZ = WrapSignedWord(object.posZ + object.velocityZ);
+            if ((static_cast<std::uint16_t>(object.itemValue) & 1u) != 0)
+            {
+                object.velocityY = WrapSignedWord(object.velocityY - 1);
+            }
+            object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity - 5);
+            if (object.blendWeightOrSpriteOpacity < 0) { object.health = 0; }
+            object.itemValue = WrapSignedWord(static_cast<std::uint16_t>(object.itemValue) ^ 1u);
+            const auto blend = static_cast<int>(object.blendWeightOrSpriteOpacity);
+            const auto shade = 37 - (blend >= 0 ? blend / 8 : -((-blend + 7) / 8));
+            object.displayType = static_cast<DisplayType>(std::clamp(shade, 30, 36));
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::ExplosionSmokeCloud, 0x16E5 };
     }
 
     DispatchResult Function_FireFly(RawGameObject&, GameContext&)
@@ -144,14 +163,50 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::FireFly, 0x17A6 };
     }
 
-    DispatchResult Function_Behavior_21(RawGameObject&, GameContext&)
+    DispatchResult Function_FireParticle(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_21, 0x181E };
+        // itemValue holds fractional Y; field_24 holds angular velocity for these particles.
+        AddFixedPoint8(object.posY, object.itemValue,
+            WrapSignedWord(static_cast<std::int32_t>(object.velocityY) * context.tickCount));
+        const auto fadeStep = WrapSignedWord(context.tickCount * context.Random(3));
+        object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity +
+            GetStepToward(object.blendWeightOrSpriteOpacity, 0, fadeStep));
+        object.velocityY = WrapSignedWord(object.velocityY +
+            static_cast<std::int32_t>(object.doorLockOrGroupBitmask) * context.tickCount);
+        object.winY = WrapSignedWord(object.winY +
+            static_cast<std::int32_t>(object.field_24) * context.tickCount);
+        const auto quarterHealth = object.health >= 0 ? object.health / 4 :
+            -((-static_cast<int>(object.health) + 3) / 4);
+        object.displayType = static_cast<DisplayType>(std::clamp(37 - quarterHealth, 30, 36));
+        return { DispatchStatus::ExecutedCase, BehaviorType::FireParticle, 0x181E };
     }
 
-    DispatchResult Function_BurningFireplace(RawGameObject&, GameContext&)
+    DispatchResult Function_BurningFireplace(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::BurningFireplace, 0x18C6 };
+        // Intensity controls sound and emission, not the weighted flickering-light footprint.
+        const auto soundChance = context.Random(20);
+        if (object.doorLockOrGroupBitmask >= soundChance)
+        {
+            context.PlaySoundEffect(SoundEffect::Burning,
+                context.GetSoundVolumeAt(object.posX, object.posZ, 2), object, -1);
+        }
+        for (int offsetX = -2; offsetX <= 2; ++offsetX)
+        {
+            for (int offsetZ = -2; offsetZ <= 2; ++offsetZ)
+            {
+                const auto weight = 5 - std::abs(offsetX) - std::abs(offsetZ);
+                const auto amount = static_cast<std::int16_t>(context.Random(30) * weight * weight / 8);
+                context.lightingCache.AddAtWorldXZ(
+                    WrapSignedWord(object.posX + offsetX * 40),
+                    WrapSignedWord(object.posZ + offsetZ * 40), amount);
+            }
+        }
+        const auto spawnChance = context.Random(100);
+        // The native code attempts at most one spawn per update, using a signed low-word product.
+        const auto spawnRate = WrapSignedWord(
+            static_cast<std::int32_t>(object.doorLockOrGroupBitmask) * context.tickCount);
+        if (spawnRate > spawnChance) { context.SpawnFireParticle(object); }
+        return { DispatchStatus::ExecutedCase, BehaviorType::BurningFireplace, 0x18C6 };
     }
 
     DispatchResult Function_PulsatingLight(RawGameObject&, GameContext&)
@@ -823,9 +878,17 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_138, 0x3EB8 };
     }
 
-    DispatchResult Function_SpawnInCrater(RawGameObject&, GameContext&)
+    DispatchResult Function_SpawnInCrater(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::SpawnInCrater, 0x3F8A };
+        const auto chance = context.Random(1000);
+        if (object.doorLockOrGroupBitmask > chance)
+        {
+            const auto slot = context.FindFreeObjectIndex();
+            // Native code reads source coordinates after allocation, including possible source clearing.
+            context.InitializeSmokeParticle(context.worldObjects[slot], object.posX,
+                WrapSignedWord(object.posY + object.collisionRadiusY), object.posZ, 5, 1, 1);
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::SpawnInCrater, 0x3F8A };
     }
 
     DispatchResult Function_RotatingMachineCenter(RawGameObject&, GameContext&)

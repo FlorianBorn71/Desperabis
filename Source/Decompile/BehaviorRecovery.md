@@ -218,8 +218,9 @@ case BehaviorType::BatIndoor:
     return Function_BatIndoor(object, context);
 ```
 
-Pillar, LightSource, Door, Flies, IdleAnimation, SmokeFading, Switch1,
-SwitchGrouped, WaterDrop, and DisabledSentinel return `ExecutedCase`. The other
+Pillar, LightSource, Door, Flies, behavior 18, FireParticle, BurningFireplace,
+IdleAnimation, SmokeFading, SpawnInCrater, Switch1, SwitchGrouped, WaterDrop,
+and DisabledSentinel return `ExecutedCase`. The other
 handlers return `UnimplementedHandler` without moving objects or writing
 globals. Every handler returns its enum identity, for example:
 
@@ -242,6 +243,8 @@ The full comparison spine has **186 non-sentinel cases plus `FFFF`**:
 
 Together these give 190 named/numeric catalog entries. The scaffold reads the
 **full word** at `08`, preserving byte `09`; `0x010E` must not become BatIndoor.
+The behavior enum is ordered numerically, including recovered selectors;
+the generator preserves this ordering and the renderer's inline comments.
 Renderer enum values remain useful 1:1 identifiers for their named values,
 but its byte accessor does not represent all runtime discriminator values.
 
@@ -1015,6 +1018,224 @@ zero ticks, signed overflow, and negative remainders. They exercise every
 independent modular-arithmetic oracle, compare all 54 object bytes to ensure
 only the phase word can change, and check health/dispatch gates. The case is
 implemented and host-tested, not DOS-runtime validated.
+
+### BurningFireplace and FireParticle
+
+For executable-wide allocation sites and other runtime-created behavior
+leads, see [Object-allocation discovery](SpawnDiscovery.md). This separates
+provenance-linked assignments from unresolved paths and does not implement
+all newly indexed child behaviors. Behavior 18 and the crater smoke emitter
+have subsequently been implemented as described below.
+
+Implemented in [BehaviorHandlers.cpp](Scaffold/BehaviorHandlers.cpp):
+`BurningFireplace` (22), entry `0000:18C6`, and `FireParticle` (21),
+entry `0000:181E`. The latter is the recovered name for the former
+`Behavior_21`, absent from the renderer's behavior enum.
+[fireplace-evidence.txt](fireplace-evidence.txt) preserves both complete
+wrappers, the fire branch of factory `10AC:091C`, its return, the signed
+random helper, and the clearing allocator. Range headings are reproducible
+`InspectCode.java` arguments.
+
+The emitter's operation order is:
+
+1. Draw `Random(20)`. If the signed word at offset 46,
+   `doorLockOrGroupBitmask`, is **greater than or equal** to that result,
+   request `SoundEffect::Burning` (62), distance scale 2, source object,
+   instance limit -1. Sample selection can consume another random draw,
+   even without audible playback, according to the existing sound policy.
+2. Iterate X offsets -2..2, then Z offsets -2..2. Each of the 25 samples
+   contributes `(5 - abs(x) - abs(z))^2 * Random(30) / 8` at the wrapped
+   world position `(posX + 40*x, posZ + 40*z)`. This is a sample grid,
+   not 25 distinct lighting tiles: several samples can accumulate in the
+   same cache cell. All draws occur even outside the active cache window.
+   Lighting is independent of emission intensity.
+3. Draw `Random(100)`. Spawn **at most one** particle if the signed,
+   low-word product `intensity * tickCount` is strictly greater than this
+   result. This is not a per-tick spawn loop.
+4. The spawn position is `(posX, low16(posY + collisionRadiusY), posZ)`.
+
+`GameContext::SpawnFireParticle`, defined alongside every other context
+member in [GameContext.cpp](Scaffold/GameContext.cpp), ports the native
+factory's collision-49 (`DamageObj`) branch, not its other fragment types.
+It uses the existing zero-health allocator, including cleared fallback
+slot 165. Coordinates are captured before allocation; the source collision
+type is read afterward. If allocation clears the source itself, its now-zero
+collision byte produces no particle and consumes no initialization draws.
+Other nonzero collision types are explicitly rejected by this fire-only API;
+unrelated generic-factory fragment dispatch is not claimed as implemented.
+
+Initialization leaves all unspecified bytes zero:
+
+| Field | Initial value |
+| --- | --- |
+| Model / animation / second frame / frame | 39 / 3 / 2 / 5 |
+| Renderer placement mode | 130, renderer-owned configuration |
+| Blend/opacity word | 100 |
+| Vertical velocity | `600 + Random(500)` |
+| Behavior | `FireParticle` (21) |
+| Angular velocity (`field_24`) | `Random(4)` |
+| Lifetime (`health`) | `50 + Random(60)` |
+| Initial display mode | 5 (`VectorUnlit`), not a sprite mode |
+| Vertical acceleration (offset 46) | `clamp(-((RandomSigned(30) + velocityY/health) SAR 1), -30, 1)` |
+| XZ / Y collision radii | 10 / 10 |
+| X / Y angles | `Random(512)` / `Random(512)` |
+
+The initialization draw order is 500, 4, 60, 61, 512, 512.
+`RandomSigned(radius)`, recovered from `1E48:0AA0`, draws
+`Random(2*radius+1)-radius` and replaces zero with **positive radius**;
+it does not reroll. Its scaffold interface accepts radii 0..32767.
+
+Each particle update:
+
+1. Adds low-word `velocityY * ticks` to the fixed-point Y accumulator
+   (`itemValue`), transferring the signed high byte into `posY`.
+2. Moves the blend/opacity word toward zero by low-word
+   `ticks * Random(3)`, using the recovered signed-step helper.
+3. Adds low-word `acceleration * ticks` to vertical velocity.
+4. Adds low-word `field_24 * ticks` to `winY`, without masking to 511.
+5. Sets display mode to `clamp(37 - (health SAR 2), 30, 36)`.
+
+There is no horizontal motion and no health decrement inside this handler.
+The shared update prefix supplies lifetime countdown when object collisions
+are enabled, including the final update at health zero. A newly spawned
+particle in a later world slot updates during the same world pass; fallback
+slot 165 does not. Physical up/down interpretation and visual meanings of
+display modes 30..36 are not inferred merely from these integer operations.
+This is distinct from behavior 24, `SmokeFading`.
+
+All six extracted fireplace records corroborate the source collision type:
+level 23 file records 3, 4, 6, 7 and 12 start with intensity **0**;
+level 24 record 42 starts with intensity **7** (zero-based file indices,
+not assumed world-slot indices). Zero intensity disables particle emission
+but retains lighting and the inclusive 1-in-20 sound chance.
+With seven and 15 ticks, the product is 105, so one spawn is guaranteed.
+
+[FireplaceTests.cpp](Scaffold/FireplaceTests.cpp) compares full 54-byte records,
+sound selection/admission, all lighting cells, RNG state, signed-word
+arithmetic, zero/large ticks, allocation alias/fallback/negative-health
+cases, same-pass updates, lifetime gates, and all six actual asset records.
+Run the console's minimal synthetic swamp-style demo with
+`--behavior BurningFireplace --ticks 15`; real object input is never replaced.
+The code is host-tested against static instruction-derived expectations,
+not validated against a running DOS capture.
+
+### Drifting particles and shared smoke creation
+
+The complete wrappers and supplied-object initializers are preserved in
+[particle-spawn-evidence.txt](particle-spawn-evidence.txt). This batch adds
+behavior 18 and `SpawnInCrater` (139), plus `GameContext` member initializers
+in [GameContext.cpp](Scaffold/GameContext.cpp). Other discovered behaviors,
+player weapons, and damage handling remain outside this implementation.
+
+#### ExplosionSmokeCloud (18): whole-unit drifting and fading
+
+The name reflects the author's recollection that this is likely a smoke cloud
+after an explosion; its exact visual role remains tentative. The update mechanics
+are recovered. Entry `0000:16E5` executes a loop
+of exactly `tickCount` iterations; zero ticks make no object-local changes.
+Each iteration:
+
+1. Adds each velocity to its corresponding position, with signed-word wrap.
+   Unlike `FireParticle` and `SmokeFading`, there is no fixed-point accumulator.
+2. Decrements vertical velocity if bit zero of `itemValue` was set.
+3. Subtracts five from the blend/fade word, wrapping to a signed word.
+   Clears health only when that result is **negative**, not at exactly zero.
+4. Toggles only bit zero of `itemValue`; the other bits are preserved.
+5. Sets display mode to `clamp(37 - (fade SAR 3), 30, 36)`.
+
+It does not stop the loop after clearing health. Its fade-based death works
+even when the separate shared health countdown is disabled. It consumes no
+random numbers and does not query collision, height, or audio.
+
+`InitializeDriftingParticle(object, frame, x, z)` ports `10AC:07F2`
+(`RETF 8`, native slot/frame/X/Z word arguments). It does **not** allocate or
+clear the supplied record. It sets health 50, model 39, animation 3,
+frame=`frame`, second frame 1, fade 100, display 30, behavior 18, collision
+type zero, and vertical velocity 1.
+
+Before replacing X/Z, it sets horizontal velocities to the sign of
+`low16(oldX - x)` and `low16(oldZ - z)`. It then assigns X/Z and draws
+`Random(512)` for each of the X and Y angles, in that order.
+Y, the phase word, placement mode, scale, collision radii/mask, and all other
+unwritten fields survive. In particular, callers can place this initializer
+over an existing object, and can subsequently override behavior 18.
+
+#### Supplied-object smoke initializer
+
+`InitializeSmokeParticle(object, x, y, z, radiusXZ, riseFactor, placement)`
+ports `10AC:044E` (`RETF 14`, native slot/X/Y/Z/radius/factor/placement words).
+The renderer placement byte is configuration, not free particle scratch.
+This initializer also neither allocates nor clears.
+
+| Field | Assignment |
+| --- | --- |
+| Model / animation / frame | 1 / 2 / 3 |
+| Behavior / display | `SmokeFading` (24) / `SpriteTransparent` (1) |
+| Blend/opacity | 10 |
+| Y angle | `Random(2)` |
+| XZ / Y radii | supplied radius / 5 |
+| Z velocity | 2, used by behavior 24 as scale growth rather than Z movement |
+| Health/lifetime | signed low word of `riseFactor * 50 + Random(50)` |
+| High scale byte | low byte of `Random(unsigned radiusXZ) + 10` |
+| Y velocity | signed low word of `riseFactor * 200 + Random(130)` |
+| Position / placement | supplied values |
+
+The low scale byte and other unwritten fields, including the fractional
+accumulator, second frame, X velocity and collision fields, survive.
+The four draws are always ordered **2, 50, radius, 130**.
+Finally it queries the existing floor-height helper and raises Y to that
+signed floor value when Y is lower. This also preserves the floor helper's
+surface-metadata side effects.
+
+The radius is a word-sized unsigned RNG bound even though the object field
+is signed; negative radius words are not silently clamped. Radius zero
+reaches the existing explicit `Random(0)` error. Missing geometry, missing
+required surface metadata and invalid floor coordinates also remain explicit
+errors, not successful-looking fallback particles.
+
+#### Complete smoke emitter: SpawnInCrater
+
+Entry `0000:3F8A` draws `Random(1000)` and emits one particle if the signed
+word at offset 46 is **strictly greater** than that result. There is no tick
+multiplier or per-tick loop: zero ticks can still emit, and at most one
+particle is emitted per update.
+
+It calls the first-zero-health allocator, then reads the source's position
+and Y radius, and initializes smoke at
+`(sourceX, low16(sourceY + radiusY), sourceZ)` with XZ radius 5, factor 1,
+and placement 1. The allocator clears the chosen slot, including fallback
+165. Source reads occur **after allocation**; an expiring source can therefore
+be cleared by its own allocation. In the scaffold, its resulting zero X/Z
+are outside the supported heightfield and fail explicitly. Do not move the
+coordinate reads before allocation to hide this edge case.
+
+New particles in later ordinary slots update in the same world pass; earlier
+slots wait, and fallback 165 is initialized but not normally updated.
+The emitter itself does not otherwise change its source record.
+
+All **28** initial `SpawnInCrater` records occur in `OBJPOS25.DAT`.
+They have Y radius 17 and intensities 16, 36 or 46. They corroborate the
+emission fields; tests use their original records with explicit dummy floor
+geometry, not a claim to have loaded level 25's actual heightfield.
+
+[ParticleTests.cpp](Scaffold/ParticleTests.cpp) checks complete 54-byte records,
+all signed-word fade/phase patterns, maximum ticks and continued death-loop
+processing, initializer retention, wrapped direction signs, RNG ordering,
+scale-byte truncation, floor correction/surface metadata, explicit errors,
+emission thresholds, zero ticks, allocation alias/fallback, same-pass
+updates, and all 28 original emitter records.
+
+Console examples:
+
+```powershell
+.\Source\Decompile\build\Debug\desperabis-recovery.exe --behavior ExplosionSmokeCloud --ticks 3
+.\Source\Decompile\build\Debug\desperabis-recovery.exe --behavior SpawnInCrater --ticks 3
+```
+
+The synthetic crater demo uses intensity 1000 to guarantee one particle;
+object files keep their actual values. Both commands retain the intentional
+partial-recovery exit code 2. These are static-instruction-derived host tests,
+not DOS-runtime comparisons.
 
 ### SmokeFading: object-local rise, opacity, growth, and deceleration
 

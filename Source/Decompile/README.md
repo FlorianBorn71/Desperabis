@@ -25,6 +25,14 @@ For the first explained case and shared collision-map pointer, see
   entry-point mapping, relocation, and initial instruction decoding.
 - `ghidra_scripts/InspectCode.java`: bounded read-only decoding with raw bytes,
   encoded far-call targets, and logical relative-branch targets.
+- `ghidra_scripts/DiscoverObjectSpawns.java`: read-only allocator-call discovery,
+  bounded object provenance, and one-level initializer tracing.
+- `SpawnDiscovery.md`, `spawn-discovery.txt`, `spawn-initializer-evidence.txt`:
+  discovery report, 25-site index, and selected initializer instruction evidence.
+  Includes 14 linked behavior IDs, 12 absent from the initial object tables;
+  this is not a claim to cover every spawn mechanism.
+- `TestSpawnDiscovery.ps1`: independent relocation enumeration, regression
+  controls, and original-object-table cross-checks for the discovery report.
 - `original-executable.json`: generated identity and header baseline for the
   original executable. No timestamps or machine-specific paths.
 - `initial-import.txt`: generated memory map and initial instruction report.
@@ -49,6 +57,17 @@ For the first explained case and shared collision-map pointer, see
   suffix, iteration bounds, and both clearing/free-slot allocators.
 - `lighting-evidence.txt`: packed static brightness, dynamic 21x21
   tile-corner cache, LightSource flicker/writes, frame clearing, and readers.
+- `fireplace-evidence.txt`: fireplace sound, weighted flickering light,
+  emission, fire-particle initialization/update, and the signed random helper.
+  See [fireplace recovery](BehaviorRecovery.md#burningfireplace-and-fireparticle).
+- `Scaffold/FireplaceTests.cpp`: exact particle records, arithmetic/RNG/audio/
+  lighting checks, allocation/lifetime edges, and six original asset fixtures.
+- `particle-spawn-evidence.txt`: behavior 18, its supplied-object initializer,
+  the shared smoke initializer, and the complete `SpawnInCrater` emitter.
+- `Scaffold/ParticleTests.cpp`: drifting/fading arithmetic, initializer field
+  retention/RNG, floor correction, crater emission, lifecycle/allocation
+  edges, and 28 original level-25 emitter records. See
+  [particle creation](BehaviorRecovery.md#drifting-particles-and-shared-smoke-creation).
 - `lighting-shade-evidence.txt`: timer-driven shade noise, its quantization
   consumer, a separate global shading term, and per-frame noise-range resets.
 - `object-render-list-evidence.txt`: render-sort-key assignment and signed
@@ -61,7 +80,7 @@ For the first explained case and shared collision-map pointer, see
   per-frame reset, native world-coordinate accumulation, and window culling.
   LightSource objects now add flicker and request their configured sounds;
   the unidentified DS:DC34 accumulator is preserved. No rendering is included.
-- `Scaffold/`: compilable selector, implemented Pillar/LightSource/Door/Flies/IdleAnimation/SmokeFading/switch/WaterDrop cases,
+- `Scaffold/`: compilable selector, implemented Pillar/LightSource/Door/Flies/behavior-18/FireParticle/BurningFireplace/IdleAnimation/SmokeFading/SpawnInCrater/switch/WaterDrop cases,
   placeholder handlers, and tests.
 - `Scaffold/CollisionMap.cpp`: explicit 200x200 dummy-level creation until proper
   level loading is recovered. Collision-map queries/writers are in `GameContext.cpp`.
@@ -158,8 +177,9 @@ The current investigation is [Pillar](Pillar.md), its collision-map writer,
 and the corresponding reader/player-blocking rules. `BatIndoor`'s helper at
 module-relative `10AC:3391` remains a later target.
 Pillar's case and point writer, plus the object-local IdleAnimation and
-SmokeFading cases, Flies, two switch behaviors, WaterDrop, LightSource, and ordinary
-doors are implemented and host-tested.
+SmokeFading cases, Flies, two switch behaviors, WaterDrop, LightSource, ordinary
+doors, behavior 18, and the fireplace/crater particle paths are implemented
+and host-tested.
 Flies preserves randomized frame blending, per-update orientation changes, and
 the fixed buzzing effect with doubled-distance attenuation; it does not move
 the object's position. Use `--behavior Flies --ticks 3` to inspect its state.

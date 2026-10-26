@@ -35,6 +35,14 @@ if(BUILD_TESTING)
     add_executable(application-flow-tests Scaffold/ApplicationFlowTests.cpp)
     target_link_libraries(application-flow-tests PRIVATE behavior-recovery)
     add_test(NAME application-flow COMMAND application-flow-tests)
+    add_executable(fireplace-tests Scaffold/FireplaceTests.cpp)
+    target_link_libraries(fireplace-tests PRIVATE behavior-recovery)
+    add_test(NAME fireplace-behavior COMMAND fireplace-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original/LEVEL")
+    add_executable(particle-tests Scaffold/ParticleTests.cpp)
+    target_link_libraries(particle-tests PRIVATE behavior-recovery)
+    add_test(NAME particle-spawning COMMAND particle-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original/LEVEL/OBJPOS25.DAT")
     add_test(NAME behavior-recovery-routes COMMAND behavior-recovery-tests
         "${CMAKE_CURRENT_SOURCE_DIR}/../../Game/Original/DESPERAB.EXE"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original/SAMP/S_TAB.PRB")
@@ -48,7 +56,7 @@ foreach(target behavior-recovery desperabis-recovery)
     endif()
 endforeach()
 if(BUILD_TESTING)
-    foreach(target behavior-recovery-tests application-flow-tests)
+    foreach(target behavior-recovery-tests application-flow-tests fireplace-tests particle-tests)
         if(MSVC)
             target_compile_options(${target} PRIVATE /W4 /WX)
         else()

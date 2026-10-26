@@ -1,0 +1,1195 @@
+Desperabis object-allocation discovery, version 1
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Read-only ephemeral decoding; no saved instructions/functions/references.
+Self-tests: PASS (object/segment provenance, register clobbers, branch merge, partial-local writes).
+Scope: all initialized CODE blocks, direct far and same-segment near CALL encodings
+targeting 1E48:2049 or 1E48:2085. All byte offsets searched, not blindly decoded as code.
+A relocation-backed CALL plus a local ENTER-to-call CFG path is structural evidence,
+NOT proof of runtime reachability. Unvalidated matches remain candidates.
+Not covered: indirect allocator calls, aliases/wrappers without a direct call edge,
+reserved-slot writes, copied/reactivated records, or general existing-object transitions.
+Provenance is conditional on DS being the native data segment, bounded CFG decoding,
+and callees not overwriting tracked BP locals. Constants/branches are not path-feasibility proofs.
+INT 34h..3Fh paths stop before inline emulator data. Other inline data remains a limitation.
+Known slot arguments are traced through one ENTER-based helper level, not arbitrary recursion.
+
+SITE 0000:2456 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 0000:1094
+  SLOT ARGUMENT 0000:2477 -> 10AC:044E: slot PUSH at 0000:245B, callee BP+12;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 0000:2456 next allocation
+  Trace boundary: 0000:3527 next allocation
+  Trace boundary: 0000:3CC7 next allocation
+  Trace boundary: 0000:3F0A next allocation
+  Trace boundary: 0000:3FAA next allocation
+  Trace boundary: 0000:551C return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:044E (one-level slot-argument trace; caller argument facts intersected)
+  10AC:0463 field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:046A field +01 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x1],0x2
+  10AC:0472 field +03 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x3],0x3
+  10AC:047A field +08 BEHAVIOR WORD = 24 (0x0018) ; MOV word ptr ES:[DI + 0x8],0x18
+  10AC:0483 field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:048B field +2A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x2a],0xa
+  10AC:049B field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:04A5 field +18 = 0 (0x0000) ; MOV word ptr ES:[DI + 0x18],AX
+  10AC:04AC field +1A = 5 (0x0005) ; MOV word ptr ES:[DI + 0x1a],0x5
+  10AC:04B5 field +16 = 2 (0x0002) ; MOV word ptr ES:[DI + 0x16],0x2
+  10AC:04D4 field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:04EA field +35 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x35],AL
+  10AC:0509 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:0513 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:051D field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0527 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:0531 field +04 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x4],AL
+  10AC:0564 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  Provenance-linked stores: 18; constant behavior-word stores: 1
+  Trace boundary: 10AC:0569 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 0000:3527 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 0000:1094
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 0000:3562 next allocation
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 0000:3562 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 0000:1094
+  SLOT ARGUMENT 0000:358F -> 10AC:D682: slot PUSH at 0000:3567, callee BP+0C;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 0000:2456 next allocation
+  Trace boundary: 0000:3527 next allocation
+  Trace boundary: 0000:3CC7 next allocation
+  Trace boundary: 0000:3F0A next allocation
+  Trace boundary: 0000:3FAA next allocation
+  Trace boundary: 0000:551C return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:D682 (one-level slot-argument trace; caller argument facts intersected)
+  10AC:D697 field +0A = 60 (0x003C) ; MOV word ptr ES:[DI + 0xa],0x3c
+  10AC:D6A3 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:D6AD field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:D6B7 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:D6CD field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:D6DD field +12 = UNRESOLVED ; MOV word ptr ES:[DI + 0x12],AX
+  10AC:D6ED field +16 = UNRESOLVED ; MOV word ptr ES:[DI + 0x16],AX
+  10AC:D6F4 field +08 BEHAVIOR WORD = 114 (0x0072) ; MOV word ptr ES:[DI + 0x8],0x72
+  10AC:D6FD field +01 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x1],0x4
+  10AC:D705 field +03 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x3],0x1
+  10AC:D70D field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:D714 field +35 = 29 (0x001D) ; MOV byte ptr ES:[DI + 0x35],0x1d
+  10AC:D71C field +33 = 13 (0x000D) ; MOV byte ptr ES:[DI + 0x33],0xd
+  10AC:D724 field +2A = 4 (0x0004) ; MOV word ptr ES:[DI + 0x2a],0x4
+  10AC:D734 field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:D786 field +0A = 0 (0x0000) ; MOV word ptr ES:[DI + 0xa],AX
+  Provenance-linked stores: 16; constant behavior-word stores: 1
+  Trace boundary: 10AC:D78B return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 0000:3CC7 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 0000:1094
+  SLOT ARGUMENT 0000:3D15 -> 10AC:044E: slot PUSH at 0000:3CCF, callee BP+12;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  0000:3D28 field +35 = UNRESOLVED ; MOV byte ptr [DI + 0x8271],AL
+  0000:3D32 field +14 = 0 (0x0000) ; MOV word ptr [DI + 0x8250],AX
+  Provenance-linked stores: 2; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 0000:2456 next allocation
+  Trace boundary: 0000:3527 next allocation
+  Trace boundary: 0000:3CC7 next allocation
+  Trace boundary: 0000:3F0A next allocation
+  Trace boundary: 0000:3FAA next allocation
+  Trace boundary: 0000:551C return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:044E (one-level slot-argument trace; caller argument facts intersected)
+  10AC:0463 field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:046A field +01 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x1],0x2
+  10AC:0472 field +03 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x3],0x3
+  10AC:047A field +08 BEHAVIOR WORD = 24 (0x0018) ; MOV word ptr ES:[DI + 0x8],0x18
+  10AC:0483 field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:048B field +2A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x2a],0xa
+  10AC:049B field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:04A5 field +18 = 20 (0x0014) ; MOV word ptr ES:[DI + 0x18],AX
+  10AC:04AC field +1A = 5 (0x0005) ; MOV word ptr ES:[DI + 0x1a],0x5
+  10AC:04B5 field +16 = 2 (0x0002) ; MOV word ptr ES:[DI + 0x16],0x2
+  10AC:04D4 field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:04EA field +35 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x35],AL
+  10AC:0509 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:0513 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:051D field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0527 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:0531 field +04 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x4],AL
+  10AC:0564 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  Provenance-linked stores: 18; constant behavior-word stores: 1
+  Trace boundary: 10AC:0569 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 0000:3F0A -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 0000:1094
+  SLOT ARGUMENT 0000:3F30 -> 10AC:044E: slot PUSH at 0000:3F0F, callee BP+12;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 0000:2456 next allocation
+  Trace boundary: 0000:3527 next allocation
+  Trace boundary: 0000:3CC7 next allocation
+  Trace boundary: 0000:3F0A next allocation
+  Trace boundary: 0000:3FAA next allocation
+  Trace boundary: 0000:551C return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:044E (one-level slot-argument trace; caller argument facts intersected)
+  10AC:0463 field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:046A field +01 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x1],0x2
+  10AC:0472 field +03 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x3],0x3
+  10AC:047A field +08 BEHAVIOR WORD = 24 (0x0018) ; MOV word ptr ES:[DI + 0x8],0x18
+  10AC:0483 field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:048B field +2A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x2a],0xa
+  10AC:049B field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:04A5 field +18 = 20 (0x0014) ; MOV word ptr ES:[DI + 0x18],AX
+  10AC:04AC field +1A = 5 (0x0005) ; MOV word ptr ES:[DI + 0x1a],0x5
+  10AC:04B5 field +16 = 2 (0x0002) ; MOV word ptr ES:[DI + 0x16],0x2
+  10AC:04D4 field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:04EA field +35 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x35],AL
+  10AC:0509 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:0513 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:051D field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0527 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:0531 field +04 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x4],AL
+  10AC:0564 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  Provenance-linked stores: 18; constant behavior-word stores: 1
+  Trace boundary: 10AC:0569 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 0000:3FAA -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 0000:1094
+  SLOT ARGUMENT 0000:3FD3 -> 10AC:044E: slot PUSH at 0000:3FAF, callee BP+12;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 0000:2456 next allocation
+  Trace boundary: 0000:3527 next allocation
+  Trace boundary: 0000:3CC7 next allocation
+  Trace boundary: 0000:3F0A next allocation
+  Trace boundary: 0000:3FAA next allocation
+  Trace boundary: 0000:551C return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:044E (one-level slot-argument trace; caller argument facts intersected)
+  10AC:0463 field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:046A field +01 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x1],0x2
+  10AC:0472 field +03 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x3],0x3
+  10AC:047A field +08 BEHAVIOR WORD = 24 (0x0018) ; MOV word ptr ES:[DI + 0x8],0x18
+  10AC:0483 field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:048B field +2A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x2a],0xa
+  10AC:049B field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:04A5 field +18 = 5 (0x0005) ; MOV word ptr ES:[DI + 0x18],AX
+  10AC:04AC field +1A = 5 (0x0005) ; MOV word ptr ES:[DI + 0x1a],0x5
+  10AC:04B5 field +16 = 2 (0x0002) ; MOV word ptr ES:[DI + 0x16],0x2
+  10AC:04D4 field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:04EA field +35 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x35],AL
+  10AC:0509 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:0513 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:051D field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0527 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:0531 field +04 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x4],AL
+  10AC:0564 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  Provenance-linked stores: 18; constant behavior-word stores: 1
+  Trace boundary: 10AC:0569 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 0000:A96D -> 1E48:2085 (free or lowest health)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 0000:A8F7
+  SLOT ARGUMENT 0000:A99F -> 10AC:0384: slot PUSH at 0000:A990, callee BP+12;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  SLOT ARGUMENT 0000:A9BD -> 1E48:D15C: slot PUSH at 0000:A9B8, callee BP+08;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  0000:A9C5 field +33 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x33],0x4
+  0000:A9CD field +2C = 1 (0x0001) ; MOV word ptr ES:[DI + 0x2c],0x1
+  0000:A9D6 field +2E = 1 (0x0001) ; MOV word ptr ES:[DI + 0x2e],0x1
+  0000:A9DF field +06 = 20 (0x0014) ; MOV byte ptr ES:[DI + 0x6],0x14
+  0000:A9E7 field +22 = 3 (0x0003) ; MOV word ptr ES:[DI + 0x22],0x3
+  0000:A9F0 field +18 = 1 (0x0001) ; MOV word ptr ES:[DI + 0x18],0x1
+  0000:A9F9 field +1A = 1 (0x0001) ; MOV word ptr ES:[DI + 0x1a],0x1
+  0000:AA02 field +32 = 0 (0x0000) ; MOV byte ptr ES:[DI + 0x32],0x0
+  0000:AA0A field +08 BEHAVIOR WORD = 3 (0x0003) ; MOV word ptr ES:[DI + 0x8],0x3
+  0000:AA13 field +07 = 126 (0x007E) ; MOV byte ptr ES:[DI + 0x7],0x7e
+  0000:AA1B field +04 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x4],0x1
+  0000:AA23 field +00 = 31 (0x001F) ; MOV byte ptr ES:[DI],0x1f
+  0000:AA2A field +03 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x3],0x2
+  0000:AA32 field +01 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x1],0x1
+  0000:AA41 field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  0000:AA48 field +0A = 1000 (0x03E8) ; MOV word ptr ES:[DI + 0xa],0x3e8
+  0000:AA51 field +1C = 11 (0x000B) ; MOV word ptr ES:[DI + 0x1c],0xb
+  0000:AA63 field +12 = UNRESOLVED ; MOV word ptr ES:[DI + 0x12],AX
+  0000:AA73 field +16 = UNRESOLVED ; MOV word ptr ES:[DI + 0x16],AX
+  0000:AA89 field +1C = UNRESOLVED ; MOV word ptr ES:[DI + 0x1c],AX
+  0000:AA96 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  0000:AAA0 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  0000:AAAA field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  0000:AAF8 field +12 = 0 (0x0000) ; MOV word ptr ES:[DI + 0x12],AX
+  0000:AB01 field +16 = 0 (0x0000) ; MOV word ptr ES:[DI + 0x16],AX
+  0000:AB08 field +24 = 1 (0x0001) ; MOV word ptr ES:[DI + 0x24],0x1
+  0000:AB31 field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  0000:AB39 field +2A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x2a],0xa
+  0000:AB42 field +26 = 100 (0x0064) ; MOV word ptr ES:[DI + 0x26],0x64
+  0000:AB4B field +18 = 8 (0x0008) ; MOV word ptr ES:[DI + 0x18],0x8
+  0000:AB54 field +1A = 8 (0x0008) ; MOV word ptr ES:[DI + 0x1a],0x8
+  0000:AB5D field +06 = 22 (0x0016) ; MOV byte ptr ES:[DI + 0x6],0x16
+  0000:AB65 field +08 BEHAVIOR WORD = 4 (0x0004) ; MOV word ptr ES:[DI + 0x8],0x4
+  0000:AB6E field +07 = 126 (0x007E) ; MOV byte ptr ES:[DI + 0x7],0x7e
+  0000:AB76 field +04 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x4],0x1
+  0000:AB7E field +00 = 6 (0x0006) ; MOV byte ptr ES:[DI],0x6
+  0000:AB85 field +03 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x3],0x1
+  0000:AB8D field +01 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x1],0x3
+  0000:AB95 field +0A = 38 (0x0026) ; MOV word ptr ES:[DI + 0xa],0x26
+  0000:AB9E field +35 = 45 (0x002D) ; MOV byte ptr ES:[DI + 0x35],0x2d
+  0000:ABA6 field +34 = 50 (0x0032) ; MOV byte ptr ES:[DI + 0x34],0x32
+  0000:ABB7 field +12 = UNRESOLVED ; MOV word ptr ES:[DI + 0x12],AX
+  0000:ABC7 field +16 = UNRESOLVED ; MOV word ptr ES:[DI + 0x16],AX
+  0000:ABDA field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  0000:ABEB field +14 = 65532 (0xFFFC) ; MOV word ptr ES:[DI + 0x14],0xfffc
+  0000:ABF7 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  0000:AC04 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  0000:AC0E field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  0000:ACE0 field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  0000:ACE7 field +18 = 10 (0x000A) ; MOV word ptr ES:[DI + 0x18],0xa
+  0000:ACF0 field +08 BEHAVIOR WORD = 1 (0x0001) ; MOV word ptr ES:[DI + 0x8],0x1
+  0000:ACF9 field +22 = 60 (0x003C) ; MOV word ptr ES:[DI + 0x22],0x3c
+  0000:AD02 field +2C = 300 (0x012C) ; MOV word ptr ES:[DI + 0x2c],0x12c
+  0000:AD0B field +32 = 0 (0x0000) ; MOV byte ptr ES:[DI + 0x32],0x0
+  0000:AD13 field +24 = 6 (0x0006) ; MOV word ptr ES:[DI + 0x24],0x6
+  0000:AD1C field +07 = 126 (0x007E) ; MOV byte ptr ES:[DI + 0x7],0x7e
+  0000:AD24 field +05 = 41 (0x0029) ; MOV byte ptr ES:[DI + 0x5],0x29
+  0000:AD35 field +12 = UNRESOLVED ; MOV word ptr ES:[DI + 0x12],AX
+  0000:AD45 field +16 = UNRESOLVED ; MOV word ptr ES:[DI + 0x16],AX
+  0000:AD5B field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  0000:AD86 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  0000:AD93 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  0000:ADA8 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  0000:ADAF field +0A = 1000 (0x03E8) ; MOV word ptr ES:[DI + 0xa],0x3e8
+  0000:AE1C field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  0000:AE26 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  0000:AE30 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  0000:AE3C field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  0000:AE43 field +14 = 65526 (0xFFF6) ; MOV word ptr ES:[DI + 0x14],0xfff6
+  0000:AE4E field +1C = 0 (0x0000) ; MOV word ptr ES:[DI + 0x1c],AX
+  0000:AE57 field +20 = 0 (0x0000) ; MOV word ptr ES:[DI + 0x20],AX
+  0000:AE60 field +24 = 0 (0x0000) ; MOV word ptr ES:[DI + 0x24],AX
+  0000:AE69 field +2A = 0 (0x0000) ; MOV word ptr ES:[DI + 0x2a],AX
+  SLOT ARGUMENT 0000:AF38 -> 1E48:D15C: slot PUSH at 0000:AF33, callee BP+08;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  0000:AF4C field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  0000:AF68 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  0000:AF7B field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  0000:AF82 field +33 = 5 (0x0005) ; MOV byte ptr ES:[DI + 0x33],0x5
+  0000:AF8A field +04 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x4],0x1
+  0000:AF92 field +00 = 31 (0x001F) ; MOV byte ptr ES:[DI],0x1f
+  0000:AF99 field +01 = 6 (0x0006) ; MOV byte ptr ES:[DI + 0x1],0x6
+  0000:AFA9 field +03 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x3],AL
+  0000:AFB8 field +02 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x2],AL
+  0000:AFCF field +2A = 65496 (0xFFD8) ; MOV word ptr ES:[DI + 0x2a],0xffd8
+  0000:AFDD field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  0000:B114 field +00 = 33 (0x0021) ; MOV byte ptr ES:[DI],0x21
+  0000:B11B field +01 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x1],0x4
+  0000:B123 field +03 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x3],0x1
+  0000:B12B field +02 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x2],0x2
+  0000:B133 field +07 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x7],0x4
+  0000:B13B field +33 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x33],0x4
+  0000:B143 field +04 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x4],0x1
+  0000:B14B field +0A = 1000 (0x03E8) ; MOV word ptr ES:[DI + 0xa],0x3e8
+  0000:B154 field +08 BEHAVIOR WORD = 143 (0x008F) ; MOV word ptr ES:[DI + 0x8],0x8f
+  0000:B166 field +12 = UNRESOLVED ; MOV word ptr ES:[DI + 0x12],AX
+  0000:B175 field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  0000:B193 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  0000:B1B1 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  0000:B1D5 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  0000:B214 field +2A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x2a],0xa
+  0000:B21D field +26 = 100 (0x0064) ; MOV word ptr ES:[DI + 0x26],0x64
+  0000:B226 field +18 = 11 (0x000B) ; MOV word ptr ES:[DI + 0x18],0xb
+  0000:B22F field +1A = 6 (0x0006) ; MOV word ptr ES:[DI + 0x1a],0x6
+  0000:B238 field +08 BEHAVIOR WORD = 1 (0x0001) ; MOV word ptr ES:[DI + 0x8],0x1
+  0000:B241 field +22 = 50 (0x0032) ; MOV word ptr ES:[DI + 0x22],0x32
+  0000:B24A field +24 = 7 (0x0007) ; MOV word ptr ES:[DI + 0x24],0x7
+  0000:B255 field +2C = 0 (0x0000) ; MOV word ptr ES:[DI + 0x2c],AX
+  0000:B25C field +04 = 6 (0x0006) ; MOV byte ptr ES:[DI + 0x4],0x6
+  0000:B264 field +32 = 0 (0x0000) ; MOV byte ptr ES:[DI + 0x32],0x0
+  0000:B26C field +03 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x3],0x2
+  0000:B274 field +0A = 200 (0x00C8) ; MOV word ptr ES:[DI + 0xa],0xc8
+  0000:B295 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  0000:B2BB field +12 = UNRESOLVED ; MOV word ptr ES:[DI + 0x12],AX
+  0000:B2E1 field +16 = UNRESOLVED ; MOV word ptr ES:[DI + 0x16],AX
+  0000:B2F2 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  0000:B304 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  0000:B311 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  0000:B323 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  0000:B33B field +05 = 101 (0x0065) ; MOV byte ptr ES:[DI + 0x5],0x65
+  Provenance-linked stores: 118; constant behavior-word stores: 5
+  Trace boundary: 0000:B01A floating-point emulator/inline-data boundary
+  Trace boundary: 0000:B344 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:0384 (one-level slot-argument trace; caller argument facts intersected)
+  10AC:03A5 field +0A = 10 (0x000A) ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:03AF field +18 = 18 (0x0012) ; MOV word ptr ES:[DI + 0x18],AX
+  10AC:03B9 field +1A = 8 (0x0008) ; MOV word ptr ES:[DI + 0x1a],AX
+  10AC:03C0 field +07 = 254 (0x00FE) ; MOV byte ptr ES:[DI + 0x7],0xfe
+  10AC:03CB field +34 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x34],AL
+  10AC:03D2 field +08 BEHAVIOR WORD = 2 (0x0002) ; MOV word ptr ES:[DI + 0x8],0x2
+  10AC:03EC field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:0408 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0420 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:042E field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:0435 field +03 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x3],0x1
+  10AC:043D field +01 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x1],0x1
+  10AC:0445 field +35 = 64 (0x0040) ; MOV byte ptr ES:[DI + 0x35],0x40
+  Provenance-linked stores: 13; constant behavior-word stores: 1
+  Trace boundary: 10AC:044B return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 1E48:D15C (one-level slot-argument trace; caller argument facts intersected)
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 1E48:D209 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 0000:B070 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  CANDIDATE ONLY: no validated local ENTER-to-call path; initialization not traced.
+
+SITE 0000:B720 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 0000:B5E6
+  SLOT ARGUMENT 0000:B732 -> 10AC:0384: slot PUSH at 0000:B725, callee BP+12;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 0000:C4DD return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:0384 (one-level slot-argument trace; caller argument facts intersected)
+  10AC:03A5 field +0A = 3 (0x0003) ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:03AF field +18 = 10 (0x000A) ; MOV word ptr ES:[DI + 0x18],AX
+  10AC:03B9 field +1A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x1a],AX
+  10AC:03C0 field +07 = 254 (0x00FE) ; MOV byte ptr ES:[DI + 0x7],0xfe
+  10AC:03CB field +34 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x34],AL
+  10AC:03D2 field +08 BEHAVIOR WORD = 2 (0x0002) ; MOV word ptr ES:[DI + 0x8],0x2
+  10AC:03EC field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:0408 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0420 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:042E field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:0435 field +03 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x3],0x1
+  10AC:043D field +01 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x1],0x1
+  10AC:0445 field +35 = 64 (0x0040) ; MOV byte ptr ES:[DI + 0x35],0x40
+  Provenance-linked stores: 13; constant behavior-word stores: 1
+  Trace boundary: 10AC:044B return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 0000:B9C9 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 0000:B5E6
+  SLOT ARGUMENT 0000:B9DB -> 10AC:0384: slot PUSH at 0000:B9CE, callee BP+12;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 0000:B9C9 next allocation
+  Trace boundary: 0000:C4DD return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:0384 (one-level slot-argument trace; caller argument facts intersected)
+  10AC:03A5 field +0A = 10 (0x000A) ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:03AF field +18 = 22 (0x0016) ; MOV word ptr ES:[DI + 0x18],AX
+  10AC:03B9 field +1A = 12 (0x000C) ; MOV word ptr ES:[DI + 0x1a],AX
+  10AC:03C0 field +07 = 254 (0x00FE) ; MOV byte ptr ES:[DI + 0x7],0xfe
+  10AC:03CB field +34 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x34],AL
+  10AC:03D2 field +08 BEHAVIOR WORD = 2 (0x0002) ; MOV word ptr ES:[DI + 0x8],0x2
+  10AC:03EC field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:0408 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0420 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:042E field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:0435 field +03 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x3],0x1
+  10AC:043D field +01 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x1],0x1
+  10AC:0445 field +35 = 64 (0x0040) ; MOV byte ptr ES:[DI + 0x35],0x40
+  Provenance-linked stores: 13; constant behavior-word stores: 1
+  Trace boundary: 10AC:044B return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 0000:C2DC -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 0000:B5E6
+  SLOT ARGUMENT 0000:C2EE -> 10AC:0384: slot PUSH at 0000:C2E1, callee BP+12;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 0000:C2DC next allocation
+  Trace boundary: 0000:C4DD return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:0384 (one-level slot-argument trace; caller argument facts intersected)
+  10AC:03A5 field +0A = 10 (0x000A) ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:03AF field +18 = 15 (0x000F) ; MOV word ptr ES:[DI + 0x18],AX
+  10AC:03B9 field +1A = 6 (0x0006) ; MOV word ptr ES:[DI + 0x1a],AX
+  10AC:03C0 field +07 = 254 (0x00FE) ; MOV byte ptr ES:[DI + 0x7],0xfe
+  10AC:03CB field +34 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x34],AL
+  10AC:03D2 field +08 BEHAVIOR WORD = 2 (0x0002) ; MOV word ptr ES:[DI + 0x8],0x2
+  10AC:03EC field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:0408 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0420 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:042E field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:0435 field +03 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x3],0x1
+  10AC:043D field +01 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x1],0x1
+  10AC:0445 field +35 = 64 (0x0040) ; MOV byte ptr ES:[DI + 0x35],0x40
+  Provenance-linked stores: 13; constant behavior-word stores: 1
+  Trace boundary: 10AC:044B return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 10AC:0570 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 10AC:056C
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:E013
+  10AC:0588 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:0592 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:059C field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:05C8 field +00 = 31 (0x001F) ; MOV byte ptr ES:[DI],0x1f
+  10AC:05CF field +03 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x3],0x3
+  10AC:05D7 field +01 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x1],0x3
+  10AC:05DF field +0A = 200 (0x00C8) ; MOV word ptr ES:[DI + 0xa],0xc8
+  10AC:05E8 field +33 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x33],0x4
+  10AC:05F8 field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:0606 field +12 = UNRESOLVED ; MOV word ptr ES:[DI + 0x12],AX
+  10AC:0618 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:061F field +08 BEHAVIOR WORD = 103 (0x0067) ; MOV word ptr ES:[DI + 0x8],0x67
+  Provenance-linked stores: 12; constant behavior-word stores: 1
+  Trace boundary: 10AC:0626 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 10AC:062D -> 1E48:2085 (free or lowest health)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 10AC:0629
+  10AC:0645 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:064F field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:06C9 field +00 = 39 (0x0027) ; MOV byte ptr ES:[DI],0x27
+  10AC:06EA field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:06F1 field +01 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x1],0x4
+  10AC:06F9 field +03 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x3],0x1
+  10AC:0701 field +02 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x2],0x2
+  10AC:0709 field +0A = 1000 (0x03E8) ; MOV word ptr ES:[DI + 0xa],0x3e8
+  10AC:0712 field +33 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x33],0x4
+  10AC:0722 field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:0729 field +08 BEHAVIOR WORD = 33 (0x0021) ; MOV word ptr ES:[DI + 0x8],0x21
+  10AC:0732 field +22 = 3 (0x0003) ; MOV word ptr ES:[DI + 0x22],0x3
+  10AC:073B field +04 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x4],0x3
+  10AC:075E field +33 = 21 (0x0015) ; MOV byte ptr ES:[DI + 0x33],0x15
+  Provenance-linked stores: 14; constant behavior-word stores: 1
+  Trace boundary: 10AC:0764 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 10AC:0782 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 10AC:0767
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:15B4
+  SLOT ARGUMENT 10AC:07A4 -> 10AC:044E: slot PUSH at 10AC:0787, callee BP+12;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 10AC:07EF return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:044E (one-level slot-argument trace; caller argument facts intersected)
+  10AC:0463 field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:046A field +01 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x1],0x2
+  10AC:0472 field +03 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x3],0x3
+  10AC:047A field +08 BEHAVIOR WORD = 24 (0x0018) ; MOV word ptr ES:[DI + 0x8],0x18
+  10AC:0483 field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:048B field +2A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x2a],0xa
+  10AC:049B field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:04A5 field +18 = 10 (0x000A) ; MOV word ptr ES:[DI + 0x18],AX
+  10AC:04AC field +1A = 5 (0x0005) ; MOV word ptr ES:[DI + 0x1a],0x5
+  10AC:04B5 field +16 = 2 (0x0002) ; MOV word ptr ES:[DI + 0x16],0x2
+  10AC:04D4 field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:04EA field +35 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x35],AL
+  10AC:0509 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:0513 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:051D field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0527 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:0531 field +04 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x4],AL
+  10AC:0564 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  Provenance-linked stores: 18; constant behavior-word stores: 1
+  Trace boundary: 10AC:0569 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 10AC:0920 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 10AC:091C
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:19BD
+  10AC:096A field +00 = 39 (0x0027) ; MOV byte ptr ES:[DI],0x27
+  10AC:0971 field +01 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x1],0x3
+  10AC:0979 field +03 = 5 (0x0005) ; MOV byte ptr ES:[DI + 0x3],0x5
+  10AC:0981 field +02 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x2],0x2
+  10AC:0989 field +2A = 100 (0x0064) ; MOV word ptr ES:[DI + 0x2a],0x64
+  10AC:0992 field +04 = 130 (0x0082) ; MOV byte ptr ES:[DI + 0x4],0x82
+  10AC:09A5 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:09AC field +08 BEHAVIOR WORD = 21 (0x0015) ; MOV word ptr ES:[DI + 0x8],0x15
+  10AC:09BC field +24 = UNRESOLVED ; MOV word ptr ES:[DI + 0x24],AX
+  10AC:09CD field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:09D4 field +33 = 5 (0x0005) ; MOV byte ptr ES:[DI + 0x33],0x5
+  10AC:09FD field +2E = UNRESOLVED ; MOV word ptr ES:[DI + 0x2e],AX
+  10AC:0A19 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:0A23 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0A2D field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:0A34 field +18 = 10 (0x000A) ; MOV word ptr ES:[DI + 0x18],0xa
+  10AC:0A3D field +1A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x1a],0xa
+  10AC:0A4E field +1C = UNRESOLVED ; MOV word ptr ES:[DI + 0x1c],AX
+  10AC:0A5D field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:0A77 field +00 = UNRESOLVED ; MOV byte ptr ES:[DI],AL
+  10AC:0A87 field +01 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x1],AL
+  10AC:0A8E field +02 = 0 (0x0000) ; MOV byte ptr ES:[DI + 0x2],0x0
+  10AC:0A98 field +2A = 0 (0x0000) ; MOV word ptr ES:[DI + 0x2a],AX
+  10AC:0A9F field +0A = 1000 (0x03E8) ; MOV word ptr ES:[DI + 0xa],0x3e8
+  10AC:0AB0 field +33 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x33],AL
+  10AC:0AB7 field +04 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x4],0x1
+  10AC:0AC6 field +12 = UNRESOLVED ; MOV word ptr ES:[DI + 0x12],AX
+  10AC:0AD7 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:0AE5 field +16 = UNRESOLVED ; MOV word ptr ES:[DI + 0x16],AX
+  10AC:0AEC field +08 BEHAVIOR WORD = 1 (0x0001) ; MOV word ptr ES:[DI + 0x8],0x1
+  10AC:0AF5 field +22 = 50 (0x0032) ; MOV word ptr ES:[DI + 0x22],0x32
+  10AC:0AFE field +05 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x5],0x3
+  10AC:0B11 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:0B20 field +1C = UNRESOLVED ; MOV word ptr ES:[DI + 0x1c],AX
+  10AC:0B2F field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:0B3E field +20 = UNRESOLVED ; MOV word ptr ES:[DI + 0x20],AX
+  10AC:0B50 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0B62 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:0B76 field +04 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x4],0x3
+  10AC:0B7E field +01 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x1],0x3
+  10AC:0B86 field +02 = 0 (0x0000) ; MOV byte ptr ES:[DI + 0x2],0x0
+  10AC:0B8E field +03 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x3],0x1
+  10AC:0B98 field +12 = 0 (0x0000) ; MOV word ptr ES:[DI + 0x12],AX
+  10AC:0BA1 field +14 = 0 (0x0000) ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:0BAA field +16 = 0 (0x0000) ; MOV word ptr ES:[DI + 0x16],AX
+  10AC:0BB1 field +1C = 100 (0x0064) ; MOV word ptr ES:[DI + 0x1c],0x64
+  10AC:0BBC field +20 = 0 (0x0000) ; MOV word ptr ES:[DI + 0x20],AX
+  10AC:0BC9 field +1E = 256 (0x0100) ; MOV word ptr ES:[DI + 0x1e],0x100
+  10AC:0BD6 field +1E = 0 (0x0000) ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:0BEC field +03 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x3],AL
+  10AC:0C03 field +02 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x2],AL
+  10AC:0C0A field +24 = 5 (0x0005) ; MOV word ptr ES:[DI + 0x24],0x5
+  10AC:0C13 field +2A = 65436 (0xFF9C) ; MOV word ptr ES:[DI + 0x2a],0xff9c
+  10AC:0C2F field +00 = UNRESOLVED ; MOV byte ptr ES:[DI],AL
+  10AC:0C38 field +01 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x1],AL
+  10AC:0C47 field +33 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x33],AL
+  10AC:0C4E field +03 = 5 (0x0005) ; MOV byte ptr ES:[DI + 0x3],0x5
+  10AC:0C61 field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:0C71 field +0A = 1000 (0x03E8) ; MOV word ptr ES:[DI + 0xa],0x3e8
+  10AC:0C7A field +05 = 6 (0x0006) ; MOV byte ptr ES:[DI + 0x5],0x6
+  10AC:0C82 field +08 BEHAVIOR WORD = 1 (0x0001) ; MOV word ptr ES:[DI + 0x8],0x1
+  10AC:0C8B field +22 = 85 (0x0055) ; MOV word ptr ES:[DI + 0x22],0x55
+  10AC:0C94 field +24 = 8 (0x0008) ; MOV word ptr ES:[DI + 0x24],0x8
+  10AC:0C9D field +1C = 128 (0x0080) ; MOV word ptr ES:[DI + 0x1c],0x80
+  10AC:0CAD field +12 = UNRESOLVED ; MOV word ptr ES:[DI + 0x12],AX
+  10AC:0CBB field +16 = UNRESOLVED ; MOV word ptr ES:[DI + 0x16],AX
+  10AC:0CC8 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:0CDC field +22 = 40 (0x0028) ; MOV word ptr ES:[DI + 0x22],0x28
+  10AC:0CF2 field +02 = 35 (0x0023) ; MOV byte ptr ES:[DI + 0x2],0x23
+  10AC:0D05 field +00 = 39 (0x0027) ; MOV byte ptr ES:[DI],0x27
+  10AC:0D0C field +01 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x1],0x2
+  10AC:0D14 field +03 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x3],0x2
+  10AC:0D1C field +2E = 6 (0x0006) ; MOV word ptr ES:[DI + 0x2e],0x6
+  10AC:0D25 field +35 = 41 (0x0029) ; MOV byte ptr ES:[DI + 0x35],0x29
+  10AC:0D2D field +07 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x7],0x1
+  10AC:0D37 field +1C = 0 (0x0000) ; MOV word ptr ES:[DI + 0x1c],AX
+  10AC:0D3E field +22 = 2 (0x0002) ; MOV word ptr ES:[DI + 0x22],0x2
+  10AC:0D47 field +06 = 21 (0x0015) ; MOV byte ptr ES:[DI + 0x6],0x15
+  10AC:0D4F field +33 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x33],0x4
+  10AC:0D59 field +24 = 0 (0x0000) ; MOV word ptr ES:[DI + 0x24],AX
+  10AC:0D60 field +18 = 15 (0x000F) ; MOV word ptr ES:[DI + 0x18],0xf
+  10AC:0D69 field +1A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x1a],0xa
+  10AC:0D72 field +32 = 40 (0x0028) ; MOV byte ptr ES:[DI + 0x32],0x28
+  10AC:0D7A field +05 = 39 (0x0027) ; MOV byte ptr ES:[DI + 0x5],0x27
+  10AC:0D8D field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:0D9F field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0DB1 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:0DCD field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:0DD4 field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:0DDB field +01 = 5 (0x0005) ; MOV byte ptr ES:[DI + 0x1],0x5
+  10AC:0DEB field +03 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x3],AL
+  10AC:0DF2 field +07 = 0 (0x0000) ; MOV byte ptr ES:[DI + 0x7],0x0
+  10AC:0DFA field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:0E02 field +2A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x2a],0xa
+  10AC:0E12 field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:0E19 field +35 = 24 (0x0018) ; MOV byte ptr ES:[DI + 0x35],0x18
+  10AC:0E21 field +2C = 5 (0x0005) ; MOV word ptr ES:[DI + 0x2c],0x5
+  10AC:0E2A field +22 = 75 (0x004B) ; MOV word ptr ES:[DI + 0x22],0x4b
+  10AC:0E33 field +24 = 1 (0x0001) ; MOV word ptr ES:[DI + 0x24],0x1
+  10AC:0E55 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:0E6C field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0E83 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  SLOT ARGUMENT 10AC:0FBF -> 10AC:044E: slot PUSH at 10AC:0F23, callee BP+12;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  Provenance-linked stores: 102; constant behavior-word stores: 3
+  Trace boundary: 10AC:0FC3 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:044E (one-level slot-argument trace; caller argument facts intersected)
+  10AC:0463 field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:046A field +01 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x1],0x2
+  10AC:0472 field +03 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x3],0x3
+  10AC:047A field +08 BEHAVIOR WORD = 24 (0x0018) ; MOV word ptr ES:[DI + 0x8],0x18
+  10AC:0483 field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:048B field +2A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x2a],0xa
+  10AC:049B field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:04A5 field +18 = UNRESOLVED ; MOV word ptr ES:[DI + 0x18],AX
+  10AC:04AC field +1A = 5 (0x0005) ; MOV word ptr ES:[DI + 0x1a],0x5
+  10AC:04B5 field +16 = 2 (0x0002) ; MOV word ptr ES:[DI + 0x16],0x2
+  10AC:04D4 field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:04EA field +35 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x35],AL
+  10AC:0509 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:0513 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:051D field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0527 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:0531 field +04 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x4],AL
+  10AC:0564 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  Provenance-linked stores: 18; constant behavior-word stores: 1
+  Trace boundary: 10AC:0569 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 10AC:128C -> 1E48:2085 (free or lowest health)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 10AC:10F5
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:11D3
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:120A
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:1240
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:1276
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:128A
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:241B
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:B06B
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:DA5F
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:DAD1
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:DC02
+  Relocation-backed caller of enclosing routine (boundary not checked): 0EF0:0CA9
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 10AC:1F49 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 10AC:1EE0 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 10AC:10F5
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:11D3
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:120A
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:1240
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:1276
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:128A
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:241B
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:B06B
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:DA5F
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:DAD1
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:DC02
+  Relocation-backed caller of enclosing routine (boundary not checked): 0EF0:0CA9
+  SLOT ARGUMENT 10AC:1F33 -> 10AC:044E: slot PUSH at 10AC:1EE5, callee BP+12;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 10AC:1EE0 next allocation
+  Trace boundary: 10AC:1F49 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:044E (one-level slot-argument trace; caller argument facts intersected)
+  10AC:0463 field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:046A field +01 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x1],0x2
+  10AC:0472 field +03 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x3],0x3
+  10AC:047A field +08 BEHAVIOR WORD = 24 (0x0018) ; MOV word ptr ES:[DI + 0x8],0x18
+  10AC:0483 field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:048B field +2A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x2a],0xa
+  10AC:049B field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:04A5 field +18 = UNRESOLVED ; MOV word ptr ES:[DI + 0x18],AX
+  10AC:04AC field +1A = 5 (0x0005) ; MOV word ptr ES:[DI + 0x1a],0x5
+  10AC:04B5 field +16 = 2 (0x0002) ; MOV word ptr ES:[DI + 0x16],0x2
+  10AC:04D4 field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:04EA field +35 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x35],AL
+  10AC:0509 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:0513 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:051D field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0527 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:0531 field +04 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x4],AL
+  10AC:0564 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  Provenance-linked stores: 18; constant behavior-word stores: 1
+  Trace boundary: 10AC:0569 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 10AC:410A -> 1E48:2085 (free or lowest health)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 10AC:4106
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:290E
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:487D
+  10AC:412C field +0A = 100 (0x0064) ; MOV word ptr ES:[DI + 0xa],0x64
+  10AC:4135 field +07 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x7],0x1
+  10AC:413D field +35 = 35 (0x0023) ; MOV byte ptr ES:[DI + 0x35],0x23
+  10AC:4145 field +08 BEHAVIOR WORD = 41 (0x0029) ; MOV word ptr ES:[DI + 0x8],0x29
+  10AC:414E field +06 = 41 (0x0029) ; MOV byte ptr ES:[DI + 0x6],0x29
+  10AC:4159 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:4163 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:416D field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:4199 field +00 = 31 (0x001F) ; MOV byte ptr ES:[DI],0x1f
+  10AC:41A0 field +03 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x3],0x2
+  10AC:41A8 field +01 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x1],0x1
+  10AC:41B0 field +33 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x33],0x4
+  10AC:41BA field +22 = 0 (0x0000) ; MOV word ptr ES:[DI + 0x22],AX
+  10AC:41C7 field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:41CE field +34 = 140 (0x008C) ; MOV byte ptr ES:[DI + 0x34],0x8c
+  10AC:41D6 field +0A = 1000 (0x03E8) ; MOV word ptr ES:[DI + 0xa],0x3e8
+  10AC:41DF field +18 = 10 (0x000A) ; MOV word ptr ES:[DI + 0x18],0xa
+  10AC:41E8 field +1A = 8 (0x0008) ; MOV word ptr ES:[DI + 0x1a],0x8
+  10AC:4201 field +00 = UNRESOLVED ; MOV byte ptr ES:[DI],AL
+  10AC:4207 field +03 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x3],0x1
+  10AC:420F field +01 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x1],0x2
+  10AC:4217 field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:421F field +2A = 9 (0x0009) ; MOV word ptr ES:[DI + 0x2a],0x9
+  10AC:4228 field +22 = 2 (0x0002) ; MOV word ptr ES:[DI + 0x22],0x2
+  10AC:4231 field +34 = 15 (0x000F) ; MOV byte ptr ES:[DI + 0x34],0xf
+  10AC:4239 field +18 = 13 (0x000D) ; MOV word ptr ES:[DI + 0x18],0xd
+  10AC:4242 field +1A = 13 (0x000D) ; MOV word ptr ES:[DI + 0x1a],0xd
+  10AC:424B field +35 = 55 (0x0037) ; MOV byte ptr ES:[DI + 0x35],0x37
+  10AC:4263 field +00 = UNRESOLVED ; MOV byte ptr ES:[DI],AL
+  10AC:4269 field +03 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x3],0x1
+  10AC:4271 field +01 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x1],0x2
+  10AC:4279 field +04 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x4],0x1
+  10AC:4281 field +34 = 95 (0x005F) ; MOV byte ptr ES:[DI + 0x34],0x5f
+  10AC:4289 field +33 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x33],0x4
+  10AC:4291 field +18 = 7 (0x0007) ; MOV word ptr ES:[DI + 0x18],0x7
+  10AC:429A field +1A = 7 (0x0007) ; MOV word ptr ES:[DI + 0x1a],0x7
+  10AC:42A3 field +14 = 7 (0x0007) ; MOV word ptr ES:[DI + 0x14],0x7
+  10AC:42AC field +22 = 3 (0x0003) ; MOV word ptr ES:[DI + 0x22],0x3
+  10AC:42BB field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:42CD field +00 = 5 (0x0005) ; MOV byte ptr ES:[DI],0x5
+  10AC:42D4 field +03 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x3],0x3
+  10AC:42E4 field +01 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x1],AL
+  10AC:42EB field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:42F3 field +14 = 65534 (0xFFFE) ; MOV word ptr ES:[DI + 0x14],0xfffe
+  10AC:42FC field +22 = 4 (0x0004) ; MOV word ptr ES:[DI + 0x22],0x4
+  10AC:4305 field +34 = 7 (0x0007) ; MOV byte ptr ES:[DI + 0x34],0x7
+  10AC:430D field +18 = 25 (0x0019) ; MOV word ptr ES:[DI + 0x18],0x19
+  10AC:4316 field +1A = 25 (0x0019) ; MOV word ptr ES:[DI + 0x1a],0x19
+  10AC:431F field +35 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x35],0x3
+  10AC:4327 field +2A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x2a],0xa
+  10AC:4341 field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:4348 field +04 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x4],0x1
+  10AC:4358 field +00 = 5 (0x0005) ; MOV byte ptr ES:[DI],0x5
+  10AC:435F field +03 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x3],0x3
+  10AC:436F field +01 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x1],AL
+  10AC:4376 field +33 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x33],0x2
+  10AC:437E field +22 = 5 (0x0005) ; MOV word ptr ES:[DI + 0x22],0x5
+  10AC:4387 field +14 = 65535 (0xFFFF) ; MOV word ptr ES:[DI + 0x14],0xffff
+  10AC:4390 field +34 = 50 (0x0032) ; MOV byte ptr ES:[DI + 0x34],0x32
+  10AC:4398 field +18 = 20 (0x0014) ; MOV word ptr ES:[DI + 0x18],0x14
+  10AC:43A1 field +1A = 20 (0x0014) ; MOV word ptr ES:[DI + 0x1a],0x14
+  10AC:43AA field +35 = 40 (0x0028) ; MOV byte ptr ES:[DI + 0x35],0x28
+  10AC:43B2 field +0A = 500 (0x01F4) ; MOV word ptr ES:[DI + 0xa],0x1f4
+  10AC:43BB field +04 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x4],0x1
+  10AC:43CE field +00 = 5 (0x0005) ; MOV byte ptr ES:[DI],0x5
+  10AC:43D5 field +03 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x3],0x3
+  10AC:43E5 field +01 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x1],AL
+  10AC:43EC field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:43FB field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:4402 field +22 = 6 (0x0006) ; MOV word ptr ES:[DI + 0x22],0x6
+  10AC:440B field +34 = 25 (0x0019) ; MOV byte ptr ES:[DI + 0x34],0x19
+  10AC:4413 field +18 = 25 (0x0019) ; MOV word ptr ES:[DI + 0x18],0x19
+  10AC:441C field +1A = 25 (0x0019) ; MOV word ptr ES:[DI + 0x1a],0x19
+  10AC:442F field +35 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x35],AL
+  10AC:4440 field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:4447 field +04 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x4],0x3
+  10AC:444F field +2A = 20 (0x0014) ; MOV word ptr ES:[DI + 0x2a],0x14
+  10AC:4468 field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:446F field +01 = 5 (0x0005) ; MOV byte ptr ES:[DI + 0x1],0x5
+  10AC:4477 field +03 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x3],0x2
+  10AC:447F field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:4487 field +2A = 20 (0x0014) ; MOV word ptr ES:[DI + 0x2a],0x14
+  10AC:4490 field +22 = 7 (0x0007) ; MOV word ptr ES:[DI + 0x22],0x7
+  10AC:4499 field +14 = 65535 (0xFFFF) ; MOV word ptr ES:[DI + 0x14],0xffff
+  10AC:44A2 field +34 = 25 (0x0019) ; MOV byte ptr ES:[DI + 0x34],0x19
+  10AC:44AA field +18 = 10 (0x000A) ; MOV word ptr ES:[DI + 0x18],0xa
+  10AC:44B3 field +1A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x1a],0xa
+  10AC:44BC field +35 = 5 (0x0005) ; MOV byte ptr ES:[DI + 0x35],0x5
+  10AC:44CB field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:44DC field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:44E3 field +04 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x4],0x1
+  10AC:44FC field +35 = 21 (0x0015) ; MOV byte ptr ES:[DI + 0x35],0x15
+  10AC:4504 field +1A = 32 (0x0020) ; MOV word ptr ES:[DI + 0x1a],0x20
+  10AC:450D field +18 = 40 (0x0028) ; MOV word ptr ES:[DI + 0x18],0x28
+  10AC:4516 field +04 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x4],0x3
+  10AC:451E field +34 = 30 (0x001E) ; MOV byte ptr ES:[DI + 0x34],0x1e
+  10AC:458E field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:459D field +03 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x3],AL
+  10AC:45A4 field +01 = 5 (0x0005) ; MOV byte ptr ES:[DI + 0x1],0x5
+  10AC:45AC field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:45BB field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:45C2 field +22 = 6 (0x0006) ; MOV word ptr ES:[DI + 0x22],0x6
+  10AC:45CB field +34 = 70 (0x0046) ; MOV byte ptr ES:[DI + 0x34],0x46
+  10AC:45D3 field +18 = 55 (0x0037) ; MOV word ptr ES:[DI + 0x18],0x37
+  10AC:45DC field +1A = 25 (0x0019) ; MOV word ptr ES:[DI + 0x1a],0x19
+  10AC:45EF field +35 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x35],AL
+  10AC:4600 field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:4607 field +04 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x4],0x3
+  10AC:460F field +2A = 20 (0x0014) ; MOV word ptr ES:[DI + 0x2a],0x14
+  10AC:4628 field +00 = UNRESOLVED ; MOV byte ptr ES:[DI],AL
+  10AC:462E field +03 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x3],0x2
+  10AC:4636 field +01 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x1],0x2
+  10AC:463E field +33 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x33],0x4
+  10AC:464C field +22 = UNRESOLVED ; MOV word ptr ES:[DI + 0x22],AX
+  10AC:4653 field +08 BEHAVIOR WORD = 42 (0x002A) ; MOV word ptr ES:[DI + 0x8],0x2a
+  10AC:4662 field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:4669 field +18 = 10 (0x000A) ; MOV word ptr ES:[DI + 0x18],0xa
+  10AC:4672 field +1A = 8 (0x0008) ; MOV word ptr ES:[DI + 0x1a],0x8
+  10AC:467B field +04 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x4],0x1
+  10AC:4696 field +00 = UNRESOLVED ; MOV byte ptr ES:[DI],AL
+  10AC:469C field +03 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x3],0x1
+  10AC:46A4 field +01 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x1],0x1
+  10AC:46AC field +02 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x2],0x2
+  10AC:46B4 field +04 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x4],0x1
+  10AC:46BC field +06 = 130 (0x0082) ; MOV byte ptr ES:[DI + 0x6],0x82
+  10AC:46C4 field +18 = 22 (0x0016) ; MOV word ptr ES:[DI + 0x18],0x16
+  10AC:46CD field +1A = 3 (0x0003) ; MOV word ptr ES:[DI + 0x1a],0x3
+  10AC:46D6 field +0A = 1000 (0x03E8) ; MOV word ptr ES:[DI + 0xa],0x3e8
+  10AC:4704 field +33 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x33],0x4
+  10AC:4714 field +24 = UNRESOLVED ; MOV word ptr ES:[DI + 0x24],AX
+  10AC:4723 field +2E = UNRESOLVED ; MOV word ptr ES:[DI + 0x2e],AX
+  10AC:472A field +22 = 11 (0x000B) ; MOV word ptr ES:[DI + 0x22],0xb
+  10AC:473B field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:474A field +28 = UNRESOLVED ; MOV word ptr ES:[DI + 0x28],AX
+  10AC:4753 field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:475A field +03 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x3],0x1
+  10AC:4762 field +01 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x1],0x1
+  10AC:476A field +33 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x33],0x2
+  10AC:4772 field +22 = 1 (0x0001) ; MOV word ptr ES:[DI + 0x22],0x1
+  10AC:477B field +35 = 40 (0x0028) ; MOV byte ptr ES:[DI + 0x35],0x28
+  Provenance-linked stores: 140; constant behavior-word stores: 2
+  Trace boundary: 10AC:47B7 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 10AC:651A -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 10AC:5FE0
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:1D10
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:1DF2
+  SLOT ARGUMENT 10AC:6560 -> 10AC:044E: slot PUSH at 10AC:651F, callee BP+12;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 10AC:6564 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:044E (one-level slot-argument trace; caller argument facts intersected)
+  10AC:0463 field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:046A field +01 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x1],0x2
+  10AC:0472 field +03 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x3],0x3
+  10AC:047A field +08 BEHAVIOR WORD = 24 (0x0018) ; MOV word ptr ES:[DI + 0x8],0x18
+  10AC:0483 field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:048B field +2A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x2a],0xa
+  10AC:049B field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:04A5 field +18 = 10 (0x000A) ; MOV word ptr ES:[DI + 0x18],AX
+  10AC:04AC field +1A = 5 (0x0005) ; MOV word ptr ES:[DI + 0x1a],0x5
+  10AC:04B5 field +16 = 2 (0x0002) ; MOV word ptr ES:[DI + 0x16],0x2
+  10AC:04D4 field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:04EA field +35 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x35],AL
+  10AC:0509 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:0513 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:051D field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0527 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:0531 field +04 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x4],AL
+  10AC:0564 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  Provenance-linked stores: 18; constant behavior-word stores: 1
+  Trace boundary: 10AC:0569 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 10AC:A2C5 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 10AC:9F31
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:2682
+  10AC:A2F9 field +03 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x3],0x3
+  10AC:A303 field +16 = 0 (0x0000) ; MOV word ptr ES:[DI + 0x16],AX
+  10AC:A30A field +08 BEHAVIOR WORD = 24 (0x0018) ; MOV word ptr ES:[DI + 0x8],0x18
+  10AC:A31A field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:A32B field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:A338 field +03 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x3],0x4
+  10AC:A340 field +0A = 62 (0x003E) ; MOV word ptr ES:[DI + 0xa],0x3e
+  10AC:A34B field +16 = 0 (0x0000) ; MOV word ptr ES:[DI + 0x16],AX
+  10AC:A354 field +14 = 0 (0x0000) ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:A36F field +35 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x35],AL
+  10AC:A37D field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  Provenance-linked stores: 11; constant behavior-word stores: 1
+  Trace boundary: 10AC:A2C5 next allocation
+  Trace boundary: 10AC:A464 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 10AC:A7B5 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 10AC:A467
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:D659
+  SLOT ARGUMENT 10AC:A834 -> 10AC:07F2: slot PUSH at 10AC:A820, callee BP+0C;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  10AC:A848 field +2A = 100 (0x0064) ; MOV word ptr ES:[DI + 0x2a],0x64
+  10AC:A851 field +02 = 5 (0x0005) ; MOV byte ptr ES:[DI + 0x2],0x5
+  10AC:A859 field +0A = 150 (0x0096) ; MOV word ptr ES:[DI + 0xa],0x96
+  10AC:A862 field +08 BEHAVIOR WORD = 106 (0x006A) ; MOV word ptr ES:[DI + 0x8],0x6a
+  10AC:A887 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:A88E field +33 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x33],0x4
+  Provenance-linked stores: 6; constant behavior-word stores: 1
+  Trace boundary: 10AC:A93B return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:07F2 (one-level slot-argument trace; caller argument facts intersected)
+  10AC:0807 field +0A = 50 (0x0032) ; MOV word ptr ES:[DI + 0xa],0x32
+  10AC:0810 field +00 = 39 (0x0027) ; MOV byte ptr ES:[DI],0x27
+  10AC:0817 field +01 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x1],0x3
+  10AC:0822 field +03 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x3],AL
+  10AC:0829 field +02 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x2],0x1
+  10AC:0831 field +2A = 100 (0x0064) ; MOV word ptr ES:[DI + 0x2a],0x64
+  10AC:083A field +33 = 30 (0x001E) ; MOV byte ptr ES:[DI + 0x33],0x1e
+  10AC:0842 field +08 BEHAVIOR WORD = 18 (0x0012) ; MOV word ptr ES:[DI + 0x8],0x12
+  10AC:084B field +06 = 0 (0x0000) ; MOV byte ptr ES:[DI + 0x6],0x0
+  10AC:0853 field +14 = 1 (0x0001) ; MOV word ptr ES:[DI + 0x14],0x1
+  10AC:086C field +12 = UNRESOLVED ; MOV word ptr ES:[DI + 0x12],AX
+  10AC:0883 field +16 = UNRESOLVED ; MOV word ptr ES:[DI + 0x16],AX
+  10AC:088D field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:0897 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:08A6 field +1C = UNRESOLVED ; MOV word ptr ES:[DI + 0x1c],AX
+  10AC:08B5 field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  Provenance-linked stores: 16; constant behavior-word stores: 1
+  Trace boundary: 10AC:08BA return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 10AC:B4D9 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 10AC:B33C
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:3C1B
+  10AC:B558 field +00 = UNRESOLVED ; MOV byte ptr ES:[DI],AL
+  10AC:B55E field +18 = 5 (0x0005) ; MOV word ptr ES:[DI + 0x18],0x5
+  10AC:B567 field +1A = 5 (0x0005) ; MOV word ptr ES:[DI + 0x1a],0x5
+  10AC:B570 field +01 = 5 (0x0005) ; MOV byte ptr ES:[DI + 0x1],0x5
+  10AC:B578 field +03 = 5 (0x0005) ; MOV byte ptr ES:[DI + 0x3],0x5
+  10AC:B580 field +02 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x2],0x4
+  10AC:B588 field +04 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x4],0x3
+  10AC:B590 field +33 = 4 (0x0004) ; MOV byte ptr ES:[DI + 0x33],0x4
+  10AC:B598 field +08 BEHAVIOR WORD = 18 (0x0012) ; MOV word ptr ES:[DI + 0x8],0x12
+  10AC:B5A1 field +0A = 40 (0x0028) ; MOV word ptr ES:[DI + 0xa],0x28
+  10AC:B5AA field +2A = 80 (0x0050) ; MOV word ptr ES:[DI + 0x2a],0x50
+  10AC:B5B6 field +12 = UNRESOLVED ; MOV word ptr ES:[DI + 0x12],AX
+  10AC:B5C0 field +16 = UNRESOLVED ; MOV word ptr ES:[DI + 0x16],AX
+  10AC:B5CE field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:B5DD field +1C = UNRESOLVED ; MOV word ptr ES:[DI + 0x1c],AX
+  10AC:B5EC field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  Provenance-linked stores: 16; constant behavior-word stores: 1
+  Trace boundary: 10AC:B5F1 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 10AC:C4DF -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 10AC:C432
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:1E59
+  SLOT ARGUMENT 10AC:C516 -> 10AC:C1EC: slot PUSH at 10AC:C50F, callee BP+08;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 10AC:C4DF next allocation
+  Trace boundary: 10AC:C52B return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:C1EC (one-level slot-argument trace; caller argument facts intersected)
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 10AC:C2FF return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 10AC:CC86 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 10AC:CC18
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:2E6E
+  SLOT ARGUMENT 10AC:CCCB -> 10AC:044E: slot PUSH at 10AC:CC8B, callee BP+12;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 10AC:CC86 next allocation
+  Trace boundary: 10AC:CD72 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:044E (one-level slot-argument trace; caller argument facts intersected)
+  10AC:0463 field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:046A field +01 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x1],0x2
+  10AC:0472 field +03 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x3],0x3
+  10AC:047A field +08 BEHAVIOR WORD = 24 (0x0018) ; MOV word ptr ES:[DI + 0x8],0x18
+  10AC:0483 field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:048B field +2A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x2a],0xa
+  10AC:049B field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:04A5 field +18 = 20 (0x0014) ; MOV word ptr ES:[DI + 0x18],AX
+  10AC:04AC field +1A = 5 (0x0005) ; MOV word ptr ES:[DI + 0x1a],0x5
+  10AC:04B5 field +16 = 2 (0x0002) ; MOV word ptr ES:[DI + 0x16],0x2
+  10AC:04D4 field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:04EA field +35 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x35],AL
+  10AC:0509 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:0513 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:051D field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0527 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:0531 field +04 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x4],AL
+  10AC:0564 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  Provenance-linked stores: 18; constant behavior-word stores: 1
+  Trace boundary: 10AC:0569 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+SITE 10AC:D540 -> 1E48:2049 (first zero health / fallback 165)
+  MZ relocation at far segment operand: true; near call: false
+  Local CFG boundary established from ENTER 10AC:D45F
+  Relocation-backed caller of enclosing routine (boundary not checked): 0000:4E1B
+  SLOT ARGUMENT 10AC:D571 -> 10AC:044E: slot PUSH at 10AC:D545, callee BP+12;
+    cleanup established from bounded RETF paths; child behavior requires helper tracing.
+  Provenance-linked stores: 0; constant behavior-word stores: 0
+  UNRESOLVED: no constant child behavior established.
+  Trace boundary: 10AC:D540 next allocation
+  Trace boundary: 10AC:D5B1 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+  HELPER 10AC:044E (one-level slot-argument trace; caller argument facts intersected)
+  10AC:0463 field +00 = 1 (0x0001) ; MOV byte ptr ES:[DI],0x1
+  10AC:046A field +01 = 2 (0x0002) ; MOV byte ptr ES:[DI + 0x1],0x2
+  10AC:0472 field +03 = 3 (0x0003) ; MOV byte ptr ES:[DI + 0x3],0x3
+  10AC:047A field +08 BEHAVIOR WORD = 24 (0x0018) ; MOV word ptr ES:[DI + 0x8],0x18
+  10AC:0483 field +33 = 1 (0x0001) ; MOV byte ptr ES:[DI + 0x33],0x1
+  10AC:048B field +2A = 10 (0x000A) ; MOV word ptr ES:[DI + 0x2a],0xa
+  10AC:049B field +1E = UNRESOLVED ; MOV word ptr ES:[DI + 0x1e],AX
+  10AC:04A5 field +18 = 20 (0x0014) ; MOV word ptr ES:[DI + 0x18],AX
+  10AC:04AC field +1A = 5 (0x0005) ; MOV word ptr ES:[DI + 0x1a],0x5
+  10AC:04B5 field +16 = 2 (0x0002) ; MOV word ptr ES:[DI + 0x16],0x2
+  10AC:04D4 field +0A = UNRESOLVED ; MOV word ptr ES:[DI + 0xa],AX
+  10AC:04EA field +35 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x35],AL
+  10AC:0509 field +14 = UNRESOLVED ; MOV word ptr ES:[DI + 0x14],AX
+  10AC:0513 field +0C = UNRESOLVED ; MOV word ptr ES:[DI + 0xc],AX
+  10AC:051D field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  10AC:0527 field +10 = UNRESOLVED ; MOV word ptr ES:[DI + 0x10],AX
+  10AC:0531 field +04 = UNRESOLVED ; MOV byte ptr ES:[DI + 0x4],AL
+  10AC:0564 field +0E = UNRESOLVED ; MOV word ptr ES:[DI + 0xe],AX
+  Provenance-linked stores: 18; constant behavior-word stores: 1
+  Trace boundary: 10AC:0569 return
+  Calls: register facts invalidated; explicit frame-address arguments also invalidate BP facts.
+  Other BP facts assume no hidden callee alias mutation.
+  Stack suffix tracks PUSH/POP and bounded RETF cleanup; unknown cleanup discards pending facts.
+  Branches: both arms explored, not proven feasible; merged facts use intersection.
+
+TOTAL: 25 direct-call encoding matches; 24 local-CFG sites; 1 unresolved candidates.

@@ -311,6 +311,105 @@ namespace Desperabis
         throw std::logic_error("New-game resource loading and initialization are not implemented.");
     }
 
+    std::int16_t GameContext::RandomSigned(std::uint16_t radius)
+    {
+        if (radius > 32767)
+        {
+            throw std::invalid_argument("Signed random radius must fit a nonnegative signed word.");
+        }
+        const auto value = static_cast<std::int16_t>(
+            static_cast<int>(Random(static_cast<std::uint16_t>(radius * 2u + 1u))) - radius);
+        return value == 0 ? static_cast<std::int16_t>(radius) : value;
+    }
+
+    std::uint16_t GameContext::SpawnFireParticle(const RawGameObject& source)
+    {
+        const auto x = source.posX;
+        const auto y = WrapSignedWord(source.posY + source.collisionRadiusY);
+        const auto z = source.posZ;
+        const auto slot = FindFreeObjectIndex();
+        // Allocation can clear the source itself after its lifetime reaches zero.
+        if (source.collisionType == CollisionType::None) { return 0; }
+        if (source.collisionType != CollisionType::DamageObj)
+        {
+            throw std::logic_error("Only the fire branch of the native fragment factory is implemented.");
+        }
+        auto& particle = worldObjects[slot];
+        particle.modelId = 39;
+        particle.modelAnim = 3;
+        particle.animFrame = 5;
+        particle.modelFrame2 = 2;
+        particle.blendWeightOrSpriteOpacity = 100;
+        particle.renderPlacementMode = 130;
+        particle.velocityY = static_cast<std::int16_t>(Random(500) + 600);
+        particle.behavior = BehaviorType::FireParticle;
+        particle.field_24 = Random(4);
+        particle.health = static_cast<std::int16_t>(Random(60) + 50);
+        particle.displayType = DisplayType::VectorUnlit;
+        const auto acceleration = RandomSigned(30) + particle.velocityY / particle.health;
+        // Arithmetic right shift rounds negative odd values down, unlike signed division.
+        const auto half = acceleration >= 0 ? acceleration / 2 : -((-acceleration + 1) / 2);
+        particle.doorLockOrGroupBitmask = static_cast<std::int16_t>(std::clamp(-half, -30, 1));
+        particle.posX = x;
+        particle.posY = y;
+        particle.posZ = z;
+        particle.collisionRadiusXZ = 10;
+        particle.collisionRadiusY = 10;
+        particle.winX = static_cast<std::int16_t>(Random(512));
+        particle.winY = static_cast<std::int16_t>(Random(512));
+        return slot;
+    }
+
+    void GameContext::InitializeDriftingParticle(RawGameObject& object, std::uint8_t frame,
+        std::int16_t x, std::int16_t z)
+    {
+        object.health = 50;
+        object.modelId = 39;
+        object.modelAnim = 3;
+        object.animFrame = frame;
+        object.modelFrame2 = 1;
+        object.blendWeightOrSpriteOpacity = 100;
+        object.displayType = DisplayType::Type30;
+        object.behavior = BehaviorType::ExplosionSmokeCloud;
+        object.collisionType = CollisionType::None;
+        object.velocityY = 1;
+        // The old position chooses the drift direction before X/Z are replaced.
+        object.velocityX = SignWord(WrapSignedWord(object.posX - x));
+        object.velocityZ = SignWord(WrapSignedWord(object.posZ - z));
+        object.posX = x;
+        object.posZ = z;
+        object.winX = static_cast<std::int16_t>(Random(512));
+        object.winY = static_cast<std::int16_t>(Random(512));
+    }
+
+    void GameContext::InitializeSmokeParticle(RawGameObject& object, std::int16_t x, std::int16_t y,
+        std::int16_t z, std::int16_t radiusXZ, std::int16_t riseFactor, std::uint8_t placement)
+    {
+        object.modelId = 1;
+        object.modelAnim = 2;
+        object.animFrame = 3;
+        object.behavior = BehaviorType::SmokeFading;
+        object.displayType = DisplayType::SpriteTransparent;
+        object.blendWeightOrSpriteOpacity = 10;
+        object.winY = static_cast<std::int16_t>(Random(2));
+        object.collisionRadiusXZ = radiusXZ;
+        object.collisionRadiusY = 5;
+        object.velocityZ = 2;
+        object.health = WrapSignedWord(riseFactor * 50 + Random(50));
+        const auto size = static_cast<std::uint8_t>(Random(
+            static_cast<std::uint16_t>(object.collisionRadiusXZ)) + 10);
+        // Only the scale's high byte is initialized; its low byte belongs to the existing record.
+        object.spriteScale = static_cast<std::uint16_t>((object.spriteScale & 0x00ffu) |
+            (static_cast<std::uint16_t>(size) << 8));
+        object.velocityY = WrapSignedWord(riseFactor * 200 + Random(130));
+        object.posX = x;
+        object.posY = y;
+        object.posZ = z;
+        object.renderPlacementMode = placement;
+        const auto floor = GetFloorHeight(object.posX, object.posY, object.posZ);
+        if (object.posY < floor) { object.posY = floor; }
+    }
+
     std::uint16_t GameContext::FindFreeObjectIndex()
     {
         std::uint16_t slot = 2;

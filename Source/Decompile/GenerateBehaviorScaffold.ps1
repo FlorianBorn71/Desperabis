@@ -180,6 +180,8 @@ foreach ($value in @(@($names.Keys) + $caseValues | Sort-Object -Unique)) {
     $trace = Trace-Selector $value
     $name = $names[$value]
     if ($value -eq 65535) { $name = 'DisabledSentinel' }
+    elseif ($value -eq 18) { $name = 'ExplosionSmokeCloud' }
+    elseif ($value -eq 21) { $name = 'FireParticle' }
     elseif (-not $name) { $name = 'Behavior_' + $value }
     $specific = $trace.Entry -ne 0x5110
     $references = @{ Instructions = 0; Globals = @(); Calls = @() }
@@ -238,13 +240,24 @@ foreach ($enumName in $enumTypes.Keys) {
     if (-not $enumBlock.Success) { throw "Cannot locate renderer enum $enumName." }
     $gameEnums.Add(('    enum class {0} : {1}' -f $enumName, $enumTypes[$enumName]))
     $gameEnums.Add('    {')
-    $gameEnums.Add($enumBlock.Groups[1].Value.TrimEnd())
     if ($enumName -eq 'BehaviorType') {
-        $gameEnums.Add('')
-        $gameEnums.Add('        // Additional selectors observed in the original 16-bit dispatcher.')
-        foreach ($row in $rows | Where-Object { -not $_.namedInRenderer }) {
-            $gameEnums.Add(('        {0} = {1},' -f $row.name, $row.value))
+        $comments = @{}
+        foreach ($match in [regex]::Matches($enumBlock.Groups[1].Value,
+            '(?m)^\s*\w+\s*=\s*(\d+)\s*,[ \t]*(//[^\r\n]*)?')) {
+            $comments[[int]$match.Groups[1].Value] = $match.Groups[2].Value
         }
+        foreach ($row in $rows | Sort-Object { [int]$_['value'] }) {
+            $comment = $comments[$row.value]
+            if ($row.value -eq 18) {
+                $comment = '// Likely post-explosion smoke, per author recollection; visual role tentative.'
+            } elseif ($row.value -eq 21) {
+                $comment = '// Spawned by BurningFireplace; recovered from the executable.'
+            }
+            $suffix = if ($comment) { ' ' + $comment } else { '' }
+            $gameEnums.Add(('        {0} = {1},{2}' -f $row.name, $row.value, $suffix))
+        }
+    } else {
+        $gameEnums.Add($enumBlock.Groups[1].Value.TrimEnd())
     }
     $gameEnums.Add('    };')
     $gameEnums.Add('')

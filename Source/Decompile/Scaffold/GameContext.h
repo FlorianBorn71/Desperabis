@@ -46,6 +46,7 @@ namespace Desperabis
         std::uint16_t field_28 = 0;
         std::int16_t blendWeightOrSpriteOpacity = 0;
         std::int16_t groupIndexOrLock = 0;
+        // Door lock/group mask; fireplaces use emission intensity, fire particles use vertical acceleration.
         std::int16_t doorLockOrGroupBitmask = 0;
         std::int16_t renderSortKey = 0; // Original render-list scratch, overwritten after active-object dispatch.
         std::uint8_t field_32 = 0;
@@ -229,6 +230,8 @@ namespace Desperabis
         void PromptUserMessage(std::string_view text, std::int16_t duration);
         void UpdateUserMessage(std::int16_t ticks);
         std::uint16_t Random(std::uint16_t range);
+        // Native signed random helper replaces a zero result with the positive radius.
+        std::int16_t RandomSigned(std::uint16_t radius);
         void LoadSoundEffects(const std::uint8_t* data, std::size_t size);
         std::int16_t GetSoundDistanceAt(std::int16_t x, std::int16_t z) const;
         std::uint8_t GetSoundVolumeAt(std::int16_t x, std::int16_t z, std::int16_t distanceScale = 1) const;
@@ -256,6 +259,15 @@ namespace Desperabis
         // Both native allocators clear the selected record, including fallback slot 165.
         std::uint16_t FindFreeObjectIndex();
         std::uint16_t FindFreeOrLowestHealthObjectIndex();
+        // Recovered fire branch of the native fragment factory; zero means no particle was created.
+        std::uint16_t SpawnFireParticle(const RawGameObject& source);
+        // Native supplied-object initializers: neither allocates nor clears the record.
+        // Behavior 18 starts at the supplied X/Z and drifts away from its previous X/Z.
+        void InitializeDriftingParticle(RawGameObject& object, std::uint8_t frame,
+            std::int16_t x, std::int16_t z);
+        // Placement is renderer-owned configuration; riseFactor controls lifetime and vertical speed.
+        void InitializeSmokeParticle(RawGameObject& object, std::int16_t x, std::int16_t y,
+            std::int16_t z, std::int16_t radiusXZ, std::int16_t riseFactor, std::uint8_t placement);
 
     protected:
         // Each modal page owns its input/drawing loop and returns its next application page.
