@@ -28,10 +28,15 @@ identified a high-level dispatcher, gameplay-loop candidates, and the
 author's object-behavior routine; see [High-level program structure](HighLevelStructure.md)
 and its [instruction evidence](high-level-evidence.txt). Object fields are
 still only partially understood.
+The [UI architecture map](HighLevelStructure.md#ui-pages-shared-helpers-and-element-lists)
+and [UI instruction evidence](ui-evidence.txt) now identify the F2 inventory
+page, shared input/text helpers, registered overlay and resource-meter records,
+and per-buffer redraw lists. Page control remains procedural; this is not
+evidence for one universal widget/page interpreter.
 The renderer's existing accessors and the author's layout information are now
 connected to the binary in [Object behavior recovery](BehaviorRecovery.md).
 That page also documents the compilable named-handler scaffold. Pillar,
-IdleAnimation, SmokeFading, Switch1, SwitchGrouped, and WaterDrop are implemented; other handlers remain explicit
+LightSource, Door, Flies, IdleAnimation, SmokeFading, Switch1, SwitchGrouped, and WaterDrop are implemented; other handlers remain explicit
 placeholders.
 The author's Excel object layout has been compared with the renderer accessors
 and added as the canonical 54-byte `RawGameObject` struct in
@@ -70,7 +75,7 @@ change its frames and behavior to 12; value 3 also calls an unresolved helper.
 The lower-level reader checks hardcoded column/row limits 0..319/0..239,
 not the map's stored dimensions. A separate helper at `1E48:2A64` reads a
 3x3 neighborhood and uses masked samples to adjust referenced words; its
-callers remain unresolved. `GameState::GetCollisionMapPixelAtWorldXZ(x, z) const`
+callers remain unresolved. `GameContext::GetCollisionMapPixelAtWorldXZ(x, z) const`
 is implemented in [CollisionMap.cpp](Scaffold/CollisionMap.cpp), with the
 original coordinate bounds, 16-bit address wrapping, and explicit host
 allocation checks. Host tests cover every X/Z word independently and the
@@ -150,7 +155,7 @@ the original input-gated calls are preserved in the inventory evidence.
 player-contact dispatcher.
 
 The new `InputHandler` interface supplies virtual
-`IsInteractionKeyPressed()`. Call `UpdatePlayerInteraction(context, input)`
+`IsKeyPressed(InputKey::InteractionKey)`. Call `UpdatePlayerInteraction(context, input)`
 once per update: it selects the overlapping object, stores its original slot
 in `playerCollisionSlot`, and invokes the interaction handler only when the
 input method returns true. No collision means no input/interaction call.
@@ -167,9 +172,190 @@ signed-word geometry, preference, input gating, and pickups are host-tested.
 Full player movement, automatic contact responses, world behavior scheduling,
 platform keyboard polling, and UI/audio are not implemented by this hook.
 
+### Player movement and input
+
+**Confirmed:** `0000:D060` is the player movement/contact routine, not just
+an overlap check. Its common epilogue is `E063`, with `RET 2` at `E064`;
+the next routine starts at `E067`. Suggested alias: `UpdatePlayer`.
+These are module-relative addresses, not DOS runtime segments.
+
+The input and simulation stages are separate:
+
+| Address | Suggested role | Concrete evidence |
+| --- | --- | --- |
+| `0000:C603` | `UpdateKeyboardControls` | Reads key-state bytes through bindings at DS:`3232` onward, changes movement/turn accumulators, invokes the existing interaction dispatcher |
+| `0000:C777` | `UpdateMouseControls` | Uses the interrupt-call wrapper with interrupt `33h`, mouse functions 3 and 11; horizontal motion writes the turn accumulator |
+| `0000:C9E0` | Gameplay input/event wrapper | Calls `C603` at `CCBE`, then selects `C777` for input mode 2 or `C87A` for mode 1; the latter device path is not classified here |
+| `0000:D060` | `UpdatePlayer` | Turns, computes direction, updates X/Y/Z, handles heights, object contacts, and collision-map correction |
+| `0000:E1F4` | Copy player position into object slot 1 | Writes X/Z directly and Y minus the player's stored vertical radius |
+
+**Keyboard state and bindings.** `C603` indexes byte DS:`3132 + binding`.
+The binding bytes are not literal hard-coded scan codes in this routine.
+Their configuration/loading and the keyboard interrupt producer have not
+been traced here; do not infer default physical keys from the table offsets.
+
+| Binding byte | Effect while held |
+| --- | --- |
+| DS:`3232` / `3233` | Add/subtract 4 to DS:`D4D8`: forward/backward accumulator |
+| DS:`3234` / `3235` | Subtract/add 7 to DS:`DC6E`: turn accumulator |
+| DS:`3236` / `3237` | Subtract/add 4 to DS:`D4DA`: sideways accumulator |
+| DS:`323E` | If DS:`DC60 > 0`, call `0EF0:09F8` for the selected object; this is the author-identified interaction action |
+
+When input mode DS:`EC6C` is zero, the keyboard routine subsequently reduces
+each of those three accumulators toward zero by one. It also handles other
+actions; jump/crouch and look-control names are not assigned to all remaining
+bindings yet.
+
+**Movement state.** DS:`D4D2/D4D4/D4D6` are the working player/view X/Y/Z,
+DS:`D4D0` is the applied heading, DS:`DC4C` the target heading, and the word
+at DS:`8286` is vertical velocity (object slot 1, byte 20). Player Y is not
+simply identical to the object's center Y: the synchronization routine
+subtracts DS:`828C` from the working Y.
+
+Verified stages inside `D060`:
+
+- `D0A7` onward limits forward/sideways speeds, reducing the shared limit
+  to two thirds when both axes are nonzero. Normal limit 5 is assigned later
+  at `DE28`; early state-dependent branches can substitute 2 or 3. Those
+  state names are not yet fully recovered.
+- `D102` caps the turn accumulator to +/-6. `D123` adds it to the target
+  heading and masks to 511. The applied heading approaches that target via
+  the angular-adjustment helper and `GetStepToward`. The routine's word
+  argument is used as that approach step at `D14F`, **not as a generic
+  tick multiplier**. The normal loop calls it with 6 once per pending tick;
+  the alternate loop uses 2.
+- `D699` computes direction components as the high word of
+  `100 * StandardSine(heading)` and `100 * StandardCosine(heading)`, calling
+  `1E48:0000` and `1E48:0027`. These use the **65536-amplitude table at
+  DS:1B00**, not the boosted/clamped table used by `0051/0078`.
+- `D763` applies the local-space movement:
+  `X += (directionX * forward + directionZ * sideways) / 100`;
+  `Z += (directionZ * forward - directionX * sideways) / 100`.
+  Products/sums wrap to words before signed division; the original division
+  has a signed-byte quotient. This is explanatory math, not host-ready C++.
+- `D6D3` onward updates vertical velocity, normally decrementing it by one.
+  `D79D` adds it to working Y. The preceding room-height query uses a point
+  slightly ahead: a relative height below 96 cancels positive velocity;
+  below 65 also moves the player-height value toward 28.
+- `D810/D822` sample terrain ahead/current for the slope difference.
+  `D844` calls `1E48:3621`, which returns current terrain height and X/Z
+  corrections derived from a 3x3 neighborhood at 30-unit spacing. Height
+  differences greater than 16 contribute signed horizontal corrections.
+  This helper is a terrain sampler, **not** the collision-map wall reader.
+  `D88C` clamps working Y to the resulting support height plus player-height
+  and bob offsets, zeroing vertical velocity on landing.
+- The previously identified object-contact cascade starts at `D8FC`.
+- `DD97` onward, gated by collision enable and DS:`2DDC`, repeatedly calls
+  `1E48:2A64` with step 5 and mask `18h`, applies its X/Z corrections, and
+  reduces forward motion on correction. This helper samples a 3x3
+  collision-map neighborhood through `1E48:0E8F`, using the existing map
+  pointer at DS:`69C4`; it is more than a single point read. The exact
+  meanings of bits 3 and 4 remain unnamed.
+
+This establishes the controller's location and major data flow, not a
+complete movement port. Special contact modes, all input actions, remaining
+movement globals, and full helper contracts still need recovery before
+claiming faithful playable movement. No runtime code was changed for this
+investigation. Evidence: [player movement](player-movement-evidence.txt),
+[earlier contact cascade](player-collision-evidence.txt), and
+[main-loop timing](HighLevelStructure.md#gameplay-timing-and-ordering).
+
+**Author's additional movement context:** forced crouch may be associated with
+being underwater; teleporting and walking on collider objects such as bridges
+also affect movement. These are recovery leads, not yet verified mappings to
+the individual globals/branches. Movement implementation remains deferred.
+The input abstraction now exposes the seven confirmed actions through virtual
+`IsKeyPressed(InputKey)`, without tying them to physical keys.
+
+### Shared object loop and free-object allocation
+
+[BehaviorDispatch.cpp](Scaffold/BehaviorDispatch.cpp) now implements
+`UpdateObjects` (slots 2..164 in ascending order) and `UpdateObject`
+(shared gameplay prefix followed by the individual case). Direct
+`DispatchObjectCase` remains available for isolated case inspection/tests.
+The console uses the world loop and reports unrecovered case statuses.
+
+Confirmed at `0000:1113`: **health below 1000 counts toward zero by the
+object routine's tick argument**, gated by DS:`D500`. Health >= 1000 is
+unchanged by this common countdown. Inactive objects are skipped at entry;
+an object expiring during the countdown still executes its last behavior
+update. The behavior-enable flag does not suppress the countdown.
+
+The prefix also implements burning display values 50..120 through `0000:0F95`:
+effect 62, attenuated volume, shared sound source 451 and limit 2, then random
+display decay to brightness 22. It uses the separate frame tick snapshot
+DS:`D4CA`, now `frameTickCount`, and the same random seed as sound selection.
+The `FFFF` behavior now clears health as its original case does.
+
+**No unconditional velocity or angular-speed update was found in the shared
+prefix or suffix.** Their application is behavior-specific. Adding
+`position += velocity` to every object here would double-integrate behaviors
+already implementing motion and misuse overloaded velocity fields.
+The suffix at `5110` concerns scene/distance-list processing, not universal
+motion; that renderer-side work and the player flag DS:`D4FF` reset remain
+outside this partial loop implementation.
+
+Two original allocators are implemented as context methods:
+
+- `FindFreeObjectIndex`, `1E48:2049`: first **exactly zero-health** slot
+  2..164, otherwise reserved scratch slot **165**.
+- `FindFreeOrLowestHealthObjectIndex`, `1E48:2085`: first zero-health slot,
+  otherwise the first strict minimum signed health below 1000, otherwise 165.
+
+Both **zero the full object record** before returning; neither reserves it
+by assigning positive health. Negative health is not a free slot for the
+first routine. The second can reclaim it; ties keep the earlier slot.
+Full-capacity fallback deliberately retains the original scratch-slot behavior,
+not a fabricated zero index or allocation failure.
+
+See [contracts and integration](BehaviorRecovery.md#shared-object-updates-and-allocation)
+and the six complete ranges in [object-update-evidence.txt](object-update-evidence.txt).
+
+### Door unlocking and inventory keys
+
+The author's description is confirmed by the complete helper
+`10AC:3DCE..3EDF` in [door-unlock-evidence.txt](door-unlock-evidence.txt).
+The previous uncertainty was that this callee had not been decoded, not
+that an additional subsystem was known to be required.
+
+- Slot zero is ignored. If object word `26h` (movement state/rate) is
+  nonzero, the helper returns without unlocking or consuming anything.
+- Signed word `2Eh` is the lock: **negative** takes the locked-message
+  path without trying inventory, **zero** directly activates, and
+  **positive** requires a matching inventory key.
+- Inventory slots **1..14**, including both hands, are searched.
+  Candidates need signed health **>0** and collision type **6 = Key**.
+  Key word `22h` (`itemValue`) is compared with the object's positive lock.
+- The loop retains the latest eligible key until it finds a match, then
+  stops replacing the selection while still iterating to slot 14. Thus
+  the **first matching key** is used, not the last matching key.
+- Success consumes exactly that inventory object by setting its **health
+  to zero**. It does not shift the array or decrement `itemValue`.
+  For hand slots 1/2, it additionally calls `1E48:CAFE` with the corresponding
+  DS:`2DB8` / `2DB9` byte. UI tracing now identifies these as overlay indices:
+  the helper appends the index to both drawing buffers' redraw lists, not
+  visible label text or additional gameplay inventory/world records.
+- The object's lock word is then cleared and the helper invokes
+  `10AC:10F5(objectSlot, 0)` to activate it.
+
+Failure distinguishes the embedded messages **"abgeschlossen"** (locked,
+duration 60) and **"Falscher Schluessel"** (wrong key, duration 90; transliterated
+here). Negative locks and no-key feedback are gated by DS:`D772 < 1`;
+the wrong-key call has no such gate in this helper. The native no-key
+test uses the selected key ID being zero, rather than merely the selected
+slot, so a zero-ID key has a special failure edge case.
+
+This establishes ordinary key matching, consumption, and activation.
+Ordinary-door unlocking and activation are now implemented, including both
+failure prompts. `GameContext::PromptUserMessage` owns the text and lifetime
+without rendering; the original storage routine is `1E48:2459`, with countdown
+at `1E48:3F2A`. The hand-slot icon redraw scheduling remains outside gameplay.
+See [message and door integration evidence](door-message-evidence.txt) and
+[implementation contract](BehaviorRecovery.md#ordinary-doors-and-key-unlocking).
+
 ### Inventory and pickup gameplay
 
-`GameState` now owns a fixed array of **14 complete game objects**: two hand
+`GameContext` now owns a fixed array of **14 complete game objects**: two hand
 slots and twelve backpack slots. Original slot zero at DS:`2DEC` is only a
 preview/scratch object; the 810-byte initialization includes it, but it is
 not an extra usable slot. The host uses a local snapshot for copying.
@@ -195,7 +381,7 @@ See [implementation details](BehaviorRecovery.md#inventory-and-explicit-interact
 [gameplay code](Scaffold/ObjectInteraction.cpp).
 
 Runtime types use production-oriented names: `Desperabis::Level`,
-`Desperabis::GameState`, and `Desperabis::RawGameObject`. Recovery terminology
+`Desperabis::GameContext`, and `Desperabis::RawGameObject`. Recovery terminology
 describes the investigation, not the intended identity of the game code.
 
 ### Simple object-local behavior
@@ -250,6 +436,203 @@ slots; the fourth slot, DS:`D4CC`'s complete role, and the loading source of
 DS:`D4CE`'s repeated-floor spacing remain unresolved. No guessed defaults
 are substituted for those surface slots.
 
+### Static brightness and dynamic tile-corner lighting
+
+**Located through `LightSource`.** There are two distinct layers, rather
+than a second persistent 50x40 byte plane for the traced dynamic writes:
+
+| Layer | Native storage | Confirmed interpretation |
+| --- | --- | --- |
+| Static per-tile value | Upper **three bits** of the 50x40 wall/surface-flags plane, actual base DS:`59E0` | Renderer code at `0000:61BB` reads the byte through the one-based biased displacement `59AD`, shifts right by **5**, and stores the resulting 0..7 value at DS:`2B0C` |
+| Dynamic corner contribution | Word at offset `10h` of each 24-byte record in the camera-relative grid at DS:`A8CC` | Light sources add a signed word contribution; geometry rendering reads four neighboring records for a tile's four corners |
+
+The static plane is already preserved as `Level::surfaceFlags`; lighting
+shares its byte with the low-five-bit surface selector used by height queries.
+The modern renderer currently uses `rawDataWalls >> 4` and a 0..15 brightness
+mapping in [Level.cpp](../NewRenderer/SharedSource/base/Asset/Level.cpp).
+That is a **confirmed extraction difference** from the original's `>> 5`,
+not a reason to silently change the renderer during this investigation.
+The exact palette/luminance meaning of each original 0..7 value still needs
+tracing; do not assume a modern linear brightness scale.
+
+**Dynamic storage is a visible-window cache.** The record address used by
+`10AC:0000(x,z,amount)` is:
+
+```text
+dx = trunc(wrap16(x + 50) / 100) - trunc(playerX / 100)
+dz = trunc(wrap16(z + 50) / 100) - trunc(playerZ / 100)
+record = DS:A8CC + (dx + 10) * 504 + (dz + 10) * 24
+record.word_10 += amount
+```
+
+The divisions use the native signed-byte quotient; this pseudocode omits
+the explicit overflow handling a host implementation will need. Calls are
+culled when either absolute relative coordinate exceeds byte DS:`3117`.
+The stride and frame-clear size independently establish **21x21 records**:
+`1E48:40CC` clears `2958h = 21*21*24` bytes starting at DS:`A8CC`.
+Thus this retains the heightfield's 100-unit tile spacing, but stores only a
+player-relative window rather than dynamic values for the entire level.
+
+**Flickering light behavior (`0000:1488`):**
+
+- Chooses `amount = Random(30) + 5`, i.e. **5..34**.
+- Passes its X/Z and that amount to `10AC:0000`.
+- Has another random write to DS:`DC34` when cached listener distance is
+  0..300; the purpose of that global has not been established.
+- Separately has a tick-dependent chance to play the sound effect configured
+  in object byte 5, using the cached object volume and source slot.
+
+**Confirmed consumer:** the renderer routine at `0000:5B83` loops over
+the tile's 2x2 corner records, reads the dynamic word at DS:`A8DC + index`,
+marks DS:`D4FD` when any is nonzero, and writes each contribution shifted
+left by 11 into the four dword slots at DS:`D484`. This proves the corner
+interpretation independently of the behavior's name.
+
+The cache is not lighting-only: `1E48:3351` also prepares transformed geometry
+and a dword projection factor at record offset `13h`. The light writer
+additionally adds `amount << 12` to **that dword**, clamping a negative
+result to zero. Its complete rendering effect is not yet explained; a future
+port must not silently omit it or label the entire 24-byte record a light
+value. The main frame path calls cache preparation before object behaviors.
+
+**Gameplay cache implemented subsequently:** `GameContext::lightingCache`
+stores the 21x21 signed-word dynamic contributions. `Reset(playerX,playerZ)`
+clears/captures the frame center; `AddAtWorldXZ(x,z,amount)` implements the
+word accumulation, coordinate conversion and active-window culling.
+Reset is an explicit frame operation, not part of each object update.
+The implementation separates lighting from the original projection fields,
+as requested: no rendering changes. `LightSource` is now implemented as well:
+it preserves the optional near-listener RNG/DS:`DC34` accumulation, then
+adds `Random(30)+5`, then draws the sound probability and requests the
+configured high-byte effect when `tickCount > Random(100)`. The sound uses
+object volume, source slot, and instance limit 2; effect zero is silent.
+DS:`DC34` is exposed as the still-unidentified `GameContext::field_DC34`,
+not silently discarded or assigned speculative semantics. Its use as a
+timer RNG range is visible at `1E48:C5CC`, but that downstream behavior
+is not ported here.
+See [gameplay cache usage](BehaviorRecovery.md#gameplay-lighting-cache) and
+[Lighting.cpp](Scaffold/Lighting.cpp).
+
+Evidence: seven complete ranges in [lighting-evidence.txt](lighting-evidence.txt).
+
+#### Light noise versus a lightning flash
+
+Following the author's lightning-flash suggestion resolved a consumer of the
+previously unidentified DS:`DC34`:
+
+- Nearby LightSource objects add `Random(0xEFFF)` to DS:`DC34`.
+- The timer at `1E48:C5CC` computes `DS:DC36 = Random(DS:DC34)`.
+- `1E48:4B7B`, called at `0000:B65F`, multiplies its signed dword argument
+  by the word-wrapped factor `2 * DS:2B0C + DS:2B0A + 1`, then adds
+  **zero-extended DS:DC36** to the low dword of the product.
+- It discards the fractional low word and uses the resulting signed high
+  word to select one of the shade codes `1100h` down to `0A00h`.
+  In ordinary, non-overflowing arithmetic, a 0..65535 additive value can
+  advance that integer result by at most **one**. This supports a
+  **shade-quantization noise/dithering** interpretation, not a large
+  full-scene flash. Exact visual palette mapping remains untraced.
+
+DS:`2B0C` is the static surface-light value already identified above.
+DS:`2B0A` is a separate global term in the same calculation and is a better
+candidate for larger scene-wide brightness changes. The CutSceneCloud case
+(`0000:4B9F`, behavior 171) writes positive `itemValue >> 1` into it while
+counting that value down at health 1000. This establishes a time-varying
+global shading control, **not yet its connection to thunder**. Do not rename
+DS:`DC34` as a thunder/flash parameter on this evidence.
+
+Also confirmed: the native frame paths clear DS:`DC34` at `0000:E345`
+and `0000:E6EB`. The current scaffold preserves the LightSource producer
+only: its context field is not cleared by `LightingCache::Reset`, and the
+timer/DS:`DC36` consumer is not implemented. Native per-frame reset remains
+an integration requirement; persistence across frames is not native behavior.
+
+Evidence: all six ranges complete in
+[lighting-shade-evidence.txt](lighting-shade-evidence.txt). No gameplay or
+rendering code changed during this follow-up investigation.
+
+### Object bytes 04 and 05: placement mode versus configured sound
+
+The author's suggestion that `field_04` contains common sound data is
+confirmed for its **high byte**, object offset `05`. It is not a single
+16-bit sound field. A suitable semantic name for byte `05` is
+`soundEffectId`: consumers zero-extend it and pass it as the **effect ID**,
+not a sample reference, volume, priority, or channel number.
+
+Independent confirmed consumers:
+
+| Path | Byte read | Playback call | Evidence |
+| --- | --- | --- | --- |
+| LightSource | `0000:14E2` | `0000:14F2` | [lighting-evidence.txt](lighting-evidence.txt) |
+| Shared switch activation | `10AC:20F6` | `10AC:211B` | [switch-evidence.txt](switch-evidence.txt) |
+| Door interaction/motion paths | `0EF0:0C79`, `0E29`, `0E83` | `0C89`, `0E3D`, `0E97` | [player-collision-evidence.txt](player-collision-evidence.txt) |
+| Interaction with default effect | `0EF0:0FA5` / `0FB9` | `0EF0:0FE1` | [player-collision-evidence.txt](player-collision-evidence.txt) |
+| Passive player contact, collision type 11 | `0000:DC2B` | `0000:DC47` | [player-collision-evidence.txt](player-collision-evidence.txt) |
+
+The default-effect path writes **2** to byte `05` if it was zero before
+playing it. Thus zero means unconfigured in this path, not a prohibition
+against every kind of object sound.
+
+The **low byte**, offset `04`, has an unrelated common consumer:
+`0000:5138` branches on it during post-behavior placement/render-list setup.
+For example, modes 1 and 3 adjust temporary X/Z toward the player with steps
+25 and 80; modes 6 and 7 adjust the candidate assignment by +/-100.
+`0000:53E6` also separates values >=200, and `0000:544C` / `5456` handle
+extended values >99 outside the ordinary cache window. This establishes a
+placement/render-list control, but not a complete semantic enum.
+See [object-update-evidence.txt](object-update-evidence.txt). Those operations
+must not be mistaken for sound settings or universal object motion.
+
+Conclusion: this is a **shared configurable object sound slot**, used when
+the relevant behavior/contact/interaction chooses to play it; it is not
+automatically played for every object. Other sounds are hardcoded, including
+WaterDrop effect 5 and the shared burning effect 62. No reviewed sound
+consumer requires treating offsets `04..05` as one word. The current scaffold
+now splits the former packed word into byte `renderPlacementMode` at offset
+4 and byte `soundEffectId` at offset 5, retaining the exact 54-byte layout.
+LightSource reads the named sound byte directly; inventory normalization
+changes only the placement byte, and grouped-switch activation supplies
+default sound 2 only when `soundEffectId` is zero. Layout tests cover every
+pair of byte values, and interaction tests preserve the other byte.
+
+#### Render-owned object values and tile-list links
+
+The author's memory of values reserved for rendering/visibility is supported:
+
+- **Byte `04`, `renderPlacementMode`:** a configuration selector consumed by
+  common placement/culling after behavior dispatch. It controls temporary
+  placement coordinates, render-sort bias, and normal versus extended
+  visibility paths. Its individual modes are not yet fully named.
+- **Word `30h`, signed `renderSortKey`:** the result of
+  `1E48:3F56(1, objectSlot)` is written here at `0000:511D`.
+  Some placement modes subsequently add/subtract 100. The list inserter
+  `0000:100B` loads this word via `DS:826C + slot*54` and compares it to
+  existing objects' same words using signed `JLE`. It inserts greater keys
+  first and advances past equal keys. This proves a **descending signed
+  sort key**, not a packed tile coordinate; the old
+  `candidate_tileAssignment` name has been replaced.
+- **Next-object links are outside the object:** one byte per slot at
+  DS:`D3DD + slot`, with zero as the list terminator. The inserter updates
+  either the passed head byte or a previous object's external next link.
+  The ordinary tile-window path passes cache-record offset `17h` as that
+  head (`0000:543D`). Separate visibility paths use DS:`05B0` as a head.
+
+The producer's initial computation reads differences of X and Z between
+the supplied object slots and has a health-dependent fallback of 32000.
+Its floating-point calculation is not fully decoded here: the inline
+Turbo Pascal x87-emulator span at `1E48:3FC1..3FE7` is deliberately omitted
+from the instruction export, rather than misrepresented as ordinary x86
+code. No exact distance formula is needed to establish the sorting role.
+
+The signed `renderSortKey` type preserves the original two bytes.
+The scaffold intentionally does not run the render-list suffix, populate
+tile object lists, or overwrite this key during gameplay-only updates.
+These fields should nevertheless not be repurposed as arbitrary behavior
+parameters when integrating the original rendering/visibility contracts.
+
+Evidence: four complete instruction ranges in
+[object-render-list-evidence.txt](object-render-list-evidence.txt), plus the
+placement/culling suffix in [object-update-evidence.txt](object-update-evidence.txt).
+
 ### Sound effects and playback admission
 
 The author confirms effect **5 = Drop**. `10AC:202A` actually consumes only
@@ -274,6 +657,184 @@ attenuation, and channel/source policy. WaterDrop is wired to this API.
 Host hardware mixing and sample decoding remain outside the library.
 See [sound-effect contracts](BehaviorRecovery.md#sound-effects-attenuation-and-four-channel-admission)
 and the bounded [instruction evidence](sound-evidence.txt).
+
+### Next behaviors without new mutable game globals
+
+These are **statically traced implementation candidates, not implemented
+handlers**. Their relevant cases/callees are preserved in
+[behavior-candidates-evidence.txt](behavior-candidates-evidence.txt).
+The render-list postprocessing and general activation limitations still apply.
+`Flies`, formerly in this shortlist, is now implemented and tested; see
+[its runtime contract](BehaviorRecovery.md#flies-randomized-frame-blending-and-buzzing).
+
+| Candidate | Case / helper | Confirmed work | Additional code, not new game state |
+| --- | --- | --- | --- |
+| `VerticalConcreteSlab` (27) | `0000:1B77` / `10AC:8FCA` | Accelerates a tipping-angle progression, changes its collision-map footprint, stops its behavior and plays the configured effect when fully tipped | Port oriented footprint helper `10AC:8ED4`, rectangle writer `10AC:016D`, and span writer `10AC:00DE`; all use the existing collision map |
+| `BonesToGrab` (83) | `0000:299A` | Sets its collision mask, snaps to terrain, and on contact with a Dog collision object configures that object's idle animation and disables its own behavior/collisions | Expose the already-decoded terrain-only helper `1E48:18CF`, and use the existing object array and overlap query |
+| `Switch3` (53) | `0000:20D7` | Moves its angle toward its target; clears collision type and behavior when reached | Existing signed-step helper and object fields only |
+| `Switch4` (56) | `0000:22E6` | Advances and clamps its angle, reverses or stops its rate according to object fields | Object fields and tick count only |
+| `PressureIndicator` (177) | `0000:4D0C` | For health 1000, moves its angle toward its stored target | Existing signed-step helper and object fields only |
+
+The slab's map path has been followed all the way through its span fill:
+the only referenced mutable global is the already-owned map pointer at
+DS:`69C4`. It uses map values 16 while tipping and 2 when finished; their
+broader bit meanings are not assigned here. Its sound ID comes from object
+byte 5, not a newly discovered global.
+
+**Useful shared-state identification:** `0000:10C2` computes
+`10AC:202A(object.posX, object.posZ)` and stores the distance in DS:`05D2`;
+it then calls `1E48:D001` and stores the volume in DS:`05D0`. These are
+per-object **cached distance and volume**, not new independent settings.
+Flies uses twice that distance for its sound. Its handler does not move
+X/Z, so the implemented handler reuses the positional-volume helper without
+adding context members for either cache.
+
+Bones explicitly calls terrain helper `1E48:18CF`, not effective-surface
+wrapper `1E48:1B45`. Reusing `GetFloorHeight` unchanged would incorrectly
+introduce flat-surface overrides on some tiles. The terrain implementation
+can be extracted from the existing heightfield code without new globals.
+The bone/dog interaction does modify another object, but that object is in
+the already-modeled world array.
+
+Do not confuse the switch cases above with their activation path: these
+are the local per-update animations once their fields are armed, not an
+implementation of the unresolved general activation system.
+
+Initial checks also explain why several plausible choices are **not yet
+in this tier**:
+
+- `LeafParticle1` reads DS:`2B0E/2B10` in its helper, apparently a shared
+  drift/wind vector whose meaning still needs author confirmation.
+- `AmbientSoundPosition` is gated by DS:`F6BF`, an additional unresolved
+  audio setting, even though random selection/playback are now understood.
+- `DirtFromAbove` reads DS:`D4D4` and calls the unresolved cross-object
+  activation helper `10AC:10F5`; it is not just a falling particle.
+- `RollingRock` also calls `10AC:10F5`, as well as movement/collision helpers
+  that are not yet ported.
+
+The most useful next batch is the slab and bones. The three
+object-local cases are smaller supplementary candidates. No runtime code
+was changed when this shortlist was originally traced; Flies has since been ported.
+
+### Rotation lookup tables and fixed-point arithmetic
+
+**Author-confirmed:** a full turn is 512 angle units; sine uses `angle&511`,
+cosine adds 128, and fixed-point multiplication commonly retains the upper
+16 bits. Static tracing now identifies the corresponding table and helpers.
+Evidence: [rotation-evidence.txt](rotation-evidence.txt).
+
+| Item | Module-relative location | Confirmed layout / operation |
+| --- | --- | --- |
+| First generated table | DS:`1B00..2303` | 513 signed 32-bit entries, generated with amplitude 65536 |
+| Gameplay sine table | DS:`2304..2B07` | 513 signed 32-bit entries, generated with amplitude 67000 and clamped to -65536..65536 |
+| Sine lookup | `1E48:0051` | Return signed dword at `DS:2304 + 4*(angle&511)` in DX:AX |
+| Cosine lookup | `1E48:0078` | Same table, index `(angle+128)&511`; signed dword result in DX:AX |
+| Table generation loops | `0000:00FE..01C8` | Both loop over indices 0..512 inclusive |
+
+The lookups use only entries 0..511; the extra endpoint at index 512 is
+initialized but masked out by these two helpers. Four-byte stride and
+separate low/high word loads establish the 32-bit type, not a 16-bit
+approximation. The first table's consumers have not been traced here.
+
+**These are runtime data, not a static 2,048-byte blob in the EXE.**
+The main DS is module-relative segment `2E9E`. Thus the sine table's first
+byte is module linear `0x2E9E0+0x2304 = 0x30CE4`, beyond the file-backed
+load module's end at `0x2EEB0`. DOS extra allocation provides the memory;
+startup code fills it. Searching the executable for 512 consecutive sine
+values therefore will not find this table.
+
+Initialization constants are file-backed at the beginning of code segment
+`0000` (MZ file offset is module offset plus header `0x2D40`):
+
+| Location | Bytes | Interpretation |
+| --- | --- | --- |
+| `0000:0000` | `B8 B9 8C F6 D3 DA 0F C9 F8 3F` | x87 80-bit positive constant, approximately `0.012271846484375`, the angular step (approximately pi/256) |
+| `0000:000A` | `00 00 80 47` | IEEE single 65536 |
+| `0000:000E` | `00 DC 82 47` | IEEE single 67000 |
+
+Both loops convert their index to floating point, multiply by the angular
+step, call the same runtime function `2CE4:16F1` (consistent with the author's
+sine identification), multiply by the respective amplitude, and call
+`2CE4:16B0` to convert to a signed dword. The second loop explicitly clamps
+that stored dword to `0x00010000` and `0xFFFF0000`.
+Conceptually:
+
+```text
+first[i] = integer_conversion(sin(i * angularStep) * 65536)
+sine[i]  = clamp(integer_conversion(sin(i * angularStep) * 67000),
+                 -65536, 65536)
+```
+
+The **67000 plus clamp** matters: this is not simply the first table copied
+or a mathematically exact `sin(angle*2*pi/512)*65536` table. The second table
+has slightly boosted values and flattened extrema. Do not silently replace
+it with a modern standard-library sine table for bit-exact recovery.
+The stored angular constant is only an approximation to pi/256. Subsequent
+implementation traced the runtime sine path and verified all generated
+integers as described below; a DOS memory dump has not been captured.
+
+**Disassembly caveat:** this startup uses Turbo Pascal floating-point
+emulator interrupts and inline operands. The bounded exporter prints raw
+bytes correctly, but its ordinary x86 mnemonics after those interrupts
+misinterpret operand bytes as instructions. In particular, `CD 3B 46 FE`
+encodes the emulated signed-word load of the loop index; the following
+`CD 3C 9B 2E 00 00` references the CS-relative extended constant, and
+`CD 3C 98 0E 0A 00` / `...0E 00` reference the single-precision amplitudes.
+Do not treat apparent `INC`, `DEC`, `IN`, or `ADD` instructions in those
+inline sequences as actual table-generation logic. The integer stores,
+clamps, loop bounds, and lookup functions decode normally.
+
+**Concrete fixed-point caller:** GrandfatherClockPendulum at `0000:46EB`
+updates word 22 (velocityZ) as `(phase + ticks*itemValue)&511`, calls
+`1E48:0051`, sign-extends its word-36 amplitude, multiplies with signed
+32-bit `IMUL`, shifts the product's low dword right by 16, then stores
+the low word into word 32 (`winZ`). This confirms an integer amplitude
+multiplied by a 16.16 sine coefficient with result bits 16..31 retained.
+The logical shift is safe to interpret this way because only the low word
+of the shifted value is stored; negative products are not zero-clamped.
+
+For other callers, retain each instruction's signedness and result width:
+16x16 `MUL` returns DX:AX and taking DX is a high-word fixed-point result;
+signed `IMUL` differs for negative operands. Some existing routines also
+deliberately retain AX for word-wrapped motion rather than scaling down.
+The author's fixed-point hint is a strong interpretation guide, not a
+reason to replace every multiply with one universal scaling rule.
+
+**Implemented:** [GameMath.h](Scaffold/GameMath.h) and
+[GameMath.cpp](Scaffold/GameMath.cpp) now expose immutable `SineTable`
+(DS:`1B00`) and `ClampedSineTable` (DS:`2304`), each containing all 513 signed
+32-bit entries. `Sine(angle)` and `Cosine(angle)` preserve the original
+lookup helpers and therefore use **ClampedSineTable**. Direct access to
+`SineTable[angle&511]` selects the first, unboosted version. Values are
+expanded at compile time from verified quarter-turn integer constants,
+not generated with the host's floating-point library at startup.
+
+Verification traced `2CE4:16F1`'s `INT 3E` selector `EC` through the dispatch
+table (word at runtime CS:`0D3F` is `0A1B`) to sine at `2CE4:0A1B`.
+This uses x87 quadrant reduction, `FPTAN`, squaring, `FSQRT`, and division.
+Its quarter-turn constant at runtime CS:`09E9` is
+`35 C2 68 21 A2 DA 0F C9 FE 3F`. Startup selects control word `1332h`
+on a 387-class FPU: extended precision, round to nearest/even. Conversion
+`2CE4:16B0` uses the emulated x87 `FISTP` signed-dword store at DS:`F94E`.
+See [rotation-runtime-evidence.txt](rotation-runtime-evidence.txt).
+
+A temporary native x87 oracle ported that routine's normal finite-input
+path, used the original extended constants/control word, and generated both
+sets of 513 integers. All entries matched the stored-angle formula rounded
+to nearest; none lies on an integer-conversion tie. Minimum distances from
+a half-integer before rounding were about 0.004720329 (65536 scale) and
+0.001170735 (67000 scale). All entries, including the extra endpoint, also
+matched quarter-turn reflection exactly, justifying the compile-time
+compression without changing the original small angular approximation.
+This verifies a port of the original numeric path on the host x87, not
+execution of the complete game under DOS or every historical FPU.
+
+Portable regression fingerprints (FNV-1a of 513 little-endian signed
+dwords) are `7CCFEECA` for `SineTable` and `F0DFDDDA` for
+`ClampedSineTable`. Tests check these, every entry against an independent
+formula, the boosted plateau boundaries (indices 111..145 at +65536),
+and both lookup helpers for all 65,536 word angles. Runtime table access
+requires neither mutable context globals nor floating-point computation.
 
 ### Typed game enums
 

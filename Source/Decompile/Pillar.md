@@ -52,7 +52,7 @@ The conceptual C++ declaration does not reproduce the real-mode far-call ABI.
 No return value is established; `void` describes the observed side-effect
 contract, not a recovered Pascal declaration.
 
-The C++ helper is a `GameState` member with these three explicit
+The C++ helper is a `GameContext` member with these three explicit
 parameters. The instance supplies shared global state in place of DOS DS;
 it does not add an argument to the original parameter list.
 `collisionMap` directly references the inline `CollisionMap` struct.
@@ -194,7 +194,7 @@ in AL, with `RETF 4` consuming the two word arguments. It reads the shared
 map pointer at DS:`69C4`, converts coordinates using the writer's same
 wrapped subtractions and signed divisions, and calls `1E48:0E8F`.
 This is an original helper, not an abstraction added to the C++ scaffold.
-`GameState::GetCollisionMapPixelAtWorldXZ(x, z) const` is implemented in
+`GameContext::GetCollisionMapPixelAtWorldXZ(x, z) const` is implemented in
 [CollisionMap.cpp](Scaffold/CollisionMap.cpp), including the lower-level
 reader's bounds and byte-addressing behavior in the same method.
 

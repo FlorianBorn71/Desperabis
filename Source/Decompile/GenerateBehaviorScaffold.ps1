@@ -258,7 +258,7 @@ foreach ($row in $rows) {
     $offset = [Convert]::ToInt32($row.entry.Split(':')[1], 16)
     if ($row.hasSpecificCase) {
         $catalog.Add(('BEHAVIOR_CASE({0}, 0x{1:X4})' -f $row.name, $offset))
-        $handlers.Add(('    DispatchResult Function_{0}(RawGameObject&, GameState&)' -f $row.name))
+        $handlers.Add(('    DispatchResult Function_{0}(RawGameObject&, GameContext&)' -f $row.name))
         $handlers.Add('    {')
         $handlers.Add(('        return {{ DispatchStatus::UnimplementedHandler, BehaviorType::{0}, 0x{1:X4} }};' -f $row.name, $offset))
         $handlers.Add('    }')

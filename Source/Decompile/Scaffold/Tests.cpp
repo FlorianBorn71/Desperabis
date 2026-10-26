@@ -2,6 +2,7 @@
 #include "GameMath.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <fstream>
@@ -19,30 +20,49 @@ namespace
         if (!condition) { throw std::runtime_error(message); }
     }
 
+    std::array<std::uint8_t, sizeof(RawGameObject)> ObjectBytes(const RawGameObject& object)
+    {
+        std::array<std::uint8_t, sizeof(RawGameObject)> bytes;
+        std::memcpy(bytes.data(), &object, sizeof(object));
+        return bytes;
+    }
+
+    std::array<std::uint16_t, 27> ObjectWords(const RawGameObject& object)
+    {
+        std::array<std::uint16_t, 27> words;
+        std::memcpy(words.data(), &object, sizeof(object));
+        return words;
+    }
+
     void TestObjectLayout()
     {
         RawGameObject object;
-        for (const auto value : object.ReadBytes())
+        for (const auto value : ObjectBytes(object))
         {
             Check(value == 0, "Default object must remain zero-initialized.");
         }
-        for (std::size_t i = 0; i < 27; ++i)
+        std::array<std::uint16_t, 27> fixture;
+        for (std::size_t i = 0; i < fixture.size(); ++i)
         {
-            object.WriteWord(i * 2, static_cast<std::uint16_t>(0x8080u + i * 257u));
+            fixture[i] = static_cast<std::uint16_t>(0x8080u + i * 257u);
         }
-        const auto bytes = object.ReadBytes();
-        const auto signedWords = object.ReadSignedWords();
-        const auto unsignedWords = object.ReadUnsignedWords();
+        std::memcpy(&object, fixture.data(), sizeof(object));
+        const auto bytes = ObjectBytes(object);
+        std::array<std::int16_t, 27> signedWords;
+        std::memcpy(signedWords.data(), fixture.data(), sizeof(object));
+        const auto unsignedWords = ObjectWords(object);
         for (std::size_t i = 0; i < unsignedWords.size(); ++i)
         {
-            Check(unsignedWords[i] == object.ReadWord(i * 2),
-                "Unsigned word view must match original little-endian words.");
-            Check(signedWords[i] == object.ReadSignedWord(i * 2),
-                "Signed word view must match original signed words.");
+            Check(unsignedWords[i] == fixture[i] &&
+                bytes[i * 2] == (fixture[i] & 0xff) && bytes[i * 2 + 1] == (fixture[i] >> 8),
+                "The struct must preserve the original little-endian fixture.");
         }
         Check(object.modelId == bytes[0] && object.modelAnim == bytes[1] &&
             object.modelFrame2 == bytes[2] && object.animFrame == bytes[3],
             "Animation byte fields differ from the renderer accessor layout.");
+        Check(object.renderPlacementMode == bytes[4] && object.soundEffectId == bytes[5] &&
+            object.renderSortKey == signedWords[24],
+            "Placement mode and configured sound must occupy separate original bytes.");
         Check(static_cast<std::uint16_t>(object.behavior) == unsignedWords[4] && object.health == signedWords[5] &&
             object.posX == signedWords[6] && object.posY == signedWords[7] && object.posZ == signedWords[8],
             "Behavior, health, or position field layout changed.");
@@ -53,7 +73,7 @@ namespace
             "Behavior-dependent or display field layout changed.");
 
         RawGameObject copy = object;
-        Check(copy.ReadBytes() == bytes, "Struct copies must preserve all 54 raw bytes.");
+        Check(ObjectBytes(copy) == bytes, "Struct copies must preserve all 54 raw bytes.");
         copy.behavior = BehaviorType::Behavior_300;
         copy.collisionType = CollisionType::Gold;
         copy.displayType = DisplayType::SpriteTransparent;
@@ -62,18 +82,35 @@ namespace
         copy.posY = 1234;
         copy.posZ = 32767;
         copy.spriteScale = 65535;
-        Check(copy.ReadWord(8) == 300 && copy.ReadSignedWord(10) == -123,
+        copy.renderSortKey = -1234;
+        const auto copyWords = ObjectWords(copy);
+        Check(copyWords[4] == 300 && copyWords[5] == static_cast<std::uint16_t>(-123),
             "Named fields must preserve full-width behavior and signed health.");
-        Check(copy.ReadBytes()[6] == 3 && copy.ReadBytes()[51] == 1,
+        Check(ObjectBytes(copy)[6] == 3 && ObjectBytes(copy)[51] == 1,
             "Typed collision/display members must preserve their original byte values.");
-        Check(copy.ReadWord(12) == 0x8000 && copy.ReadSignedWord(14) == 1234 &&
-            copy.ReadSignedWord(16) == 32767 && copy.ReadWord(52) == 0xffff,
+        Check(copyWords[6] == 0x8000 && copyWords[7] == 1234 &&
+            copyWords[8] == 32767 && copyWords[26] == 0xffff &&
+            copyWords[24] == static_cast<std::uint16_t>(-1234),
             "Named field writes did not reach the original offsets.");
-        copy.WriteWord(12, 0xff9c);
-        Check(copy.posX == -100, "Raw writes must update named members directly.");
         RawGameObject& direct = copy;
         direct.posX = 99;
         Check(copy.posX == 99, "Passing the object by reference must not create a snapshot.");
+        for (int mode = 0; mode <= 255; ++mode)
+        {
+            copy.renderPlacementMode = static_cast<std::uint8_t>(mode);
+            for (int effect = 0; effect <= 255; ++effect)
+            {
+                copy.soundEffectId = static_cast<std::uint8_t>(effect);
+                Check(copy.renderPlacementMode == mode && ObjectWords(copy)[2] == mode + effect * 256,
+                    "Sound writes must preserve the placement byte and the original little-endian word.");
+            }
+        }
+        const auto beforeModeChange = ObjectBytes(copy);
+        copy.renderPlacementMode = 0;
+        auto expectedModeChange = beforeModeChange;
+        expectedModeChange[4] = 0;
+        Check(ObjectBytes(copy) == expectedModeChange,
+            "Placement writes must not overwrite the sound byte or any other object data.");
     }
 
     void TestCases()
@@ -83,15 +120,16 @@ namespace
         {
             RawGameObject object;
             object.behavior = entry.type;
-            object.WriteWord(10, 1);
-            object.WriteWord(12, 0xff9c);
+            object.health = 1;
+            object.posX = -100;
             if (entry.type == BehaviorType::WaterDrop)
             {
                 object.posX = 150;
                 object.posZ = 4050;
             }
-            const auto before = object.ReadBytes();
-            GameState context{ 3, true };
+            const auto before = ObjectBytes(object);
+            GameContext context;
+            context.tickCount = 3;
             auto level = CreateDummyLevel();
             context.collisionMap = level.collisionMap.get();
             context.level = &level;
@@ -100,15 +138,19 @@ namespace
             Check(result.behavior == entry.type, "Wrong behavior enum from handler.");
             Check(FindBehavior(entry.type) == &entry && FindBehavior(entry.name) == &entry,
                 "Behavior enum/name lookup must reference the same descriptor.");
-            const bool implemented = entry.type == BehaviorType::Pillar || entry.type == BehaviorType::IdleAnimation ||
+            const bool implemented = entry.type == BehaviorType::Pillar || entry.type == BehaviorType::LightSource ||
+                entry.type == BehaviorType::Door ||
+                entry.type == BehaviorType::Flies ||
+                entry.type == BehaviorType::IdleAnimation ||
                 entry.type == BehaviorType::SmokeFading || entry.type == BehaviorType::Switch1 ||
-                entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop;
+                entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ||
+                entry.type == BehaviorType::DisabledSentinel;
             Check(result.status == (implemented ?
                 DispatchStatus::ExecutedCase : entry.hasSpecificCase ?
                 DispatchStatus::UnimplementedHandler : DispatchStatus::NoSpecificCase), "Wrong case status.");
             if (!implemented)
             {
-                Check(object.ReadBytes() == before, "An unrecovered handler changed object state.");
+                Check(ObjectBytes(object) == before, "An unrecovered handler changed object state.");
             }
             Check(context.tickCount == 3 && context.behaviorDispatchEnabled,
                 "A handler changed the dispatch inputs.");
@@ -132,6 +174,1175 @@ namespace
             ReferenceSignedWord((difference < 0 ? -1LL : difference > 0 ? 1LL : 0LL) * step);
     }
 
+    void TestLightingCache()
+    {
+        GameContext state;
+        auto& cache = state.lightingCache;
+        const auto empty = cache.contributions;
+        Check(std::all_of(empty.begin(), empty.end(), [](const auto& column)
+        {
+            return std::all_of(column.begin(), column.end(), [](auto value) { return value == 0; });
+        }), "Lighting must start cleared.");
+        cache.Reset(1500, 2000);
+        for (int dx = -10; dx <= 10; ++dx)
+        {
+            for (int dz = -10; dz <= 10; ++dz)
+            {
+                Check(cache.AddAtWorldXZ(static_cast<std::int16_t>(1500 + dx * 100),
+                    static_cast<std::int16_t>(2000 + dz * 100), static_cast<std::int16_t>(dx * 21 + dz)),
+                    "Every corner including all window edges must accept lighting.");
+            }
+        }
+        for (int dx = -10; dx <= 10; ++dx)
+        {
+            for (int dz = -10; dz <= 10; ++dz)
+            {
+                Check(cache.contributions[dx + 10][dz + 10] == dx * 21 + dz,
+                    "Lighting cache must retain native X-major, positive-Z indexing.");
+            }
+        }
+        const auto filled = cache.contributions;
+        Check(!cache.AddAtWorldXZ(2600, 2000, 1) && !cache.AddAtWorldXZ(400, 2000, 1) &&
+            !cache.AddAtWorldXZ(1500, 3100, 1) && !cache.AddAtWorldXZ(1500, 900, 1) &&
+            cache.contributions == filled, "Culled lights must not mutate the cache.");
+        cache.Reset(1550, 2050, 0);
+        Check(cache.contributions == empty && cache.centerX == 1550 && cache.centerZ == 2050 &&
+            cache.AddAtWorldXZ(1500, 2000, 32767) && cache.AddAtWorldXZ(1500, 2000, 1) &&
+            cache.contributions[10][10] == -32768,
+            "Reset must clear stale lights; multiple sources must accumulate with native word wrapping.");
+        Check(cache.AddAtWorldXZ(1500, 2000, -1) && cache.contributions[10][10] == 32767 &&
+            !cache.AddAtWorldXZ(1550, 2050, 1),
+            "Negative light contributions must wrap and source rounding must differ from center truncation.");
+
+        for (const auto center : { -12899, -150, 0, 150, 12799 })
+        {
+            for (int axis = 0; axis < 2; ++axis)
+            {
+                for (int bits = 0; bits <= 65535; ++bits)
+                {
+                    const auto coordinate = ReferenceSignedWord(bits);
+                    const auto shifted = ReferenceSignedWord(static_cast<int>(coordinate) + 50);
+                    const int tile = shifted / 100;
+                    const bool overflow = tile < -128 || tile > 127;
+                    const int delta = tile - center / 100;
+                    cache.Reset(static_cast<std::int16_t>(axis == 0 ? center : 0),
+                        static_cast<std::int16_t>(axis == 1 ? center : 0), 7);
+                    bool rejected = false;
+                    bool applied = false;
+                    try
+                    {
+                        applied = cache.AddAtWorldXZ(axis == 0 ? coordinate : 0,
+                            axis == 1 ? coordinate : 0, 13);
+                    }
+                    catch (const std::overflow_error&) { rejected = true; }
+                    Check(rejected == overflow, "Lighting division must reproduce signed-byte overflow boundaries.");
+                    Check(applied == (!overflow && delta >= -7 && delta <= 7),
+                        "Lighting culling differs from wrapped source rounding and center truncation.");
+                    auto expected = empty;
+                    if (applied) { expected[axis == 0 ? delta + 10 : 10][axis == 1 ? delta + 10 : 10] = 13; }
+                    Check(cache.contributions == expected, "A lighting write must affect exactly one corner.");
+                }
+            }
+        }
+        cache.Reset(0, 0);
+        cache.AddAtWorldXZ(0, 0, 17);
+        const auto before = cache.contributions;
+        for (const auto radius : { 11, 255 })
+        {
+            bool rejected = false;
+            try { cache.Reset(100, 100, static_cast<std::uint8_t>(radius)); }
+            catch (const std::out_of_range&) { rejected = true; }
+            Check(rejected && cache.centerX == 0 && cache.centerZ == 0 && cache.contributions == before,
+                "Invalid radii must fail explicitly before changing cache state.");
+        }
+        for (const auto coordinate : { -12900, 12800 })
+        {
+            for (int axis = 0; axis < 2; ++axis)
+            {
+                bool rejected = false;
+                try
+                {
+                    cache.Reset(static_cast<std::int16_t>(axis == 0 ? coordinate : 0),
+                        static_cast<std::int16_t>(axis == 1 ? coordinate : 0));
+                }
+                catch (const std::overflow_error&) { rejected = true; }
+                Check(rejected && cache.contributions == before, "Invalid centers must not clear existing light.");
+            }
+        }
+        GameContext independent;
+        Check(independent.lightingCache.contributions == empty, "Lighting must be owned by each game context.");
+    }
+
+    void TestLightSource()
+    {
+        struct Audio final : AudioHandler
+        {
+            std::array<bool, SoundChannelCount> playing{};
+            unsigned int calls = 0;
+            std::uint8_t lastSample = 0;
+            std::uint8_t lastVolume = 0;
+            std::uint16_t GetSampleCount() const override { return 129; }
+            bool IsChannelPlaying(std::size_t channel) const override { return playing.at(channel); }
+            void PlaySample(std::size_t channel, std::uint8_t sample, std::uint8_t volume) override
+            {
+                playing.at(channel) = true;
+                lastSample = sample;
+                lastVolume = volume;
+                ++calls;
+            }
+        } audio;
+        const auto nextRandom = [](std::uint32_t& seed, unsigned int range)
+        {
+            seed = static_cast<std::uint32_t>((static_cast<std::uint64_t>(seed) * 134775813u + 1u) % 4294967296ULL);
+            return (seed >> 16) % range;
+        };
+        GameContext state;
+        state.audioHandler = &audio;
+        state.soundEffectsLoaded = true;
+        state.soundEffects[4] = { 3, { 11, 22, 33, 0 } };
+        auto& light = state.worldObjects[2];
+        light.behavior = BehaviorType::LightSource;
+        light.health = 1000;
+        light.renderPlacementMode = 0xff;
+        light.soundEffectId = 5;
+        const auto empty = state.lightingCache.contributions;
+        for (const int distance : { 0, 301 })
+        {
+            light.posX = static_cast<std::int16_t>(distance);
+            const auto original = ObjectBytes(light);
+            for (std::uint32_t seed = 0; seed <= 65535; ++seed)
+            {
+                for (const bool play : { false, true })
+                {
+                    state.lightingCache.Reset(0, 0);
+                    state.randomSeed = seed;
+                    state.field_DC34 = 65535;
+                    audio.playing.fill(false);
+                    const auto previousCalls = audio.calls;
+                    auto expectedSeed = seed;
+                    const auto perturbation = distance <= 300 ? nextRandom(expectedSeed, 0xefff) : 0;
+                    const auto amount = static_cast<std::int16_t>(nextRandom(expectedSeed, 30) + 5);
+                    const auto chance = nextRandom(expectedSeed, 100);
+                    state.tickCount = static_cast<std::int16_t>(chance + (play ? 1 : 0));
+                    const auto sample = play ? static_cast<std::uint8_t>(11 * (nextRandom(expectedSeed, 3) + 1)) : 0;
+                    const auto result = DispatchObjectCase(light, state);
+                    auto expectedCache = empty;
+                    expectedCache[(distance + 50) / 100 + 10][10] = amount;
+                    Check(result.status == DispatchStatus::ExecutedCase && result.moduleOffset == 0x1488 &&
+                        state.lightingCache.contributions == expectedCache && amount >= 5 && amount <= 34,
+                        "LightSource must write exactly one flickering native corner in range 5..34.");
+                    Check(state.randomSeed == expectedSeed &&
+                        state.field_DC34 == static_cast<std::uint16_t>(65535u + perturbation),
+                        "LightSource must preserve near/far RNG ordering, sound RNG, and DS:DC34 wrapping.");
+                    Check(audio.calls == previousCalls + (play ? 1u : 0u) &&
+                        (!play || (audio.lastSample == sample && audio.lastVolume == (distance == 0 ? 255 : 205) &&
+                            state.soundChannelSources[3] == 2)),
+                        "LightSource sound must use strict ticks > Random(100), high byte effect, volume and source slot.");
+                    Check(ObjectBytes(light) == original, "LightSource must not mutate its own object record.");
+                }
+            }
+        }
+        // Include native signed-distance overflow without overflowing the cache's coordinate divisions.
+        for (const int listenerX : { -300, -299, 0, 299, 300, 301, 32767 })
+        {
+            for (const int listenerZ : { 0, 1, 32767 })
+            {
+                for (const bool suppressed : { false, true })
+                {
+                    state.soundListenerX = static_cast<std::int16_t>(listenerX);
+                    state.soundListenerZ = static_cast<std::int16_t>(listenerZ);
+                    state.positionalSoundsSuppressed = suppressed;
+                    state.tickCount = 0;
+                    state.field_DC34 = 65535;
+                    state.randomSeed = 0xffffffffu;
+                    light.posX = 0;
+                    state.lightingCache.Reset(0, 0);
+                    const auto distance = suppressed ? 10000 :
+                        ReferenceSignedWord(std::abs(listenerX) + std::abs(listenerZ));
+                    auto expectedSeed = 0xffffffffu;
+                    const auto perturbation = distance >= 0 && distance <= 300 ?
+                        nextRandom(expectedSeed, 0xefff) : 0;
+                    const auto amount = static_cast<std::int16_t>(nextRandom(expectedSeed, 30) + 5);
+                    nextRandom(expectedSeed, 100);
+                    DispatchObjectCase(light, state);
+                    Check(state.GetSoundDistanceAt(0, 0) == distance && state.randomSeed == expectedSeed &&
+                        state.field_DC34 == static_cast<std::uint16_t>(65535u + perturbation) &&
+                        state.lightingCache.contributions[10][10] == amount,
+                        "Near-light side effect must use signed wrapped Manhattan distance and suppression, not light culling.");
+                }
+            }
+        }
+        state.soundListenerX = 0;
+        state.soundListenerZ = 0;
+        state.positionalSoundsSuppressed = false;
+        state.tickCount = 100;
+        state.randomSeed = 0;
+        light.renderPlacementMode = 0xff;
+        light.soundEffectId = 0;
+        auto expectedSeed = state.randomSeed;
+        nextRandom(expectedSeed, 0xefff);
+        nextRandom(expectedSeed, 30);
+        nextRandom(expectedSeed, 100);
+        const auto calls = audio.calls;
+        DispatchObjectCase(light, state);
+        Check(state.randomSeed == expectedSeed && audio.calls == calls,
+            "Effect byte zero must mean no sound, without consuming sample-selection RNG.");
+
+        light.renderPlacementMode = 0;
+        light.soundEffectId = 5;
+        state.lightingCache.Reset(0, 0);
+        audio.playing.fill(false);
+        for (int i = 0; i < 3; ++i) { DispatchObjectCase(light, state); }
+        Check(audio.calls == calls + 2, "A light sound must respect the two-instance source limit.");
+
+        state = {};
+        state.randomSeed = 0x12345678u;
+        state.tickCount = 0;
+        for (const auto slot : { 2, 3, 164 })
+        {
+            auto& source = state.worldObjects[slot];
+            source.health = 1000;
+            source.behavior = BehaviorType::LightSource;
+            source.posX = slot == 164 ? 1100 : 0;
+        }
+        for (int frame = 0; frame < 2; ++frame)
+        {
+            state.lightingCache.Reset(0, 0);
+            expectedSeed = state.randomSeed;
+            int expectedLight = 0;
+            for (int source = 0; source < 3; ++source)
+            {
+                if (source < 2) { nextRandom(expectedSeed, 0xefff); }
+                const auto amount = nextRandom(expectedSeed, 30) + 5;
+                if (source < 2) { expectedLight += amount; }
+                nextRandom(expectedSeed, 100);
+            }
+            const auto results = UpdateObjects(state);
+            auto expectedCache = empty;
+            expectedCache[10][10] = static_cast<std::int16_t>(expectedLight);
+            Check(state.lightingCache.contributions == expectedCache && state.randomSeed == expectedSeed &&
+                results[0].status == DispatchStatus::ExecutedCase &&
+                results[1].status == DispatchStatus::ExecutedCase &&
+                results[162].status == DispatchStatus::ExecutedCase,
+                "World updates must accumulate all lights once, preserve sequential RNG, cull far lights, and reset between frames.");
+        }
+        const auto cache = state.lightingCache.contributions;
+        const auto seed = state.randomSeed;
+        const auto accumulator = state.field_DC34;
+        state.behaviorDispatchEnabled = false;
+        UpdateObjects(state);
+        Check(state.lightingCache.contributions == cache && state.randomSeed == seed && state.field_DC34 == accumulator,
+            "Disabled dispatch must skip all light side effects without clearing existing contributions.");
+        state.behaviorDispatchEnabled = true;
+        for (const auto slot : { 2, 3, 164 }) { state.worldObjects[slot].health = 0; }
+        UpdateObjects(state);
+        Check(state.randomSeed == seed, "Inactive light sources must not consume RNG.");
+    }
+
+    void TestInputAbstraction()
+    {
+        struct Keys final : InputHandler
+        {
+            std::array<bool, 7> pressed{};
+            bool IsKeyPressed(InputKey key) override { return pressed.at(static_cast<std::size_t>(key)); }
+        } keys;
+        constexpr std::array inputs{
+            InputKey::ForwardKey, InputKey::BackwardKey, InputKey::StrafeLeftKey,
+            InputKey::StrafeRightKey, InputKey::TurnLeftKey, InputKey::TurnRightKey, InputKey::InteractionKey
+        };
+        InputHandler& input = keys;
+        for (unsigned mask = 0; mask < 128; ++mask)
+        {
+            for (std::size_t i = 0; i < inputs.size(); ++i) { keys.pressed[i] = (mask & (1u << i)) != 0; }
+            for (std::size_t i = 0; i < inputs.size(); ++i)
+            {
+                Check(input.IsKeyPressed(inputs[i]) == ((mask & (1u << i)) != 0),
+                    "Abstract input keys must remain independent through the virtual interface.");
+            }
+        }
+    }
+
+    void TestFlies()
+    {
+        struct Audio final : AudioHandler
+        {
+            std::array<bool, SoundChannelCount> playing{};
+            unsigned int calls = 0;
+            std::uint8_t lastSample = 0;
+            std::uint8_t lastVolume = 0;
+            std::uint16_t GetSampleCount() const override { return 129; }
+            bool IsChannelPlaying(std::size_t channel) const override { return playing.at(channel); }
+            void PlaySample(std::size_t channel, std::uint8_t sample, std::uint8_t volume) override
+            {
+                playing.at(channel) = true;
+                lastSample = sample;
+                lastVolume = volume;
+                ++calls;
+            }
+        } audio;
+        const auto nextRandom = [](std::uint32_t& seed, unsigned int range)
+        {
+            seed = static_cast<std::uint32_t>((static_cast<std::uint64_t>(seed) * 134775813u + 1u) % 4294967296ULL);
+            return (seed >> 16) % range;
+        };
+        const auto reference = [&](RawGameObject object, std::int16_t ticks, std::uint32_t& seed)
+        {
+            if (object.displayType == DisplayType::VectorBrightness2) { object.health = 0; }
+            const auto increment = (static_cast<std::int64_t>(object.itemValue) + nextRandom(seed, 5)) * ticks;
+            object.blendWeightOrSpriteOpacity = ReferenceSignedWord(object.blendWeightOrSpriteOpacity + increment);
+            object.winX = static_cast<std::int16_t>((static_cast<std::uint16_t>(object.winX) + 5u) % 512);
+            object.winY = static_cast<std::int16_t>((object.winX + 3) % 512);
+            object.winZ = static_cast<std::int16_t>((object.winX + 7) % 512);
+            while (object.blendWeightOrSpriteOpacity > 100)
+            {
+                object.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(object.blendWeightOrSpriteOpacity - 100);
+                object.animFrame = object.modelFrame2;
+                auto frame = static_cast<std::uint8_t>(nextRandom(seed, 3) + 1);
+                while (frame == object.animFrame) { frame = static_cast<std::uint8_t>(nextRandom(seed, 3) + 1); }
+                object.modelFrame2 = frame;
+            }
+            return object;
+        };
+        RawGameObject initial;
+        initial.behavior = BehaviorType::Flies;
+        initial.health = 1000;
+        initial.modelId = 37;
+        initial.modelAnim = 88;
+        initial.modelFrame2 = 1;
+        initial.animFrame = 9;
+        initial.itemValue = 40;
+        initial.blendWeightOrSpriteOpacity = 90;
+        initial.winX = -4;
+        initial.winY = -200;
+        initial.winZ = 900;
+        initial.posY = 5;
+        initial.velocityX = 17;
+        initial.velocityY = -23;
+        initial.velocityZ = 81;
+        initial.renderPlacementMode = 0xcd;
+        initial.renderSortKey = -123;
+        initial.soundEffectId = 5;
+        initial.field_24 = 0x1234;
+        initial.spriteScale = 0xbabe;
+        GameContext state;
+        state.audioHandler = &audio;
+        state.soundEffectsLoaded = true;
+        state.soundEffects[73] = { 3, { 11, 22, 33, 0 } };
+        auto& flies = state.worldObjects[2];
+        const auto checkStep = [&](const RawGameObject& before, std::int16_t ticks,
+            std::uint32_t seed, std::uint8_t volume)
+        {
+            flies = before;
+            state.tickCount = ticks;
+            state.randomSeed = seed;
+            auto expectedSeed = seed;
+            const auto expected = reference(before, ticks, expectedSeed);
+            std::uint8_t sample = 0;
+            if (state.soundEffectsLoaded)
+            {
+                sample = static_cast<std::uint8_t>(11 * (nextRandom(expectedSeed, 3) + 1));
+            }
+            audio.playing.fill(false);
+            const auto calls = audio.calls;
+            const auto result = DispatchObjectCase(flies, state);
+            const bool audible = state.audioHandler && state.soundEnabled && volume > 0;
+            Check(result.status == DispatchStatus::ExecutedCase && result.moduleOffset == 0x1690 &&
+                result.behavior == BehaviorType::Flies && ObjectBytes(flies) == ObjectBytes(expected),
+                "Flies must match native signed phase arithmetic, frame rejection, angles, and field isolation.");
+            Check(state.randomSeed == expectedSeed, "Flies must preserve animation/frame/sound RNG ordering.");
+            Check(audio.calls == calls + (audible ? 1u : 0u) &&
+                (!audible || (audio.lastSample == sample && audio.lastVolume == volume &&
+                    state.soundChannelSources[3] == 2)),
+                "Flies must request fixed effect 74 with its world source, attenuation, and variant.");
+        };
+        for (std::uint32_t seed = 0; seed <= 65535; ++seed)
+        {
+            for (const int frame : { 0, 1, 2, 3, 255 })
+            {
+                auto object = initial;
+                object.modelFrame2 = static_cast<std::uint8_t>(frame);
+                checkStep(object, 3, seed, 255);
+            }
+        }
+        state.audioHandler = nullptr;
+        state.soundEffectsLoaded = false;
+        for (int bits = 0; bits <= 65535; ++bits)
+        {
+            auto object = initial;
+            object.itemValue = 0;
+            object.blendWeightOrSpriteOpacity = ReferenceSignedWord(bits);
+            checkStep(object, 0, 0xffffffffu, 255);
+            object.itemValue = ReferenceSignedWord(bits);
+            object.blendWeightOrSpriteOpacity = -32760;
+            checkStep(object, 32767, 0x80000000u, 255);
+            object.itemValue = 0;
+            object.blendWeightOrSpriteOpacity = 100;
+            object.winX = ReferenceSignedWord(bits);
+            checkStep(object, 0, 0, 255);
+        }
+        for (const int phase : { -32768, -1, 0, 99, 100, 101, 32767 })
+        {
+            for (const int rate : { -32768, -1, 0, 32766, 32767 })
+            {
+                for (const int ticks : { 0, 1, 3, 32767 })
+                {
+                    auto object = initial;
+                    object.itemValue = static_cast<std::int16_t>(rate);
+                    object.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(phase);
+                    checkStep(object, static_cast<std::int16_t>(ticks), 0x12345678u, 255);
+                }
+            }
+        }
+        for (int display = 0; display <= 255; ++display)
+        {
+            auto object = initial;
+            object.displayType = static_cast<DisplayType>(display);
+            checkStep(object, 0, 0, 255);
+        }
+        state.soundEffectsLoaded = true;
+        // A loaded table still consumes sound-variant RNG when there is no audio backend.
+        checkStep(initial, 3, 0, 255);
+        state.audioHandler = &audio;
+        for (const int x : { -32768, -32767, -1, 0, 100, 101, 300, 354, 355, 356, 10000, 16384, 32767 })
+        {
+            for (const int z : { -32768, 0, 1, 32767 })
+            {
+                for (const bool suppressed : { false, true })
+                {
+                    state.soundListenerX = static_cast<std::int16_t>(x);
+                    state.soundListenerZ = static_cast<std::int16_t>(z);
+                    state.positionalSoundsSuppressed = suppressed;
+                    const auto distance = suppressed ? 10000 : ReferenceSignedWord(
+                        ReferenceSignedWord(std::abs(x)) + ReferenceSignedWord(std::abs(z)));
+                    const auto doubled = ReferenceSignedWord(2LL * distance);
+                    const auto volume = static_cast<std::uint8_t>(
+                        std::clamp(355 - std::abs(static_cast<int>(doubled)) / 2, 0, 255));
+                    checkStep(initial, 3, 0, volume);
+                }
+            }
+        }
+        state.soundListenerX = state.soundListenerZ = 0;
+        state.positionalSoundsSuppressed = false;
+        state.soundEnabled = false;
+        checkStep(initial, 3, 0, 255);
+        state.soundEnabled = true;
+        state.tickCount = 0;
+        flies = initial;
+        audio.playing.fill(false);
+        state.randomSeed = 0;
+        auto expectedSeed = state.randomSeed;
+        auto expected = flies;
+        const auto calls = audio.calls;
+        for (int repeat = 0; repeat < 3; ++repeat)
+        {
+            expected = reference(expected, state.tickCount, expectedSeed);
+            nextRandom(expectedSeed, 3);
+            DispatchObjectCase(flies, state);
+            Check(audio.calls == calls + 1 && state.randomSeed == expectedSeed &&
+                ObjectBytes(flies) == ObjectBytes(expected),
+                "Flies buzz must enforce a one-instance source limit after selecting its sample.");
+        }
+        flies = initial;
+        flies.displayType = DisplayType::FirstVectorBurning;
+        state.frameTickCount = 1;
+        state.randomSeed = 2;
+        audio.playing.fill(false);
+        expectedSeed = state.randomSeed;
+        Check(nextRandom(expectedSeed, 2) == 1, "Burning fixture must reach the burned display state.");
+        expected = initial;
+        expected.displayType = DisplayType::VectorBrightness2;
+        expected = reference(expected, state.tickCount, expectedSeed);
+        nextRandom(expectedSeed, 3);
+        const auto beforeBurnedSound = audio.calls;
+        Check(UpdateObject(flies, state).status == DispatchStatus::ExecutedCase &&
+            flies.health == 0 && ObjectBytes(flies) == ObjectBytes(expected) &&
+            state.randomSeed == expectedSeed && audio.calls == beforeBurnedSound + 1,
+            "The shared burning prefix must feed Flies' removal state without skipping its last update.");
+        const auto inactive = ObjectBytes(flies);
+        Check(UpdateObject(flies, state).status == DispatchStatus::InactiveObject &&
+            ObjectBytes(flies) == inactive && state.randomSeed == expectedSeed,
+            "Burned flies must be inactive on subsequent world updates.");
+        flies = initial;
+        state.behaviorDispatchEnabled = false;
+        Check(DispatchObjectCase(flies, state).status == DispatchStatus::DispatchDisabled &&
+            ObjectBytes(flies) == ObjectBytes(initial) && state.randomSeed == expectedSeed,
+            "Disabled dispatch must skip flies animation, orientation, RNG, and sound.");
+    }
+
+    RawGameObject MakeTestDoor()
+    {
+        RawGameObject door;
+        door.behavior = BehaviorType::Door;
+        door.collisionType = CollisionType::Door;
+        door.health = 1000;
+        door.posX = 150;
+        door.posZ = 4050;
+        door.collisionRadiusY = 10;
+        door.field_07 = 1;
+        door.field_24 = 10;
+        door.modelFrame2 = 1;
+        door.spriteScale = 0xab00;
+        return door;
+    }
+
+    void TestUserMessages()
+    {
+        GameContext state;
+        for (int bits = 0; bits <= 65535; ++bits)
+        {
+            const auto duration = ReferenceSignedWord(bits);
+            state.PromptUserMessage("test", duration);
+            Check(state.userMessage == "test" &&
+                state.userMessageTicks == ReferenceSignedWord(duration < 0 ? -duration : duration),
+                "Prompt storage must reproduce signed-word absolute durations.");
+            state.PromptUserMessage("", duration);
+            Check(state.userMessage.empty() && state.userMessageTicks == 0,
+                "Empty prompts must clear both stored text and lifetime.");
+        }
+        state.PromptUserMessage(std::string(151, 'a'), 12);
+        Check(state.userMessage == std::string(150, 'a'), "Prompts must retain the 150-byte limit.");
+        state.PromptUserMessage(std::string(149, 'a') + u8"\u00fc", -20);
+        Check(state.userMessage == std::string(149, 'a') && state.userMessageTicks == 20,
+            "Truncation must not leave an incomplete UTF-8 character.");
+        state.PromptUserMessage(std::string(148, 'a') + u8"\u00fc", 20);
+        Check(state.userMessage == std::string(148, 'a') + u8"\u00fc",
+            "A complete UTF-8 character at the byte limit must be retained.");
+        state.PromptUserMessage(u8"Falscher Schl\u00fcssel", 3);
+        auto independent = state;
+        state.UpdateUserMessage(5);
+        Check(state.userMessageTicks == -2 && state.userMessage == u8"Falscher Schl\u00fcssel",
+            "Expired prompts must retain their text and an unclamped countdown.");
+        state.UpdateUserMessage(32767);
+        Check(state.userMessageTicks == -2 && independent.userMessageTicks == 3,
+            "Expired prompts must stop counting, and game contexts must be independent.");
+        state.PromptUserMessage("replacement", 10);
+        state.tickCount = 1;
+        state.frameTickCount = 3;
+        RawGameObject object;
+        object.health = 1000;
+        DispatchObjectCase(object, state);
+        Check(state.userMessageTicks == 10, "Individual dispatch must not tick a frame-level prompt.");
+        UpdateObjects(state);
+        Check(state.userMessageTicks == 7, "The world update must tick prompts exactly once using frame time.");
+        bool rejected = false;
+        try { state.UpdateUserMessage(-1); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        Check(rejected && state.userMessageTicks == 7, "Negative prompt-update ticks must fail explicitly.");
+    }
+
+    void TestDoorCollisionMap()
+    {
+        auto level = CreateDummyLevel();
+        GameContext state;
+        state.collisionMap = level.collisionMap.get();
+        auto& map = *state.collisionMap;
+        for (const int width : { 0, 1, 199, 319, 65535 })
+        {
+            for (const int x : { -32768, -32767, -100, 0, 37, 62, 87, 112, 113, 136, 137, 161, 162, 32767 })
+            {
+                for (const int z : { -32768, -32767, -100, 0, 37, 38, 62, 63, 4050, 4088, 32767 })
+                {
+                    map = {};
+                    map.widthMinusOne = static_cast<std::uint16_t>(width);
+                    std::fill(std::begin(map.data), std::end(map.data), std::uint8_t{ 0xa5 });
+                    std::array<unsigned char, sizeof(CollisionMap)> expected;
+                    std::memcpy(expected.data(), &map, sizeof(map));
+                    const int column = ReferenceSignedWord(x - 137) / 25;
+                    const int center = 162 - ReferenceSignedWord(z - 38) / 25;
+                    bool invalid = false;
+                    for (int offset = -1; offset <= 1; ++offset)
+                    {
+                        // Header writes can change the stride used by the following row.
+                        const int stride = (expected[0] + 256 * expected[1] + 1) % 65536;
+                        const auto row = ReferenceSignedWord(center + offset);
+                        std::array<std::size_t, 3> addresses{};
+                        for (int pixel = 0; pixel < 3; ++pixel)
+                        {
+                            const std::int64_t address = 4LL + row * stride + column + pixel;
+                            addresses[pixel] = static_cast<std::size_t>((address % 65536 + 65536) % 65536);
+                            invalid = invalid || addresses[pixel] >= expected.size();
+                        }
+                        if (invalid) { break; }
+                        for (const auto address : addresses) { expected[address] = 0x7c; }
+                    }
+                    bool rejected = false;
+                    try
+                    {
+                        state.SetDoorCollisionMapAtWorldXZ(
+                            static_cast<std::int16_t>(x), static_cast<std::int16_t>(z), 0xab7c);
+                    }
+                    catch (const std::out_of_range&) { rejected = true; }
+                    Check(rejected == invalid && std::memcmp(&map, expected.data(), sizeof(map)) == 0,
+                        "Door footprints must preserve division, row order, low bytes, and wrapped addresses.");
+                }
+            }
+        }
+        state.collisionMap = nullptr;
+        bool rejected = false;
+        try { state.SetDoorCollisionMapAtWorldXZ(150, 4050, 0); }
+        catch (const std::runtime_error&) { rejected = true; }
+        Check(rejected, "Door stamping without collision-map memory must fail explicitly.");
+    }
+
+    void TestDoorUnlocking()
+    {
+        GameContext state;
+        auto door = MakeTestDoor();
+        const auto original = ObjectBytes(door);
+        Check(HandlePlayerObjectInteraction(door, state).status == InteractionStatus::Applied &&
+            door.field_26 == 3 && door.itemValue == 10 && door.displayType == DisplayType::SpriteNormal,
+            "Unlocked door interaction must start opening and refresh the closing delay.");
+        for (std::size_t slot = 0; slot < state.inventory.size(); ++slot)
+        {
+            state = {};
+            door = MakeTestDoor();
+            door.doorLockOrGroupBitmask = 7;
+            door.modelFrame2 = 0;
+            for (auto& key : state.inventory)
+            {
+                key.health = 1000;
+                key.collisionType = CollisionType::Key;
+                key.itemValue = 8;
+                key.renderPlacementMode = 20;
+                key.soundEffectId = 29;
+            }
+            state.inventory[slot].itemValue = 7;
+            const auto before = state.inventory;
+            Check(HandlePlayerObjectInteraction(door, state).status == InteractionStatus::Applied &&
+                door.doorLockOrGroupBitmask == 0 && door.field_26 == 3 &&
+                door.itemValue == 10 && door.displayType == DisplayType::Hidden,
+                "A matching key in any hand/backpack slot must unlock and activate the door.");
+            for (std::size_t index = 0; index < before.size(); ++index)
+            {
+                auto expected = before[index];
+                if (index == slot) { expected.health = 0; }
+                Check(ObjectBytes(state.inventory[index]) == ObjectBytes(expected),
+                    "Key consumption must only zero its health, with no compaction or other-byte changes.");
+            }
+        }
+        state = {};
+        door = MakeTestDoor();
+        door.doorLockOrGroupBitmask = 7;
+        state.inventory[0].health = state.inventory[13].health = 1;
+        state.inventory[0].collisionType = state.inventory[13].collisionType = CollisionType::Key;
+        state.inventory[0].itemValue = state.inventory[13].itemValue = 7;
+        HandlePlayerObjectInteraction(door, state);
+        Check(state.inventory[0].health == 0 && state.inventory[13].health == 1,
+            "The first matching live key must win over later matching keys.");
+        for (const int health : { -1, 0, 1, 999, 1000 })
+        {
+            for (const auto type : { CollisionType::Key, CollisionType::Gold })
+            {
+                state = {};
+                door = MakeTestDoor();
+                door.doorLockOrGroupBitmask = 7;
+                auto& key = state.inventory[4];
+                key.health = static_cast<std::int16_t>(health);
+                key.itemValue = 7;
+                key.collisionType = type;
+                const bool valid = health > 0 && type == CollisionType::Key;
+                Check((HandlePlayerObjectInteraction(door, state).status == InteractionStatus::Applied) == valid,
+                    "Unlocking must accept exactly the live key records.");
+                Check(valid || (state.userMessage == "abgeschlossen" && state.userMessageTicks == 60),
+                    "No eligible key must generate the locked feedback.");
+            }
+        }
+        state = {};
+        door = MakeTestDoor();
+        door.doorLockOrGroupBitmask = 7;
+        auto& key = state.inventory[0];
+        key.health = 1000;
+        key.collisionType = CollisionType::Key;
+        key.itemValue = 8;
+        state.PromptUserMessage("existing prompt", 17);
+        const auto locked = ObjectBytes(door);
+        Check(HandlePlayerObjectInteraction(door, state).status == InteractionStatus::NoEffect &&
+            state.userMessage == u8"Falscher Schl\u00fcssel" && state.userMessageTicks == 90 &&
+            key.health == 1000 && ObjectBytes(door) == locked,
+            "Wrong keys must overwrite active prompts without consuming keys or changing the door.");
+        auto& lastKey = state.inventory[13];
+        lastKey = key;
+        lastKey.itemValue = 0;
+        state.PromptUserMessage("existing prompt", 17);
+        HandlePlayerObjectInteraction(door, state);
+        Check(state.userMessage == "existing prompt" && state.userMessageTicks == 17,
+            "A last eligible zero-ID key must take the no-key path and respect active feedback.");
+        state.UpdateUserMessage(20);
+        HandlePlayerObjectInteraction(door, state);
+        Check(state.userMessage == "abgeschlossen" && state.userMessageTicks == 60,
+            "Expired locked feedback must be replaced with a new 60-tick prompt.");
+        door.doorLockOrGroupBitmask = -7;
+        key.itemValue = -7;
+        state.PromptUserMessage("", 0);
+        HandlePlayerObjectInteraction(door, state);
+        Check(door.doorLockOrGroupBitmask == -7 && key.health == 1000 &&
+            state.userMessage == "abgeschlossen", "Negative locks must reject even matching negative key IDs.");
+        for (const int health : { 999, 1001 })
+        {
+            door = MakeTestDoor();
+            door.health = static_cast<std::int16_t>(health);
+            Check(HandlePlayerObjectInteraction(door, state).status == InteractionStatus::NoEffect &&
+                door.field_26 == 0, "Manual door activation must require health exactly 1000.");
+        }
+        door = MakeTestDoor();
+        door.health = 999;
+        door.field_32 = 1;
+        state = {};
+        const auto pickable = ObjectBytes(door);
+        const auto pickup = HandlePlayerObjectInteraction(door, state);
+        Check(pickup.status == InteractionStatus::Applied && pickup.inventorySlot == 1 &&
+            door.health == 0 && ObjectBytes(state.inventory[0]) == pickable,
+            "Nonstandard door health must retain the original generic pickup tail when flagged pickable.");
+        door = MakeTestDoor();
+        door.field_26 = 65533;
+        state.PromptUserMessage("", 0);
+        const auto moving = ObjectBytes(door);
+        Check(HandlePlayerObjectInteraction(door, state).status == InteractionStatus::NoEffect &&
+            ObjectBytes(door) == moving && state.userMessage.empty(),
+            "Manual interaction with a moving door must have no effect or feedback.");
+        door = MakeTestDoor();
+        Check(ObjectBytes(door) == original, "Door fixtures must start from independent state.");
+        door.blendWeightOrSpriteOpacity = 100;
+        HandlePlayerObjectInteraction(door, state);
+        Check(door.field_26 == 0 && door.itemValue == 10,
+            "An already open unlocked door must refresh its delay without restarting movement.");
+    }
+
+    void TestDoorUpdates()
+    {
+        auto level = CreateDummyLevel();
+        GameContext state;
+        state.collisionMap = level.collisionMap.get();
+        const auto checkStep = [&](std::int16_t phase, std::uint16_t rate, std::uint16_t delay,
+            std::int16_t timer, std::uint16_t occupancy, std::int16_t ticks)
+        {
+            auto door = MakeTestDoor();
+            door.blendWeightOrSpriteOpacity = phase;
+            door.field_26 = rate;
+            door.field_24 = delay;
+            door.itemValue = timer;
+            door.spriteScale = static_cast<std::uint16_t>(0xab00u | occupancy);
+            door.velocityY = 0x127c;
+            state.tickCount = ticks;
+            auto expected = door;
+            if (ReferenceSignedWord(delay) > 0)
+            {
+                if (timer > 0) { timer = ReferenceSignedWord(timer - ticks); }
+                if (occupancy != 0 && phase > 0) { timer = ReferenceSignedWord(delay); rate = 3; }
+                if (timer < 1 && phase == 100) { rate = 65533; }
+            }
+            phase = ReferenceSignedWord(phase + static_cast<std::int64_t>(rate) * ticks);
+            expected.collisionRadiusXZ = 54;
+            if (phase > 100)
+            {
+                phase = 100;
+                if (delay == 0)
+                {
+                    expected.behavior = BehaviorType::None;
+                    expected.collisionRadiusXZ = 0;
+                    expected.field_07 = 0;
+                }
+            }
+            phase = std::max<std::int16_t>(phase, 0);
+            if (phase == 0 || phase == 100) { rate = 0; }
+            expected.itemValue = timer;
+            expected.field_26 = rate;
+            expected.blendWeightOrSpriteOpacity = phase;
+            expected.spriteScale = 0xab00;
+            Check(Function_Door(door, state).status == DispatchStatus::ExecutedCase &&
+                ObjectBytes(door) == ObjectBytes(expected),
+                "Door updates must preserve original ordering, signed guards, word wraps, and endpoint effects.");
+            Check(state.GetCollisionMapPixelAtWorldXZ(150, 4050) == (phase == 100 ? 0x7c : 0x38),
+                "Only a fully open door may stamp its saved passability byte.");
+        };
+        for (int bits = 0; bits <= 65535; ++bits)
+        {
+            for (const int ticks : { 0, 1, 3 })
+            {
+                for (const int rate : { 0, 3, 65533 })
+                {
+                    checkStep(ReferenceSignedWord(bits), static_cast<std::uint16_t>(rate),
+                        10, 4, 0, static_cast<std::int16_t>(ticks));
+                }
+            }
+        }
+        for (const int phase : { -32768, -1, 0, 1, 97, 99, 100, 101, 32767 })
+        {
+            for (const int rate : { 0, 3, 32767, 32768, 65533, 65535 })
+            {
+                for (const int delay : { 0, 10, 32768, 65535 })
+                {
+                    for (const int ticks : { 0, 1, 3, 32767 })
+                    {
+                        for (const int occupancy : { 0, 1, 164 })
+                        {
+                            checkStep(static_cast<std::int16_t>(phase), static_cast<std::uint16_t>(rate),
+                                static_cast<std::uint16_t>(delay), 1, static_cast<std::uint16_t>(occupancy),
+                                static_cast<std::int16_t>(ticks));
+                        }
+                    }
+                }
+            }
+        }
+        state.tickCount = 1;
+        auto& door = state.worldObjects[2];
+        door = MakeTestDoor();
+        door.health = 1001;
+        door.groupIndexOrLock = 4;
+        door.modelFrame2 = 0;
+        state.switchGroupMasks[4] = 0;
+        door.doorLockOrGroupBitmask = -7;
+        Function_Door(door, state);
+        Check(door.health == 1001 && door.collisionRadiusXZ == 10 && door.field_26 == 3 &&
+            door.blendWeightOrSpriteOpacity == 3 && door.itemValue == 9 &&
+            door.displayType == DisplayType::Hidden,
+            "Group activation must allow negative locks and damaged doors without resetting their health.");
+        door = MakeTestDoor();
+        door.groupIndexOrLock = 4;
+        door.doorLockOrGroupBitmask = 7;
+        Function_Door(door, state);
+        Check(door.field_26 == 0 && door.blendWeightOrSpriteOpacity == 0,
+            "Positive key locks must prevent group activation.");
+        state.switchGroupMasks[4] = 0xff;
+        door = MakeTestDoor();
+        door.blendWeightOrSpriteOpacity = 97;
+        door.field_24 = 0;
+        door.field_26 = 3;
+        Function_Door(door, state);
+        Check(door.behavior == BehaviorType::Door && door.blendWeightOrSpriteOpacity == 100 &&
+            door.collisionRadiusXZ == 54 && door.field_07 == 1,
+            "Landing exactly on 100 must not disable a one-shot door.");
+        door.blendWeightOrSpriteOpacity = 99;
+        door.field_26 = 3;
+        Function_Door(door, state);
+        Check(door.behavior == BehaviorType::None && door.blendWeightOrSpriteOpacity == 100 &&
+            door.collisionRadiusXZ == 0 && door.field_07 == 0,
+            "Overshooting 100 must disable a one-shot door and its object collision.");
+
+        door = MakeTestDoor();
+        door.blendWeightOrSpriteOpacity = 50;
+        door.field_26 = 65533;
+        auto& blocker = state.worldObjects[3];
+        blocker = door;
+        blocker.collisionRadiusXZ = blocker.collisionRadiusY = 1;
+        Function_Door(door, state);
+        Check(door.blendWeightOrSpriteOpacity == 47 && door.spriteScale == 0xab03,
+            "The final overlap scan must store the blocker slot without changing the marker high byte.");
+        Function_Door(door, state);
+        Check(door.blendWeightOrSpriteOpacity == 50 && door.field_26 == 3 && door.itemValue == 10,
+            "An occupied closing door must reverse and refresh its automatic-close timer.");
+        blocker.health = 0;
+        auto& player = state.worldObjects[1];
+        player = door;
+        player.collisionRadiusXZ = player.collisionRadiusY = 1;
+        door.spriteScale = 0xab00;
+        door.field_26 = 0;
+        door.itemValue = 7;
+        struct ContactInput final : InputHandler
+        {
+            int calls = 0;
+            bool IsKeyPressed(InputKey key) override
+            {
+                Check(key == InputKey::InteractionKey, "Door contact must only query the interaction key.");
+                ++calls;
+                return false;
+            }
+        } input;
+        Check(UpdatePlayerInteraction(state, input).status == InteractionStatus::NoEffect &&
+            door.spriteScale == 0xab01 && door.field_26 == 0 && input.calls == 1,
+            "Player contact without input must mark occupancy without activating the door.");
+        Function_Door(door, state);
+        Check(door.field_26 == 3 && door.itemValue == 10 && door.spriteScale == 0xab00,
+            "The player marker must reopen the door, then clear because the object scan excludes the player.");
+        for (const std::int16_t group : { std::int16_t{ -1 }, std::int16_t{ 5 } })
+        {
+            door.groupIndexOrLock = group;
+            bool rejected = false;
+            try { Function_Door(door, state); }
+            catch (const std::out_of_range&) { rejected = true; }
+            Check(rejected, "Invalid door group indices must fail explicitly.");
+        }
+        door.groupIndexOrLock = 0;
+        door.collisionType = CollisionType::None;
+        state.switchGroupMasks[0] = 0;
+        bool rejected = false;
+        try { Function_Door(door, state); }
+        catch (const std::runtime_error&) { rejected = true; }
+        Check(rejected, "Unrecovered general activation must fail explicitly, not pretend to activate a door.");
+    }
+
+    void TestDoorSounds()
+    {
+        struct DoorAudio final : AudioHandler
+        {
+            std::array<bool, SoundChannelCount> playing{};
+            unsigned int starts = 0;
+            std::uint8_t lastSample = 0;
+            std::uint8_t lastVolume = 0;
+            std::uint16_t GetSampleCount() const override { return 129; }
+            bool IsChannelPlaying(std::size_t channel) const override { return playing.at(channel); }
+            void PlaySample(std::size_t channel, std::uint8_t sample, std::uint8_t volume) override
+            {
+                playing.at(channel) = true;
+                lastSample = sample;
+                lastVolume = volume;
+                ++starts;
+            }
+        } audio;
+        auto level = CreateDummyLevel();
+        GameContext state;
+        state.collisionMap = level.collisionMap.get();
+        state.audioHandler = &audio;
+        state.soundEffectsLoaded = true;
+        state.soundEffects[4] = { 1, { 11, 0, 0, 0 } };
+        state.soundEffects[7] = { 1, { 22, 0, 0, 0 } };
+        auto& door = state.worldObjects[2];
+        door = MakeTestDoor();
+        door.soundEffectId = 5;
+        state.soundListenerX = door.posX;
+        state.soundListenerZ = door.posZ;
+        HandlePlayerObjectInteraction(door, state);
+        Check(audio.starts == 1 && audio.lastSample == 11 && audio.lastVolume == 255 &&
+            state.soundChannelSources[3] == 2, "Opening must use the configured sound and actual world slot.");
+        door.field_26 = 0;
+        HandlePlayerObjectInteraction(door, state);
+        Check(audio.starts == 1, "Opening sound must enforce its one-instance-per-source limit.");
+        audio.playing.fill(false);
+        door.blendWeightOrSpriteOpacity = 100;
+        door.itemValue = 0;
+        door.field_26 = 0;
+        Function_Door(door, state);
+        Check(audio.starts == 2 && audio.lastSample == 11 && door.blendWeightOrSpriteOpacity == 97,
+            "Automatic closing must request the configured sound before movement.");
+        door.blendWeightOrSpriteOpacity = 1;
+        Function_Door(door, state);
+        Check(audio.starts == 3 && audio.lastSample == 22 && state.soundChannelSources[2] == 2 &&
+            door.blendWeightOrSpriteOpacity == 0,
+            "Closing overshoot must play effect 8 with a two-instance source limit.");
+        audio.playing.fill(false);
+        door = MakeTestDoor();
+        state.switchGroupMasks[0] = 0;
+        door.soundEffectId = 5;
+        Function_Door(door, state);
+        Check(audio.starts == 4 && audio.lastSample == 11,
+            "Switch-group door activation must request the same opening sound.");
+        state.switchGroupMasks[0] = 0xff;
+        door = MakeTestDoor();
+        const auto seed = state.randomSeed;
+        HandlePlayerObjectInteraction(door, state);
+        Check(audio.starts == 4 && state.randomSeed == seed,
+            "Configured sound zero must be silent without entering variant selection.");
+        door.blendWeightOrSpriteOpacity = 3;
+        door.field_26 = 65533;
+        Function_Door(door, state);
+        Check(audio.starts == 4 && door.blendWeightOrSpriteOpacity == 0 && state.randomSeed == seed,
+            "Landing exactly on closed must stop without playing the overshoot-only closing sound.");
+    }
+
+    void TestObjectAllocation()
+    {
+        GameContext state;
+        const auto fill = [&]
+        {
+            for (auto& object : state.worldObjects)
+            {
+                std::memset(&object, 0x5a, sizeof(object));
+                object.health = 1000;
+            }
+        };
+        const auto empty = ObjectBytes(RawGameObject{});
+        for (std::uint16_t slot = 2; slot <= 164; ++slot)
+        {
+            fill();
+            state.worldObjects[slot].health = 0;
+            const auto before = state.worldObjects;
+            Check(state.FindFreeObjectIndex() == slot, "Free allocation must scan all slots 2..164 in order.");
+            for (std::size_t i = 0; i < before.size(); ++i)
+            {
+                Check(ObjectBytes(state.worldObjects[i]) == (i == slot ? empty : ObjectBytes(before[i])),
+                    "Allocation must clear exactly the selected 54-byte record.");
+            }
+        }
+        fill();
+        state.worldObjects[2].health = -1;
+        Check(state.FindFreeObjectIndex() == 165 && ObjectBytes(state.worldObjects[165]) == empty &&
+            state.worldObjects[2].health == -1,
+            "Full allocation must clear/return reserved slot 165; negative health is not a free slot.");
+        Check(state.FindFreeObjectIndex() == 165, "Allocation does not reserve slots by setting health.");
+        fill();
+        state.worldObjects[3].health = 2;
+        state.worldObjects[4].health = 2;
+        Check(state.FindFreeOrLowestHealthObjectIndex() == 3 &&
+            ObjectBytes(state.worldObjects[3]) == empty && state.worldObjects[4].health == 2,
+            "Reclaiming allocation must use the first strict minimum below 1000.");
+        fill();
+        state.worldObjects[2].health = -20;
+        state.worldObjects[164].health = 0;
+        Check(state.FindFreeOrLowestHealthObjectIndex() == 164,
+            "A zero-health slot must beat an earlier negative-health minimum.");
+        fill();
+        state.worldObjects[164].health = -1;
+        Check(state.FindFreeOrLowestHealthObjectIndex() == 164,
+            "Reclaiming allocation must include negative health and the last ordinary slot.");
+        fill();
+        Check(state.FindFreeOrLowestHealthObjectIndex() == 165 &&
+            ObjectBytes(state.worldObjects[165]) == empty,
+            "Health >= 1000 must not be reclaimed; use the native fallback slot.");
+    }
+
+    void TestObjectUpdates()
+    {
+        GameContext state;
+        for (const auto ticks : { 0, 1, 3, 32767 })
+        {
+            state.tickCount = static_cast<std::int16_t>(ticks);
+            for (const bool enabled : { false, true })
+            {
+                state.objectCollisionsEnabled = enabled;
+                for (int bits = 0; bits <= 65535; ++bits)
+                {
+                    RawGameObject object;
+                    object.health = ReferenceSignedWord(bits);
+                    object.behavior = BehaviorType::IdleAnimation;
+                    object.itemValue = 5;
+                    object.velocityX = 31;
+                    object.velocityY = -22;
+                    object.velocityZ = 19;
+                    object.posX = 32760;
+                    object.posY = -32760;
+                    object.posZ = 150;
+                    object.winX = 11;
+                    object.winY = 22;
+                    object.winZ = 33;
+                    auto expected = object;
+                    const auto result = UpdateObject(object, state);
+                    if (expected.health <= 0)
+                    {
+                        Check(result.status == DispatchStatus::InactiveObject,
+                            "Inactive-at-entry objects must skip shared and case work.");
+                    }
+                    else
+                    {
+                        if (enabled && expected.health < 1000)
+                        {
+                            expected.health = static_cast<std::int16_t>(std::max(0, expected.health - ticks));
+                        }
+                        expected.blendWeightOrSpriteOpacity =
+                            ReferenceSignedWord(5LL * ticks + 200) % 200;
+                        Check(result.status == DispatchStatus::ExecutedCase,
+                            "Objects expiring in the prefix must still execute their last behavior update.");
+                    }
+                    Check(ObjectBytes(object) == ObjectBytes(expected),
+                        "Shared update must match countdown arithmetic and must not integrate velocity or angles.");
+                }
+            }
+        }
+        state = {};
+        state.tickCount = 3;
+        state.behaviorDispatchEnabled = false;
+        RawGameObject object;
+        object.health = 2;
+        object.behavior = BehaviorType::IdleAnimation;
+        object.itemValue = 7;
+        Check(UpdateObject(object, state).status == DispatchStatus::DispatchDisabled &&
+            object.health == 0 && object.blendWeightOrSpriteOpacity == 0,
+            "Disabling the behavior cascade must not disable the shared lifetime countdown.");
+        object.health = 2;
+        state.behaviorDispatchEnabled = true;
+        DispatchObjectCase(object, state);
+        Check(object.health == 2, "Direct case dispatch must remain isolated from the shared prefix.");
+
+        state = {};
+        for (auto& entry : state.worldObjects)
+        {
+            entry.health = 2;
+            entry.behavior = BehaviorType::None;
+        }
+        const auto results = UpdateObjects(state);
+        for (std::size_t slot = 0; slot < state.worldObjects.size(); ++slot)
+        {
+            Check(state.worldObjects[slot].health == (slot >= 2 && slot <= 164 ? 1 : 2),
+                "The object loop must exclude the player and reserved slots.");
+        }
+        Check(results.size() == 163 &&
+            std::all_of(results.begin(), results.end(), [](const DispatchResult& result)
+            {
+                return result.status == DispatchStatus::NoSpecificCase;
+            }), "The loop must expose a dispatch result for every ordinary slot.");
+        state.worldObjects[2].behavior = BehaviorType::BatIndoor;
+        Check(UpdateObjects(state)[0].status == DispatchStatus::UnimplementedHandler,
+            "The loop must not hide unrecovered behavior statuses.");
+        state.tickCount = -1;
+        bool rejected = false;
+        try { UpdateObjects(state); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        Check(rejected, "The world loop must reject negative ticks even when all objects are inactive.");
+    }
+
+    void TestSharedBurning()
+    {
+        for (const auto ticks : { 0, 1, 127, 32767 })
+        {
+            for (int display = 0; display <= 255; ++display)
+            {
+                GameContext state;
+                state.tickCount = 0;
+                state.frameTickCount = static_cast<std::int16_t>(ticks);
+                state.behaviorDispatchEnabled = false;
+                state.randomSeed = 0xffffffffu;
+                RawGameObject object;
+                object.health = 1000;
+                object.displayType = static_cast<DisplayType>(display);
+                const auto seed = display > 49 && display < 121 ? 0xffffffffu * 0x08088405u + 1u : 0xffffffffu;
+                auto expected = display;
+                if (display > 49 && display < 121)
+                {
+                    expected -= static_cast<int>((seed >> 16) % (ticks + 1));
+                    if (expected < 50) { expected = 22; }
+                }
+                UpdateObject(object, state);
+                Check(static_cast<int>(object.displayType) == expected && state.randomSeed == seed,
+                    "Burning bounds, frame-tick random range, burnout display, or disabled-dispatch ordering differs.");
+            }
+        }
+        struct Audio final : AudioHandler
+        {
+            std::array<bool, SoundChannelCount> playing{};
+            int calls = 0;
+            std::uint16_t GetSampleCount() const override { return 129; }
+            bool IsChannelPlaying(std::size_t channel) const override { return playing.at(channel); }
+            void PlaySample(std::size_t channel, std::uint8_t sample, std::uint8_t volume) override
+            {
+                Check(sample == 7 && volume == 255, "Burning must select effect 62 at attenuated object volume.");
+                playing.at(channel) = true;
+                ++calls;
+            }
+        } audio;
+        GameContext state;
+        state.audioHandler = &audio;
+        state.soundEffectsLoaded = true;
+        state.soundEffects[61] = { 1, { 7, 0, 0, 0 } };
+        for (std::size_t slot = 2; slot <= 4; ++slot)
+        {
+            state.worldObjects[slot].health = 1000;
+            state.worldObjects[slot].displayType = DisplayType::LastVectorBurning;
+        }
+        UpdateObjects(state);
+        Check(audio.calls == 2 && state.soundChannelSources[3] == 451 && state.soundChannelSources[2] == 451,
+            "Burning sounds share native source 451 with concurrency limit two.");
+        const auto seed = state.randomSeed;
+        state.worldObjects[2].health = 0;
+        state.worldObjects[3].health = -1;
+        state.worldObjects[4].health = 0;
+        UpdateObjects(state);
+        Check(state.randomSeed == seed, "Inactive burning objects must not consume random numbers.");
+        state.frameTickCount = -1;
+        bool rejected = false;
+        try { UpdateObjects(state); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        Check(rejected, "Negative frame ticks must be rejected.");
+    }
+
     void TestPlayerInteractionLoop()
     {
         struct TestInputHandler final : InputHandler
@@ -139,14 +1350,15 @@ namespace
             bool pressed = false;
             int calls = 0;
 
-            bool IsInteractionKeyPressed() override
+            bool IsKeyPressed(InputKey key) override
             {
+                Check(key == InputKey::InteractionKey, "Interaction routing queried a movement key.");
                 ++calls;
                 return pressed;
             }
         };
 
-        GameState state;
+        GameContext state;
         auto& player = state.worldObjects[1];
         auto& target = state.worldObjects[2];
         const auto reset = [&]
@@ -325,8 +1537,9 @@ namespace
             input.calls == 0 && state.gold == 0, "A pressed key without overlap must not collect anything.");
         target.posZ = 0;
         target.collisionType = CollisionType::Door;
-        Check(UpdatePlayerInteraction(state, input).status == InteractionStatus::UnimplementedHandler &&
-            target.health == 1000, "The loop must expose unsupported interaction results to its caller.");
+        Check(UpdatePlayerInteraction(state, input).status == InteractionStatus::Applied &&
+            target.health == 1000 && target.field_26 == 3 && (target.spriteScale & 0xffu) == 1,
+            "Door contact must mark occupancy and interaction must activate an unlocked door.");
 
         reset();
         input = {};
@@ -368,7 +1581,7 @@ namespace
         {
             return std::memcmp(&left, &right, sizeof(left)) == 0;
         };
-        GameState state;
+        GameContext state;
         Check(state.inventory.size() == 14 && state.weaponAmounts.size() == 32 &&
             state.weaponInventorySlots.size() == 32, "Wrong original inventory/counter capacities.");
         Check(state.gold == 0 && state.arrowPoison == 0 && !state.hasMap &&
@@ -430,15 +1643,16 @@ namespace
         state.inventory[1] = pickup(CollisionType::Medicine, 40);
         state.inventory[1].health = 1;
         auto key = pickup(CollisionType::Key, 7);
-        key.field_04 = 0xab14;
+        key.renderPlacementMode = 0x14;
+        key.soundEffectId = 0xab;
         key.spriteScale = 0xdc21;
         auto expectedKey = key;
-        expectedKey.field_04 = 0xab01;
+        expectedKey.renderPlacementMode = 1;
         expectedKey.doorLockOrGroupBitmask = 0xdc;
         result = HandlePlayerObjectInteraction(key, state);
         Check(result.status == InteractionStatus::Applied && result.inventorySlot == 3 &&
             sameObject(state.inventory[2], expectedKey) && key.health == 0 &&
-            key.field_04 == 0xab14 && key.doorLockOrGroupBitmask == 0,
+            key.renderPlacementMode == 0x14 && key.soundEffectId == 0xab && key.doorLockOrGroupBitmask == 0,
             "Inventory occupancy/copy normalization must match the original and not normalize the world object.");
         auto secondKey = pickup(CollisionType::Key, 7);
         Check(HandlePlayerObjectInteraction(secondKey, state).inventorySlot == 4,
@@ -550,7 +1764,7 @@ namespace
         state = {};
         auto specialWeapon = pickup(CollisionType::Weapon, -1);
         Check(HandlePlayerObjectInteraction(specialWeapon, state).inventorySlot == 1 &&
-            state.weaponInventorySlots == GameState{}.weaponInventorySlots,
+            state.weaponInventorySlots == GameContext{}.weaponInventorySlots,
             "Negative weapon identifiers must skip the original table registration.");
         auto extendedWeapon = pickup(CollisionType::Weapon, 31);
         Check(HandlePlayerObjectInteraction(extendedWeapon, state).inventorySlot == 2 &&
@@ -563,10 +1777,12 @@ namespace
         grouped.collisionType = CollisionType::GroupedSwitch;
         grouped.behavior = BehaviorType::SwitchGrouped;
         grouped.itemValue = 5;
+        grouped.renderPlacementMode = 0x5a;
         grouped.groupIndexOrLock = 2;
         grouped.doorLockOrGroupBitmask = 3;
         Check(HandlePlayerObjectInteraction(grouped, state).status == InteractionStatus::Applied &&
-            grouped.field_26 == 10 && grouped.field_24 == 5 && grouped.field_04 == 0x0200 &&
+            grouped.field_26 == 10 && grouped.field_24 == 5 && grouped.renderPlacementMode == 0x5a &&
+            grouped.soundEffectId == 2 &&
             state.switchGroupMasks[2] == 0xff,
             "Grouped interaction must arm the timer, start activation, and defer mask writes.");
         const auto movingSwitch = grouped;
@@ -582,10 +1798,12 @@ namespace
         Check(grouped.blendWeightOrSpriteOpacity == 0 && grouped.field_26 == 0,
             "Grouped return animation must stop at the inactive endpoint.");
         grouped.blendWeightOrSpriteOpacity = 100;
-        grouped.field_04 = 0x7f11;
+        grouped.renderPlacementMode = 0x11;
+        grouped.soundEffectId = 0x7f;
         state.switchGroupMasks[2] = 0xfc;
         Check(HandlePlayerObjectInteraction(grouped, state).status == InteractionStatus::Applied &&
-            grouped.field_26 == 65526 && grouped.field_24 == 5 && grouped.field_04 == 0x7f11 &&
+            grouped.field_26 == 65526 && grouped.field_24 == 5 && grouped.renderPlacementMode == 0x11 &&
+            grouped.soundEffectId == 0x7f &&
             state.switchGroupMasks[2] == 0xfc, "Manual grouped return must not restore the mask immediately.");
 
         state = {};
@@ -619,7 +1837,7 @@ namespace
         for (const auto type : { CollisionType::BookWithCode, CollisionType::BuyItem,
             CollisionType::WheelToLiftRope, CollisionType::VaseToGrab, CollisionType::MirrorToGrab,
             CollisionType::LevelEnd, CollisionType::Teleporter, CollisionType::SarcophagusWithBones,
-            CollisionType::Switch, CollisionType::Door, CollisionType::PictureMap, CollisionType::Lorry })
+            CollisionType::Switch, CollisionType::PictureMap, CollisionType::Lorry })
         {
             auto unsupported = pickup(type);
             const auto before = unsupported;
@@ -657,7 +1875,7 @@ namespace
         HandlePlayerObjectInteraction(gold, state);
         Check(state.gold == 10 && gold.health == 0,
             "Explicit interaction must not be gated by the separate behavior-cascade flag.");
-        GameState independent;
+        GameContext independent;
         Check(independent.gold == 0 && independent.arrowPoison == 0 &&
             !independent.hasMap && independent.inventory[0].health == 0,
             "Interaction state must belong to each game context.");
@@ -696,10 +1914,12 @@ namespace
     void TestSmokeFading()
     {
         RawGameObject object;
-        for (std::size_t offset = 0; offset < sizeof(object); offset += 2)
+        std::array<std::uint16_t, 27> fixture;
+        for (std::size_t i = 0; i < fixture.size(); ++i)
         {
-            object.WriteWord(offset, static_cast<std::uint16_t>(0x9876u + offset));
+            fixture[i] = static_cast<std::uint16_t>(0x9876u + i * 2);
         }
+        std::memcpy(&object, fixture.data(), sizeof(object));
         object.behavior = BehaviorType::SmokeFading;
         object.health = 40;
         object.posY = 100;
@@ -707,7 +1927,8 @@ namespace
         object.velocityY = 300;
         object.velocityZ = 3;
         object.spriteScale = 0xc734;
-        GameState state{ 2, true };
+        GameContext state;
+        state.tickCount = 2;
         auto expected = object;
         expected.posY = 103;
         expected.itemValue = 82;
@@ -717,7 +1938,7 @@ namespace
         const auto result = DispatchObjectCase(object, state);
         Check(result.status == DispatchStatus::ExecutedCase && result.moduleOffset == 0x1a9d &&
             result.behavior == BehaviorType::SmokeFading, "SmokeFading did not execute.");
-        Check(object.ReadBytes() == expected.ReadBytes() && state.collisionMap == nullptr &&
+        Check(ObjectBytes(object) == ObjectBytes(expected) && state.collisionMap == nullptr &&
             state.tickCount == 2 && state.behaviorDispatchEnabled,
             "SmokeFading must modify only Y, fraction, opacity, scale high byte, and vertical velocity.");
 
@@ -732,7 +1953,7 @@ namespace
                 object.health = ReferenceSignedWord(bits);
                 object.spriteScale = static_cast<std::uint16_t>(bits ^ 0xc7a5);
                 state.tickCount = static_cast<std::int16_t>(ticks);
-                auto words = object.ReadUnsignedWords();
+                auto words = ObjectWords(object);
                 const auto sum = (static_cast<std::uint64_t>(words[10]) * ticks + words[17]) % 65536;
                 const auto carry = sum / 256 >= 128 ? static_cast<std::int64_t>(sum / 256) - 256 :
                     static_cast<std::int64_t>(sum / 256);
@@ -751,24 +1972,24 @@ namespace
                 words[10] = static_cast<std::uint16_t>(ReferenceSignedWord(static_cast<std::int64_t>(velocity) +
                     ReferenceStep(velocity, 0, ReferenceSignedWord(ticks * 2LL))));
                 Check(Function_SmokeFading(object, state).status == DispatchStatus::ExecutedCase &&
-                    object.ReadUnsignedWords() == words,
+                    ObjectWords(object) == words,
                     "SmokeFading differs from the original word/byte arithmetic or changed unrelated data.");
             }
         }
         object.health = 0;
-        const auto inactive = object.ReadBytes();
+        const auto inactive = ObjectBytes(object);
         Check(DispatchObjectCase(object, state).status == DispatchStatus::InactiveObject &&
-            object.ReadBytes() == inactive, "Inactive smoke must not be updated.");
+            ObjectBytes(object) == inactive, "Inactive smoke must not be updated.");
         object.health = 1;
         state.behaviorDispatchEnabled = false;
-        const auto disabled = object.ReadBytes();
+        const auto disabled = ObjectBytes(object);
         Check(DispatchObjectCase(object, state).status == DispatchStatus::DispatchDisabled &&
-            object.ReadBytes() == disabled, "Disabled smoke must not be updated.");
+            ObjectBytes(object) == disabled, "Disabled smoke must not be updated.");
     }
 
     void TestSwitches()
     {
-        GameState initial;
+        GameContext initial;
         for (const auto mask : initial.switchGroupMasks)
         {
             Check(mask == 0xff, "All five group masks must initialize to FF as in the executable.");
@@ -826,7 +2047,7 @@ namespace
             Check(result.status == DispatchStatus::ExecutedCase && result.behavior == expected.behavior &&
                 result.moduleOffset == (grouped ? 0x2065 : 0x1fdd),
                 "Switch case did not execute at its original address.");
-            Check(object.ReadBytes() == expected.ReadBytes(),
+            Check(ObjectBytes(object) == ObjectBytes(expected),
                 "Switch differs from original word arithmetic or changed an unrelated object field.");
             Check(std::equal(std::begin(state.switchGroupMasks), std::end(state.switchGroupMasks),
                 std::begin(expectedState.switchGroupMasks)) && state.tickCount == ticks &&
@@ -874,7 +2095,7 @@ namespace
             object.itemValue = 1;
         }
 
-        GameState shared;
+        GameContext shared;
         shared.switchGroupMasks[2] = 3;
         RawGameObject first;
         first.behavior = BehaviorType::SwitchGrouped;
@@ -907,12 +2128,12 @@ namespace
         for (const auto invalid : { -32768, -1, 5, 32767 })
         {
             first.groupIndexOrLock = static_cast<std::int16_t>(invalid);
-            const auto before = first.ReadBytes();
+            const auto before = ObjectBytes(first);
             const auto masksBefore = shared;
             bool rejected = false;
             try { DispatchObjectCase(first, shared); }
             catch (const std::out_of_range&) { rejected = true; }
-            Check(rejected && first.ReadBytes() == before &&
+            Check(rejected && ObjectBytes(first) == before &&
                 std::equal(std::begin(shared.switchGroupMasks), std::end(shared.switchGroupMasks),
                     std::begin(masksBefore.switchGroupMasks)),
                 "Invalid group indices must fail explicitly without modifying object or masks.");
@@ -921,15 +2142,15 @@ namespace
         {
             first.behavior = behavior;
             first.health = 0;
-            const auto before = first.ReadBytes();
+            const auto before = ObjectBytes(first);
             const auto masksBefore = shared;
             Check(DispatchObjectCase(first, shared).status == DispatchStatus::InactiveObject &&
-                first.ReadBytes() == before, "Inactive switches must not update or access group state.");
+                ObjectBytes(first) == before, "Inactive switches must not update or access group state.");
             first.health = 1;
             shared.behaviorDispatchEnabled = false;
-            const auto disabled = first.ReadBytes();
+            const auto disabled = ObjectBytes(first);
             Check(DispatchObjectCase(first, shared).status == DispatchStatus::DispatchDisabled &&
-                first.ReadBytes() == disabled &&
+                ObjectBytes(first) == disabled &&
                 std::equal(std::begin(shared.switchGroupMasks), std::end(shared.switchGroupMasks),
                     std::begin(masksBefore.switchGroupMasks)),
                 "Disabled switches must not update or access group state.");
@@ -940,29 +2161,32 @@ namespace
     void TestIdleAnimation()
     {
         RawGameObject object;
-        for (std::size_t offset = 0; offset < sizeof(object); offset += 2)
+        std::array<std::uint16_t, 27> fixture;
+        for (std::size_t i = 0; i < fixture.size(); ++i)
         {
-            object.WriteWord(offset, static_cast<std::uint16_t>(0x9876u + offset));
+            fixture[i] = static_cast<std::uint16_t>(0x9876u + i * 2);
         }
+        std::memcpy(&object, fixture.data(), sizeof(object));
         object.behavior = BehaviorType::IdleAnimation;
         object.health = 1;
         object.itemValue = 3;
         object.blendWeightOrSpriteOpacity = 195;
-        GameState state{ 4, true };
+        GameContext state;
+        state.tickCount = 4;
         auto expected = object;
         expected.blendWeightOrSpriteOpacity = 7;
         const auto result = DispatchObjectCase(object, state);
         Check(result.status == DispatchStatus::ExecutedCase && result.moduleOffset == 0x1666 &&
             result.behavior == BehaviorType::IdleAnimation, "IdleAnimation did not execute.");
-        Check(object.ReadBytes() == expected.ReadBytes(),
+        Check(ObjectBytes(object) == ObjectBytes(expected),
             "IdleAnimation must update only the blend-phase word.");
         Check(state.tickCount == 4 && state.behaviorDispatchEnabled && state.collisionMap == nullptr,
             "IdleAnimation must not modify shared state or require a collision map.");
 
         const auto checkArithmetic = [&](std::uint16_t rate, std::uint16_t phase, std::int16_t ticks)
         {
-            object.WriteWord(34, rate);
-            object.WriteWord(42, phase);
+            object.itemValue = ReferenceSignedWord(rate);
+            object.blendWeightOrSpriteOpacity = ReferenceSignedWord(phase);
             state.tickCount = ticks;
             const auto lowWord = (static_cast<std::uint64_t>(rate) * static_cast<std::uint16_t>(ticks) +
                 phase + 200) % 65536;
@@ -972,7 +2196,7 @@ namespace
             auto expectedObject = object;
             expectedObject.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(remainder);
             Check(Function_IdleAnimation(object, state).status == DispatchStatus::ExecutedCase &&
-                object.ReadBytes() == expectedObject.ReadBytes(),
+                ObjectBytes(object) == ObjectBytes(expectedObject),
                 "IdleAnimation differs from the original low-word multiply/add and signed remainder.");
         };
         for (const auto rate : { 0, 1, 3, 200, 0x7fff, 0x8000, 0xffff })
@@ -1002,14 +2226,14 @@ namespace
         Function_IdleAnimation(object, state);
         Check(object.blendWeightOrSpriteOpacity == -100, "Negative remainder must not be normalized positive.");
         object.health = 0;
-        const auto inactive = object.ReadBytes();
+        const auto inactive = ObjectBytes(object);
         Check(DispatchObjectCase(object, state).status == DispatchStatus::InactiveObject &&
-            object.ReadBytes() == inactive, "Inactive IdleAnimation must not change the phase.");
+            ObjectBytes(object) == inactive, "Inactive IdleAnimation must not change the phase.");
         object.health = 1;
         state.behaviorDispatchEnabled = false;
-        const auto disabled = object.ReadBytes();
+        const auto disabled = ObjectBytes(object);
         Check(DispatchObjectCase(object, state).status == DispatchStatus::DispatchDisabled &&
-            object.ReadBytes() == disabled, "Disabled IdleAnimation must not change the phase.");
+            ObjectBytes(object) == disabled, "Disabled IdleAnimation must not change the phase.");
     }
 
     void TestCollisionMap()
@@ -1031,7 +2255,7 @@ namespace
             "Map pixels must begin immediately after the four-byte header.");
         map.widthMinusOne = 7;
         std::fill(std::begin(map.data), std::end(map.data), std::uint8_t{0xa5});
-        GameState context;
+        GameContext context;
         context.collisionMap = &map;
         const auto before = map;
         const auto* beforeBytes = reinterpret_cast<const unsigned char*>(&before);
@@ -1045,25 +2269,25 @@ namespace
 
         RawGameObject object;
         object.behavior = BehaviorType::Pillar;
-        object.WriteWord(10, 1);
-        object.WriteWord(12, 137);
-        object.WriteWord(14, 0x8000);
-        object.WriteWord(16, 63);
-        const auto objectBefore = object.ReadBytes();
+        object.health = 1;
+        object.posX = 137;
+        object.posY = -32768;
+        object.posZ = 63;
+        const auto objectBefore = ObjectBytes(object);
         for (const auto ticks : { 0, 1, 15 })
         {
             context.tickCount = static_cast<std::int16_t>(ticks);
             bytes[expected] = 0xff;
             Check(DispatchObjectCase(object, context).status == DispatchStatus::ExecutedCase,
                 "Pillar did not execute its recovered case.");
-            Check(bytes[expected] == 0x38 && object.ReadBytes() == objectBefore,
+            Check(bytes[expected] == 0x38 && ObjectBytes(object) == objectBefore,
                 "Pillar must use X/Z, ignore Y/ticks, and leave the object unchanged.");
         }
         context.collisionMap = nullptr;
-        object.WriteWord(10, 0);
+        object.health = 0;
         Check(DispatchObjectCase(object, context).status == DispatchStatus::InactiveObject,
             "Inactive Pillar must not access the map.");
-        object.WriteWord(10, 1);
+        object.health = 1;
         context.behaviorDispatchEnabled = false;
         Check(DispatchObjectCase(object, context).status == DispatchStatus::DispatchDisabled,
             "Disabled Pillar must not access the map.");
@@ -1129,9 +2353,9 @@ namespace
     {
         auto level = CreateDummyLevel();
         auto& map = *level.collisionMap;
-        GameState context;
+        GameContext context;
         context.collisionMap = &map;
-        const GameState& reader = context;
+        const GameContext& reader = context;
         Check(reader.GetCollisionMapPixelAtWorldXZ(137, 63) == 0,
             "Reader must return zero from a fresh dummy map.");
         context.SetCollisionMapPixelAtWorldXZ(137, 63, 0x1238);
@@ -1205,15 +2429,15 @@ namespace
     void TestGatesAndWords()
     {
         RawGameObject object;
-        GameState context;
+        GameContext context;
         object.behavior = BehaviorType::BatIndoor;
         for (const auto health : { 0, 0xffff, 0x8000 })
         {
-            object.WriteWord(10, static_cast<std::uint16_t>(health));
+            object.health = ReferenceSignedWord(health);
             Check(DispatchObjectCase(object, context).status == DispatchStatus::InactiveObject,
                 "Health gate must use a signed > 0 check, not != 0.");
         }
-        object.WriteWord(10, 1);
+        object.health = 1;
         context.behaviorDispatchEnabled = false;
         Check(DispatchObjectCase(object, context).status == DispatchStatus::DispatchDisabled,
             "Disabled behavior dispatch was executed.");
@@ -1223,25 +2447,15 @@ namespace
         Check(DispatchObjectCase(object, context).moduleOffset == 0x5108, "Behavior 300 must not be truncated.");
         object.behavior = BehaviorType::DisabledSentinel;
         Check(DispatchObjectCase(object, context).moduleOffset == 0x1156, "FFFF sentinel changed.");
-        object.WriteWord(8, 0x010e);
+        Check(object.health == 0, "The FFFF sentinel must clear health.");
+        object.health = 1;
+        object.behavior = static_cast<BehaviorType>(0x010e);
         const auto unmapped = DispatchObjectCase(object, context);
         Check(unmapped.status == DispatchStatus::NoSpecificCase && unmapped.behavior == object.behavior &&
             FindBehavior(object.behavior) == nullptr,
             "A nonzero high byte must not route to BatIndoor.");
-        object.WriteWord(12, 0xff9c);
-        Check(object.ReadSignedWord(12) == -100, "Signed little-endian position was misread.");
-        object.WriteWord(52, 0xffff);
-        Check(object.ReadWord(52) == 65535 && object.ReadSignedWord(52) == -1, "Last word was misread.");
-        bool rejected = false;
-        try { object.ReadWord(53); }
-        catch (const std::out_of_range&) { rejected = true; }
-        Check(rejected, "Out-of-bounds word read was accepted.");
-        rejected = false;
-        try { object.WriteWord(std::numeric_limits<std::size_t>::max(), 1); }
-        catch (const std::out_of_range&) { rejected = true; }
-        Check(rejected, "Overflowing word offset was accepted.");
         context.tickCount = -1;
-        rejected = false;
+        bool rejected = false;
         try { DispatchObjectCase(object, context); }
         catch (const std::invalid_argument&) { rejected = true; }
         Check(rejected, "Invalid tick count was accepted.");
@@ -1250,7 +2464,7 @@ namespace
     void TestHeightfields()
     {
         auto level = CreateDummyLevel();
-        GameState state;
+        GameContext state;
         state.level = &level;
         std::array<std::uint8_t, Level::GeometryStreamSize + 5> data{};
         data[0] = 49;
@@ -1421,7 +2635,7 @@ namespace
     void TestWaterDrop()
     {
         auto level = CreateDummyLevel();
-        GameState state;
+        GameContext state;
         state.level = &level;
         RawGameObject drop;
         drop.behavior = BehaviorType::WaterDrop;
@@ -1440,7 +2654,7 @@ namespace
         expected.blendWeightOrSpriteOpacity = 4;
         state.tickCount = 3;
         Check(DispatchObjectCase(drop, state).status == DispatchStatus::ExecutedCase &&
-            drop.ReadBytes() == expected.ReadBytes(),
+            ObjectBytes(drop) == ObjectBytes(expected),
             "WaterDrop growth must integrate old velocity first and preserve unrelated bytes.");
         DispatchObjectCase(drop, state);
         Check(drop.posY == 88 && drop.velocityY == -5 && drop.spriteScale == 0x05ab,
@@ -1548,18 +2762,18 @@ namespace
         Check(drop.posY == -97 && drop.animFrame == 2 && drop.field_26 == 3,
             "WaterDrop floor lookup must use the position before motion, including stacked-floor selection.");
 
-        const auto before = drop.ReadBytes();
+        const auto before = ObjectBytes(drop);
         state.level = nullptr;
         bool rejected = false;
         try { DispatchObjectCase(drop, state); }
         catch (const std::runtime_error&) { rejected = true; }
-        Check(rejected && drop.ReadBytes() == before, "Missing level geometry must fail before mutating WaterDrop.");
+        Check(rejected && ObjectBytes(drop) == before, "Missing level geometry must fail before mutating WaterDrop.");
         state.level = &level;
         level.surfaceFlags[0][0] = 1;
         rejected = false;
         try { DispatchObjectCase(drop, state); }
         catch (const std::runtime_error&) { rejected = true; }
-        Check(rejected && drop.ReadBytes() == before, "Missing surface metadata must fail before mutating WaterDrop.");
+        Check(rejected && ObjectBytes(drop) == before, "Missing surface metadata must fail before mutating WaterDrop.");
         state.level = nullptr;
         state.behaviorDispatchEnabled = false;
         Check(DispatchObjectCase(drop, state).status == DispatchStatus::DispatchDisabled,
@@ -1568,6 +2782,51 @@ namespace
         drop.health = 0;
         Check(DispatchObjectCase(drop, state).status == DispatchStatus::InactiveObject,
             "Inactive WaterDrop must not query missing geometry.");
+    }
+
+    void TestRotationTables()
+    {
+        const auto fingerprint = [](const std::array<std::int32_t, 513>& table)
+        {
+            std::uint32_t hash = 2166136261u;
+            for (const auto value : table)
+            {
+                const auto bits = static_cast<std::uint32_t>(value);
+                for (int shift = 0; shift < 32; shift += 8)
+                {
+                    hash = (hash ^ ((bits >> shift) & 255u)) * 16777619u;
+                }
+            }
+            return hash;
+        };
+        Check(fingerprint(SineTable) == 0x7ccfeecau && fingerprint(ClampedSineTable) == 0xf0dfdddau,
+            "Rotation tables differ from the verified original x87-generated integers.");
+        Check(SineTable[0] == 0 && SineTable[128] == 65536 && SineTable[256] == 0 &&
+            SineTable[384] == -65536 && SineTable[512] == 0 &&
+            ClampedSineTable[0] == 0 && ClampedSineTable[128] == 65536 &&
+            ClampedSineTable[256] == 0 && ClampedSineTable[384] == -65536 &&
+            ClampedSineTable[512] == 0, "Rotation table cardinal directions or extra endpoint differ.");
+        Check(SineTable[64] == 46341 && ClampedSineTable[64] == 47376 &&
+            ClampedSineTable[110] == 65372 && ClampedSineTable[111] == 65536 &&
+            ClampedSineTable[145] == 65536 && ClampedSineTable[146] == 65372,
+            "The 67000-amplitude table must retain its boost and exact clamped plateau boundaries.");
+        for (std::size_t i = 0; i <= 512; ++i)
+        {
+            // Independent formula uses the original stored angular constant, not modern pi.
+            const auto wave = std::sin(static_cast<double>(i) * 0.012271846484375);
+            const auto standard = static_cast<std::int32_t>(std::lround(wave * 65536));
+            const auto boosted = static_cast<std::int32_t>(std::lround(wave * 67000));
+            Check(SineTable[i] == standard && ClampedSineTable[i] == std::clamp(boosted, -65536, 65536),
+                "Rotation entries differ from the original angular step, amplitudes, or integer conversion.");
+        }
+        for (int angle = -32768; angle <= 32767; ++angle)
+        {
+            const auto sineIndex = static_cast<std::size_t>((angle % 512 + 512) % 512);
+            const auto cosineIndex = static_cast<std::size_t>(((angle + 128) % 512 + 512) % 512);
+            Check(Sine(static_cast<std::int16_t>(angle)) == ClampedSineTable[sineIndex] &&
+                Cosine(static_cast<std::int16_t>(angle)) == ClampedSineTable[cosineIndex],
+                "Native sine/cosine helpers must mask every word angle and use the clamped table.");
+        }
     }
 
     void TestSoundEffects(const char* tablePath)
@@ -1594,7 +2853,7 @@ namespace
                 playing[channel] = true;
             }
         } audio;
-        GameState state;
+        GameContext state;
         Check(state.PlaySoundEffect(SoundEffect::Drop, 255, 2, 1) == SoundPlaybackStatus::AudioUnavailable,
             "Unconfigured audio must report unavailable, not successful playback.");
         state.audioHandler = &audio;
@@ -1866,8 +3125,8 @@ namespace
             throw std::runtime_error("Selector interpreter exceeded its instruction bound.");
         };
         RawGameObject object;
-        object.WriteWord(10, 1);
-        GameState context;
+        object.health = 1;
+        GameContext context;
         auto level = CreateDummyLevel();
         context.collisionMap = level.collisionMap.get();
         context.level = &level;
@@ -1889,11 +3148,24 @@ int main(int argc, char** argv)
     {
         TestObjectLayout();
         TestCases();
+        TestInputAbstraction();
+        TestLightingCache();
+        TestLightSource();
+        TestFlies();
+        TestUserMessages();
+        TestDoorCollisionMap();
+        TestDoorUnlocking();
+        TestDoorUpdates();
+        TestDoorSounds();
+        TestObjectAllocation();
+        TestObjectUpdates();
+        TestSharedBurning();
         TestGatesAndWords();
         TestCollisionMap();
         TestCollisionMapReader();
         TestIdleAnimation();
         TestGameMath();
+        TestRotationTables();
         TestSmokeFading();
         TestSwitches();
         TestObjectInteractions();
@@ -1904,9 +3176,9 @@ int main(int argc, char** argv)
         TestSoundEffects(argv[2]);
         TestAgainstOriginal(argv[1]);
         std::cout << "PASS: 190 catalog routes and all 65536 selector words match the original; "
-            "signed gates, object state, collision-map reads/writes, Pillar, IdleAnimation, SmokeFading, switches, "
+            "signed gates, object state, collision-map reads/writes, Pillar, LightSource, Flies, doors/keys/prompts, IdleAnimation, SmokeFading, switches, "
             "inventory/pickup interactions, collision/input routing, geometry streams, height lookups, WaterDrop, sound "
-            "variants/attenuation/channel admission, "
+            "variants/attenuation/channel admission, both rotation tables and all word-angle lookups, "
             "and exhaustive arithmetic checks verified.\n";
         return 0;
     }

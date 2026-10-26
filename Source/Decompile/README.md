@@ -29,11 +29,45 @@ For the first explained case and shared collision-map pointer, see
   original executable. No timestamps or machine-specific paths.
 - `initial-import.txt`: generated memory map and initial instruction report.
 - `high-level-evidence.txt`: focused instruction evidence for the control-flow map.
-- `Scaffold/`: compilable selector, implemented Pillar/IdleAnimation/SmokeFading/switch/WaterDrop cases,
+- `ui-evidence.txt`: UI page dispatch, F2 inventory navigation, shared input/text
+  helpers, overlay/meter registration, and per-buffer element redraw lists.
+  See [UI architecture](HighLevelStructure.md#ui-pages-shared-helpers-and-element-lists).
+- `ui-chapter-evidence.txt`: chapter-selection cancellation and acceptance,
+  including the original new-game initialization call.
+- `Scaffold/GameContext.h/.cpp`: independent context class and shared object
+  allocators; context-owned sound/collision/height/prompt operations are members.
+- `Scaffold/ApplicationFlow.h/.cpp`: native-valued menu enums and outer page
+  dispatch implemented as context members. Page loops and loading remain
+  explicit throwing hooks, not rendering or a playable application.
+- `Scaffold/ApplicationFlowTests.cpp`: menu gates, full scripted page flow,
+  startup failure handling, and routing coverage for every state word.
+- `player-movement-evidence.txt`: keyboard/mouse controls, movement/turning,
+  terrain support, collision-map correction, and player-object synchronization.
+  The controller is identified but not yet implemented.
+- `object-update-evidence.txt`: shared lifetime/burning prefix, scene-list
+  suffix, iteration bounds, and both clearing/free-slot allocators.
+- `lighting-evidence.txt`: packed static brightness, dynamic 21x21
+  tile-corner cache, LightSource flicker/writes, frame clearing, and readers.
+- `lighting-shade-evidence.txt`: timer-driven shade noise, its quantization
+  consumer, a separate global shading term, and per-frame noise-range resets.
+- `object-render-list-evidence.txt`: render-sort-key assignment and signed
+  sorted insertion into tile lists, with external per-object next links.
+- `door-unlock-evidence.txt`: inventory key matching/consumption, lock-state
+  handling, feedback branches, and activation after successful unlocking.
+- `door-message-evidence.txt`: prompt storage/countdown, consumed-hand icon
+  redraw scheduling, activation preconditions, and ordinary-door entry/interaction.
+- `Scaffold/Lighting.cpp`: gameplay-only dynamic lighting cache, explicit
+  per-frame reset, native world-coordinate accumulation, and window culling.
+  LightSource objects now add flicker and request their configured sounds;
+  the unidentified DS:DC34 accumulator is preserved. No rendering is included.
+- `Scaffold/`: compilable selector, implemented Pillar/LightSource/Door/Flies/IdleAnimation/SmokeFading/switch/WaterDrop cases,
   placeholder handlers, and tests.
 - `Scaffold/CollisionMap.cpp`: recovered world-X/Z point writer and explicit
   200x200 dummy-level creation until proper level loading is recovered.
-- `Scaffold/GameMath.h/.cpp`: shared fixed-point, signed-step, and sign helpers.
+- `Scaffold/GameMath.h/.cpp`: shared fixed-point, signed-step, and sign helpers,
+  plus both original integer sine tables and the sine/cosine lookup helpers.
+- `rotation-evidence.txt`, `rotation-runtime-evidence.txt`: table initialization,
+  masked lookups, and the original x87 sine/rounding path.
 - `Scaffold/Sound.h/.cpp`: named sound effects, original variant-table loading,
   attenuation, random selection, four-channel admission, and virtual audio interface.
 - `sound-evidence.txt`: exact distance, volume, sample selection, channel
@@ -122,7 +156,19 @@ The current investigation is [Pillar](Pillar.md), its collision-map writer,
 and the corresponding reader/player-blocking rules. `BatIndoor`'s helper at
 module-relative `10AC:3391` remains a later target.
 Pillar's case and point writer, plus the object-local IdleAnimation and
-SmokeFading cases, two switch behaviors, and WaterDrop are implemented and host-tested.
+SmokeFading cases, Flies, two switch behaviors, WaterDrop, LightSource, and ordinary
+doors are implemented and host-tested.
+Flies preserves randomized frame blending, per-update orientation changes, and
+the fixed buzzing effect with doubled-distance attenuation; it does not move
+the object's position. Use `--behavior Flies --ticks 3` to inspect its state.
+See [Flies](BehaviorRecovery.md#flies-randomized-frame-blending-and-buzzing)
+for exact thresholds, RNG order, and removal after burning.
+LightSource adds flickering contributions to the gameplay lighting cache and
+requests its configured sound; no rendering is involved. Reset the cache
+once per frame before object updates. The console does this automatically:
+`--behavior LightSource --ticks 100` runs a dummy light and reports its
+contribution. See [gameplay lighting](BehaviorRecovery.md#gameplay-lighting-cache)
+for frame setup and the still-unidentified DS:DC34 accumulator.
 `Level::LoadGeometry` accepts the unpacked 50x40 seven-plane geometry prefix;
 the context borrows the level for floor and relative-room-height queries.
 Use `--behavior WaterDrop` for a dummy-room update, or
@@ -138,13 +184,26 @@ See [Sound effects](BehaviorRecovery.md#sound-effects-attenuation-and-four-chann
 for the actual four-argument playback contract and integration.
 Explicit pickup interactions now populate fourteen inventory objects and
 update the known counters in the game context; grouped-switch interaction
-arms its return timer. Use `--object object54.bin --interact` to request one
+arms its return timer. Doors support automatic closing, obstruction reopening,
+the native 3x3 collision footprint, grouped activation, and consuming matching
+inventory keys. `GameContext::PromptUserMessage` stores UTF-8 feedback and its
+lifetime without drawing; `UpdateObjects` advances that lifetime once per
+frame. See [doors and unlocking](BehaviorRecovery.md#ordinary-doors-and-key-unlocking)
+and [gameplay messages](BehaviorRecovery.md#gameplay-user-messages).
+Use `--behavior Door --ticks 3` for an opening-door fixture, or
+`--object object54.bin --interact` to request one
 ENTER-style action instead of a behavior update. Add `--player player54.bin`
 to select that target through the original overlap query first; omit
 `--interact` to check overlap without pressing the key. The library exposes
 `UpdatePlayerInteraction(context, input)` and a virtual `InputHandler`
-interface for game integration. Player movement, automatic contact responses,
-inventory use, platform input, UI/interaction audio, and unsupported interactions remain
+interface for game integration. Input uses abstract forward/backward, strafe,
+turn, and interaction actions through `IsKeyPressed(InputKey)`.
+`UpdateObjects(context)` now runs the recovered lifetime/burning prefix and
+case dispatch for slots 2..164; the console uses this path. Both native
+free-slot allocation methods are available on the context. There is no
+universal velocity or angular-speed integration in the original shared loop.
+Player movement, automatic contact responses other than the door occupancy
+marker, inventory use, platform input, message rendering, and unsupported interactions remain
 explicitly unimplemented. Follow
 [Object behavior recovery](BehaviorRecovery.md) for scope, regeneration
 precautions, and unresolved globals. Before future Ghidra-only edits become
@@ -303,7 +362,7 @@ wrappers or field-copy indirection around this known layout. Layout immutability
 does not mean the gameplay values are const.
 
 Use production game terminology for runtime symbols, such as `Desperabis`,
-`Level`, and `GameState`, rather than recovery-stage prefixes or suffixes.
+`Level`, and `GameContext`, rather than recovery-stage prefixes or suffixes.
 Track implementation completeness in status values, tests, and analysis
 documentation, not in the names of gameplay types.
 

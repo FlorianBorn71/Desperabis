@@ -16,7 +16,10 @@ namespace
     struct ConsoleInputHandler final : InputHandler
     {
         bool interactionKeyPressed = false;
-        bool IsInteractionKeyPressed() override { return interactionKeyPressed; }
+        bool IsKeyPressed(InputKey key) override
+        {
+            return key == InputKey::InteractionKey && interactionKeyPressed;
+        }
     };
 
     struct ConsoleAudioHandler final : AudioHandler
@@ -106,7 +109,7 @@ namespace
             }
             return 0;
         }
-        GameState context;
+        GameContext context;
         RawGameObject& object = context.worldObjects[2];
         ConsoleAudioHandler audio;
         auto level = CreateDummyLevel();
@@ -219,6 +222,7 @@ namespace
                         throw std::invalid_argument("Tick count must be in 0..32767.");
                     }
                     context.tickCount = static_cast<std::int16_t>(ticks);
+                    context.frameTickCount = context.tickCount;
                 }
                 else
                 {
@@ -247,6 +251,16 @@ namespace
         {
             throw std::invalid_argument("Choose --behavior or --object. Use --help for usage.");
         }
+        if (!haveObjectFile && object.behavior == BehaviorType::Door)
+        {
+            object.health = 1000;
+            object.collisionType = CollisionType::Door;
+            object.posX = 150;
+            object.posZ = 4050;
+            object.field_24 = 60;
+            object.field_26 = interact ? 0 : 3;
+            object.itemValue = interact ? 0 : 60;
+        }
         if (!haveObjectFile && object.behavior == BehaviorType::WaterDrop && !interact && !havePlayer &&
             context.behaviorDispatchEnabled)
         {
@@ -255,17 +269,17 @@ namespace
             object.posY = WrapSignedWord(context.GetFloorHeight(object.posX, 0, object.posZ) +
                 context.GetRoomHeight(object.posX, object.posZ));
         }
-        std::cout << "PARTIAL RECOVERY ONLY: shared pre/postprocessing and most handlers are NOT IMPLEMENTED.\n";
+        std::cout << "PARTIAL RECOVERY ONLY: render-list postprocessing and most handlers are NOT IMPLEMENTED.\n";
         if (!haveCollisionMap)
         {
             std::cout << "Using dummy level: 200x200 collision pixels, initially zero.\n";
         }
         std::cout << (haveGeometry ? "Loaded 50x40 geometry streams.\n" :
             "Using dummy geometry: raw floor 0, room height 50, ceiling present, no special surfaces.\n");
+        context.soundListenerX = havePlayer ? context.worldObjects[1].posX : object.posX;
+        context.soundListenerZ = havePlayer ? context.worldObjects[1].posZ : object.posZ;
         if (context.audioHandler)
         {
-            context.soundListenerX = havePlayer ? context.worldObjects[1].posX : object.posX;
-            context.soundListenerZ = havePlayer ? context.worldObjects[1].posZ : object.posZ;
             std::cout << "Console audio logging enabled; listener at "
                 << (havePlayer ? "player" : "the test object") << " X/Z.\n";
         }
@@ -326,11 +340,18 @@ namespace
                         << ", inventory slot " << context.weaponInventorySlots[i] << '\n';
                 }
             }
-            std::cout << "Interaction UI/audio, inventory use, and unsupported interactions are NOT IMPLEMENTED.\n";
+            if (context.userMessageTicks > 0)
+            {
+                std::cout << "User message: " << context.userMessage
+                    << " (" << context.userMessageTicks << " ticks remaining; no rendering).\n";
+            }
+            std::cout << "Message rendering, inventory use, and unsupported interactions are NOT IMPLEMENTED.\n";
         }
         else
         {
-            const auto result = DispatchObjectCase(object, context);
+            context.lightingCache.Reset(context.soundListenerX, context.soundListenerZ);
+            const auto results = UpdateObjects(context);
+            const auto& result = results[0];
             const auto descriptor = FindBehavior(result.behavior);
             const char* behaviorName = descriptor ? descriptor->name : "UnmappedWord";
             std::cout << "Behavior word: " << static_cast<std::uint16_t>(object.behavior) << " (" << behaviorName
@@ -340,6 +361,23 @@ namespace
             if (object.behavior == BehaviorType::IdleAnimation)
             {
                 std::cout << "Animation blend phase: " << object.blendWeightOrSpriteOpacity << '\n';
+            }
+            if (object.behavior == BehaviorType::Flies)
+            {
+                std::cout << "Flies blend phase: " << object.blendWeightOrSpriteOpacity
+                    << ", previous/current frame: " << static_cast<unsigned int>(object.animFrame)
+                    << '/' << static_cast<unsigned int>(object.modelFrame2)
+                    << ", angles: " << object.winX << ", " << object.winY << ", " << object.winZ << '\n';
+            }
+            if (object.behavior == BehaviorType::LightSource)
+            {
+                std::int32_t total = 0;
+                for (const auto& column : context.lightingCache.contributions)
+                {
+                    for (const auto value : column) { total += value; }
+                }
+                std::cout << "Dynamic lighting contribution total: " << total
+                    << " (21x21 gameplay cache; no rendering).\n";
             }
             if (object.behavior == BehaviorType::SmokeFading)
             {
@@ -356,8 +394,14 @@ namespace
                     std::cout << "Switch group: " << object.groupIndexOrLock << ", mask: "
                         << static_cast<unsigned int>(context.switchGroupMasks[object.groupIndexOrLock]) << '\n';
                 }
-                std::cout << "Use --interact to request grouped-switch activation; ordinary switch targets "
-                    "and door interactions are NOT IMPLEMENTED.\n";
+                std::cout << "Use --interact to request grouped-switch activation; ordinary switch target "
+                    "dispatch remains NOT IMPLEMENTED.\n";
+            }
+            if (object.behavior == BehaviorType::Door)
+            {
+                std::cout << "Door opening: " << object.blendWeightOrSpriteOpacity
+                    << ", motion rate: " << WrapSignedWord(object.field_26)
+                    << ", closing timer: " << object.itemValue << '\n';
             }
             if (object.behavior == BehaviorType::WaterDrop)
             {
@@ -373,7 +417,7 @@ namespace
             {
             case DispatchStatus::ExecutedCase:
                 std::cout << "Executed Function_" << behaviorName
-                    << ": recovered case only; shared pre/postprocessing is NOT IMPLEMENTED";
+                    << ": shared gameplay prefix and recovered case; render-list postprocessing is NOT IMPLEMENTED";
                 break;
             case DispatchStatus::UnimplementedHandler:
                 std::cout << "Selected Function_" << behaviorName << ": NOT IMPLEMENTED";

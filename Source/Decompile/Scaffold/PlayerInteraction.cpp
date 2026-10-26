@@ -24,7 +24,7 @@ namespace Desperabis
         }
     }
 
-    std::uint16_t GameState::FindCollidingObject(std::int16_t sourceSlot) const
+    std::uint16_t GameContext::FindCollidingObject(std::int16_t sourceSlot) const
     {
         if (!objectCollisionsEnabled)
         {
@@ -35,10 +35,16 @@ namespace Desperabis
             throw std::out_of_range("Collision source slot must be in 0..165.");
         }
         const auto& source = worldObjects[sourceSlot];
+        return FindCollidingObject(source);
+    }
+
+    std::uint16_t GameContext::FindCollidingObject(const RawGameObject& source) const
+    {
+        if (!objectCollisionsEnabled) { return 0; }
         for (std::uint16_t slot = 2; slot <= 164; ++slot)
         {
             const auto& candidate = worldObjects[slot];
-            if (slot != sourceSlot && candidate.health > 0 && ObjectsOverlap(source, candidate))
+            if (&candidate != &source && candidate.health > 0 && ObjectsOverlap(source, candidate))
             {
                 return slot;
             }
@@ -46,7 +52,7 @@ namespace Desperabis
         return 0;
     }
 
-    std::uint16_t GameState::FindPlayerCollision() const
+    std::uint16_t GameContext::FindPlayerCollision() const
     {
         const auto first = FindCollidingObject(1);
         if (first == 0)
@@ -67,13 +73,20 @@ namespace Desperabis
         return first;
     }
 
-    InteractionResult UpdatePlayerInteraction(GameState& context, InputHandler& input)
+    InteractionResult UpdatePlayerInteraction(GameContext& context, InputHandler& input)
     {
         context.playerCollisionSlot = context.FindPlayerCollision();
-        if (context.playerCollisionSlot == 0 || !input.IsInteractionKeyPressed())
+        if (context.playerCollisionSlot == 0)
         {
             return { InteractionStatus::NoEffect };
         }
-        return HandlePlayerObjectInteraction(context.worldObjects[context.playerCollisionSlot], context);
+        auto& object = context.worldObjects[context.playerCollisionSlot];
+        if (object.collisionType == CollisionType::Door)
+        {
+            // Player contact keeps a door open even without an interaction-key press.
+            object.spriteScale = static_cast<std::uint16_t>((object.spriteScale & 0xff00u) | 1u);
+        }
+        if (!input.IsKeyPressed(InputKey::InteractionKey)) { return { InteractionStatus::NoEffect }; }
+        return HandlePlayerObjectInteraction(object, context);
     }
 }

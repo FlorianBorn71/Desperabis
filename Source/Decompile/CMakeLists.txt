@@ -9,9 +9,16 @@ endif()
 
 add_library(behavior-recovery STATIC
     Scaffold/GameEnums.h
+    Scaffold/GameContext.h
+    Scaffold/GameContext.cpp
+    Scaffold/ApplicationFlow.h
+    Scaffold/ApplicationFlow.cpp
     Scaffold/BehaviorDispatch.cpp
     Scaffold/CollisionMap.cpp
     Scaffold/Heightfield.cpp
+    Scaffold/Lighting.cpp
+    Scaffold/Door.cpp
+    Scaffold/UserMessages.cpp
     Scaffold/GameMath.cpp
     Scaffold/Sound.cpp
     Scaffold/BehaviorHandlers.cpp
@@ -28,6 +35,9 @@ include(CTest)
 if(BUILD_TESTING)
     add_executable(behavior-recovery-tests Scaffold/Tests.cpp)
     target_link_libraries(behavior-recovery-tests PRIVATE behavior-recovery)
+    add_executable(application-flow-tests Scaffold/ApplicationFlowTests.cpp)
+    target_link_libraries(application-flow-tests PRIVATE behavior-recovery)
+    add_test(NAME application-flow COMMAND application-flow-tests)
     add_test(NAME behavior-recovery-routes COMMAND behavior-recovery-tests
         "${CMAKE_CURRENT_SOURCE_DIR}/../../Game/Original/DESPERAB.EXE"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original/SAMP/S_TAB.PRB")
@@ -41,9 +51,11 @@ foreach(target behavior-recovery desperabis-recovery)
     endif()
 endforeach()
 if(BUILD_TESTING)
-    if(MSVC)
-        target_compile_options(behavior-recovery-tests PRIVATE /W4 /WX)
-    else()
-        target_compile_options(behavior-recovery-tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
-    endif()
+    foreach(target behavior-recovery-tests application-flow-tests)
+        if(MSVC)
+            target_compile_options(${target} PRIVATE /W4 /WX)
+        else()
+            target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Werror)
+        endif()
+    endforeach()
 endif()

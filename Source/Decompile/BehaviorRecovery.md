@@ -4,6 +4,58 @@ The first compilable C++ target is a **selector/recovery scaffold**, not a
 playable port or an implementation of object movement. Its purpose is to give
 each recovered case an editable, named home without hiding missing behavior.
 
+## Game context and application flow
+
+[GameContext.h](Scaffold/GameContext.h) now owns the `GameContext` class,
+formerly the `GameState` struct embedded in the dispatch header. Existing
+context-owned operations remain member functions: sound, random numbers,
+collision/height queries, object allocation, and prompts. Their domain-specific
+implementations remain in their existing source files; the allocators are in
+[GameContext.cpp](Scaffold/GameContext.cpp). Public gameplay state remains
+directly accessible. There is no compatibility alias for the old type name.
+The gameplay free-function and behavior-handler APIs still receive
+`GameContext&`; converting all of them to members is deliberately out of scope.
+
+[ApplicationFlow.h](Scaffold/ApplicationFlow.h) defines `MenuPage`, retaining
+the original application-state numbers, and `MainMenuAction`. The recovered
+outer state machine lives separately in
+[ApplicationFlow.cpp](Scaffold/ApplicationFlow.cpp), implemented as
+`GameContext` member functions:
+
+- `RunApplication()` dispatches modal pages until Quit; `RunApplicationStep()`
+  performs one page invocation for host-driven execution.
+- `SelectMainMenuAction()` routes to chapter selection, load/save, settings,
+  configuration, resumed gameplay, or Quit. It returns false for a disabled
+  choice without changing pages. Resume/save use `hasActiveGame` together with
+  the original shared suppression gate. Escape retains its distinct native gate.
+- `OpenInventory()` represents the gated gameplay-to-F2 transition.
+- `StartNewGame(chapter)` invokes `InitializeNewGame(chapter)` before marking
+  the game active and selecting gameplay. The original selector calls
+  `0000:0D30(1, chapter)`; cancellation returns to the main menu without loading.
+  See [chapter-selection evidence](ui-chapter-evidence.txt).
+
+Page bodies are protected virtual member functions, so future implementations
+operate on their own context rather than receiving another context reference.
+Ordinary pages return their next `MenuPage`; the main menu returns an action,
+and chapter selection returns an optional chapter number. Settings/load/save
+and inventory outcomes are supplied by their page bodies, not guessed by the
+outer dispatcher. Unknown presentation bodies have an explicit shared hook;
+verified forced outer transitions are still applied after those bodies return.
+
+**This is an executable skeleton, not playable UI.** Default page hooks,
+the complete gameplay frame loop, and new-game loading throw descriptive
+`std::logic_error` exceptions. No page silently succeeds, loads resources,
+or substitutes a partial object update for a gameplay loop.
+`InitializeNewGame` is responsible for the unrecovered complete initialization,
+including level resources and gameplay-mode flags. Chapter availability belongs
+to the chapter selector. The existing console remains a behavior probe; it does
+not call the unimplemented application loop.
+
+[ApplicationFlowTests.cpp](Scaffold/ApplicationFlowTests.cpp) exercises all
+65,536 state words against the recovered routing table, menu availability,
+chapter acceptance/cancellation/failure, inventory entry, and a complete scripted
+main-menu/submenu/new-game/gameplay/inventory/quit sequence.
+
 ## Existing object knowledge
 
 The author identifies the renderer's behavior/collision values as original
@@ -41,7 +93,7 @@ Renderer-only `VisibilityFilter` flags remain in the renderer.
 
 ### Fixed-layout RawGameObject
 
-[BehaviorDispatch.h](Scaffold/BehaviorDispatch.h) defines `RawGameObject` as
+[GameContext.h](Scaffold/GameContext.h) defines `RawGameObject` as
 the canonical 54-byte struct with explicit members matching the author's Excel
 table and renderer property accessors. Dispatch and every handler receive
 `RawGameObject&` directly; there is no wrapper, field snapshot, or `ReadFields`
@@ -58,16 +110,19 @@ are mutable. All members default to zero. The struct is standard-layout and
 trivially copyable, so binary I/O reads the original 54 bytes directly into it.
 The original little-endian layout is required; configuration rejects
 big-endian hosts.
-Unknown fields retain hexadecimal offset names, and byte 48's word is named
-`candidate_tileAssignment` because its meaning remains an author hypothesis.
+Unknown fields retain hexadecimal offset names. The former packed
+`field_04` is split into byte `renderPlacementMode` at offset 4 and byte
+`soundEffectId` at offset 5. The former `candidate_tileAssignment` word at
+offset 48 is now signed `renderSortKey`: its render-list sorting role is
+confirmed, rather than a literal tile index.
 Signedness follows existing accessors where known; otherwise an unsigned raw
 word is only storage, not a claim about the original Pascal type.
 
-`ReadBytes()`, `ReadSignedWords()`, and `ReadUnsignedWords()` remain available
-for binary inspection/tests, returning copies of the representation. Checked
-`ReadWord`/`ReadSignedWord`/`WriteWord` helpers allow address-based investigation
-of overloaded fields. None is needed to access known named members in gameplay
-code. The former union and field-copy indirection have been removed.
+`RawGameObject` is plain data with no raw-access methods. Gameplay uses named
+members directly; binary I/O reads/writes the trivially copyable 54-byte struct.
+Tests keep byte/word snapshots local to the test file for layout and mutation
+checks. The former union, raw-access API, and field-copy indirection have
+been removed.
 
 Comparison with the renderer clarified byte 2 as the second model **frame**
 (`GetModelFrame2`), while `GetModelAnim2` reuses byte 1. `winX/Y/Z` match
@@ -88,7 +143,8 @@ behavior uses every field this way.
 | `01` | byte | Animation number, accessor subtracts 1 |
 | `02` | byte | `modelFrame2`: second model frame, accessor subtracts 1; table's "Anim2?" |
 | `03` | byte | Model frame, accessor subtracts 1 |
-| `04..05` | 2 bytes | Not named by common accessors |
+| `04` | byte | `renderPlacementMode`: common placement/culling selector; individual mode meanings remain provisional |
+| `05` | byte | `soundEffectId`: configured sound-effect ID, not a sample reference or volume |
 | `06` | byte | Collision type |
 | `07` | byte | Collision eligibility mask: an overlap candidate needs at least one bit in common with the source |
 | `08..09` | word | Original dispatch discriminator; renderer accessor reads only byte `08` |
@@ -102,10 +158,21 @@ behavior uses every field this way.
 | `2A` | signed word | Animation blend/transparency parameter |
 | `2C` | word / bytes | Group index or behavior-dependent parameter |
 | `2E` | word | Key lock / group bitmask / behavior-dependent parameter |
-| `30..31` | word | `candidate_tileAssignment`: remembered per-frame tile assignment, unverified |
+| `30..31` | signed word | `renderSortKey`: overwritten by original render-list postprocessing and used for signed descending sort |
 | `32` | byte | `field_32`: nonzero enables generic inventory pickup and participates in player collision selection |
 | `33` | byte | Display type |
 | `34` | unsigned word | Scale, accessor divides by `64 * 256` |
+
+Byte `04` configures assignment/visibility; it is not general-purpose object
+scratch. Word `30h` is render-owned scratch, not free behavior storage:
+`0000:511D` overwrites it after case dispatch, and the list inserter at
+`0000:100B` orders objects by signed comparisons of this word. Object links
+are stored separately in DS:`D3DD + slot`, not in a second field of the
+54-byte object. A tile-corner cache record holds the list head at offset
+`17h`. These render-list operations are documented but remain outside the
+gameplay-only update implementation. See
+[render-list findings](Findings.md#render-owned-object-values-and-tile-list-links)
+and [object-render-list-evidence.txt](object-render-list-evidence.txt).
 
 The original loop processes only objects with **signed health > 0**. The
 renderer accessor's `Isvalid()` tests `!= 0`; these predicates differ for
@@ -150,7 +217,8 @@ case BehaviorType::BatIndoor:
     return Function_BatIndoor(object, context);
 ```
 
-Pillar, IdleAnimation, SmokeFading, Switch1, SwitchGrouped, and WaterDrop return `ExecutedCase`. The other
+Pillar, LightSource, Door, Flies, IdleAnimation, SmokeFading, Switch1,
+SwitchGrouped, WaterDrop, and DisabledSentinel return `ExecutedCase`. The other
 handlers return `UnimplementedHandler` without moving objects or writing
 globals. Every handler returns its enum identity, for example:
 
@@ -166,7 +234,7 @@ The full comparison spine has **186 non-sentinel cases plus `FFFF`**:
 - **Behavior 300**, absent from the renderer enum, has a case at `0000:5108`
   that calls `10AC:29F5`.
 - **`FFFF`** has a distinct path at `0000:1156`, not an ordinary byte behavior.
-  Its original path clears health; the scaffold does not implement that write.
+  Its path clears health; this write is now implemented.
 - The renderer enum's `None`, `Behavior_201`, and
   `CrystalBallTableInCutScene` have no specialized case in this cascade.
   They still reach shared postprocessing in the original.
@@ -227,22 +295,157 @@ once, not independently inside each handler.
 
 The scaffold models the existing DS:`04CD` behavior-enable gate as an explicit
 context input. It does not reconstruct all preconditions/global state.
-Shared preprocessing, burning/display handling, postprocessing, slot iteration,
-general input, rendering, and hardware audio mixing remain unimplemented.
+The shared gameplay prefix and slot iteration are implemented by `UpdateObject`
+and `UpdateObjects` below. Render-list postprocessing, player movement,
+platform input polling, rendering, and hardware audio mixing remain unimplemented.
 Sound-effect selection, its shared random-seed update, and backend dispatch
 are implemented below. There is no
 integration into the renderer yet.
 
+### Shared object updates and allocation
+
+`UpdateObjects(context)` processes original slots **2..164** sequentially,
+in place, returning 163 `DispatchResult` values in slot order. Slot 1 is the
+player; slots 0 and 165 are excluded. Later slots observe changes from earlier
+handlers, including any future spawns. `UpdateObject(object, context)` exposes
+the same recovered gameplay prefix for one object. The console now uses this
+loop. `DispatchObjectCase` remains the lower-level, isolated case API, so it
+does not apply the shared prefix a second time.
+
+Native order, from `0000:1094`:
+
+1. Skip objects whose signed health is <= 0 at entry.
+2. For display values **50..120 inclusive**, request effect 62 (`Burning`),
+   at distance scale 3, shared source 451, concurrency limit 2.
+   Subtract `Random(frameTickCount + 1)` from the display value; a result
+   below 50 becomes `VectorBrightness2` (22).
+3. When `objectCollisionsEnabled` (DS:`D500`) is true and health is < 1000,
+   approach zero by `tickCount`, without overshooting.
+4. Respect `behaviorDispatchEnabled` (DS:`04CD`), then execute the case.
+   **Do not recheck health here:** an object expiring in step 3 still gets its
+   last behavior update. A handler can set health back to 1000.
+
+`frameTickCount` is the separate DS:`D4CA` snapshot used by burning;
+`tickCount` is the object routine's argument. Hosts normally set both to the
+frame's pending ticks, as the console does with `--ticks`. Keeping them
+distinct preserves the native helper's actual source. `GameContext::Random`
+shares the existing Turbo Pascal seed/update with sound variant selection.
+
+There is **no unconditional position/velocity or angular-speed integration**
+in this prefix or the shared suffix. Motion remains in the individual
+behaviors/helpers: moving WaterDrop or SmokeFading again here would double
+their movement. The suffix at `5110` works on distance/scene-list assignment,
+not a universal physics update; it is not implemented in the renderer-free
+library. The original loop's reset of player-movement flag DS:`D4FF` is also
+outside the current player-controller implementation.
+
+Two context methods reproduce the allocators, including their side effects:
+
+| API | Native address | Selection |
+| --- | --- | --- |
+| `FindFreeObjectIndex()` | `1E48:2049` | First slot 2..164 whose health is exactly zero; otherwise 165 |
+| `FindFreeOrLowestHealthObjectIndex()` | `1E48:2085` | First zero-health slot; if none, first strict minimum health below 1000; otherwise 165 |
+
+**Both clear all 54 bytes of the selected record before returning.** Neither
+marks it occupied; the caller must initialize it immediately. Negative health
+is not free for the first allocator, but participates in the second allocator's
+signed minimum. Equal minima keep the first slot. Slot 165 is a native scratch
+fallback, not an exception, null result, or additional updated world object.
+An exhausted allocation can therefore overwrite an earlier scratch result.
+
+Evidence: [object-update-evidence.txt](object-update-evidence.txt). Tests cover
+all signed health words at representative ticks and both countdown gates,
+expiry ordering, unchanged positions/angles, allocation bounds/clearing,
+burning bounds and audio admission, and all seven independent input actions.
+
+### Gameplay lighting cache
+
+`GameContext::lightingCache` owns a **21x21 signed-word contribution grid**.
+It represents only the dynamic-light word at offset `10h` in the original
+24-byte corner records, not their projection or render-list fields.
+[Lighting.cpp](Scaffold/Lighting.cpp) implements the gameplay portion of
+`10AC:0000`: source X/Z are rounded using wrapped `coordinate + 50`, divided
+by 100 with the native signed-byte quotient limits, then made relative to
+the center's truncated tile coordinates. Contributions add with signed-word
+wrapping, including negative values; no brightness clamp is invented.
+
+```cpp
+context.lightingCache.Reset(playerX, playerZ);
+context.soundListenerX = playerX;
+context.soundListenerZ = playerZ;
+UpdateObjects(context); // LightSource objects contribute automatically.
+// Optional additional contributions during the same frame:
+context.lightingCache.AddAtWorldXZ(lightX, lightZ, contribution);
+const auto value = context.lightingCache.contributions[10][10];
+```
+
+Storage is `[relativeX + 10][relativeZ + 10]`, with **positive world Z** in
+the second index (not the reversed row order of the level planes).
+`Reset` clears every contribution and captures the frame's center. Its
+optional radius models DS:`3117` and defaults to 10; only 0..10 fits the
+native cache. `AddAtWorldXZ` returns false when culled by that radius,
+otherwise true. Invalid radii and signed-byte division overflow throw before
+changing the cache, rather than allowing DOS-style out-of-bounds writes.
+
+Reset **once per frame before collecting lights**, not per object. It is an
+explicit frame operation, just as the native cache clear is outside
+`0000:1094`; `UpdateObject`, `UpdateObjects`, and direct case dispatch do not
+clear it. This lets multiple update passes contribute to the same frame.
+Moving the center requires another reset, since stored indices are relative.
+
+`LightSource` (`0000:1488`) now populates this cache during ordinary
+object updates and isolated case dispatch. It preserves the native order:
+
+1. If the signed, wrapped Manhattan listener distance is in **0..300**,
+   add `Random(0xEFFF)` to `GameContext::field_DC34` with word wrapping.
+2. Add **`Random(30) + 5`** to the object's nearest X/Z cache corner.
+3. Draw `Random(100)` even when the light was outside the cache window.
+   If `tickCount` is strictly greater, play `soundEffectId` at object byte 5
+   as the sound-effect ID, using attenuated object volume, the object's
+   world slot, and instance limit **2**. Effect byte zero means no sound.
+
+The same shared distance calculation is exposed by `GetSoundDistanceAt`;
+DS:`D4FA` suppression forces distance 10000 for both the near-light test and
+sound attenuation, but does not disable lighting. The object's own 54-byte
+record is unchanged by its light case.
+
+The legacy-named `field_DC34` preserves the observed accumulation.
+A subsequent trace found that the timer passes it to the RNG and stores
+the result in DS:`DC36`; a shade-selection helper adds that unsigned word
+before discarding a fixed-point fraction. This supports **shade dithering**,
+not a large thunder flash. The timer and shading consumer are not ported.
+The original clears DS:`DC34` each frame (`0000:E345` / `E6EB`), but
+`LightingCache::Reset` does not clear this separate context field; frame
+integration must reset it separately. See
+[the follow-up findings](Findings.md#light-noise-versus-a-lightning-flash)
+and [lighting-shade-evidence.txt](lighting-shade-evidence.txt).
+
+Static brightness remains packed in `Level::surfaceFlags`. No textures,
+interpolation, projection-field updates, rendering, or renderer integration
+are included. Other light-emitting behavior cases remain unrecovered.
+
+Evidence and full DOS record details:
+[lighting findings](Findings.md#static-brightness-and-dynamic-tile-corner-lighting)
+and [lighting-evidence.txt](lighting-evidence.txt). Tests cover all 65,536
+source-coordinate words on both axes against independent arithmetic,
+negative/edge centers, active-window culling, full-grid indexing, clearing,
+accumulation/wraparound, validation, and context isolation. LightSource tests
+add all 65,536 low-word seeds at near/far distances and both strict sound
+threshold outcomes, configured sample selection and source limits, signed
+distance/suppression boundaries, unchanged object records, multi-light
+world-loop accumulation, culled-light RNG, dispatch gates, and successive
+frames with explicit resets.
+
 ### First implemented case: Pillar
 
 [Function_Pillar](Scaffold/BehaviorHandlers.cpp) reads the original signed
-X/Z words and calls `GameState::SetCollisionMapPixelAtWorldXZ(x, z, value)`
+X/Z words and calls `GameContext::SetCollisionMapPixelAtWorldXZ(x, z, value)`
 with `CollisionMapValue_BlockingWall` (`0x38`).
 [CollisionMap.cpp](Scaffold/CollisionMap.cpp) implements the helper at
 module-relative `10AC:387B`, retaining the three word-shaped arguments,
 signed divisions, 16-bit wrapping, header-derived stride, and low-byte store.
 
-Supply `GameState::collisionMap` with a `CollisionMap*` directly.
+Supply `GameContext::collisionMap` with a `CollisionMap*` directly.
 The struct contains both header words and inline byte data, not a data pointer
 or a field-copy view. Missing map state throws.
 The original has no coordinate bounds check, so the helper does not clamp
@@ -275,7 +478,7 @@ levels, geometry, and real object population will follow later.
 Evidence: [switch-evidence.txt](switch-evidence.txt). `Switch1` and
 `SwitchGrouped` per-frame handlers are implemented in
 [BehaviorHandlers.cpp](Scaffold/BehaviorHandlers.cpp), with shared group masks
-in `GameState`. Activation is separate from per-frame behavior and remains
+in `GameContext`. Activation is separate from per-frame behavior and remains
 unimplemented, as do the other switch variants below.
 
 **Ordinary switch (`Switch1`, 50, `0000:1FDD`):** its per-frame case is
@@ -334,7 +537,7 @@ audio/UI helpers are not.
 **Shared state is five bytes, not one mask.** Initialization at `0000:048E`
 and `1E48:211C` fills exactly five bytes starting at DS:`EC70` with `FFh`.
 The called byte-fill helper at `2CE4:1B8C` is included in the evidence.
-The corresponding `GameState` member is:
+The corresponding `GameContext` member is:
 
 ```cpp
 std::uint8_t switchGroupMasks[5] = { 0xff, 0xff, 0xff, 0xff, 0xff };
@@ -357,9 +560,19 @@ shared object collection to scan slots 2..140. Its target selection is known,
 but its callee `10AC:10F5` handles many collision/interaction types and effects;
 only selected paths have been traced. No object collection or success-shaped
 partial activation helper has been added solely to accommodate that future
-code. Full door behavior, game-window input polling, and general target
-interaction remain unimplemented. Explicit grouped-switch interaction and
+code. Ordinary doors are now implemented below; game-window input polling and
+general target interaction remain unimplemented. Explicit grouped-switch interaction and
 timer arming/rearming are implemented separately from per-frame dispatch.
+
+**Unlocking subsequently traced:** `10AC:3DCE` checks movement state and the
+signed lock word, searches all fourteen inventory slots for a live Key with
+matching `itemValue`, consumes the first match by zeroing its health, clears
+the object's lock, and calls `10AC:10F5(slot, 0)`. Negative locks refuse key
+unlocking; zero locks activate without a key. The complete routine and its
+failure/hand-slot details are documented in
+[door-unlocking findings](Findings.md#door-unlocking-and-inventory-keys) and
+[door-unlock-evidence.txt](door-unlock-evidence.txt). This closes the
+key-matching/consumption uncertainty; ordinary-door unlocking is now implemented.
 
 Tests cover every 16-bit phase, rate, and countdown/return-speed value at
 representative ticks, latch low-byte semantics, signed timer guards, masked
@@ -367,8 +580,7 @@ byte writes, object-field isolation, multiple switches sharing a group,
 immediate restoration on expiry, independent contexts, invalid indices, and
 health/dispatch gates. Console output shows phase, raw rate/timer words, and
 the selected group mask, offers explicit grouped-switch interaction through
-`--interact`, and reports ordinary switch targets/door interaction as
-unimplemented.
+`--interact`, and reports ordinary switch target dispatch as unimplemented.
 
 **Other variants:** `RopeSwitch` (52) generates a periodic phase through
 `1E48:0051`, with a special object-slot comparison against DS:`DC60`;
@@ -449,10 +661,14 @@ automatic player-contact cascade remains unimplemented.
 ### Per-update player interaction
 
 [PlayerInteraction.cpp](Scaffold/PlayerInteraction.cpp) implements
-`GameState::FindCollidingObject`, `GameState::FindPlayerCollision`, and the
-host frame hook `UpdatePlayerInteraction(GameState&, InputHandler&)`.
-The input interface has a virtual `IsInteractionKeyPressed()` and a virtual
-destructor. A renderer/platform implementation supplies the actual input.
+`GameContext::FindCollidingObject`, `GameContext::FindPlayerCollision`, and the
+host frame hook `UpdatePlayerInteraction(GameContext&, InputHandler&)`.
+The input interface has virtual `IsKeyPressed(InputKey)` and a virtual
+destructor. Its actions are `ForwardKey`, `BackwardKey`, `StrafeLeftKey`,
+`StrafeRightKey`, `TurnLeftKey`, `TurnRightKey`, and `InteractionKey`.
+A renderer/platform implementation supplies the actual bindings and input;
+no movement simulation is triggered just by querying a key. Unconfirmed
+jump/crouch actions are not guessed into the movement implementation.
 
 Populate `context.worldObjects[1]` with the player and slots 2..164 with the
 original world records. Slot 0 is reserved. The fixed array has 166 records
@@ -468,7 +684,7 @@ const auto result = UpdatePlayerInteraction(context, input);
 ```
 
 It recomputes `playerCollisionSlot` (original DS:`DC60`), then calls
-`IsInteractionKeyPressed()` only if a target was selected. A true result
+`IsKeyPressed(InputKey::InteractionKey)` only if a target was selected. A true result
 invokes `HandlePlayerObjectInteraction` on that world record. No target or
 no input returns `NoEffect`; the handler's other statuses, including inventory
 full and unsupported interactions, propagate unchanged. Consumed objects are
@@ -482,9 +698,10 @@ enable flag. It preserves strict axis boundaries, wrapped signed-word
 coordinate differences/radius sums, and the original signed ABS overflow.
 
 This is not a lift of all of `0000:D060` or a complete game loop: player
-movement, automatic contact responses, world-object behavior scheduling,
-and UI/audio remain separate work. In particular, contact alone still does
-not execute the original door marker/damage/teleporter cases.
+movement and automatic damage/teleporter responses remain separate work.
+The ordinary door contact branch is implemented: the selected door's occupancy
+byte is set even without interaction input. World-object updates and recovered
+audio requests are available separately; drawing remains outside this port.
 
 The console supports `--object target54.bin --player player54.bin --interact`
 to exercise the full implemented path. Omit `--interact` to test selection
@@ -504,7 +721,7 @@ The renderer/game input layer should call it on an interaction request.
 The console's `--interact` option models one ENTER request instead of a
 per-frame behavior update.
 
-The relevant state is owned directly by `GameState`:
+The relevant state is owned directly by `GameContext`:
 
 | Original DS address | Host member | Evidence / meaning |
 | --- | --- | --- |
@@ -569,11 +786,11 @@ identify indices 20 and 23. Their values are retained without speculative
 resource names.
 
 The gameplay branches for books, purchasing, rope wheels, vases/mirrors,
-level exits, teleporters, sarcophagi, ordinary switches, doors, picture maps,
+level exits, teleporters, sarcophagi, ordinary switches, picture maps,
 and lorries explicitly return `UnimplementedHandler` without mutating the
 object or inventory. Other collision values follow the original generic
-pickup tail. UI text, preview refresh timing, audio, inventory-item use,
-key unlocking, and platform keyboard polling are not implemented. Input
+pickup tail. Door prompts and sound requests are implemented; message rendering,
+preview refresh timing, inventory-item use, and platform keyboard polling are not. Input
 interface polling and collision-driven interaction are implemented by the
 frame hook above. The local snapshot
 does not reproduce the original UI's possibly older preview copy.
@@ -587,6 +804,150 @@ Release tests cover original capacities/defaults, all word values for
 gold/poison/medicine arithmetic, all 32 ammo indices, duplicate weapons,
 inventory exhaustion, exact copies/conversions, explicit-input separation,
 and grouped-switch activation through automatic return.
+
+### Ordinary doors and key unlocking
+
+`Function_Door` implements the wrapper at `0000:14FF` and helper at
+`10AC:3F56`. Activation is the ordinary Door branch of `10AC:10F5`, not a
+partial stand-in for that general dispatcher. See
+[switch/door evidence](switch-evidence.txt),
+[unlock evidence](door-unlock-evidence.txt), and
+[door integration and message evidence](door-message-evidence.txt).
+
+Door-specific uses of shared object fields:
+
+| Member | Ordinary-door meaning |
+| --- | --- |
+| `blendWeightOrSpriteOpacity` | Opening progress, normally 0..100 |
+| `field_26` | Signed motion rate; opening +3, closing -3, stopped 0 |
+| `field_24` | Configured automatic-close delay; signed positive enables it |
+| `itemValue` | Remaining close-delay ticks |
+| `spriteScale` low byte | Previous contact/overlap slot; high byte is preserved |
+| `velocityY` | Saved collision-map value restored when fully open, not movement |
+| `groupIndexOrLock` | Shared switch-group index 0..4 |
+| `doorLockOrGroupBitmask` | Signed key lock |
+
+The handler first sets the collision radius to 54 for health exactly 1000,
+otherwise 10. A zero group mask requests activation. Positive locks block
+group activation; negative locks do not. Activation starts opening below
+progress 100, hides the object when `modelFrame2` is zero, requests its
+configured sound, and refreshes the timer. No common activation-prefix
+health reset applies to ordinary doors.
+
+Positive timers decrement without clamping. Recorded occupancy while progress
+is positive refreshes the delay and reverses to +3. An expired timer at
+progress 100 starts closing at -3. Movement uses low-word multiplication and
+addition followed by signed comparisons. Overshoot above 100 clamps; exactly
+zero configured delay additionally disables the behavior and object collision.
+Landing exactly on 100 does not disable it. Negative progress clamps to zero
+and requests `SoundEffect::DoorClosed` (8). Both endpoints stop motion.
+Opening/closing uses the configured sound with source limit 1; the closed
+effect uses limit 2. Configured sound zero is silent.
+
+The native dedicated writer stamps nine bytes: three consecutive columns on
+each of three rows. The starting column is `wrap16(x - 137) / 25`; each row
+is `wrap16(162 - wrap16(z - 38) / 25 + offset)`, with offset -1..1.
+The stride and destination offsets wrap as unsigned words. A fully open door
+writes the low byte of `velocityY`; all other progress writes `0x38`.
+This is not equivalent to shifting the point writer near signed-division
+boundaries. Wrapped header access is preserved, including changes to the next
+row's stride; each row is allocation-checked before writing. Invalid host
+addresses and missing map memory throw explicitly.
+
+The final object-overlap query excludes player slot 1 and stores the selected
+slot in the occupancy low byte. `UpdatePlayerInteraction` supplies the separate
+player-touch marker before polling the interaction key. The host must schedule
+that contact hook before door updates when it wants same-frame reopening.
+
+Manual interaction requires health exactly 1000 and zero motion rate. A
+positive lock searches all fourteen inventory records for the first live
+matching Key; success zeros only its health, clears the lock, and activates.
+Negative locks and no-key cases store `"abgeschlossen"` for 60 ticks only if
+no prompt is active. A wrong key overwrites any prompt for 90 ticks with the
+original German wrong-key text, encoded as UTF-8. A selected key ID of zero
+takes the no-key path. Nonstandard-health doors retain the original generic
+pickup tail if explicitly flagged pickable.
+
+The consumed-hand helper `1E48:CAFE` queues the held-item overlay index in both
+drawing buffers' redraw lists, stored as short strings of index bytes; it does
+not clear additional inventory/world records. That rendering housekeeping is
+omitted. See the [UI architecture](HighLevelStructure.md#per-buffer-redraw-lists).
+Specialized doors, general target activation, and the full player controller
+are still outside the implemented scope.
+
+Tests cover all 65,536 progress words at representative rates/ticks, extreme
+word arithmetic, delay signs, one-shot endpoints, group locks, occupancy,
+wrapped collision footprints, sound source limits, all fourteen key slots,
+feedback gating, and exact inventory-byte preservation. The console provides
+a valid opening-door fixture with `--behavior Door --ticks 3`.
+
+### Gameplay user messages
+
+`GameContext::PromptUserMessage(text, duration)` is the gameplay counterpart of
+`1E48:2459`: it owns the text and replaces the current prompt without drawing.
+`userMessage` holds at most 150 UTF-8 bytes, shortened at a character boundary;
+the original stored at most 150 DOS-encoded bytes. Empty input clears the text
+and lifetime. `userMessageTicks` receives signed-word absolute duration,
+including the original -32768 overflow edge case.
+
+`UpdateUserMessage(ticks)` follows the countdown part of `1E48:3F2A`: only a
+positive lifetime decrements, without clamping or clearing expired text.
+The host treats positive ticks as active. `UpdateObjects` calls it once after
+all object updates using `frameTickCount`; standalone object dispatch does
+not advance it. Hosts using their own scheduling should call it once per
+frame instead, not once per object or additionally to `UpdateObjects`.
+Negative update ticks are invalid.
+
+Negative prompt durations originally selected alternate screen placement.
+Their magnitude remains supported, but the screen-layout globals, calculated
+pixel position, and text drawing are deliberately left to the host.
+All duration words, overwrite/expiry rules, independent contexts, UTF-8
+truncation, and once-per-frame timing are tested.
+
+### Flies: randomized frame blending and buzzing
+
+`Function_Flies` implements behavior 16, wrapper `0000:1690`, and the complete
+helper `10AC:C9EC..CAEB` in
+[behavior-candidates-evidence.txt](behavior-candidates-evidence.txt).
+It uses existing object fields, context RNG, and positional audio; it introduces
+no additional mutable state or rendering code.
+
+Each update, in original order:
+
+1. Display type `VectorBrightness2` (22, the post-burning state) sets health
+   to zero. The handler still finishes this update; subsequent dispatch skips
+   the inactive object.
+2. Draw `Random(5)` once. Add
+   `(signed itemValue + randomValue) * tickCount` to the signed blend phase,
+   retaining the low word before any comparisons.
+3. Set `winX = (old winX + 5) & 511`, `winY = (new winX + 3) & 511`, and
+   `winZ = (new winX + 7) & 511`. These are per-call changes, not tick-scaled
+   angular velocity.
+4. While the signed blend phase is **greater than 100**, subtract 100,
+   copy `modelFrame2` to `animFrame`, and choose `Random(3) + 1` until the
+   new `modelFrame2` differs from that previous frame. Large phase values
+   can cross several times. Exactly 100 stays unchanged; negative phases
+   are not clamped or normalized.
+5. Request fixed effect **74**, `SoundEffect::Flies`, with the object's world
+   slot and source-instance limit **1**. Attenuation uses twice the wrapped
+   listener distance, not twice the computed volume. The object's configured
+   `soundEffectId` is not read by this behavior.
+
+There is no X/Y/Z translation. Zero-tick updates still draw the rate RNG,
+change angles, process any preexisting phase crossings, and request sound.
+Frame rejection and sound-variant draws share the context seed, so preserving
+their order matters even when audio is muted, inaudible, or channel-limited.
+As with other sound-producing handlers, standalone objects work without an
+audio backend; a configured backend requires a source in `worldObjects`.
+
+Tests compare complete object bytes and RNG state across all low-word seeds,
+all phase/rate/X-angle words, representative extreme ticks, valid and unusual
+starting frames, and every display byte. They also cover attenuation overflow
+and suppression, unavailable/muted audio, sample selection, the one-instance
+source limit, burning-prefix integration, and inactive/disabled dispatch.
+The console reports blend phase, previous/current frames, and angles for
+`--behavior Flies --ticks 3`; supplying the sound table enables sample logging
+through the existing console audio backend.
 
 ### IdleAnimation: object-local blend phase
 
@@ -706,6 +1067,8 @@ provide reusable translations with the original explicit argument order:
 | `10AC:384E` | `AddFixedPoint8(whole, fraction, increment)` | First two arguments by far reference, then one word; `RETF 10` |
 | `1E48:0A6C` | `GetStepToward(current, target, step)` | Three words; returns a delta in AX; `RETF 6` |
 | `1E48:0A25` | `SignWord(value)` | One signed word; returns -1/0/1 in AX; `RETF 2` |
+| `1E48:0051` | `Sine(angle)` | One angle word; returns signed dword in DX:AX; `RETF 2` |
+| `1E48:0078` | `Cosine(angle)` | One angle word; returns signed dword in DX:AX; `RETF 2` |
 
 References become C++ `int16_t&`; word arguments remain 16-bit. The fixed-point
 helper uses eight fraction bits and signed high-byte carry. The step helper
@@ -722,6 +1085,42 @@ word at representative tick counts with varied fraction, health, scale, and
 growth values against a separate word/byte oracle. Shared-helper tests cover
 every signed word, several target/step boundaries, and aliased fixed-point
 arguments. These are host tests, not DOS runtime validation.
+
+#### Rotation tables
+
+The same math files expose two immutable `std::array<int32_t,513>` values:
+
+- `SineTable`: original DS:`1B00`, amplitude 65536.
+- `ClampedSineTable`: original DS:`2304`, amplitude 67000, clamped to
+  -65536..65536 after integer rounding.
+
+Each includes the original extra endpoint at index 512. Rotation is
+512 units per turn. The original shared helpers `Sine(angle)` and
+`Cosine(angle)` use **ClampedSineTable**, with indices `angle&511` and
+`(angle+128)&511`. Use `SineTable` directly when the unboosted version is
+needed; do not assume the two sets of coefficients are interchangeable.
+
+```cpp
+const auto ordinary = SineTable[static_cast<std::uint16_t>(angle) & 511u];
+const auto gameplay = Sine(angle);
+const auto perpendicular = Cosine(angle);
+```
+
+The original generates both tables at startup using its stored angular
+constant and x87 round-to-nearest conversion. The port stores verified
+integer quarter-turn values and expands them at compile time, avoiding
+host rounding-mode or math-library dependencies. A native verification
+program ported the original finite-input x87 sine path and compared all
+513 entries of both tables before freezing them. Fingerprint regressions,
+an independent formula check, cardinal directions, plateau boundaries,
+and all word-angle lookups are covered by the portable test executable.
+No extra game context or dynamic table allocation is needed.
+
+See [rotation findings](Findings.md#rotation-lookup-tables-and-fixed-point-arithmetic),
+[initialization/lookup evidence](rotation-evidence.txt), and
+[runtime sine/rounding evidence](rotation-runtime-evidence.txt) for exact
+constants, validation boundaries, and addresses. The clock-pendulum
+behavior itself remains an unimplemented candidate.
 
 ### Level heights and WaterDrop
 
@@ -763,7 +1162,7 @@ Host integration:
 ```cpp
 auto level = CreateDummyLevel();
 level.LoadGeometry(bytes.data(), bytes.size());
-GameState context;
+GameContext context;
 context.level = &level;
 context.collisionMap = level.collisionMap.get();
 auto floorY = context.GetFloorHeight(object.posX, object.posY, object.posZ);
@@ -917,7 +1316,7 @@ variant = high16(RandSeed) modulo count
 
 The low multiplier word at `CS:178F` is `8405h`; the helper's shifts/additions
 provide the other multiplier terms. This implementation uses
-`GameState::randomSeed` (DS:`04C2`), not a separate sound-only generator.
+`GameContext::randomSeed` (DS:`04C2`), not a separate sound-only generator.
 Default seed is zero; timer-based `Randomize`/game startup seeding is not
 ported. Nonempty effects consume a random draw before volume, mute, or
 channel rejection. Without a backend and without a loaded catalog, requests

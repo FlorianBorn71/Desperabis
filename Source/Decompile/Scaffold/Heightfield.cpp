@@ -1,4 +1,4 @@
-#include "BehaviorDispatch.h"
+#include "GameContext.h"
 #include "GameMath.h"
 
 #include <algorithm>
@@ -107,7 +107,7 @@ namespace Desperabis
         std::memcpy(surfaceFlags, data + 4 + 5 * planeSize, planeSize);
     }
 
-    std::int16_t GameState::GetFloorHeight(std::int16_t x, std::int16_t y, std::int16_t z)
+    std::int16_t GameContext::GetFloorHeight(std::int16_t x, std::int16_t y, std::int16_t z)
     {
         if (!level) { throw std::runtime_error("GetFloorHeight requires level geometry."); }
         const auto position = GetHeightPosition(x, z);
@@ -154,7 +154,7 @@ namespace Desperabis
         return WrapSignedWord(-2 * static_cast<std::int32_t>(InterpolateHeight(corners, position)));
     }
 
-    std::int16_t GameState::GetRoomHeight(std::int16_t x, std::int16_t z) const
+    std::int16_t GameContext::GetRoomHeight(std::int16_t x, std::int16_t z) const
     {
         if (!level) { throw std::runtime_error("GetRoomHeight requires level geometry."); }
         const auto position = GetHeightPosition(x, z);

@@ -1,4 +1,4 @@
-#include "BehaviorDispatch.h"
+#include "GameContext.h"
 #include "GameMath.h"
 
 #include <algorithm>
@@ -15,7 +15,15 @@ namespace Desperabis
         }
     }
 
-    void GameState::LoadSoundEffects(const std::uint8_t* data, std::size_t size)
+    std::uint16_t GameContext::Random(std::uint16_t range)
+    {
+        if (range == 0) { throw std::invalid_argument("Random requires a nonzero range."); }
+        // 2CE4:170A uses the high seed word modulo the range, not multiply-high scaling.
+        randomSeed = randomSeed * 0x08088405u + 1u;
+        return static_cast<std::uint16_t>((randomSeed >> 16) % range);
+    }
+
+    void GameContext::LoadSoundEffects(const std::uint8_t* data, std::size_t size)
     {
         if (!data || size != SoundEffectTableSize)
         {
@@ -36,18 +44,23 @@ namespace Desperabis
         soundEffectsLoaded = true;
     }
 
-    std::uint8_t GameState::GetSoundVolumeAt(
-        std::int16_t x, std::int16_t z, std::int16_t distanceScale) const
+    std::int16_t GameContext::GetSoundDistanceAt(std::int16_t x, std::int16_t z) const
     {
-        const auto distance = positionalSoundsSuppressed ? static_cast<std::int16_t>(10000) :
+        return positionalSoundsSuppressed ? static_cast<std::int16_t>(10000) :
             WrapSignedWord(AbsoluteWord(WrapSignedWord(soundListenerX - x)) +
                 AbsoluteWord(WrapSignedWord(soundListenerZ - z)));
+    }
+
+    std::uint8_t GameContext::GetSoundVolumeAt(
+        std::int16_t x, std::int16_t z, std::int16_t distanceScale) const
+    {
+        const auto distance = GetSoundDistanceAt(x, z);
         const auto scaled = WrapSignedWord(static_cast<std::int32_t>(distance) * distanceScale);
         const auto magnitude = static_cast<std::uint16_t>(AbsoluteWord(scaled));
         return static_cast<std::uint8_t>(std::clamp(355 - static_cast<int>(magnitude >> 1), 0, 255));
     }
 
-    SoundPlaybackStatus GameState::PlaySoundEffect(
+    SoundPlaybackStatus GameContext::PlaySoundEffect(
         SoundEffect effect, std::uint8_t volume, std::int16_t sourceId, std::int16_t instanceLimit)
     {
         const auto effectId = static_cast<std::uint16_t>(effect);
@@ -66,9 +79,7 @@ namespace Desperabis
         {
             throw std::invalid_argument("Sound-effect sample count exceeds its four-reference record.");
         }
-        // 2CE4:170A uses the high seed word modulo the range, not multiply-high scaling.
-        randomSeed = randomSeed * 0x08088405u + 1u;
-        const auto sample = definition.samples[(randomSeed >> 16) % definition.sampleCount];
+        const auto sample = definition.samples[Random(definition.sampleCount)];
         if (!audioHandler) { return SoundPlaybackStatus::AudioUnavailable; }
         if (sample == 0 || sample > audioHandler->GetSampleCount()) { return SoundPlaybackStatus::NoSample; }
         if (volume == 0) { return SoundPlaybackStatus::Inaudible; }
@@ -97,7 +108,7 @@ namespace Desperabis
         return SoundPlaybackStatus::Started;
     }
 
-    SoundPlaybackStatus GameState::PlaySoundEffect(
+    SoundPlaybackStatus GameContext::PlaySoundEffect(
         SoundEffect effect, std::uint8_t volume, const RawGameObject& source, std::int16_t instanceLimit)
     {
         for (std::size_t slot = 0; slot < worldObjects.size(); ++slot)
@@ -108,6 +119,6 @@ namespace Desperabis
             }
         }
         if (!audioHandler) { return PlaySoundEffect(effect, volume, 0, instanceLimit); }
-        throw std::invalid_argument("Object sound sources must belong to GameState::worldObjects.");
+        throw std::invalid_argument("Object sound sources must belong to GameContext::worldObjects.");
     }
 }

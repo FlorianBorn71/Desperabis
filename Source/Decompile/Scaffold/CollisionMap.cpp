@@ -1,4 +1,4 @@
-#include "BehaviorDispatch.h"
+#include "GameContext.h"
 #include "GameMath.h"
 
 #include <new>
@@ -27,7 +27,7 @@ namespace Desperabis
         return level;
     }
 
-    std::uint8_t GameState::GetCollisionMapPixelAtWorldXZ(std::int16_t x, std::int16_t z) const
+    std::uint8_t GameContext::GetCollisionMapPixelAtWorldXZ(std::int16_t x, std::int16_t z) const
     {
         if (!collisionMap)
         {
@@ -51,7 +51,7 @@ namespace Desperabis
         return bytes[address];
     }
 
-    void GameState::SetCollisionMapPixelAtWorldXZ(
+    void GameContext::SetCollisionMapPixelAtWorldXZ(
         std::int16_t x, std::int16_t z, std::uint16_t value)
     {
         if (!collisionMap)
@@ -78,6 +78,36 @@ namespace Desperabis
             // Normalize the far pointer to offset zero; wrapped writes can still hit the header.
             auto* bytes = reinterpret_cast<unsigned char*>(&map);
             bytes[address] = static_cast<std::uint8_t>(value);
+        }
+    }
+
+    void GameContext::SetDoorCollisionMapAtWorldXZ(
+        std::int16_t x, std::int16_t z, std::uint16_t value)
+    {
+        if (!collisionMap)
+        {
+            throw std::runtime_error("Door collision updates require collision-map memory.");
+        }
+        auto& map = *collisionMap;
+        auto* bytes = reinterpret_cast<unsigned char*>(&map);
+        const int column = WrapSignedWord(static_cast<std::int32_t>(x) - 137) / 25;
+        const int centerRow = 162 - WrapSignedWord(static_cast<std::int32_t>(z) - 38) / 25;
+        for (int offset = -1; offset <= 1; ++offset)
+        {
+            // A wrapped write can touch the header, changing the stride for the next row.
+            const auto stride = static_cast<std::uint16_t>(map.widthMinusOne + 1u);
+            const auto row = WrapSignedWord(centerRow + offset);
+            std::array<std::uint16_t, 3> addresses{};
+            for (int pixel = 0; pixel < 3; ++pixel)
+            {
+                addresses[pixel] = static_cast<std::uint16_t>(
+                    offsetof(CollisionMap, data) + row * stride + column + pixel);
+                if (addresses[pixel] >= sizeof(CollisionMap))
+                {
+                    throw std::out_of_range("Door collision write is outside the allocated map.");
+                }
+            }
+            for (const auto address : addresses) { bytes[address] = static_cast<std::uint8_t>(value); }
         }
     }
 }

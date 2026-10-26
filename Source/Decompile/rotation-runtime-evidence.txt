@@ -1,0 +1,199 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 2CE4:0A1B:00F9
+2CE4:0A1B  B1 00                    MOV CL,0x0
+2CE4:0A1D  EB 06                    JMP 0x3000:d865 ; logical module target 2CE4:0A25
+2CE4:0A1F  B1 02                    MOV CL,0x2
+2CE4:0A21  EB 02                    JMP 0x3000:d865 ; logical module target 2CE4:0A25
+2CE4:0A23  B1 04                    MOV CL,0x4
+2CE4:0A25  9B                       WAIT
+2CE4:0A26  D9 E5                    FXAM
+2CE4:0A28  55                       PUSH BP
+2CE4:0A29  8B EC                    MOV BP,SP
+2CE4:0A2B  8D 66 FE                 LEA SP,[BP + -0x2]
+2CE4:0A2E  9B DD 7E FE              FSTSW word ptr [BP + -0x2]
+2CE4:0A32  9B                       WAIT
+2CE4:0A33  8A 66 FF                 MOV AH,byte ptr [BP + -0x1]
+2CE4:0A36  9E                       SAHF
+2CE4:0A37  72 0F                    JC 0x3000:d888 ; logical module target 2CE4:0A48
+2CE4:0A39  75 2E                    JNZ 0x3000:d8a9 ; logical module target 2CE4:0A69
+2CE4:0A3B  80 F9 02                 CMP CL,0x2
+2CE4:0A3E  75 06                    JNZ 0x3000:d886 ; logical module target 2CE4:0A46
+2CE4:0A40  9B                       WAIT
+2CE4:0A41  DD D8                    FSTP ST0
+2CE4:0A43  9B                       WAIT
+2CE4:0A44  D9 E8                    FLD1
+2CE4:0A46  EB 1E                    JMP 0x3000:d8a6 ; logical module target 2CE4:0A66
+2CE4:0A48  74 0E                    JZ 0x3000:d898 ; logical module target 2CE4:0A58
+2CE4:0A4A  7B 0C                    JNP 0x3000:d898 ; logical module target 2CE4:0A58
+2CE4:0A4C  9B                       WAIT
+2CE4:0A4D  DD D8                    FSTP ST0
+2CE4:0A4F  9B                       WAIT
+2CE4:0A50  2E D9 06 FD 09           FLD float ptr CS:[0x9fd]
+2CE4:0A55  9B                       WAIT
+2CE4:0A56  D9 E4                    FTST
+2CE4:0A58  EB 0C                    JMP 0x3000:d8a6 ; logical module target 2CE4:0A66
+2CE4:0A5A  9B                       WAIT
+2CE4:0A5B  DE D9                    FCOMPP
+2CE4:0A5D  9B                       WAIT
+2CE4:0A5E  2E D9 06 FD 09           FLD float ptr CS:[0x9fd]
+2CE4:0A63  9B                       WAIT
+2CE4:0A64  D9 E4                    FTST
+2CE4:0A66  E9 A7 00                 JMP 0x3000:d950 ; logical module target 2CE4:0B10
+2CE4:0A69  9B                       WAIT
+2CE4:0A6A  D9 E1                    FABS
+2CE4:0A6C  9B                       WAIT
+2CE4:0A6D  2E DB 2E E9 09           FLD extended double ptr CS:[0x9e9]
+2CE4:0A72  9B                       WAIT
+2CE4:0A73  D9 C9                    FXCH
+2CE4:0A75  9B                       WAIT
+2CE4:0A76  D9 F8                    FPREM
+2CE4:0A78  B5 02                    MOV CH,0x2
+2CE4:0A7A  22 EC                    AND CH,AH
+2CE4:0A7C  D0 ED                    SHR CH,0x1
+2CE4:0A7E  9B DD 7E FE              FSTSW word ptr [BP + -0x2]
+2CE4:0A82  9B                       WAIT
+2CE4:0A83  8A 66 FF                 MOV AH,byte ptr [BP + -0x1]
+2CE4:0A86  9E                       SAHF
+2CE4:0A87  7A D1                    JP 0x3000:d89a ; logical module target 2CE4:0A5A
+2CE4:0A89  B0 03                    MOV AL,0x3
+2CE4:0A8B  22 C4                    AND AL,AH
+2CE4:0A8D  D0 E4                    SHL AH,0x1
+2CE4:0A8F  D0 E4                    SHL AH,0x1
+2CE4:0A91  D0 D0                    RCL AL,0x1
+2CE4:0A93  04 FC                    ADD AL,0xfc
+2CE4:0A95  D0 D0                    RCL AL,0x1
+2CE4:0A97  80 F9 02                 CMP CL,0x2
+2CE4:0A9A  75 04                    JNZ 0x3000:d8e0 ; logical module target 2CE4:0AA0
+2CE4:0A9C  02 C1                    ADD AL,CL
+2CE4:0A9E  B5 00                    MOV CH,0x0
+2CE4:0AA0  24 07                    AND AL,0x7
+2CE4:0AA2  A8 01                    TEST AL,0x1
+2CE4:0AA4  74 05                    JZ 0x3000:d8eb ; logical module target 2CE4:0AAB
+2CE4:0AA6  9B                       WAIT
+2CE4:0AA7  DE E9                    FSUBP
+2CE4:0AA9  EB 03                    JMP 0x3000:d8ee ; logical module target 2CE4:0AAE
+2CE4:0AAB  9B                       WAIT
+2CE4:0AAC  DD D9                    FSTP ST1
+2CE4:0AAE  9B                       WAIT
+2CE4:0AAF  D9 F2                    FPTAN
+2CE4:0AB1  80 F9 04                 CMP CL,0x4
+2CE4:0AB4  74 29                    JZ 0x3000:d91f ; logical module target 2CE4:0ADF
+2CE4:0AB6  A8 03                    TEST AL,0x3
+2CE4:0AB8  7A 03                    JP 0x3000:d8fd ; logical module target 2CE4:0ABD
+2CE4:0ABA  9B                       WAIT
+2CE4:0ABB  D9 C9                    FXCH
+2CE4:0ABD  9B                       WAIT
+2CE4:0ABE  D9 C1                    FLD ST1
+2CE4:0AC0  9B                       WAIT
+2CE4:0AC1  D8 C8                    FMUL ST0
+2CE4:0AC3  9B                       WAIT
+2CE4:0AC4  D9 C9                    FXCH
+2CE4:0AC6  9B                       WAIT
+2CE4:0AC7  D8 C8                    FMUL ST0
+2CE4:0AC9  9B                       WAIT
+2CE4:0ACA  DE C1                    FADDP
+2CE4:0ACC  9B                       WAIT
+2CE4:0ACD  D9 FA                    FSQRT
+2CE4:0ACF  D0 E8                    SHR AL,0x1
+2CE4:0AD1  D0 E8                    SHR AL,0x1
+2CE4:0AD3  32 C5                    XOR AL,CH
+2CE4:0AD5  74 03                    JZ 0x3000:d91a ; logical module target 2CE4:0ADA
+2CE4:0AD7  9B                       WAIT
+2CE4:0AD8  D9 E0                    FCHS
+2CE4:0ADA  9B                       WAIT
+2CE4:0ADB  DE F9                    FDIVP
+2CE4:0ADD  EB 31                    JMP 0x3000:d950 ; logical module target 2CE4:0B10
+2CE4:0ADF  8A E0                    MOV AH,AL
+2CE4:0AE1  D0 EC                    SHR AH,0x1
+2CE4:0AE3  80 E4 01                 AND AH,0x1
+2CE4:0AE6  32 E5                    XOR AH,CH
+2CE4:0AE8  74 03                    JZ 0x3000:d92d ; logical module target 2CE4:0AED
+2CE4:0AEA  9B                       WAIT
+2CE4:0AEB  D9 E0                    FCHS
+2CE4:0AED  A8 03                    TEST AL,0x3
+2CE4:0AEF  7A 1C                    JP 0x3000:d94d ; logical module target 2CE4:0B0D
+2CE4:0AF1  9B                       WAIT
+2CE4:0AF2  D9 C9                    FXCH
+2CE4:0AF4  9B                       WAIT
+2CE4:0AF5  D9 E4                    FTST
+2CE4:0AF7  9B DD 7E FE              FSTSW word ptr [BP + -0x2]
+2CE4:0AFB  9B                       WAIT
+2CE4:0AFC  F6 46 FF 40              TEST byte ptr [BP + -0x1],0x40
+2CE4:0B00  74 0B                    JZ 0x3000:d94d ; logical module target 2CE4:0B0D
+2CE4:0B02  9B                       WAIT
+2CE4:0B03  DE D9                    FCOMPP
+2CE4:0B05  9B                       WAIT
+2CE4:0B06  2E D9 06 17 0A           FLD float ptr CS:[0xa17]
+2CE4:0B0B  EB 03                    JMP 0x3000:d950 ; logical module target 2CE4:0B10
+2CE4:0B0D  9B                       WAIT
+2CE4:0B0E  DE F9                    FDIVP
+2CE4:0B10  8B E5                    MOV SP,BP
+2CE4:0B12  5D                       POP BP
+2CE4:0B13  C3                       RET
+
+Range 2CE4:0D53:0022
+2CE4:0D53  FB                       STI
+2CE4:0D54  FC                       CLD
+2CE4:0D55  50                       PUSH AX
+2CE4:0D56  56                       PUSH SI
+2CE4:0D57  06                       PUSH ES
+2CE4:0D58  55                       PUSH BP
+2CE4:0D59  8B EC                    MOV BP,SP
+2CE4:0D5B  C4 76 08                 LES SI,[BP + 0x8]
+2CE4:0D5E  26 AD                    LODSW ES:SI
+2CE4:0D60  89 76 08                 MOV word ptr [BP + 0x8],SI
+2CE4:0D63  3C DC                    CMP AL,0xdc
+2CE4:0D65  72 09                    JC 0x3000:dbb0 ; logical module target 2CE4:0D70
+2CE4:0D67  8B F0                    MOV SI,AX
+2CE4:0D69  98                       CBW
+2CE4:0D6A  96                       XCHG AX,SI
+2CE4:0D6B  2E FF 94 53 0D           CALL word ptr CS:[SI + 0xd53]
+2CE4:0D70  5D                       POP BP
+2CE4:0D71  07                       POP ES
+2CE4:0D72  5E                       POP SI
+2CE4:0D73  58                       POP AX
+2CE4:0D74  CF                       IRET
+
+Range 2CE4:147E:003C
+2CE4:147E  BA 30 13                 MOV DX,0x1330
+2CE4:1481  B0 00                    MOV AL,0x0
+2CE4:1483  75 2D                    JNZ 0x3000:e2f2 ; logical module target 2CE4:14B2
+2CE4:1485  54                       PUSH SP
+2CE4:1486  58                       POP AX
+2CE4:1487  3B C4                    CMP AX,SP
+2CE4:1489  B0 01                    MOV AL,0x1
+2CE4:148B  75 25                    JNZ 0x3000:e2f2 ; logical module target 2CE4:14B2
+2CE4:148D  9B DB E3                 FINIT
+2CE4:1490  9B                       WAIT
+2CE4:1491  D9 E8                    FLD1
+2CE4:1493  9B                       WAIT
+2CE4:1494  D9 EE                    FLDZ
+2CE4:1496  9B                       WAIT
+2CE4:1497  DE F9                    FDIVP
+2CE4:1499  9B                       WAIT
+2CE4:149A  D9 C0                    FLD ST0
+2CE4:149C  9B                       WAIT
+2CE4:149D  D9 E0                    FCHS
+2CE4:149F  9B                       WAIT
+2CE4:14A0  DE D9                    FCOMPP
+2CE4:14A2  9B DD 3F                 FSTSW word ptr [BX]
+2CE4:14A5  9B                       WAIT
+2CE4:14A6  8B 07                    MOV AX,word ptr [BX]
+2CE4:14A8  9E                       SAHF
+2CE4:14A9  B0 02                    MOV AL,0x2
+2CE4:14AB  74 05                    JZ 0x3000:e2f2 ; logical module target 2CE4:14B2
+2CE4:14AD  BA 32 13                 MOV DX,0x1332
+2CE4:14B0  B0 03                    MOV AL,0x3
+2CE4:14B2  A2 C7 04                 MOV [0x4c7],AL
+2CE4:14B5  89 16 4C F9              MOV word ptr [0xf94c],DX
+2CE4:14B9  C3                       RET
+
+Range 2CE4:14DD:0009
+2CE4:14DD  CD 37                    INT 0x37
+2CE4:14DF  E3 CD                    JCXZ 0x3000:e2ee ; logical module target 2CE4:14AE
+2CE4:14E1  35 2E 4C                 XOR AX,0x4c2e
+2CE4:14E4  F9                       STC
+2CE4:14E5  CB                       RETF

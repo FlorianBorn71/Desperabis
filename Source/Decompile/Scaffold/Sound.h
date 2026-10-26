@@ -8,7 +8,10 @@ namespace Desperabis
 {
     enum class SoundEffect : std::uint16_t
     {
-        Drop = 5
+        Drop = 5,
+        DoorClosed = 8,
+        Burning = 62,
+        Flies = 74
     };
 
     struct SoundEffectDefinition

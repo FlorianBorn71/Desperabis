@@ -7,7 +7,7 @@ namespace Desperabis
 {
     namespace
     {
-        std::size_t WeaponAmountIndex(std::int16_t value, const GameState& state)
+        std::size_t WeaponAmountIndex(std::int16_t value, const GameContext& state)
         {
             if (value < 0 || static_cast<std::size_t>(value) >= state.weaponAmounts.size())
             {
@@ -17,7 +17,7 @@ namespace Desperabis
         }
 
         InteractionResult StoreInventoryObject(
-            const RawGameObject& item, RawGameObject& object, GameState& state)
+            const RawGameObject& item, RawGameObject& object, GameContext& state)
         {
             if (object.field_32 == 0)
             {
@@ -39,9 +39,9 @@ namespace Desperabis
 
             auto& stored = state.inventory[index];
             stored = item;
-            if ((stored.field_04 & 0xff) == 20)
+            if (stored.renderPlacementMode == 20)
             {
-                stored.field_04 = static_cast<std::uint16_t>((stored.field_04 & 0xff00) | 1);
+                stored.renderPlacementMode = 1;
                 stored.doorLockOrGroupBitmask = static_cast<std::int16_t>(stored.spriteScale >> 8);
             }
 
@@ -66,7 +66,7 @@ namespace Desperabis
         }
     }
 
-    InteractionResult HandlePlayerObjectInteraction(RawGameObject& object, GameState& state)
+    InteractionResult HandlePlayerObjectInteraction(RawGameObject& object, GameContext& state)
     {
         if (object.health <= 0)
         {
@@ -168,9 +168,9 @@ namespace Desperabis
                     object.field_26 = 10;
                 }
                 object.field_24 = static_cast<std::uint16_t>(object.itemValue);
-                if ((object.field_04 & 0xff00) == 0)
+                if (object.soundEffectId == 0)
                 {
-                    object.field_04 |= 0x0200;
+                    object.soundEffectId = 2;
                 }
                 activated = true;
             }
@@ -190,6 +190,10 @@ namespace Desperabis
             object.velocityX = WrapSignedWord(object.velocityX + WrapSignedWord(object.field_24));
             return { InteractionStatus::Applied };
 
+        case CollisionType::Door:
+            if (object.health == 1000) { return HandleDoorInteraction(object, state); }
+            break;
+
         case CollisionType::BookWithCode:
         case CollisionType::BuyItem:
         case CollisionType::WheelToLiftRope:
@@ -199,7 +203,6 @@ namespace Desperabis
         case CollisionType::Teleporter:
         case CollisionType::SarcophagusWithBones:
         case CollisionType::Switch:
-        case CollisionType::Door:
         case CollisionType::PictureMap:
         case CollisionType::Lorry:
             return { InteractionStatus::UnimplementedHandler };
