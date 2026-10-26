@@ -283,7 +283,15 @@ investigation. Evidence: [player movement](player-movement-evidence.txt),
 **Author's additional movement context:** forced crouch may be associated with
 being underwater; teleporting and walking on collider objects such as bridges
 also affect movement. These are recovery leads, not yet verified mappings to
-the individual globals/branches. Movement implementation remains deferred.
+the individual globals/branches. A basic normal-keyboard horizontal subset has
+subsequently been implemented for host-driven `Tick`; see the
+[controller contract and TODOs](BehaviorRecovery.md#basic-horizontal-player-controller).
+The normal subset now includes per-frame gravity and interpolated terrain support,
+using standing height 45 (`E8E4`) and the exact center/view offset
+`objectY = viewY - radiusY - 2` (`E1FD..E206`). The camera getter returns view/eye
+position for loaded worlds; hosts must not add another eye offset. Falling speed
+is kept separately from the host-supplied view vector. Steep-slope corrections,
+ceilings, object-supported floors and special vertical states remain deferred.
 The input abstraction now exposes the seven confirmed actions through virtual
 `IsKeyPressed(InputKey)`, without tying them to physical keys.
 

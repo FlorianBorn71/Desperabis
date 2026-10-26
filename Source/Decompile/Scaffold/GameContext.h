@@ -2,6 +2,7 @@
 
 #include "ApplicationFlow.h"
 #include "GameEnums.h"
+#include "GameRuntime.h"
 #include "Sound.h"
 
 #include <array>
@@ -94,6 +95,10 @@ namespace Desperabis
 
     static_assert(std::is_trivially_copyable_v<RawGameObject>);
 
+    // Copy only the native payload, never a renderer wrapper or an aliased struct.
+    RawGameObject DecodeGameObject(const std::uint8_t* bytes, std::size_t size);
+    void EncodeGameObject(const RawGameObject& object, std::uint8_t* bytes, std::size_t size);
+
     inline constexpr std::uint16_t CollisionMapValue_BlockingWall = 0x38;
 
     struct CollisionMap
@@ -137,6 +142,17 @@ namespace Desperabis
 
     Level CreateDummyLevel();
 
+    struct LevelLoadData
+    {
+        std::unique_ptr<Level> level;
+        // Native indexing: reserved 0, player 1, ordinary objects 2..164, fallback 165.
+        std::array<RawGameObject, 166> objects{};
+        std::int16_t floorRepeatHeight = 0;
+        // Fresh level: GameContext creates slot 1 from this eye position/view direction.
+        // Omit to preserve the supplied slot-1 record (e.g. a save or recovery fixture).
+        std::optional<PlayerCamera> playerSpawn;
+    };
+
     struct LightingCache
     {
         static constexpr std::size_t Size = 21;
@@ -174,7 +190,29 @@ namespace Desperabis
     class GameContext
     {
     public:
+        GameContext();
         virtual ~GameContext();
+        GameContext(const GameContext&) = delete;
+        GameContext& operator=(const GameContext&) = delete;
+        GameContext(GameContext&&) noexcept;
+        GameContext& operator=(GameContext&&) noexcept;
+
+        // Host-driven API. All calls, including load completion, must run on the game thread.
+        LevelLoadRequest StartLevel(std::int16_t levelNumber);
+        void CompleteLevelLoad(std::uint64_t requestId, LevelLoadData data);
+        void FailLevelLoad(std::uint64_t requestId, std::string_view error);
+        GameRuntimeState GetRuntimeState() const;
+        std::optional<LevelLoadRequest> GetPendingLevelLoad() const;
+        std::optional<std::int16_t> GetLoadedLevelNumber() const;
+        const std::string& GetLevelLoadError() const;
+        void SetPaused(bool paused);
+        bool IsPaused() const;
+        GameTickResult Tick(GameTickTiming timing, InputHandler& input);
+        const std::array<RawGameObject, 166>& GetWorldObjects() const;
+        const Level* GetLevel() const;
+        const LightingCache& GetLightingCache() const;
+        // Eye-position snapshot, including while paused/loading; check loaded-level availability separately.
+        PlayerCamera GetPlayerCamera() const;
 
         MenuPage GetMenuPage() const;
         void SetMenuPage(MenuPage page);
@@ -188,6 +226,8 @@ namespace Desperabis
         void StartNewGame(std::int16_t chapter);
 
         bool hasActiveGame = false; // Original resume/save availability flag, separate from page selection.
+        // Partial normal keyboard/terrain controller, not the complete native player simulation.
+        bool basicPlayerMovementEnabled = true;
         std::int16_t tickCount = 1;
         bool behaviorDispatchEnabled = true;
         CollisionMap* collisionMap = nullptr;
@@ -286,6 +326,8 @@ namespace Desperabis
             std::int16_t z, std::int16_t radiusXZ, std::int16_t riseFactor, std::uint8_t placement);
 
     protected:
+        // May complete synchronously or start host-side async work. Default reports an explicit error.
+        virtual void LoadLevel(const LevelLoadRequest& request);
         // Each modal page owns its input/drawing loop and returns its next application page.
         virtual MainMenuAction ShowMainMenu();
         virtual std::optional<std::int16_t> ShowChapterSelection();
@@ -300,6 +342,21 @@ namespace Desperabis
         virtual void InitializeNewGame(std::int16_t chapter);
 
     private:
+        static RawGameObject InitializeLevelPlayer(const PlayerCamera& spawn);
+        BasicPlayerMovementResult UpdateBasicPlayerMovement(InputHandler& input);
+        std::int16_t playerForwardSpeed = 0;
+        std::int16_t playerSidewaysSpeed = 0;
+        std::int16_t playerTurnSpeed = 0;
+        std::int16_t playerVerticalSpeed = 0;
+        std::int16_t playerHeading = 0;
+        std::int16_t playerTargetHeading = 0;
         MenuPage menuPage = MenuPage::MainMenu;
+        GameRuntimeState runtimeState = GameRuntimeState::NoLevel;
+        std::uint64_t nextLoadRequestId = 0;
+        std::optional<LevelLoadRequest> pendingLevelLoad;
+        std::optional<std::int16_t> loadedLevelNumber;
+        std::string levelLoadError;
+        std::unique_ptr<Level> ownedLevel;
+        bool paused = false;
     };
 }

@@ -1,10 +1,14 @@
 #include "GameContext.h"
+#include "BehaviorDispatch.h"
 #include "GameMath.h"
 
 #include <algorithm>
 #include <cstring>
+#include <limits>
+#include <iterator>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace Desperabis
 {
@@ -110,7 +114,282 @@ namespace Desperabis
         }
     }
 
+    GameContext::GameContext() = default;
     GameContext::~GameContext() = default;
+    GameContext::GameContext(GameContext&&) noexcept = default;
+    GameContext& GameContext::operator=(GameContext&&) noexcept = default;
+
+    RawGameObject DecodeGameObject(const std::uint8_t* bytes, std::size_t size)
+    {
+        if (bytes == nullptr || size != sizeof(RawGameObject))
+        {
+            throw std::invalid_argument("An object payload must contain exactly 54 bytes.");
+        }
+        RawGameObject object;
+        std::memcpy(&object, bytes, sizeof(object));
+        return object;
+    }
+
+    void EncodeGameObject(const RawGameObject& object, std::uint8_t* bytes, std::size_t size)
+    {
+        if (bytes == nullptr || size != sizeof(RawGameObject))
+        {
+            throw std::invalid_argument("An object payload must contain exactly 54 bytes.");
+        }
+        std::memcpy(bytes, &object, sizeof(object));
+    }
+
+    LevelLoadRequest GameContext::StartLevel(std::int16_t levelNumber)
+    {
+        if (levelNumber <= 0) { throw std::invalid_argument("Level numbers must be positive."); }
+        if (pendingLevelLoad) { throw std::logic_error("A level load is already in progress."); }
+        if (nextLoadRequestId == std::numeric_limits<std::uint64_t>::max())
+        {
+            throw std::overflow_error("Level load request IDs are exhausted.");
+        }
+        const LevelLoadRequest request{ ++nextLoadRequestId, levelNumber };
+        pendingLevelLoad = request;
+        levelLoadError.clear();
+        runtimeState = GameRuntimeState::Loading;
+        try
+        {
+            LoadLevel(request);
+        }
+        catch (const std::exception& error)
+        {
+            if (pendingLevelLoad && pendingLevelLoad->id == request.id)
+            {
+                FailLevelLoad(request.id, error.what());
+            }
+            throw;
+        }
+        return request;
+    }
+
+    RawGameObject GameContext::InitializeLevelPlayer(const PlayerCamera& spawn)
+    {
+        RawGameObject player;
+        player.health = 1000;
+        // Save-derived normal shape, not yet a traced EXE initialization routine; see BehaviorRecovery.md.
+        player.field_07 = 3;
+        player.collisionRadiusXZ = 15;
+        player.collisionRadiusY = 23;
+        player.posX = spawn.position[0];
+        player.posY = WrapSignedWord(spawn.position[1] - player.collisionRadiusY - 2);
+        player.posZ = spawn.position[2];
+        player.velocityX = spawn.direction[0];
+        player.velocityY = spawn.direction[1];
+        player.velocityZ = spawn.direction[2];
+        return player;
+    }
+
+    void GameContext::CompleteLevelLoad(std::uint64_t requestId, LevelLoadData data)
+    {
+        if (!pendingLevelLoad || pendingLevelLoad->id != requestId)
+        {
+            throw std::logic_error("Level completion does not match the pending request.");
+        }
+        if (!data.level || !data.level->collisionMap)
+        {
+            throw std::invalid_argument("A loaded level requires owned geometry and a collision map.");
+        }
+        if (data.playerSpawn) { data.objects[1] = InitializeLevelPlayer(*data.playerSpawn); }
+        LightingCache newLighting;
+        newLighting.Reset(data.objects[1].posX, data.objects[1].posZ);
+
+        ownedLevel = std::move(data.level);
+        level = ownedLevel.get();
+        collisionMap = ownedLevel->collisionMap.get();
+        worldObjects = data.objects;
+        playerForwardSpeed = 0;
+        playerSidewaysSpeed = 0;
+        playerTurnSpeed = 0;
+        playerVerticalSpeed = 0;
+        // Host policy: seed normal heading from its supplied view vector; zero means face +Z.
+        // TODO: Load native DS:D4D0/DC4C and the working camera position from recovered level/save initialization.
+        playerHeading = worldObjects[1].velocityX == 0 && worldObjects[1].velocityZ == 0 ? 0 :
+            GetVectorAngle(worldObjects[1].velocityX, WrapSignedWord(-static_cast<int>(worldObjects[1].velocityZ)));
+        playerTargetHeading = playerHeading;
+        floorRepeatHeight = data.floorRepeatHeight;
+        floorSurfaceValue = -1;
+        playerCollisionSlot = 0;
+        std::fill(std::begin(switchGroupMasks), std::end(switchGroupMasks), std::uint8_t{ 0xff });
+        userMessage.clear();
+        userMessageTicks = 0;
+        soundListenerX = worldObjects[1].posX;
+        soundListenerZ = worldObjects[1].posZ;
+        lightingCache = newLighting;
+        field_DC34 = 0;
+        loadedLevelNumber = pendingLevelLoad->levelNumber;
+        pendingLevelLoad.reset();
+        levelLoadError.clear();
+        hasActiveGame = true;
+        runtimeState = GameRuntimeState::Ready;
+        menuPage = MenuPage::Gameplay;
+    }
+
+    void GameContext::FailLevelLoad(std::uint64_t requestId, std::string_view error)
+    {
+        if (!pendingLevelLoad || pendingLevelLoad->id != requestId)
+        {
+            throw std::logic_error("Level failure does not match the pending request.");
+        }
+        if (error.empty()) { throw std::invalid_argument("Level loading failures require an error message."); }
+        levelLoadError = error;
+        pendingLevelLoad.reset();
+        runtimeState = GameRuntimeState::LoadFailed;
+    }
+
+    GameRuntimeState GameContext::GetRuntimeState() const { return runtimeState; }
+    std::optional<LevelLoadRequest> GameContext::GetPendingLevelLoad() const { return pendingLevelLoad; }
+    std::optional<std::int16_t> GameContext::GetLoadedLevelNumber() const { return loadedLevelNumber; }
+    const std::string& GameContext::GetLevelLoadError() const { return levelLoadError; }
+    void GameContext::SetPaused(bool value) { paused = value; }
+    bool GameContext::IsPaused() const { return paused; }
+    const std::array<RawGameObject, 166>& GameContext::GetWorldObjects() const { return worldObjects; }
+    const Level* GameContext::GetLevel() const { return level; }
+    const LightingCache& GameContext::GetLightingCache() const { return lightingCache; }
+
+    PlayerCamera GameContext::GetPlayerCamera() const
+    {
+        const auto& player = worldObjects[1];
+        // E1F4..E210: object-center Y = working/view Y - vertical radius - 2.
+        const auto eyeY = loadedLevelNumber ?
+            WrapSignedWord(player.posY + player.collisionRadiusY + 2) : player.posY;
+        return { { player.posX, eyeY, player.posZ },
+            { player.velocityX, player.velocityY, player.velocityZ } };
+    }
+
+    BasicPlayerMovementResult GameContext::UpdateBasicPlayerMovement(InputHandler& input)
+    {
+        BasicPlayerMovementResult result;
+        auto& player = worldObjects[1];
+        if (frameTickCount == 0 || player.health <= 0) { return result; }
+
+        // Normal keyboard mode, C603..C679 and C74E..C774; sample once per host tick, not per substep.
+        if (input.IsKeyPressed(InputKey::TurnLeftKey)) { playerTurnSpeed = WrapSignedWord(playerTurnSpeed - 7); }
+        if (input.IsKeyPressed(InputKey::TurnRightKey)) { playerTurnSpeed = WrapSignedWord(playerTurnSpeed + 7); }
+        if (input.IsKeyPressed(InputKey::ForwardKey)) { playerForwardSpeed = WrapSignedWord(playerForwardSpeed + 4); }
+        if (input.IsKeyPressed(InputKey::BackwardKey)) { playerForwardSpeed = WrapSignedWord(playerForwardSpeed - 4); }
+        if (input.IsKeyPressed(InputKey::StrafeRightKey)) { playerSidewaysSpeed = WrapSignedWord(playerSidewaysSpeed + 4); }
+        if (input.IsKeyPressed(InputKey::StrafeLeftKey)) { playerSidewaysSpeed = WrapSignedWord(playerSidewaysSpeed - 4); }
+        playerForwardSpeed = WrapSignedWord(playerForwardSpeed - SignWord(playerForwardSpeed));
+        playerSidewaysSpeed = WrapSignedWord(playerSidewaysSpeed - SignWord(playerSidewaysSpeed));
+        playerTurnSpeed = WrapSignedWord(playerTurnSpeed - SignWord(playerTurnSpeed));
+
+        // TODO: Recover special speed limits, mouse/look controls, jumping, swimming and crouching.
+        // TODO: Recover room clearance, steep-slope correction, bridge support and bobbing.
+        for (int tick = 0; tick < frameTickCount; ++tick)
+        {
+            const auto limit = playerForwardSpeed != 0 && playerSidewaysSpeed != 0 ? 3 : 5;
+            playerForwardSpeed = static_cast<std::int16_t>(std::clamp<int>(playerForwardSpeed, -limit, limit));
+            playerSidewaysSpeed = static_cast<std::int16_t>(std::clamp<int>(playerSidewaysSpeed, -limit, limit));
+            playerTurnSpeed = static_cast<std::int16_t>(std::clamp<int>(playerTurnSpeed, -6, 6));
+            playerTargetHeading = static_cast<std::int16_t>((playerTargetHeading + playerTurnSpeed) & 511);
+            auto target = playerTargetHeading;
+            NormalizeAnglePair(target, playerHeading);
+            playerHeading = static_cast<std::int16_t>(
+                (playerHeading + GetStepToward(playerHeading, target, 6)) & 511);
+
+            std::int16_t directionX;
+            std::int16_t negativeDirectionZ;
+            GetDirectionDisplacement(directionX, negativeDirectionZ, playerHeading, 100);
+            const auto directionZ = WrapSignedWord(-static_cast<int>(negativeDirectionZ));
+            const auto deltaX = WrapSignedWord(directionX * playerForwardSpeed +
+                directionZ * playerSidewaysSpeed) / 100;
+            const auto deltaZ = WrapSignedWord(directionZ * playerForwardSpeed -
+                directionX * playerSidewaysSpeed) / 100;
+            auto x = WrapSignedWord(player.posX + deltaX);
+            auto z = WrapSignedWord(player.posZ + deltaZ);
+
+            bool resolved = !objectCollisionsEnabled;
+            if (objectCollisionsEnabled)
+            {
+                // DD97..DE08 uses step 5, mask 18h and repeated correction. Bound retries for the host.
+                // TODO: Recover DS:2DDC gating and native stuck recovery; center blocking must not cancel by symmetry.
+                for (int attempt = 0; attempt < 16; ++attempt)
+                {
+                    std::int16_t correctionX = 0;
+                    std::int16_t correctionZ = 0;
+                    std::uint16_t center = 0;
+                    QueryCollisionMapNeighborhood(x, z, 5, correctionX, correctionZ, center, 0x18);
+                    if (correctionX == 0 && correctionZ == 0)
+                    {
+                        resolved = center == 0;
+                        break;
+                    }
+                    x = WrapSignedWord(x + correctionX);
+                    z = WrapSignedWord(z + correctionZ);
+                    playerForwardSpeed = WrapSignedWord(playerForwardSpeed - SignWord(playerForwardSpeed));
+                }
+            }
+            if (resolved)
+            {
+                player.posX = x;
+                player.posZ = z;
+            }
+            else
+            {
+                ++result.blockedTicks;
+            }
+            // Normal gravity D6F6/D79D, standing height E8E4, terrain support D844..D8AE.
+            // Keep physical vertical speed separate from the host-supplied view-vector Y.
+            playerVerticalSpeed = WrapSignedWord(playerVerticalSpeed - 1);
+            auto eyeY = WrapSignedWord(player.posY + player.collisionRadiusY + 2 + playerVerticalSpeed);
+            const auto supportY = WrapSignedWord(
+                GetTerrainFloorHeight(player.posX, eyeY, player.posZ) + 45);
+            if (eyeY < supportY)
+            {
+                eyeY = supportY;
+                playerVerticalSpeed = 0;
+            }
+            player.posY = WrapSignedWord(eyeY - player.collisionRadiusY - 2);
+            player.velocityX = directionX;
+            player.velocityZ = directionZ;
+            ++result.simulatedTicks;
+        }
+        // TODO: Port automatic damage, teleports and other contact modes; interaction remains in Tick after movement.
+        return result;
+    }
+
+    GameTickResult GameContext::Tick(GameTickTiming timing, InputHandler& input)
+    {
+        if (timing.behaviorTicks < 0 || timing.frameTicks < 0)
+        {
+            throw std::invalid_argument("Game ticks require nonnegative behavior and frame counts.");
+        }
+        switch (runtimeState)
+        {
+        case GameRuntimeState::NoLevel: return { GameTickStatus::NoLevel, {}, {} };
+        case GameRuntimeState::Loading: return { GameTickStatus::Loading, {}, {} };
+        case GameRuntimeState::LoadFailed: return { GameTickStatus::LoadFailed, {}, {} };
+        case GameRuntimeState::Ready: break;
+        }
+        if (paused || menuPage != MenuPage::Gameplay)
+        {
+            return { GameTickStatus::Paused, {}, {} };
+        }
+        if (!ownedLevel || level != ownedLevel.get() || collisionMap != ownedLevel->collisionMap.get())
+        {
+            throw std::logic_error("Host-driven gameplay requires the installed owned level.");
+        }
+        tickCount = timing.behaviorTicks;
+        frameTickCount = timing.frameTicks;
+        std::optional<BasicPlayerMovementResult> movement;
+        if (basicPlayerMovementEnabled) { movement = UpdateBasicPlayerMovement(input); }
+        soundListenerX = worldObjects[1].posX;
+        soundListenerZ = worldObjects[1].posZ;
+        lightingCache.Reset(soundListenerX, soundListenerZ, lightingCache.activeRadius);
+        field_DC34 = 0;
+        const auto interaction = UpdatePlayerInteraction(*this, input);
+        const auto results = UpdateObjects(*this);
+        return { GameTickStatus::Advanced, interaction, results, movement };
+    }
+
+    void GameContext::LoadLevel(const LevelLoadRequest&)
+    {
+        throw std::logic_error("The host must implement level loading.");
+    }
 
     MenuPage GameContext::GetMenuPage() const
     {

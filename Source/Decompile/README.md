@@ -151,6 +151,13 @@ On the other machine:
 5. For further binary analysis, run `InstallTools.ps1` to obtain the pinned
    portable Ghidra/JDK installations, or configure equivalent tools explicitly.
 
+The generated solution keeps the gameplay library and recovery console at the
+top level. Test projects are grouped under `Tests`, and generated build helpers
+(such as `ALL_BUILD`, `ZERO_CHECK`, and `RUN_TESTS`) under `CMake`.
+Regenerate with `GenerateSolution.bat` to update an existing solution.
+Tests remain enabled and build normally; configure with `-DBUILD_TESTING=OFF`
+if you want to omit test projects entirely.
+
 The ignored `projects/`, `tools/`, `captures/`, and `build/` directories are
 not included in a checkout. At this stage the Ghidra project contains the
 initial import only; subsequent inspections were read-only. No recovered
@@ -184,6 +191,55 @@ layout, and source hash are documented in
 [High-level program structure](HighLevelStructure.md). Obtain that external
 source separately if you want to rebuild the bridge; a working emulator
 integration is not currently reproduced by this repository.
+
+### Host-driven renderer integration
+
+The renderer solution now contains the independent **Desperabis-GameCore** static
+library project at
+[Desperabis-GameCore.vcxproj](../Desperabis-GameCore/Desperabis-GameCore.vcxproj).
+It builds the same sources as the headless CMake library; it has no renderer,
+DirectX, OpenXR, or window-system dependency. Add a project reference and the
+`Decompile/Scaffold` include directory to a host project. With CMake, add this
+directory as a subdirectory and link `Desperabis::GameCore`. The existing
+`behavior-recovery` target remains available; the output library is named
+`Desperabis-GameCore`.
+
+Subclass `GameContext` and override only `LoadLevel(const LevelLoadRequest&)`
+to start loading host assets. Call `StartLevel(number)` to enter loading,
+then `CompleteLevelLoad(request.id, std::move(data))` with owned
+`LevelLoadData`, or `FailLevelLoad(request.id, message)` on failure.
+Use `Tick({behaviorTicks, frameTicks}, input)` from the host loop, inspect its
+results, and synchronize render instances from `GetWorldObjects()`.
+No modal UI override is required. See the
+[runtime integration contract](BehaviorRecovery.md#host-driven-runtime-integration)
+for lifetime, timing, pause, error, and object-copy details.
+
+`Tick` now includes a **basic normal walking controller**: forward/back,
+strafe, turn, normal acceleration/damping, collision-map correction, gravity
+and interpolated terrain support. It uses
+`frameTicks` for player substeps and updates the camera/listener before contacts
+and object behaviors. Set `basicPlayerMovementEnabled = false` if the host owns
+movement. `result.playerMovement` reports simulated and blocked substeps.
+The normal standing eye height is 45 native units above terrain.
+`GetPlayerCamera()` returns eye position, not object-center Y; do not add another
+host eye offset. Steep-slope correction, bridge support, ceilings, pitch,
+jump/crouch/swim and special contacts remain TODOs. Supply a valid starting
+position, a horizontal view vector, and real map data for walls. See the
+[basic controller contract](BehaviorRecovery.md#basic-horizontal-player-controller).
+
+Build just this project from the solution:
+
+```powershell
+msbuild .\Source\Desperabis.sln '/t:libraries\Desperabis-GameCore' /p:Configuration=Debug /p:Platform=x64
+```
+
+The `game-runtime` CTest suite covers loading, ownership, separate tick clocks,
+input/update ordering, pause, explicit failures, raw-object round trips, and
+renderer/game enum compatibility. This provides the integration API, **not an
+already connected renderer scene**. Existing scene-side behaviors must be
+disabled for game-controlled objects when the renderer bridge is added.
+
+### Recovery status
 
 The current investigation is [Pillar](Pillar.md), its collision-map writer,
 and the corresponding reader/player-blocking rules. `BatIndoor`'s helper at

@@ -372,6 +372,178 @@ all signed health words at representative ticks and both countdown gates,
 expiry ordering, unchanged positions/angles, allocation bounds/clearing,
 burning bounds and audio admission, and all seven independent input actions.
 
+### Host-driven runtime integration
+
+The renderer-independent `GameContext` can now serve as the game manager.
+Its new host-driven lifecycle is separate from the older, modal
+`RunApplication` / `RunApplicationStep` recovery harness. Do not run both loops
+on the same live context. All context member definitions remain in
+[GameContext.cpp](Scaffold/GameContext.cpp); behavior implementations remain
+in their free handlers.
+
+#### Loading and ownership
+
+The host subclasses `GameContext` and implements one service hook:
+
+```cpp
+class RendererGame final : public Desperabis::GameContext
+{
+protected:
+    void LoadLevel(const Desperabis::LevelLoadRequest& request) override;
+};
+```
+
+`StartLevel(levelNumber)` calls this hook exactly once and enters `Loading`.
+The hook may complete immediately or start asynchronous asset loading.
+Marshal completion back to the game thread; the context is not thread-safe.
+Keep the context alive until host jobs are cancelled or joined, and do not
+move it while jobs or renderer references target it.
+
+Construct a `LevelLoadData` containing:
+
+- An owned `Level`, including its mutable collision map, decoded geometry,
+  and recovered surface metadata needed by the chosen level's behaviors.
+- The 166-slot object array in **native indexing**: reserved 0, player 1,
+  ordinary objects 2..164, fallback 165. Do not assume the renderer's vector
+  indices match these slots.
+- The level's `floorRepeatHeight`, when applicable.
+- For a fresh level, `playerSpawn = PlayerCamera{eyePosition, viewDirection}`.
+  `GameContext::InitializeLevelPlayer`, called by `CompleteLevelLoad`, replaces
+  slot 1 with a clean normal player (health 1000, mask 3, radii 15/23) and converts
+  eye Y to object-center Y. The host supplies spawn coordinates/direction, not
+  gameplay constants. If `playerSpawn` is absent, the supplied slot-1 record is
+  preserved unchanged for explicit player-state restoration and recovery fixtures.
+
+Call `CompleteLevelLoad(request.id, std::move(data))`. Validation occurs before
+replacing the current world, including validation of lighting-center coordinate
+division. The context takes level ownership and installs its internal
+geometry/collision views. It resets per-level messages, group masks, collision
+selection, light contributions, and the shade-noise accumulator, then selects
+`Gameplay`. Inventory, gold, weapon state, RNG, and host service settings survive
+level transitions. **This is a direct level start, not recovered full new-game
+initialization.** Initial spawn coordinates/direction and level-specific data
+still come from the host; normal player-state construction belongs to GameContext.
+Stop previous-level audio voices in the host as part of loading.
+
+Only one load may be pending. Every request has a new ID, so duplicate or stale
+completions/failures throw rather than install the wrong world.
+`FailLevelLoad(id, message)` records `LoadFailed` and an inspectable error string;
+an exception from the synchronous hook is also recorded and rethrown.
+Invalid completion data throws without partially installing it; the host can
+report failure or retry completion with valid data. During loading/failure,
+the previous world remains available for display, but simulation does not
+silently resume. `StartLevel` can retry after failure with a fresh request ID.
+
+Contexts are noncopyable because they own mutable level state. Move support
+retains the recovery harness's reset-by-temporary idiom; it is not a mechanism
+for relocating a running async host. The existing public state and borrowed
+`level` / `collisionMap` fields remain for low-level recovery tests. Host-driven
+code must not replace those installed pointers; `Tick` checks them.
+
+#### Tick, input, presentation, and timing
+
+After installing a level, the host advances it with:
+
+```cpp
+const auto result = game.Tick({ behaviorTicks, frameTicks }, input);
+if (result.status == Desperabis::GameTickStatus::Advanced)
+{
+    // Inspect result.interaction and each entry of result.objects.
+    // Synchronize renderer instances from game.GetWorldObjects().
+}
+```
+
+`InputHandler` and `AudioHandler` remain the narrow input/audio service
+interfaces. `Tick` does not invoke the old modal UI virtuals. `SetPaused(true)`
+or a menu page other than `Gameplay` suspends gameplay; the host processes UI
+commands through the existing page/action APIs and renders the exposed state.
+The loading lifecycle is independent of native numeric `MenuPage` values.
+No menu rendering is invented here. A partial basic horizontal controller is
+now wired into `Tick`, with its exact scope documented below.
+
+An advanced tick runs in this host-integration order:
+
+1. Install the explicit behavior/frame counts; run basic player movement when
+   enabled, then refresh listener X/Z from player slot 1.
+2. Clear dynamic lighting once around that position, preserving the selected
+   active radius, and clear `field_DC34` once.
+3. Resolve player contact and interaction input, including the door occupancy
+   marker needed by the following object updates.
+4. Run the recovered sequential object loop, which also updates prompt lifetime
+   using the separate frame tick count.
+
+This orchestration is a host-facing integration policy, not proof that the
+complete original frame loop has been recovered. Rendering, native player
+movement/contact damage, menus, and many behaviors are still incomplete.
+`GameTickResult` exposes the interaction result and all 163 dispatch results,
+including `UnimplementedHandler` and `NoSpecificCase`; hosts must not interpret
+an advanced tick as a claim of complete gameplay.
+
+The host owns wall-clock conversion and scheduling. Both counts must be
+nonnegative signed words; no assumed DOS frequency, hidden clock, or arbitrary
+catch-up cap is added. One call with ten ticks is not necessarily equivalent
+to ten calls with one tick, because several behaviors consume RNG once per
+call. A **zero-count tick still updates**. Do not call it as a render-only
+poll: render the last world state instead. Loading/paused/failed ticks consume
+no input/RNG and do not clear lighting or age prompts.
+
+The game world is authoritative. Use the const `GetWorldObjects`, `GetLevel`,
+and `GetLightingCache` views to synchronize renderer-owned presentations by
+stable native slot. Handle allocation, disappearance, and changed model/display
+fields; do not cache an assumption that a slot always represents the same
+object. Disable duplicate renderer-side simulation for game-controlled objects.
+The actual renderer synchronization and visual-lighting adapter are not
+implemented in this step.
+
+`GetPlayerCamera()` returns a value snapshot based on player slot 1: `position`
+contains DOS eye X/Y/Z, and `direction` contains the raw view-vector
+words (`velocityX/Y/Z`), **not** the player's Euler fields. The renderer can use
+`Level::DespToPos` for position and normalize `(-direction[0], direction[1],
+direction[2])` for its forward vector, matching the existing player accessor.
+For an installed world, eye Y is reconstructed as
+`posY + collisionRadiusY + 2`, with native word wrapping: `E1F4..E210`
+stores the object center by subtracting those values from working/view Y.
+**Do not add a further renderer-side eye offset.** No hover-camera adjustment,
+projection parameters, or renderer dependency is added. A zero direction remains
+zero: the host must not normalize it as a valid orientation.
+The getter always reads the current record, even when paused or during a level
+transition/failure; use `GetLoadedLevelNumber()` to establish whether a world
+has been installed. Before a level is installed it exposes the initial
+zero-filled player record, not a fabricated valid camera.
+
+#### Duplicate enums and the 54-byte boundary
+
+Do **not** `reinterpret_cast` the unrelated renderer/game object types.
+The renderer's `RawGameObject` wrapper is larger than 54 bytes: it also contains
+level/index metadata. Even two equal-size structs are not automatically legal
+aliases under C++ object-lifetime and strict-aliasing rules.
+
+Copy just the native payload using the checked boundary:
+
+```cpp
+static_assert(sizeof(rendererObject.m_rawBytes) == sizeof(Desperabis::RawGameObject));
+const auto object = Desperabis::DecodeGameObject(
+    rendererObject.m_rawBytes, sizeof(rendererObject.m_rawBytes));
+Desperabis::EncodeGameObject(object,
+    rendererObject.m_rawBytes, sizeof(rendererObject.m_rawBytes));
+```
+
+Both functions require a non-null, exactly 54-byte buffer. Game-side size,
+offsets, and trivial-copyability remain compile-time checked; renderer payload
+size is also asserted. Renderer wrapper metadata is not copied or overwritten.
+This preserves behavior as a 16-bit ID, `behaviorParameter` at 52, and the
+independent `spriteScale` byte at 53. The renderer's existing combined-word scale
+accessor is intentionally unchanged pending native rendering verification.
+
+Enum **numeric IDs** are the interoperability contract, not their C++ storage
+sizes or current names. The `game-runtime` test compares every renderer entry
+in `BehaviorType`, `CollisionType`, `DisplayType`, and `WeaponType` against the
+game header, including implicit enum increments. The intentional behavior-name
+alias `SwimmingParticles` -> `FloatingDebris` preserves ID 117. Game-only recovered
+entries are allowed. A negative test verifies that changing an existing ID fails.
+The long-term direction is one shared canonical definition, but consolidating
+enums or renderer accessors is not required for this byte-copy bridge.
+
 ### Gameplay lighting cache
 
 `GameContext::lightingCache` owns a **21x21 signed-word contribution grid**.
@@ -485,6 +657,107 @@ culled corners, and contribution overflow. Additional checks cover all 512
 phases in zero-tick world updates, clamped extrema, multiple sources, and dispatch/inactivity
 gates. Run `--behavior PulsatingLight --ticks 3` for pulse-state and light-total
 diagnostics.
+
+### Basic horizontal player controller
+
+`GameContext::Tick` now calls the private `UpdateBasicPlayerMovement` before
+refreshing listener/light-grid centers, contact selection, and object behaviors.
+`basicPlayerMovementEnabled` defaults to **true**. Set it to false if the host
+already controls the player, or for a stationary recovery fixture.
+`GameTickResult::playerMovement` is present when the basic controller is enabled;
+it reports `simulatedTicks` and `blockedTicks`. Loading/paused/failed ticks have
+no movement result. Inactive players and zero frame ticks simulate zero steps
+and do not query movement keys.
+
+This is a **partial normal walking controller**, not the complete native controller.
+It uses the existing [player-movement-evidence.txt](player-movement-evidence.txt)
+and reusable math/collision helpers:
+
+- Sample the six confirmed movement keys once per advanced host tick with
+  positive `frameTicks`, in native keyboard order. Add/subtract 4 to forward
+  and sideways speeds, add/subtract 7 to turn speed, then reduce each speed
+  toward zero by 1 (`C603..C679`, `C74E..C774`, keyboard mode zero).
+- Run one normal horizontal substep per **frame tick**, not per behavior tick,
+  matching the normal loop's repeated `D060(6)` calls at `E39A..E3BC`.
+  `Tick({0, 3}, input)` therefore moves the player three substeps while leaving
+  the separate object behavior argument at zero. No wall-clock frequency is
+  inferred.
+- Clamp straight speed to 5, diagonal axes to 3 (native `2*5/3`), and turn
+  speed to +/-6. Approach target heading using the existing native angle-pair
+  normalization and `GetStepToward(..., 6)`, wrapping phase to 0..511.
+  The special speed-2/3 state gates and alternate loop's approach step 2 are
+  not implemented.
+- Compute the 100-scale horizontal direction from the **ordinary**, not
+  clamped, sine/cosine table (`D699..D6D2`). Integrate local forward/sideways
+  speeds with the word-product/truncating-division formulas at `D763..D79C`.
+  The normal speed bounds keep the signed-byte quotient in range.
+- With `objectCollisionsEnabled`, use the existing 3x3 collision query at the
+  proposed X/Z with **step 5 and mask `18h`**, reducing forward speed by one
+  toward zero per correction (`DD97..DE08`). No radius-based capsule or
+  renderer physics is substituted.
+- Decrement physical vertical speed by one per frame tick (`D6F6`), integrate
+  working/view Y (`D79D`), and clamp it from below to interpolated terrain plus
+  the normal standing height **45** (`E8E4`, `D844..D8AE`). Landing clears falling
+  speed. Convert working/view Y back to object-center Y by subtracting the
+  vertical radius and 2 (`E1F4..E210`). Uphill movement lifts the player onto
+  terrain; downhill movement falls onto the lower support. Terrain support uses
+  `GetTerrainFloorHeight`, not the special flat-depth shortcut in `GetFloorHeight`.
+
+Explicit host policies, not recovered native initialization/fallbacks:
+
+- Level installation resets all controller speeds and derives initial heading
+  from the supplied player's horizontal view vector. A zero X/Z direction
+  starts at heading 0 (+Z). No record Euler field is assumed to be player yaw.
+- Each positive substep writes horizontal direction at the native 100 scale to
+  player `velocityX/Z`, so `GetPlayerCamera` reflects yaw. The supplied
+  `velocityY` view component remains untouched. Falling speed is a separate
+  private controller word, reset to zero on level installation, rather than
+  reinterpreting the host's view Y as the native physical velocity at DS:8286.
+  The host should start with a level forward vector (`velocityY == 0`);
+  preserving arbitrary camera
+  pitch across the native 100-scale rewrite is not implemented.
+- Terrain support is sampled at the final map-corrected X/Z, including on
+  horizontally blocked steps. This keeps the normal host controller grounded;
+  it does not reproduce the original ordering around special contact modes.
+  The native bob and other support offsets are omitted. Initial position is
+  retained until the first simulated substep, so an airborne start falls rather
+  than silently snapping during loading.
+- The native map-correction loop is unbounded. The host preview attempts at
+  most **16 queries per substep**, then rejects unresolved X/Z and reports a
+  blocked tick. A blocked center also rejects motion when symmetric neighboring
+  contributions cancel; it must not silently allow walking through a solid
+  map cell. Valid corrections can move the player away from a wall even with
+  no pressed movement key.
+- Keyboard input is accumulated once per host call. Multiple substeps do not
+  reapply key acceleration or damping. Different frame batching can therefore
+  yield different acceleration, as it can in the recovered input/frame split.
+
+TODOs are placed beside the partial implementation in
+[GameContext.cpp](Scaffold/GameContext.cpp):
+
+1. Load the actual working camera position, applied/target headings, and speed
+   state from native level/save initialization.
+2. Recover the remaining view-vector pipeline, steep-slope X/Z corrections
+   (`1E48:3621`), bridges/platforms, room clearance, bobbing, variable standing
+   height and pitch. Normal gravity and center-terrain support are implemented,
+   but ceilings and object-supported floors are not.
+3. Add special speed states, mouse/look, jump/crouch/swim controls and the
+   alternate controller path.
+4. Recover DS:`2DDC` collision gating and native stuck recovery.
+5. Implement automatic player damage, teleporting and other contact modes in
+   the shared contact pipeline, not in this normal movement subset.
+
+Map collision only works if the host supplies a real collision map. An empty
+dummy map has no walls; this library does not generate collision from renderer
+geometry. No object support or renderer-scene collision is invented.
+The existing low-level `UpdateObjects`/`DispatchObjectCase` APIs still do not
+move the player; this controller is specific to the host-driven `Tick`.
+
+Tests cover all 64 movement-key combinations at four cardinal initial headings,
+held acceleration, released-key damping, opposing keys, yaw wrapping, diagonal
+limits, multiple substeps, zero ticks, separate clocks, collision masks, bounded
+rollback, walls, movement-before-contact, same-frame listener/light updates,
+load-reset, pause/disable/inactive gates, and unchanged player Y/unrelated bytes.
 
 ### First implemented case: Pillar
 
@@ -761,6 +1034,25 @@ continues to test only the handler on the explicitly supplied object.
 Tests cover all 65,536 position words on each axis, all XZ radius-sum words,
 mask/health filters, priority selection, both end slots, absent/disabled
 collisions, input call counts, and input-driven pickups.
+
+GameContext's normal level-player initialization uses a save-derived collision
+shape, not placeholder radii: all 52 original `Data/SaveGames` player records at byte
+245 have mask **3** and horizontal radius **15**; 50 have vertical radius **23**
+and two have **15** (alternate state not assigned here). The normal initializer uses
+23, giving object-center Y `floor + 20` at standing eye height 45. The former
+10-unit vertical radius put the center at `floor + 33`, preventing overlap with
+floor medicine even though Enter reached the interaction path correctly.
+For a concrete fixture, `Data/SaveGames/Nice/STAND4.SPL` stores the mask at
+`245 + 7 = 252`, horizontal radius word at `245 + 24 = 269`, and vertical radius
+word at `245 + 26 = 271` (little endian). The existing renderer save reader also
+locates this record as `299 - 54`. These observations establish saved normal
+player state; **the corresponding EXE initializer has not yet been traced**.
+`InitializeLevelPlayer` is a conservative gameplay-owned initialization policy,
+not a claim that the original initializer has been fully recovered.
+The runtime suite also compiles the real renderer-independent `GameCoreHost`
+adapter and checks original level-11 medicine pickup, unlocked-door activation,
+and explicit unsupported-switch reporting. The playable host displays interaction
+outcomes in its window title; it does not silently discard the result.
 
 ### Inventory and explicit interaction
 

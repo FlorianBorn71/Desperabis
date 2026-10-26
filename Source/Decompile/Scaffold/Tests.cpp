@@ -848,7 +848,8 @@ namespace
         Check(state.userMessage == std::string(148, 'a') + u8"\u00fc",
             "A complete UTF-8 character at the byte limit must be retained.");
         state.PromptUserMessage(u8"Falscher Schl\u00fcssel", 3);
-        auto independent = state;
+        GameContext independent;
+        independent.PromptUserMessage(state.userMessage, state.userMessageTicks);
         state.UpdateUserMessage(5);
         Check(state.userMessageTicks == -2 && state.userMessage == u8"Falscher Schl\u00fcssel",
             "Expired prompts must retain their text and an unclamped countdown.");
@@ -2141,7 +2142,7 @@ namespace
         {
             Check(mask == 0xff, "All five group masks must initialize to FF as in the executable.");
         }
-        auto independent = initial;
+        GameContext independent;
         independent.switchGroupMasks[0] = 0;
         Check(initial.switchGroupMasks[0] == 0xff, "Game states must not share group-mask storage.");
         initial.switchGroupMasks[1] = 0x55;
@@ -2152,9 +2153,12 @@ namespace
         const auto checkUpdate = [&](RawGameObject object, std::int16_t ticks)
         {
             auto expected = object;
-            auto state = initial;
+            GameContext state;
+            std::copy(std::begin(initial.switchGroupMasks), std::end(initial.switchGroupMasks),
+                std::begin(state.switchGroupMasks));
             state.tickCount = ticks;
-            auto expectedState = state;
+            std::array<std::uint8_t, 5> expectedGroups;
+            std::copy(std::begin(state.switchGroupMasks), std::end(state.switchGroupMasks), expectedGroups.begin());
             const bool grouped = object.behavior == BehaviorType::SwitchGrouped;
             if (!grouped && expected.field_24 == 0) { expected.field_24 = 10; }
             const auto sum = static_cast<std::int64_t>(static_cast<std::uint16_t>(object.blendWeightOrSpriteOpacity)) +
@@ -2172,7 +2176,7 @@ namespace
             {
                 expected.collisionType = CollisionType::GroupedSwitch;
                 const auto mask = static_cast<std::uint16_t>(object.doorLockOrGroupBitmask) % 256;
-                auto& group = expectedState.switchGroupMasks[object.groupIndexOrLock];
+                auto& group = expectedGroups[object.groupIndexOrLock];
                 if (phase == 100) { group = static_cast<std::uint8_t>(group & (255 - mask)); }
                 if (phase == 0) { group = static_cast<std::uint8_t>(group | mask); }
                 if (phase == 100 && ReferenceSignedWord(expected.field_24) > 0 && object.itemValue > 0)
@@ -2197,7 +2201,7 @@ namespace
             Check(ObjectBytes(object) == ObjectBytes(expected),
                 "Switch differs from original word arithmetic or changed an unrelated object field.");
             Check(std::equal(std::begin(state.switchGroupMasks), std::end(state.switchGroupMasks),
-                std::begin(expectedState.switchGroupMasks)) && state.tickCount == ticks &&
+                expectedGroups.begin()) && state.tickCount == ticks &&
                 state.behaviorDispatchEnabled && state.collisionMap == nullptr,
                 "Switch changed the wrong group bits or unrelated context state.");
         };
@@ -2278,13 +2282,14 @@ namespace
         {
             first.groupIndexOrLock = static_cast<std::int16_t>(invalid);
             const auto before = ObjectBytes(first);
-            const auto masksBefore = shared;
+            std::array<std::uint8_t, 5> masksBefore;
+            std::copy(std::begin(shared.switchGroupMasks), std::end(shared.switchGroupMasks), masksBefore.begin());
             bool rejected = false;
             try { DispatchObjectCase(first, shared); }
             catch (const std::out_of_range&) { rejected = true; }
             Check(rejected && ObjectBytes(first) == before &&
                 std::equal(std::begin(shared.switchGroupMasks), std::end(shared.switchGroupMasks),
-                    std::begin(masksBefore.switchGroupMasks)),
+                    masksBefore.begin()),
                 "Invalid group indices must fail explicitly without modifying object or masks.");
         }
         for (const auto behavior : { BehaviorType::Switch1, BehaviorType::SwitchGrouped })
@@ -2292,7 +2297,8 @@ namespace
             first.behavior = behavior;
             first.health = 0;
             const auto before = ObjectBytes(first);
-            const auto masksBefore = shared;
+            std::array<std::uint8_t, 5> masksBefore;
+            std::copy(std::begin(shared.switchGroupMasks), std::end(shared.switchGroupMasks), masksBefore.begin());
             Check(DispatchObjectCase(first, shared).status == DispatchStatus::InactiveObject &&
                 ObjectBytes(first) == before, "Inactive switches must not update or access group state.");
             first.health = 1;
@@ -2301,7 +2307,7 @@ namespace
             Check(DispatchObjectCase(first, shared).status == DispatchStatus::DispatchDisabled &&
                 ObjectBytes(first) == disabled &&
                 std::equal(std::begin(shared.switchGroupMasks), std::end(shared.switchGroupMasks),
-                    std::begin(masksBefore.switchGroupMasks)),
+                    masksBefore.begin()),
                 "Disabled switches must not update or access group state.");
             shared.behaviorDispatchEnabled = true;
         }

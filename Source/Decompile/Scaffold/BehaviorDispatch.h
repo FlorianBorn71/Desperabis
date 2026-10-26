@@ -6,42 +6,11 @@
 
 namespace Desperabis
 {
-    enum class InteractionStatus
-    {
-        Applied,
-        NoEffect,
-        InventoryFull,
-        InactiveObject,
-        UnimplementedHandler
-    };
-
-    struct InteractionResult
-    {
-        InteractionStatus status;
-        std::uint16_t inventorySlot = 0;
-    };
-
     // Gameplay cases of 0EF0:09F8; call on explicit interaction input, not on contact.
     // The host passes the selected object directly; prompt storage and recovered sound requests are game-side.
     InteractionResult HandlePlayerObjectInteraction(RawGameObject& object, GameContext& context);
     InteractionResult HandleDoorInteraction(RawGameObject& object, GameContext& context);
     InteractionResult UpdatePlayerInteraction(GameContext& context, InputHandler& input);
-
-    enum class DispatchStatus
-    {
-        ExecutedCase,
-        UnimplementedHandler,
-        NoSpecificCase,
-        InactiveObject,
-        DispatchDisabled
-    };
-
-    struct DispatchResult
-    {
-        DispatchStatus status;
-        BehaviorType behavior;
-        std::uint16_t moduleOffset;
-    };
 
     struct BehaviorDescriptor
     {

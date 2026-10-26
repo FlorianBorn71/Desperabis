@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.20)
 project(DesperabisRecovery LANGUAGES CXX)
 
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "CMake")
+
 include(TestBigEndian)
 test_big_endian(RECOVERY_BIG_ENDIAN)
 if(RECOVERY_BIG_ENDIAN)
@@ -11,6 +14,7 @@ add_library(behavior-recovery STATIC
     Scaffold/GameEnums.h
     Scaffold/GameContext.h
     Scaffold/GameContext.cpp
+    Scaffold/GameRuntime.h
     Scaffold/ApplicationFlow.h
     Scaffold/BehaviorDispatch.cpp
     Scaffold/CollisionMap.cpp
@@ -24,12 +28,28 @@ add_library(behavior-recovery STATIC
 )
 target_include_directories(behavior-recovery PUBLIC Scaffold)
 target_compile_features(behavior-recovery PUBLIC cxx_std_17)
+add_library(Desperabis::GameCore ALIAS behavior-recovery)
+set_target_properties(behavior-recovery PROPERTIES OUTPUT_NAME Desperabis-GameCore)
 
 add_executable(desperabis-recovery Scaffold/Main.cpp)
 target_link_libraries(desperabis-recovery PRIVATE behavior-recovery)
 
 include(CTest)
+foreach(target Continuous Experimental Nightly NightlyMemoryCheck)
+    if(TARGET ${target})
+        set_target_properties(${target} PROPERTIES FOLDER "CMake/CTest")
+    endif()
+endforeach()
 if(BUILD_TESTING)
+    add_executable(game-runtime-tests Scaffold/GameRuntimeTests.cpp
+        ../NewRenderer/DesperabisGame-DX11/GameCoreHost.cpp)
+    target_include_directories(game-runtime-tests PRIVATE ../NewRenderer/DesperabisGame-DX11)
+    target_link_libraries(game-runtime-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME game-runtime COMMAND game-runtime-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../NewRenderer/SharedSource/base/GamePlay/GamePlay.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Scaffold/GameEnums.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original/LEVEL"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SaveGames/Nice/STAND4.SPL")
     add_executable(behavior-recovery-tests Scaffold/Tests.cpp)
     target_link_libraries(behavior-recovery-tests PRIVATE behavior-recovery)
     add_executable(application-flow-tests Scaffold/ApplicationFlowTests.cpp)
@@ -64,7 +84,8 @@ foreach(target behavior-recovery desperabis-recovery)
     endif()
 endforeach()
 if(BUILD_TESTING)
-    foreach(target behavior-recovery-tests application-flow-tests fireplace-tests particle-tests floating-debris-tests rat-snake-tests)
+    foreach(target behavior-recovery-tests application-flow-tests fireplace-tests particle-tests floating-debris-tests rat-snake-tests game-runtime-tests)
+        set_target_properties(${target} PROPERTIES FOLDER "Tests")
         if(MSVC)
             target_compile_options(${target} PRIVATE /W4 /WX)
         else()

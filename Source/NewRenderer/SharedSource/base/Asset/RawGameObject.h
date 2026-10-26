@@ -23,6 +23,9 @@ struct RawGameObjectData
 
 };
 
+static_assert(sizeof(RawGameObjectData) == 54, "Native object payload layout changed.");
+static_assert(sizeof(RawGameObjectData::m_rawBytes) == 54, "Native object byte count changed.");
+
 struct RawGameObject : RawGameObjectData
 {
     class Level* m_level;

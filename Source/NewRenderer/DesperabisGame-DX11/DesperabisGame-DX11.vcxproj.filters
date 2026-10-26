@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+	<Filter Include="Source">
+	  <UniqueIdentifier>{8b1e6f4a-3c2d-4e5f-9a7b-1c2d3e4f5a01}</UniqueIdentifier>
+	</Filter>
+	<Filter Include="Shared">
+	  <UniqueIdentifier>{8b1e6f4a-3c2d-4e5f-9a7b-1c2d3e4f5a02}</UniqueIdentifier>
+	</Filter>
+	<Filter Include="Shared\DX11">
+	  <UniqueIdentifier>{8b1e6f4a-3c2d-4e5f-9a7b-1c2d3e4f5a03}</UniqueIdentifier>
+	</Filter>
+	<Filter Include="Shared\IO">
+	  <UniqueIdentifier>{8b1e6f4a-3c2d-4e5f-9a7b-1c2d3e4f5a04}</UniqueIdentifier>
+	</Filter>
+	<Filter Include="Shared\IO\builtin">
+	  <UniqueIdentifier>{8b1e6f4a-3c2d-4e5f-9a7b-1c2d3e4f5a05}</UniqueIdentifier>
+	</Filter>
+	<Filter Include="Shared\Sample">
+	  <UniqueIdentifier>{8b1e6f4a-3c2d-4e5f-9a7b-1c2d3e4f5a06}</UniqueIdentifier>
+	</Filter>
+  </ItemGroup>
+  <ItemGroup>
+	<ClInclude Include="..\SharedSource\DX11\NativeTextureDX11.h"><Filter>Shared\DX11</Filter></ClInclude>
+	<ClInclude Include="..\SharedSource\DX11\RenderContextDX11.h"><Filter>Shared\DX11</Filter></ClInclude>
+	<ClInclude Include="..\SharedSource\DX11\RendererDX11.h"><Filter>Shared\DX11</Filter></ClInclude>
+	<ClInclude Include="..\SharedSource\IO\BuiltInCppGenerator.h"><Filter>Shared\IO</Filter></ClInclude>
+	<ClInclude Include="..\SharedSource\IO\FileManagerBuiltIn.h"><Filter>Shared\IO</Filter></ClInclude>
+	<ClInclude Include="..\SharedSource\Sample\FreeCamera.h"><Filter>Shared\Sample</Filter></ClInclude>
+	<ClInclude Include="..\SharedSource\Sample\LevelScene.h"><Filter>Shared\Sample</Filter></ClInclude>
+	<ClInclude Include="GameCoreHost.h"><Filter>Source</Filter></ClInclude>
+	<ClInclude Include="pch.h"><Filter>Source</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+	<ClCompile Include="..\SharedSource\DX11\BuiltInShaders_Release.cpp"><Filter>Shared\DX11</Filter></ClCompile>
+	<ClCompile Include="..\SharedSource\DX11\NativeTextureDX11.cpp"><Filter>Shared\DX11</Filter></ClCompile>
+	<ClCompile Include="..\SharedSource\DX11\RenderContextDX11.cpp"><Filter>Shared\DX11</Filter></ClCompile>
+	<ClCompile Include="..\SharedSource\DX11\RendererDX11.cpp"><Filter>Shared\DX11</Filter></ClCompile>
+	<ClCompile Include="..\SharedSource\IO\BuiltInCppGenerator.cpp"><Filter>Shared\IO</Filter></ClCompile>
+	<ClCompile Include="..\SharedSource\IO\builtin\BuiltInANIMS.cpp"><Filter>Shared\IO\builtin</Filter></ClCompile>
+	<ClCompile Include="..\SharedSource\IO\builtin\BuiltInGRAFIK.cpp"><Filter>Shared\IO\builtin</Filter></ClCompile>
+	<ClCompile Include="..\SharedSource\IO\builtin\BuiltInLEVEL.cpp"><Filter>Shared\IO\builtin</Filter></ClCompile>
+	<ClCompile Include="..\SharedSource\IO\builtin\BuiltInVEKT.cpp"><Filter>Shared\IO\builtin</Filter></ClCompile>
+	<ClCompile Include="..\SharedSource\IO\builtin\BuiltInMapIcons.cpp"><Filter>Shared\IO\builtin</Filter></ClCompile>
+	<ClCompile Include="..\SharedSource\IO\FileManagerBuiltIn.cpp"><Filter>Shared\IO</Filter></ClCompile>
+	<ClCompile Include="..\SharedSource\Sample\FreeCamera.cpp"><Filter>Shared\Sample</Filter></ClCompile>
+	<ClCompile Include="..\SharedSource\Sample\LevelScene.cpp"><Filter>Shared\Sample</Filter></ClCompile>
+	<ClCompile Include="DesperabisGame-DX11.cpp"><Filter>Source</Filter></ClCompile>
+	<ClCompile Include="GameCoreHost.cpp"><Filter>Source</Filter></ClCompile>
+	<ClCompile Include="pch.cpp"><Filter>Source</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+	<None Include="..\SharedSource\DX11\RenderContextDX11.inl"><Filter>Shared\DX11</Filter></None>
+	<None Include="readme.md" />
+  </ItemGroup>
+</Project>

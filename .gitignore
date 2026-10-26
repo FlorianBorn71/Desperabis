@@ -9,5 +9,8 @@
 **/x64/
 **/.vs/
 
+# Build output of Desperabis-Game-DX11
+Bin/Desperabis-Game-DX11.exe
+
 # Packing tool
 **/_temp/
