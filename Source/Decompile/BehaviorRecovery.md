@@ -162,7 +162,17 @@ behavior uses every field this way.
 | `30..31` | signed word | `renderSortKey`: overwritten by original render-list postprocessing and used for signed descending sort |
 | `32` | byte | `field_32`: nonzero enables generic inventory pickup and participates in player collision selection |
 | `33` | byte | Display type |
-| `34` | unsigned word | Scale, accessor divides by `64 * 256` |
+| `34` | byte | `behaviorParameter`: contact-damage factor, door occupancy, switch latch, or other behavior-specific value |
+| `35` | byte | `spriteScale`: independently initialized and grown by sprite behaviors |
+
+These final two bytes have independent native byte accesses: contact damage
+reads `34h` at `0000:DB56`, smoke creation writes `35h` at `10AC:04EA`,
+and smoke growth compares/adds to `35h` at `0000:1AE7/1AFB`.
+The scaffold names them separately while preserving the 54-byte binary layout.
+This does not prove the original Pascal declaration used two byte members.
+The existing renderer's `PropertyAccessorBase::GetScale` still reads both bytes
+as a little-endian word and divides by `64 * 256`; that calculation is unchanged
+pending verification of the original rendering consumer.
 
 Byte `04` configures assignment/visibility; it is not general-purpose object
 scratch. Word `30h` is render-owned scratch, not free behavior storage:
@@ -218,7 +228,7 @@ case BehaviorType::BatIndoor:
     return Function_BatIndoor(object, context);
 ```
 
-Pillar, LightSource, Door, Flies, FloatingDebris, behavior 18, FireParticle, BurningFireplace,
+Pillar, LightSource, PulsatingLight, Door, Flies, RatAndSnake, FloatingDebris, behavior 18, FireParticle, BurningFireplace,
 IdleAnimation, SmokeFading, SpawnInCrater, Switch1, SwitchGrouped, WaterDrop,
 and DisabledSentinel return `ExecutedCase`. The other
 handlers return `UnimplementedHandler` without moving objects or writing
@@ -426,7 +436,8 @@ and [lighting-shade-evidence.txt](lighting-shade-evidence.txt).
 
 Static brightness remains packed in `Level::surfaceFlags`. No textures,
 interpolation, projection-field updates, rendering, or renderer integration
-are included. Other light-emitting behavior cases remain unrecovered.
+are included. `PulsatingLight` is also implemented below; other unrecovered
+light-emitting cases remain explicit placeholders.
 
 Evidence and full DOS record details:
 [lighting findings](Findings.md#static-brightness-and-dynamic-tile-corner-lighting)
@@ -439,6 +450,41 @@ threshold outcomes, configured sample selection and source limits, signed
 distance/suppression boundaries, unchanged object records, multi-light
 world-loop accumulation, culled-light RNG, dispatch gates, and successive
 frames with explicit resets.
+
+### PulsatingLight: randomized pulse speed and one-corner lighting
+
+Behavior **23**, `Function_PulsatingLight`, implements the complete case at
+`0000:19CD..1A94`. Evidence is preserved in
+[pulsating-light-evidence.txt](pulsating-light-evidence.txt), including its
+existing `GetStepToward` and clamped `Sine` dependencies.
+
+The native order matters:
+
+1. Advance phase `field_26` using the **old** `velocityZ`:
+   `(field_26 + velocityZ * ticks) & 511`.
+2. Draw `Random(15)` once per call. On zero, set `velocityX` to
+   `8 + Random(10)`, the target pulse speed.
+3. Move `velocityZ` toward `velocityX` using `GetStepToward` with `ticks`,
+   preserving signed-word subtraction, absolute-value, and addition wrapping.
+4. Read the **clamped** 16.16 sine table at the new phase. Set `field_28` to
+   `800 + floor(750 * sine / 65536)`, in **50..1550**. The downstream meaning
+   of this object field is not established by this case.
+5. Add `30 - floor(25 * sine / 65536)`, in **5..55**, to the single local
+   lighting-grid corner selected by the object's X/Z, using the existing
+   `LightingCache::AddAtWorldXZ`.
+
+Negative products round down, not toward zero. At zero ticks, target selection,
+phase masking, both pulse outputs, and the grid write still occur. Culling the
+corner does not skip object updates or RNG. The case does not move the object,
+play audio, allocate objects, or write `field_DC34`. Grid clearing remains the
+caller's once-per-frame responsibility. No rendering changes are made.
+
+Tests compare all 54 object bytes, RNG state, and the complete grid across
+65,536 fixtures, including extreme speed/tick values, conditional draws,
+culled corners, and contribution overflow. Additional checks cover all 512
+phases in zero-tick world updates, clamped extrema, multiple sources, and dispatch/inactivity
+gates. Run `--behavior PulsatingLight --ticks 3` for pulse-state and light-total
+diagnostics.
 
 ### First implemented case: Pillar
 
@@ -495,8 +541,8 @@ and offset 36 the return speed (initialized to 10 if zero). It adds
 - At phase 100, a nonzero byte at offset 52 stops the rate, latching the switch.
 
 Thus ordinary auto-return is in this case, but there is no separate countdown
-here. Offset 52 is the low byte of `spriteScale` in the immutable layout;
-for this behavior it is a latch flag, not a change to the record layout.
+here. Offset 52 is `behaviorParameter`; for this behavior it is a latch flag.
+The separate `spriteScale` byte at offset 53 is preserved.
 
 **Index-based target activation:** the renderer's switch index at offset 34
 is confirmed by the interaction paths `10AC:194C` and `10AC:2094`, which
@@ -827,7 +873,7 @@ Door-specific uses of shared object fields:
 | `field_26` | Signed motion rate; opening +3, closing -3, stopped 0 |
 | `field_24` | Configured automatic-close delay; signed positive enables it |
 | `itemValue` | Remaining close-delay ticks |
-| `spriteScale` low byte | Previous contact/overlap slot; high byte is preserved |
+| `behaviorParameter` | Previous contact/overlap slot; `spriteScale` is preserved |
 | `velocityY` | Saved collision-map value restored when fully open, not movement |
 | `groupIndexOrLock` | Shared switch-group index 0..4 |
 | `doorLockOrGroupBitmask` | Signed key lock |
@@ -1119,6 +1165,89 @@ Run the console's minimal synthetic swamp-style demo with
 The code is host-tested against static instruction-derived expectations,
 not validated against a running DOS capture.
 
+### RatAndSnake: movement and separate contact damage
+
+Behavior 13 is implemented directly in `Function_RatAndSnake` in
+[BehaviorHandlers.cpp](Scaffold/BehaviorHandlers.cpp). The wrapper
+`0000:15EF..1617` calls native `10AC:3058..3390` once per behavior tick,
+including repeated calls after a helper changes behavior or health. Zero ticks
+do nothing locally. [rat-snake-evidence.txt](rat-snake-evidence.txt) preserves
+the complete wrapper and helper; supporting instructions and constants are in
+[rat-snake-support-evidence.txt](rat-snake-support-evidence.txt).
+
+The native health gates are exact, not general alive/dead tests:
+
+- **Health 1000:** normal movement. When DS:`D500` is enabled and the proposed
+  map pixel's low three bits are **not** 1, add whole-unit X/Z velocities.
+  Otherwise turn `winY` by 16 modulo 512. The predicate is deliberately not
+  inverted to a guessed "walkable" interpretation.
+- A signed-positive `field_24` gives a `1/field_24` steering chance toward
+  DS:`D4D2/D4D6` (the same position globals exposed as sound listener X/Z).
+  Convert the wrapped difference to an angle, normalize the angle pair,
+  turn by at most 13, and recalculate velocity with the clamped sine table.
+  With probability 1/20 clear both horizontal velocities.
+- Set Y to the terrain-only floor. `Random(field_28)==0` perturbs heading by
+  `RandomSigned(20)`, calculates clamped-table velocity and sets `field_28=15`.
+  Initial zero is intentional: **native Random(0) advances the seed and returns
+  zero**, so it guarantees this first direction selection. This corrects the
+  scaffold's earlier explicit rejection of zero bounds, including smoke radius 0.
+- When moving, update animation phase to signed
+  `wrap16(2*itemValue*itemValue + phase) % 200`.
+- Draw one signed turn of 64 units; repeatedly sample the 3x3 map neighborhood
+  at the proposed position with step `wrap16(itemValue+1)` and mask `38h`.
+  Nonzero X/Z corrections cause another turn and an **ordinary-table**
+  direction calculation. Retry at most 16 times. Reaching attempt 16 invokes
+  the native fallback even if that attempt found no correction.
+- Native `10AC:1F5A` uses DS:`D501`: true clears health; false disables behavior,
+  sets phase -100, adds 50 to Y and shows `WC-Error Obj <slot>` for 50 ticks.
+  `discardBlockedObjects` exposes this flag; the host default is diagnostic
+  mode, not a claim that the native startup flag has been recovered.
+- Animation 1 has a 1/300 chance per tick to request sound effect 17 with
+  source-object slot, limit 1 and the volume calculated before the tick loop.
+- **Health >1100:** decrement vertical velocity, add it to Y, clamp to terrain
+  and clear velocity on impact; increment phase and disable behavior when the
+  signed phase becomes positive. Other health values perform no local work.
+  The shared prefix still counts down health below 1000 before dispatch.
+
+Reusable math now includes both direction-table variants, native angle-pair
+normalization, and the vector-angle helper. The latter preserves the signed
+ABS overflow at -32768, Pascal Real48 rounding between stages, the executable's
+approximate constants `pi=3.1415927`, `pi/2=1.57079635` and `128/pi`, and
+nearest-even final integer rounding. It does not simply replace the routine
+with an unqualified `atan2`. Host libm is used for arctangent; bit-for-bit
+equivalence to the DOS software transcendental implementation is not claimed.
+The neighborhood reader shares the existing raw map reader, preserves in/out
+corrections, wrapped arithmetic and center output, and is independent of the
+object-collision gate.
+
+#### Where player damage happens
+
+It is **not in the movement helper**. The player-contact collision cascade at
+`0000:DB1A` routes **collision type 13** to `0000:DB42..DB7A`, together with
+several other damaging collision types. If the object's **`behaviorParameter` byte (offset 52)**
+is positive, it multiplies that byte by the dword at DS:`0300`, passes the
+low-dword product and player meter DS:`2DBA` to `1E48:D579`, and sets
+DS:`D514` to 8. The four level-30 snake records have factor **3**; the
+other 36 initial rat/snake records have factor **1**.
+
+`1E48:D579` is a shared signed fixed-point meter update: the current value is
+a dword at meter +4, with maximum at +2. For the player meter it suppresses
+the incoming delta when DS:`2DDD` is nonzero, clamps the meter and can invoke
+the shared player-death path on depletion. The DS:`0300` sign/time scaling,
+meter lifecycle, death response and DS:`D514` consumer are separate player
+systems; **contact damage is identified, not implemented by this change**.
+`UpdatePlayerInteraction` still handles interaction-key/door contact only.
+Do not subtract guessed damage from the player's object `health` or add
+damage in the rat movement handler: that would use the wrong storage or
+duplicate the original shared contact path.
+
+[RatSnakeTests.cpp](Scaffold/RatSnakeTests.cpp) covers 65,536 seeded movement
+fixtures, exact health gates, tick/RNG order, steering, zero bounds, both
+direction tables, angle normalization, all 512 binary neighborhood patterns,
+16-attempt diagnostics/discard, sound admission and **all 40 original records**.
+Asset checks use explicit dummy terrain/map, not native level reconstruction.
+This is statically recovered and host-tested, not DOS-runtime validated.
+
 ### FloatingDebris: floating underwater parts
 
 Behavior 117, formerly `SwimmingParticles`, is named `FloatingDebris` at the
@@ -1139,8 +1268,8 @@ It allocates nothing and requests no sound:
    overlapped, sets `field_28 = 100 + Random(300)` and replaces vertical
    velocity with its wrapped absolute value. Player overlap ignores player
    health, shares the byte-7 mask, and uses strict signed-word axis bounds.
-2. If the low scale byte is nonzero, `Random(lowByte) == 0` clears `field_28`.
-   The high scale byte is not used for this probability.
+2. If `behaviorParameter` is nonzero, `Random(behaviorParameter) == 0` clears `field_28`.
+   The separate `spriteScale` byte is not used for this probability.
 3. Execute exactly `tickCount` iterations. Signed-positive `field_28` loses
    `Random(2)`; there is a 1/10 chance to perturb heading `field_24` by
    `RandomSigned(20)`, modulo 512. `winX` and `winY` advance by random amounts
@@ -1246,11 +1375,11 @@ This initializer also neither allocates nor clears.
 | XZ / Y radii | supplied radius / 5 |
 | Z velocity | 2, used by behavior 24 as scale growth rather than Z movement |
 | Health/lifetime | signed low word of `riseFactor * 50 + Random(50)` |
-| High scale byte | low byte of `Random(unsigned radiusXZ) + 10` |
+| `spriteScale` byte | low byte of `Random(unsigned radiusXZ) + 10` |
 | Y velocity | signed low word of `riseFactor * 200 + Random(130)` |
 | Position / placement | supplied values |
 
-The low scale byte and other unwritten fields, including the fractional
+The `behaviorParameter` byte and other unwritten fields, including the fractional
 accumulator, second frame, X velocity and collision fields, survive.
 The four draws are always ordered **2, 50, radius, 130**.
 Finally it queries the existing floor-height helper and raises Y to that
@@ -1259,7 +1388,8 @@ surface-metadata side effects.
 
 The radius is a word-sized unsigned RNG bound even though the object field
 is signed; negative radius words are not silently clamped. Radius zero
-reaches the existing explicit `Random(0)` error. Missing geometry, missing
+advances the RNG seed and returns zero at that draw, matching the explicit
+zero-bound branch in native `2CE4:170A`. Missing geometry, missing
 required surface metadata and invalid floor coordinates also remain explicit
 errors, not successful-looking fallback particles.
 
@@ -1326,14 +1456,14 @@ The operation order is:
 2. Set `blendWeightOrSpriteOpacity` to `min(health SAR 2, 5)`.
    This is an arithmetic right shift, not truncating division for negative
    health. In normal dispatch health is positive.
-3. If the high byte of `spriteScale` is below 200, add the low byte of
-   `velocityZ * ticks` to that high byte. Preserve the low scale byte.
+3. If `spriteScale` is below 200, add the low byte of
+   `velocityZ * ticks` to it. Preserve `behaviorParameter`.
    The test occurs **before** adding; the result is neither clamped to 200
    nor protected from byte wrap.
 4. Add `GetStepToward(velocityY, 0, low16(2 * ticks))` to `velocityY`,
    keeping the low word. For ordinary values this decelerates toward zero.
 
-Only Y, the fractional accumulator, opacity, the high scale byte, and vertical
+Only Y, the fractional accumulator, opacity, the `spriteScale` byte, and vertical
 velocity can change. Health itself, X/Z, horizontal velocity fields, animation
 bytes, and all shared state remain untouched by this case.
 The health-based opacity agrees with
@@ -1346,8 +1476,9 @@ Example with two ticks:
 
 ```text
 posY 100, fraction 250, velocityY 300, health 40,
-scale C734h, velocityZ 3
-    -> posY 103, fraction 82, velocityY 296, opacity 5, scale CD34h
+spriteScale C7h, behaviorParameter 34h, velocityZ 3
+    -> posY 103, fraction 82, velocityY 296, opacity 5,
+       spriteScale CDh, behaviorParameter 34h
 ```
 
 #### Shared math helper names
@@ -1518,15 +1649,15 @@ original array initializer (floor 255, room 50, ceiling 0).
 2. Add `velocityY*ticks` to Y with word wrapping. Set transparent-sprite
    display and opacity 4.
 3. If signed word `field_24` is positive, subtract ticks from that wait
-   timer. Otherwise grow the high scale byte until it exceeds signed word
+   timer. Otherwise grow `spriteScale` until it exceeds signed word
    `doorLockOrGroupBitmask`; then subtract ticks from vertical velocity.
-   Clamp velocity to -16 only in this non-waiting branch. Low scale byte
+   Clamp velocity to -16 only in this non-waiting branch. `behaviorParameter`
    is preserved; growth and subtraction wrap exactly as in the executable.
 4. Only `posY < floor` is impact. Clear `winX`, decrement `field_26` once
    **per update**, place Y at floor-1, stop velocity, and select frame 2.
 5. Once signed `field_26 < 1`, select frame 1, restore that counter to 4,
    move to effective floor plus relative room height, set the wait timer
-   from `itemValue`, clear the high scale byte, and set `winX=1`.
+   from `itemValue`, clear `spriteScale`, and set `winX=1`.
 
 Thus the splash lasts four impact updates after the counter is initialized
 to four. An initial zero counter respawns immediately on first impact.

@@ -74,7 +74,7 @@ namespace
             object.field_28 = static_cast<std::uint16_t>(Next(seed, 300) + 100);
             object.velocityY = Word(std::abs(static_cast<int>(object.velocityY)));
         }
-        const auto chance = object.spriteScale % 256;
+        const auto chance = object.behaviorParameter;
         if (chance != 0 && Next(seed, chance) == 0) { object.field_28 = 0; }
         for (int tick = 0; tick < ticks; ++tick)
         {
@@ -169,7 +169,8 @@ namespace
             object.winX = Word(sample * 7);
             object.winY = Word(sample * 13);
             object.velocityY = Word(velocities[sample % velocities.size()]);
-            object.spriteScale = static_cast<std::uint16_t>(sample);
+            object.behaviorParameter = static_cast<std::uint8_t>(sample);
+            object.spriteScale = static_cast<std::uint8_t>(sample >> 8);
             context.tickCount = static_cast<std::int16_t>(sample % 16);
             context.randomSeed = sample * 65537u;
             if (sample % 3 == 1) { context.worldObjects[3] = object; }

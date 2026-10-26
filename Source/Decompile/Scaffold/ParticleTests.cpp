@@ -33,7 +33,7 @@ namespace
     unsigned int Next(std::uint32_t& seed, unsigned int range)
     {
         seed = static_cast<std::uint32_t>((static_cast<std::uint64_t>(seed) * 134775813u + 1u) % 4294967296ULL);
-        return (seed >> 16) % range;
+        return range == 0 ? 0 : (seed >> 16) % range;
     }
 
     bool Equal(const RawGameObject& first, const RawGameObject& second)
@@ -83,7 +83,7 @@ namespace
         object.velocityZ = 2;
         object.health = Word(factor * 50 + static_cast<int>(Next(seed, 50)));
         const auto size = (Next(seed, static_cast<std::uint16_t>(radius)) + 10) % 256;
-        object.spriteScale = static_cast<std::uint16_t>((object.spriteScale % 256) + size * 256);
+        object.spriteScale = static_cast<std::uint8_t>(size);
         object.velocityY = Word(factor * 200 + static_cast<int>(Next(seed, 130)));
         object.posX = x;
         object.posY = std::max(y, floor);
@@ -99,11 +99,10 @@ namespace
         object.posY = Word(object.posY + Shift(fraction, 256));
         object.itemValue = static_cast<std::int16_t>(static_cast<std::uint16_t>(fraction) % 256);
         object.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(std::min(5, object.health / 4));
-        const auto high = object.spriteScale / 256;
+        const auto high = object.spriteScale;
         if (high < 200)
         {
-            object.spriteScale = static_cast<std::uint16_t>(object.spriteScale % 256 +
-                ((high + object.velocityZ * ticks) % 256) * 256);
+            object.spriteScale = static_cast<std::uint8_t>((high + object.velocityZ * ticks) % 256);
         }
         object.velocityY = static_cast<std::int16_t>(std::max(0, object.velocityY - ticks * 2));
         return object;
@@ -232,15 +231,12 @@ namespace
         }
         auto object = DirtyRecord();
         auto seed = context.randomSeed;
-        Next(seed, 2);
-        Next(seed, 50);
-        bool rejected = false;
-        try { context.InitializeSmokeParticle(object, 150, 0, 4050, 0, 1, 1); }
-        catch (const std::invalid_argument&) { rejected = true; }
-        Check(rejected && context.randomSeed == seed,
-            "Zero-radius Random input must fail explicitly at the native operation boundary.");
+        const auto expected = SmokeInit(object, 150, 0, 4050, 0, 1, 1, -73, seed);
+        context.InitializeSmokeParticle(object, 150, 0, 4050, 0, 1, 1);
+        Check(Equal(object, expected) && context.randomSeed == seed,
+            "Zero-radius Random must advance the seed and return zero like the native RNG.");
         context.level = nullptr;
-        rejected = false;
+        bool rejected = false;
         try { context.InitializeSmokeParticle(object, 150, 0, 4050, 5, 1, 1); }
         catch (const std::runtime_error&) { rejected = true; }
         Check(rejected, "Missing floor geometry must not produce success-shaped smoke initialization.");

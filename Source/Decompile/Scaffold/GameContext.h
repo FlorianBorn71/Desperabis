@@ -51,7 +51,9 @@ namespace Desperabis
         std::int16_t renderSortKey = 0; // Original render-list scratch, overwritten after active-object dispatch.
         std::uint8_t field_32 = 0;
         DisplayType displayType = DisplayType::SpriteNormal;
-        std::uint16_t spriteScale = 0;
+        // Contact damage factor, door occupancy, switch latch, or other behavior-specific parameter.
+        std::uint8_t behaviorParameter = 0;
+        std::uint8_t spriteScale = 0;
     };
 
     static_assert(std::is_standard_layout_v<RawGameObject>);
@@ -87,7 +89,8 @@ namespace Desperabis
     static_assert(offsetof(RawGameObject, renderSortKey) == 48);
     static_assert(offsetof(RawGameObject, field_32) == 50);
     static_assert(offsetof(RawGameObject, displayType) == 51);
-    static_assert(offsetof(RawGameObject, spriteScale) == 52);
+    static_assert(offsetof(RawGameObject, behaviorParameter) == 52);
+    static_assert(offsetof(RawGameObject, spriteScale) == 53);
 
     static_assert(std::is_trivially_copyable_v<RawGameObject>);
 
@@ -207,6 +210,7 @@ namespace Desperabis
         // CE9E's post-test loop also reads slot 165 when the initial hit is 164.
         std::array<RawGameObject, 166> worldObjects{};
         bool objectCollisionsEnabled = true;
+        bool discardBlockedObjects = false; // DS:D501; false exposes the native WC-Error diagnostic path.
         std::uint16_t playerCollisionSlot = 0;
         const Level* level = nullptr;
         std::int16_t floorSurfaceValue = -1; // DS:D4CC, meaning not fully established.
@@ -254,6 +258,12 @@ namespace Desperabis
 
         // Original 1E48:CF49: X/Z word arguments, RETF 4; returns a byte in AL.
         std::uint8_t GetCollisionMapPixelAtWorldXZ(std::int16_t x, std::int16_t z) const;
+        // Original 1E48:0E8F and 1E48:2A64; corrections are in/out words.
+        std::uint8_t GetCollisionMapPixel(std::int16_t column, std::int16_t row) const;
+        void QueryCollisionMapNeighborhood(std::int16_t x, std::int16_t z, std::int16_t step,
+            std::int16_t& correctionX, std::int16_t& correctionZ, std::uint16_t& center, std::uint8_t mask) const;
+        // Original 10AC:1F5A: discard or disable and report a stuck object.
+        void HandleBlockedObject(RawGameObject& object);
 
         // Original 1E48:2B33, one source-slot word; returns a slot or zero.
         std::uint16_t FindCollidingObject(std::int16_t sourceSlot) const;

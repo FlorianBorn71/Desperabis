@@ -10,6 +10,7 @@ namespace Desperabis
     {
         Drop = 5,
         DoorClosed = 8,
+        RatAndSnake = 17,
         Burning = 62,
         Flies = 74
     };

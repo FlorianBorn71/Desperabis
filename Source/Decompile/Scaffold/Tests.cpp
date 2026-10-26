@@ -69,8 +69,23 @@ namespace
         Check(object.blendWeightOrSpriteOpacity == signedWords[21] &&
             object.groupIndexOrLock == signedWords[22] &&
             object.doorLockOrGroupBitmask == signedWords[23] &&
-            static_cast<std::uint8_t>(object.displayType) == bytes[51] && object.spriteScale == unsignedWords[26],
+            static_cast<std::uint8_t>(object.displayType) == bytes[51] &&
+            object.behaviorParameter == bytes[52] && object.spriteScale == bytes[53],
             "Behavior-dependent or display field layout changed.");
+
+        auto split = object;
+        auto expectedBytes = bytes;
+        for (unsigned int value = 0; value < 256; ++value)
+        {
+            split.behaviorParameter = static_cast<std::uint8_t>(value);
+            expectedBytes[52] = static_cast<std::uint8_t>(value);
+            Check(ObjectBytes(split) == expectedBytes,
+                "Behavior parameter writes must change only byte 52, preserving sprite scale.");
+            split.spriteScale = static_cast<std::uint8_t>(255 - value);
+            expectedBytes[53] = static_cast<std::uint8_t>(255 - value);
+            Check(ObjectBytes(split) == expectedBytes,
+                "Sprite scale writes must change only byte 53, preserving the behavior parameter.");
+        }
 
         RawGameObject copy = object;
         Check(ObjectBytes(copy) == bytes, "Struct copies must preserve all 54 raw bytes.");
@@ -81,7 +96,8 @@ namespace
         copy.posX = -32768;
         copy.posY = 1234;
         copy.posZ = 32767;
-        copy.spriteScale = 65535;
+        copy.behaviorParameter = 255;
+        copy.spriteScale = 255;
         copy.renderSortKey = -1234;
         const auto copyWords = ObjectWords(copy);
         Check(copyWords[4] == 300 && copyWords[5] == static_cast<std::uint16_t>(-123),
@@ -144,7 +160,9 @@ namespace
                 entry.type == BehaviorType::Flies ||
                 entry.type == BehaviorType::ExplosionSmokeCloud || entry.type == BehaviorType::SpawnInCrater ||
                 entry.type == BehaviorType::FloatingDebris ||
+                entry.type == BehaviorType::RatAndSnake ||
                 entry.type == BehaviorType::FireParticle || entry.type == BehaviorType::BurningFireplace ||
+                entry.type == BehaviorType::PulsatingLight ||
                 entry.type == BehaviorType::IdleAnimation ||
                 entry.type == BehaviorType::SmokeFading || entry.type == BehaviorType::Switch1 ||
                 entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ||
@@ -443,6 +461,122 @@ namespace
         Check(state.randomSeed == seed, "Inactive light sources must not consume RNG.");
     }
 
+    void TestPulsatingLight()
+    {
+        const auto nextRandom = [](std::uint32_t& seed, unsigned int range)
+        {
+            seed = static_cast<std::uint32_t>(static_cast<std::uint64_t>(seed) * 134775813u + 1u);
+            return (seed >> 16) % range;
+        };
+        const auto fixedProduct = [](int amplitude, std::int32_t sine)
+        {
+            const auto product = amplitude * sine;
+            return product >= 0 ? product / 65536 : -((-product + 65535) / 65536);
+        };
+        GameContext state;
+        state.field_DC34 = 0xabcd;
+        const std::array<std::int16_t, 6> ticks{ 0, 1, 2, 127, 256, 32767 };
+        const std::array<std::int16_t, 4> positions{ 0, 100, 1100, -1100 };
+        unsigned int targetChanges = 0;
+        for (unsigned int sample = 0; sample < 65536; ++sample)
+        {
+            std::array<std::uint16_t, 27> words;
+            for (std::size_t i = 0; i < words.size(); ++i)
+            {
+                words[i] = static_cast<std::uint16_t>(sample * 257u + i * 977u);
+            }
+            RawGameObject object;
+            std::memcpy(&object, words.data(), sizeof(object));
+            object.behavior = BehaviorType::PulsatingLight;
+            object.health = 1000;
+            object.posX = positions[sample % positions.size()];
+            object.posZ = 0;
+            object.field_26 = static_cast<std::uint16_t>(sample);
+            object.velocityZ = ReferenceSignedWord(sample * 13u);
+            object.velocityX = ReferenceSignedWord(sample * 17u);
+            state.tickCount = ticks[sample % ticks.size()];
+            state.randomSeed = sample * 65537u;
+            state.lightingCache.Reset(0, 0);
+            state.lightingCache.contributions[10][10] = 32760;
+            auto expectedCache = state.lightingCache.contributions;
+            auto expected = object;
+            const auto phase = static_cast<std::int64_t>(object.field_26) +
+                static_cast<std::int64_t>(object.velocityZ) * state.tickCount;
+            expected.field_26 = static_cast<std::uint16_t>((phase % 512 + 512) % 512);
+            auto seed = state.randomSeed;
+            if (nextRandom(seed, 15) == 0)
+            {
+                expected.velocityX = static_cast<std::int16_t>(8 + nextRandom(seed, 10));
+                ++targetChanges;
+            }
+            expected.velocityZ = ReferenceSignedWord(expected.velocityZ +
+                ReferenceStep(expected.velocityZ, expected.velocityX, state.tickCount));
+            const auto sine = ClampedSineTable[expected.field_26];
+            expected.field_28 = static_cast<std::uint16_t>(800 + fixedProduct(750, sine));
+            const auto amount = 30 - fixedProduct(25, sine);
+            Check(expected.field_28 >= 50 && expected.field_28 <= 1550 && amount >= 5 && amount <= 55,
+                "PulsatingLight pulse bounds differ from native amplitudes.");
+            const auto column = (object.posX + 50) / 100 + 10;
+            if (column >= 0 && column <= 20)
+            {
+                auto& cell = expectedCache[static_cast<std::size_t>(column)][10];
+                cell = ReferenceSignedWord(cell + amount);
+            }
+            const auto result = DispatchObjectCase(object, state);
+            Check(result.status == DispatchStatus::ExecutedCase && result.moduleOffset == 0x19cd &&
+                result.behavior == BehaviorType::PulsatingLight &&
+                ObjectBytes(object) == ObjectBytes(expected) && state.randomSeed == seed &&
+                state.lightingCache.contributions == expectedCache && state.field_DC34 == 0xabcd,
+                "PulsatingLight record, RNG order, signed fixed-point arithmetic, or single-corner write differs.");
+        }
+        Check(targetChanges > 0 && targetChanges < 65536,
+            "PulsatingLight tests must exercise both random-target branches.");
+
+        state = {};
+        state.tickCount = 0;
+        for (int phase = 0; phase < 512; ++phase)
+        {
+            auto& object = state.worldObjects[2];
+            object = {};
+            object.behavior = BehaviorType::PulsatingLight;
+            object.health = 1000;
+            object.field_26 = static_cast<std::uint16_t>(phase);
+            state.lightingCache.Reset(0, 0);
+            const auto sine = ClampedSineTable[static_cast<std::size_t>(phase)];
+            UpdateObjects(state);
+            Check(object.field_26 == phase && object.field_28 == 800 + fixedProduct(750, sine) &&
+                state.lightingCache.contributions[10][10] == 30 - fixedProduct(25, sine),
+                "Zero-tick world updates must still refresh both pulsating outputs using the clamped sine table.");
+        }
+        auto& second = state.worldObjects[3];
+        second = state.worldObjects[2];
+        second.field_26 = 128;
+        state.worldObjects[2].field_26 = 384;
+        state.lightingCache.Reset(0, 0);
+        auto seed = state.randomSeed;
+        for (int source = 0; source < 2; ++source)
+        {
+            if (nextRandom(seed, 15) == 0) { nextRandom(seed, 10); }
+        }
+        UpdateObjects(state);
+        Check(state.lightingCache.contributions[10][10] == 60 && state.randomSeed == seed,
+            "Pulsating lights must accumulate without resetting the grid and share sequential RNG.");
+        const auto cache = state.lightingCache.contributions;
+        const auto first = ObjectBytes(state.worldObjects[2]);
+        const auto other = ObjectBytes(second);
+        state.behaviorDispatchEnabled = false;
+        UpdateObjects(state);
+        Check(state.lightingCache.contributions == cache && state.randomSeed == seed &&
+            ObjectBytes(state.worldObjects[2]) == first && ObjectBytes(second) == other,
+            "Disabled pulsating dispatch must preserve object, RNG, and existing light contributions.");
+        state.behaviorDispatchEnabled = true;
+        state.worldObjects[2].health = 0;
+        second.health = -1;
+        UpdateObjects(state);
+        Check(state.lightingCache.contributions == cache && state.randomSeed == seed,
+            "Inactive pulsating lights must not write lighting or consume RNG.");
+    }
+
     void TestInputAbstraction()
     {
         struct Keys final : InputHandler
@@ -527,7 +661,8 @@ namespace
         initial.renderSortKey = -123;
         initial.soundEffectId = 5;
         initial.field_24 = 0x1234;
-        initial.spriteScale = 0xbabe;
+        initial.behaviorParameter = 0xbe;
+        initial.spriteScale = 0xba;
         GameContext state;
         state.audioHandler = &audio;
         state.soundEffectsLoaded = true;
@@ -685,7 +820,8 @@ namespace
         door.field_07 = 1;
         door.field_24 = 10;
         door.modelFrame2 = 1;
-        door.spriteScale = 0xab00;
+        door.behaviorParameter = 0;
+        door.spriteScale = 0xab;
         return door;
     }
 
@@ -925,7 +1061,8 @@ namespace
             door.field_26 = rate;
             door.field_24 = delay;
             door.itemValue = timer;
-            door.spriteScale = static_cast<std::uint16_t>(0xab00u | occupancy);
+            door.behaviorParameter = static_cast<std::uint8_t>(occupancy);
+            door.spriteScale = 0xab;
             door.velocityY = 0x127c;
             state.tickCount = ticks;
             auto expected = door;
@@ -952,7 +1089,8 @@ namespace
             expected.itemValue = timer;
             expected.field_26 = rate;
             expected.blendWeightOrSpriteOpacity = phase;
-            expected.spriteScale = 0xab00;
+            expected.behaviorParameter = 0;
+            expected.spriteScale = 0xab;
             Check(Function_Door(door, state).status == DispatchStatus::ExecutedCase &&
                 ObjectBytes(door) == ObjectBytes(expected),
                 "Door updates must preserve original ordering, signed guards, word wraps, and endpoint effects.");
@@ -1030,7 +1168,7 @@ namespace
         blocker = door;
         blocker.collisionRadiusXZ = blocker.collisionRadiusY = 1;
         Function_Door(door, state);
-        Check(door.blendWeightOrSpriteOpacity == 47 && door.spriteScale == 0xab03,
+        Check(door.blendWeightOrSpriteOpacity == 47 && door.behaviorParameter == 3 && door.spriteScale == 0xab,
             "The final overlap scan must store the blocker slot without changing the marker high byte.");
         Function_Door(door, state);
         Check(door.blendWeightOrSpriteOpacity == 50 && door.field_26 == 3 && door.itemValue == 10,
@@ -1039,7 +1177,8 @@ namespace
         auto& player = state.worldObjects[1];
         player = door;
         player.collisionRadiusXZ = player.collisionRadiusY = 1;
-        door.spriteScale = 0xab00;
+        door.behaviorParameter = 0;
+        door.spriteScale = 0xab;
         door.field_26 = 0;
         door.itemValue = 7;
         struct ContactInput final : InputHandler
@@ -1053,10 +1192,11 @@ namespace
             }
         } input;
         Check(UpdatePlayerInteraction(state, input).status == InteractionStatus::NoEffect &&
-            door.spriteScale == 0xab01 && door.field_26 == 0 && input.calls == 1,
+            door.behaviorParameter == 1 && door.spriteScale == 0xab && door.field_26 == 0 && input.calls == 1,
             "Player contact without input must mark occupancy without activating the door.");
         Function_Door(door, state);
-        Check(door.field_26 == 3 && door.itemValue == 10 && door.spriteScale == 0xab00,
+        Check(door.field_26 == 3 && door.itemValue == 10 &&
+            door.behaviorParameter == 0 && door.spriteScale == 0xab,
             "The player marker must reopen the door, then clear because the object scan excludes the player.");
         for (const std::int16_t group : { std::int16_t{ -1 }, std::int16_t{ 5 } })
         {
@@ -1542,7 +1682,7 @@ namespace
         target.posZ = 0;
         target.collisionType = CollisionType::Door;
         Check(UpdatePlayerInteraction(state, input).status == InteractionStatus::Applied &&
-            target.health == 1000 && target.field_26 == 3 && (target.spriteScale & 0xffu) == 1,
+            target.health == 1000 && target.field_26 == 3 && target.behaviorParameter == 1,
             "Door contact must mark occupancy and interaction must activate an unlocked door.");
 
         reset();
@@ -1649,7 +1789,8 @@ namespace
         auto key = pickup(CollisionType::Key, 7);
         key.renderPlacementMode = 0x14;
         key.soundEffectId = 0xab;
-        key.spriteScale = 0xdc21;
+        key.behaviorParameter = 0x21;
+        key.spriteScale = 0xdc;
         auto expectedKey = key;
         expectedKey.renderPlacementMode = 1;
         expectedKey.doorLockOrGroupBitmask = 0xdc;
@@ -1930,14 +2071,15 @@ namespace
         object.itemValue = 250;
         object.velocityY = 300;
         object.velocityZ = 3;
-        object.spriteScale = 0xc734;
+        object.behaviorParameter = 0x34;
+        object.spriteScale = 0xc7;
         GameContext state;
         state.tickCount = 2;
         auto expected = object;
         expected.posY = 103;
         expected.itemValue = 82;
         expected.blendWeightOrSpriteOpacity = 5;
-        expected.spriteScale = 0xcd34;
+        expected.spriteScale = 0xcd;
         expected.velocityY = 296;
         const auto result = DispatchObjectCase(object, state);
         Check(result.status == DispatchStatus::ExecutedCase && result.moduleOffset == 0x1a9d &&
@@ -1955,7 +2097,8 @@ namespace
                 object.velocityY = ReferenceSignedWord(bits);
                 object.velocityZ = ReferenceSignedWord(bits * 5LL);
                 object.health = ReferenceSignedWord(bits);
-                object.spriteScale = static_cast<std::uint16_t>(bits ^ 0xc7a5);
+                object.behaviorParameter = static_cast<std::uint8_t>(bits ^ 0xc7a5);
+                object.spriteScale = static_cast<std::uint8_t>((bits ^ 0xc7a5) >> 8);
                 state.tickCount = static_cast<std::int16_t>(ticks);
                 auto words = ObjectWords(object);
                 const auto sum = (static_cast<std::uint64_t>(words[10]) * ticks + words[17]) % 65536;
@@ -2043,7 +2186,7 @@ namespace
                     }
                 }
             }
-            else if (phase == 100 && object.spriteScale % 256 != 0)
+            else if (phase == 100 && object.behaviorParameter != 0)
             {
                 expected.field_26 = 0;
             }
@@ -2073,7 +2216,8 @@ namespace
                 object.doorLockOrGroupBitmask = ReferenceSignedWord(bits);
                 for (const auto ticks : { 0, 1, 32767 })
                 {
-                    object.spriteScale = bits % 3 == 0 ? 1 : bits % 3 == 1 ? 0x100 : 0;
+                    object.behaviorParameter = bits % 3 == 0 ? 1 : 0;
+                    object.spriteScale = bits % 3 == 1 ? 1 : 0;
                     object.field_24 = 10;
                     object.field_26 = static_cast<std::uint16_t>(bits);
                     object.blendWeightOrSpriteOpacity = 95;
@@ -2081,6 +2225,7 @@ namespace
                     object.field_26 = 10;
                     object.blendWeightOrSpriteOpacity = ReferenceSignedWord(bits);
                     checkUpdate(object, static_cast<std::int16_t>(ticks));
+                    object.behaviorParameter = 0;
                     object.spriteScale = 0;
                     object.field_24 = static_cast<std::uint16_t>(bits);
                     object.field_26 = behavior == BehaviorType::SwitchGrouped ? 0 : 1;
@@ -2649,11 +2794,12 @@ namespace
         drop.posY = 100;
         drop.velocityY = -2;
         drop.field_26 = 4;
-        drop.spriteScale = 0x02ab;
+        drop.behaviorParameter = 0xab;
+        drop.spriteScale = 2;
         drop.doorLockOrGroupBitmask = 2;
         auto expected = drop;
         expected.posY = 94;
-        expected.spriteScale = 0x05ab;
+        expected.spriteScale = 5;
         expected.displayType = DisplayType::SpriteTransparent;
         expected.blendWeightOrSpriteOpacity = 4;
         state.tickCount = 3;
@@ -2661,7 +2807,8 @@ namespace
             ObjectBytes(drop) == ObjectBytes(expected),
             "WaterDrop growth must integrate old velocity first and preserve unrelated bytes.");
         DispatchObjectCase(drop, state);
-        Check(drop.posY == 88 && drop.velocityY == -5 && drop.spriteScale == 0x05ab,
+        Check(drop.posY == 88 && drop.velocityY == -5 &&
+            drop.behaviorParameter == 0xab && drop.spriteScale == 5,
             "WaterDrop did not accelerate only after exceeding its target size.");
         drop.posY = 1000;
         drop.velocityY = -15;
@@ -2673,17 +2820,20 @@ namespace
         state.tickCount = 3;
         DispatchObjectCase(drop, state);
         Check(drop.posY == 10 && drop.velocityY == -30 && drop.field_24 == 65534 &&
-            drop.spriteScale == 0x05ab, "WaterDrop waiting must wrap and suppress both growth and velocity clamp.");
+            drop.behaviorParameter == 0xab && drop.spriteScale == 5,
+            "WaterDrop waiting must wrap and suppress both growth and velocity clamp.");
 
         drop.posY = 100;
         drop.velocityY = 0;
         drop.field_24 = 0xffff;
-        drop.spriteScale = 0xffab;
+        drop.behaviorParameter = 0xab;
+        drop.spriteScale = 0xff;
         drop.doorLockOrGroupBitmask = 255;
         state.tickCount = 258;
         DispatchObjectCase(drop, state);
-        Check(drop.spriteScale == 0x01ab && drop.field_24 == 0xffff,
-            "WaterDrop scale growth must wrap its high byte using the low tick byte and signed timer test.");
+        Check(drop.behaviorParameter == 0xab && drop.spriteScale == 1 && drop.field_24 == 0xffff,
+            "WaterDrop sprite scale must wrap using the low tick byte and signed timer test.");
+        drop.behaviorParameter = 0;
         drop.spriteScale = 0;
         drop.doorLockOrGroupBitmask = -1;
         drop.posY = -100;
@@ -2701,7 +2851,8 @@ namespace
         DispatchObjectCase(drop, state);
         Check(drop.posY == 0 && drop.field_26 == 4 && drop.animFrame == 9,
             "WaterDrop equality with floor must not count as impact.");
-        drop.spriteScale = 0x17ab;
+        drop.behaviorParameter = 0xab;
+        drop.spriteScale = 0x17;
         drop.itemValue = 20;
         drop.winX = 1;
         state.tickCount = 7;
@@ -2716,7 +2867,8 @@ namespace
             }
         }
         Check(drop.posY == 96 && drop.velocityY == 0 && drop.animFrame == 1 && drop.field_26 == 4 &&
-            drop.field_24 == 20 && drop.spriteScale == 0xab && drop.winX == 1 && drop.health == 1000,
+            drop.field_24 == 20 && drop.behaviorParameter == 0xab && drop.spriteScale == 0 &&
+            drop.winX == 1 && drop.health == 1000,
             "WaterDrop ceiling respawn did not restore timer, frame, size, and splash latch.");
         drop.posY = -1;
         drop.field_26 = 0;
@@ -2731,7 +2883,8 @@ namespace
         drop.velocityY = 0;
         drop.field_24 = 20;
         drop.field_26 = 4;
-        drop.spriteScale = 0xab;
+        drop.behaviorParameter = 0xab;
+        drop.spriteScale = 0;
         drop.doorLockOrGroupBitmask = 2;
         drop.animFrame = 1;
         state.tickCount = 1;
@@ -2743,12 +2896,12 @@ namespace
         {
             DispatchObjectCase(drop, state);
             ++cycleUpdates;
-            grew = grew || drop.spriteScale == 0x03ab;
+            grew = grew || (drop.behaviorParameter == 0xab && drop.spriteScale == 3);
             fell = fell || (drop.posY < 96 && drop.posY >= 0 && drop.velocityY < 0);
             splashed = splashed || drop.animFrame == 2;
         } while (cycleUpdates < 200 && !(splashed && drop.animFrame == 1));
         Check(grew && fell && splashed && cycleUpdates == 41 && drop.posY == 96 &&
-            drop.field_24 == 20 && drop.field_26 == 4 && drop.spriteScale == 0xab,
+            drop.field_24 == 20 && drop.field_26 == 4 && drop.behaviorParameter == 0xab && drop.spriteScale == 0,
             "WaterDrop did not complete the exact wait/grow/fall/four-update-splash/ceiling-reset cycle.");
 
         for (std::size_t i = 0; i < 4; ++i)
@@ -3157,6 +3310,7 @@ int main(int argc, char** argv)
         TestInputAbstraction();
         TestLightingCache();
         TestLightSource();
+        TestPulsatingLight();
         TestFlies();
         TestUserMessages();
         TestDoorCollisionMap();
@@ -3182,7 +3336,7 @@ int main(int argc, char** argv)
         TestSoundEffects(argv[2]);
         TestAgainstOriginal(argv[1]);
         std::cout << "PASS: 190 catalog routes and all 65536 selector words match the original; "
-            "signed gates, object state, collision-map reads/writes, Pillar, LightSource, Flies, doors/keys/prompts, IdleAnimation, SmokeFading, switches, "
+            "signed gates, object state, collision-map reads/writes, Pillar, LightSource, PulsatingLight, Flies, doors/keys/prompts, IdleAnimation, SmokeFading, switches, "
             "inventory/pickup interactions, collision/input routing, geometry streams, height lookups, WaterDrop, sound "
             "variants/attenuation/channel admission, both rotation tables and all word-angle lookups, "
             "and exhaustive arithmetic checks verified.\n";

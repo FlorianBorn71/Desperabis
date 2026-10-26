@@ -57,6 +57,8 @@ For the first explained case and shared collision-map pointer, see
   suffix, iteration bounds, and both clearing/free-slot allocators.
 - `lighting-evidence.txt`: packed static brightness, dynamic 21x21
   tile-corner cache, LightSource flicker/writes, frame clearing, and readers.
+- `pulsating-light-evidence.txt`: complete behavior-23 pulse update, randomized
+  target speed, clamped-sine outputs, and one-corner light contribution.
 - `fireplace-evidence.txt`: fireplace sound, weighted flickering light,
   emission, fire-particle initialization/update, and the signed random helper.
   See [fireplace recovery](BehaviorRecovery.md#burningfireplace-and-fireparticle).
@@ -73,6 +75,11 @@ For the first explained case and shared collision-map pointer, see
 - `Scaffold/FloatingDebrisTests.cpp`: full-record/RNG oracle, signed state words,
   axis reflections, vertical bounds, and all 24 original debris records.
   See [floating debris](BehaviorRecovery.md#floatingdebris-floating-underwater-parts).
+- `rat-snake-evidence.txt`, `rat-snake-support-evidence.txt`: complete rat/snake
+  movement, shared math/collision helpers, and separate player-contact damage.
+- `Scaffold/RatSnakeTests.cpp`: movement/RNG, health gates, steering, neighborhood
+  retries, sound and all 40 native rat/snake records. See
+  [rat/snake recovery](BehaviorRecovery.md#ratandsnake-movement-and-separate-contact-damage).
 - `lighting-shade-evidence.txt`: timer-driven shade noise, its quantization
   consumer, a separate global shading term, and per-frame noise-range resets.
 - `object-render-list-evidence.txt`: render-sort-key assignment and signed
@@ -85,7 +92,7 @@ For the first explained case and shared collision-map pointer, see
   per-frame reset, native world-coordinate accumulation, and window culling.
   LightSource objects now add flicker and request their configured sounds;
   the unidentified DS:DC34 accumulator is preserved. No rendering is included.
-- `Scaffold/`: compilable selector, implemented Pillar/LightSource/Door/Flies/FloatingDebris/behavior-18/FireParticle/BurningFireplace/IdleAnimation/SmokeFading/SpawnInCrater/switch/WaterDrop cases,
+- `Scaffold/`: compilable selector, implemented Pillar/LightSource/PulsatingLight/Door/Flies/RatAndSnake/FloatingDebris/behavior-18/FireParticle/BurningFireplace/IdleAnimation/SmokeFading/SpawnInCrater/switch/WaterDrop cases,
   placeholder handlers, and tests.
 - `Scaffold/CollisionMap.cpp`: explicit 200x200 dummy-level creation until proper
   level loading is recovered. Collision-map queries/writers are in `GameContext.cpp`.
@@ -182,8 +189,8 @@ The current investigation is [Pillar](Pillar.md), its collision-map writer,
 and the corresponding reader/player-blocking rules. `BatIndoor`'s helper at
 module-relative `10AC:3391` remains a later target.
 Pillar's case and point writer, plus the object-local IdleAnimation and
-SmokeFading cases, Flies, two switch behaviors, WaterDrop, LightSource, ordinary
-doors, FloatingDebris, behavior 18, and the fireplace/crater particle paths are implemented
+SmokeFading cases, Flies, two switch behaviors, WaterDrop, LightSource, PulsatingLight, ordinary
+doors, RatAndSnake, FloatingDebris, behavior 18, and the fireplace/crater particle paths are implemented
 and host-tested.
 Flies preserves randomized frame blending, per-update orientation changes, and
 the fixed buzzing effect with doubled-distance attenuation; it does not move
@@ -196,6 +203,10 @@ once per frame before object updates. The console does this automatically:
 `--behavior LightSource --ticks 100` runs a dummy light and reports its
 contribution. See [gameplay lighting](BehaviorRecovery.md#gameplay-lighting-cache)
 for frame setup and the still-unidentified DS:DC34 accumulator.
+PulsatingLight varies its pulse speed, updates `field_28`, and adds a clamped-sine
+contribution of 5..55 to one lighting corner. Use
+`--behavior PulsatingLight --ticks 3` for its state and contribution.
+See [PulsatingLight](BehaviorRecovery.md#pulsatinglight-randomized-pulse-speed-and-one-corner-lighting).
 `Level::LoadGeometry` accepts the unpacked 50x40 seven-plane geometry prefix;
 the context borrows the level for floor and relative-room-height queries.
 Use `--behavior WaterDrop` for a dummy-room update, or

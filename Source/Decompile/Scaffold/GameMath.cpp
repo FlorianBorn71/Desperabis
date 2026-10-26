@@ -1,5 +1,7 @@
 #include "GameMath.h"
 
+#include <cmath>
+
 namespace Desperabis
 {
     namespace
@@ -45,6 +47,26 @@ namespace Desperabis
             }
             return table;
         }
+
+        void DirectionFromTable(std::int16_t& x, std::int16_t& z, std::int16_t angle,
+            std::int16_t speed, const std::array<std::int32_t, 513>& table)
+        {
+            const auto phase = static_cast<std::uint16_t>(angle) & 511u;
+            const auto xProduct = static_cast<std::uint32_t>(static_cast<std::int64_t>(table[phase]) * speed);
+            const auto zProduct = static_cast<std::uint32_t>(
+                static_cast<std::int64_t>(table[(phase + 128u) & 511u]) * speed);
+            x = WrapSignedWord(static_cast<std::int32_t>(xProduct >> 16));
+            z = WrapSignedWord(-static_cast<std::int32_t>(zProduct >> 16));
+        }
+
+        double RoundReal48(double value)
+        {
+            if (value == 0) { return 0; }
+            int exponent = 0;
+            const auto fraction = std::frexp(std::abs(value), &exponent);
+            const auto rounded = std::floor(std::ldexp(fraction, 40) + 0.5);
+            return std::copysign(std::ldexp(rounded, exponent - 40), value);
+        }
     }
 
     const std::array<std::int32_t, 513> SineTable = MakeSineTable(SineQuarter);
@@ -69,12 +91,41 @@ namespace Desperabis
     void GetDirectionDisplacement(std::int16_t& x, std::int16_t& z,
         std::int16_t angle, std::int16_t speed)
     {
-        const auto phase = static_cast<std::uint16_t>(angle) & 511u;
-        const auto xProduct = static_cast<std::uint32_t>(static_cast<std::int64_t>(SineTable[phase]) * speed);
-        const auto zProduct = static_cast<std::uint32_t>(
-            static_cast<std::int64_t>(SineTable[(phase + 128u) & 511u]) * speed);
-        x = WrapSignedWord(static_cast<std::int32_t>(xProduct >> 16));
-        z = WrapSignedWord(-static_cast<std::int32_t>(zProduct >> 16));
+        DirectionFromTable(x, z, angle, speed, SineTable);
+    }
+
+    void GetClampedDirectionDisplacement(std::int16_t& x, std::int16_t& z,
+        std::int16_t angle, std::int16_t speed)
+    {
+        DirectionFromTable(x, z, angle, speed, ClampedSineTable);
+    }
+
+    std::int16_t GetVectorAngle(std::int16_t x, std::int16_t z)
+    {
+        // The executable embeds these approximations, not full-precision pi.
+        constexpr double pi = 3.1415927;
+        constexpr double halfPi = 1.57079635;
+        constexpr double angleScale = 81.48732965925214;
+        auto angle = RoundReal48(z != 0 ?
+            std::atan(static_cast<double>(x) / WrapSignedWord(std::abs(static_cast<int>(z)))) :
+            SignWord(x) * halfPi);
+        if (z < 0) { angle = RoundReal48(pi - angle); }
+        const auto scaled = angle * angleScale;
+        const auto lower = std::floor(scaled);
+        const auto fraction = scaled - lower;
+        const auto rounded = lower + (fraction > 0.5 ||
+            (fraction == 0.5 && static_cast<int>(lower) % 2 != 0) ? 1 : 0);
+        return static_cast<std::int16_t>((256 - static_cast<int>(rounded)) & 511);
+    }
+
+    void NormalizeAnglePair(std::int16_t& current, std::int16_t& target)
+    {
+        current = static_cast<std::int16_t>((static_cast<std::uint16_t>(current) & 511u) + 512u);
+        target = static_cast<std::int16_t>(static_cast<std::uint16_t>(target) & 511u);
+        while (std::abs(static_cast<int>(current) - target) > 256)
+        {
+            current = static_cast<std::int16_t>(current - 512);
+        }
     }
 
     void AddFixedPoint8(std::int16_t& whole, std::int16_t& fraction, std::int16_t increment)

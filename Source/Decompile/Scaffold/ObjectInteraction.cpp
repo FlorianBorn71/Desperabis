@@ -42,7 +42,7 @@ namespace Desperabis
             if (stored.renderPlacementMode == 20)
             {
                 stored.renderPlacementMode = 1;
-                stored.doorLockOrGroupBitmask = static_cast<std::int16_t>(stored.spriteScale >> 8);
+                stored.doorLockOrGroupBitmask = stored.spriteScale;
             }
 
             const auto slot = static_cast<std::uint16_t>(index + 1);

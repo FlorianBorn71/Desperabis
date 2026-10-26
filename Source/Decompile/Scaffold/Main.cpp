@@ -103,9 +103,11 @@ namespace
                     << std::hex << std::setw(4) << std::setfill('0') << entry.moduleOffset << std::dec
                     << (entry.type == BehaviorType::Pillar || entry.type == BehaviorType::IdleAnimation ||
                         entry.type == BehaviorType::SmokeFading || entry.type == BehaviorType::FireParticle ||
-                        entry.type == BehaviorType::BurningFireplace || entry.type == BehaviorType::Switch1 ||
+                        entry.type == BehaviorType::BurningFireplace || entry.type == BehaviorType::PulsatingLight ||
+                        entry.type == BehaviorType::Switch1 ||
                         entry.type == BehaviorType::ExplosionSmokeCloud || entry.type == BehaviorType::SpawnInCrater ||
                         entry.type == BehaviorType::FloatingDebris ||
+                        entry.type == BehaviorType::RatAndSnake ||
                         entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ?
                         " implemented case (common processing missing)" :
                         entry.hasSpecificCase ? " unrecovered handler" : " common path only") << '\n';
@@ -289,6 +291,16 @@ namespace
             object.posZ = 4049;
             context.InitializeDriftingParticle(object, 3, 150, 4050);
         }
+        if (!haveObjectFile && object.behavior == BehaviorType::RatAndSnake)
+        {
+            object.health = 1000;
+            object.posX = 150;
+            object.posZ = 4050;
+            object.modelAnim = 1;
+            object.itemValue = 3;
+            object.field_28 = 0;
+            object.velocityX = 3;
+        }
         if (!haveObjectFile && object.behavior == BehaviorType::FloatingDebris)
         {
             object.health = 1000;
@@ -433,7 +445,7 @@ namespace
                     if (particle.behavior != BehaviorType::SmokeFading) { continue; }
                     std::cout << "Smoke particle slot " << slot << ": health " << particle.health
                         << ", Y " << particle.posY << ", vertical velocity " << particle.velocityY
-                        << ", scale " << particle.spriteScale << '\n';
+                        << ", scale " << static_cast<unsigned int>(particle.spriteScale) << '\n';
                 }
             }
             if (object.behavior == BehaviorType::Flies)
@@ -443,7 +455,13 @@ namespace
                     << '/' << static_cast<unsigned int>(object.modelFrame2)
                     << ", angles: " << object.winX << ", " << object.winY << ", " << object.winZ << '\n';
             }
-            if (object.behavior == BehaviorType::LightSource)
+            if (object.behavior == BehaviorType::PulsatingLight)
+            {
+                std::cout << "Pulse phase: " << object.field_26 << ", speed/target: "
+                    << object.velocityZ << '/' << object.velocityX
+                    << ", pulse field_28: " << object.field_28 << '\n';
+            }
+            if (object.behavior == BehaviorType::LightSource || object.behavior == BehaviorType::PulsatingLight)
             {
                 std::int32_t total = 0;
                 for (const auto& column : context.lightingCache.contributions)
@@ -456,7 +474,8 @@ namespace
             if (object.behavior == BehaviorType::SmokeFading)
             {
                 std::cout << "Smoke fraction: " << object.itemValue << ", vertical velocity: " << object.velocityY
-                    << ", opacity: " << object.blendWeightOrSpriteOpacity << ", scale: " << object.spriteScale << '\n';
+                    << ", opacity: " << object.blendWeightOrSpriteOpacity
+                    << ", scale: " << static_cast<unsigned int>(object.spriteScale) << '\n';
             }
             if (object.behavior == BehaviorType::Switch1 || object.behavior == BehaviorType::SwitchGrouped)
             {
@@ -479,8 +498,8 @@ namespace
             }
             if (object.behavior == BehaviorType::WaterDrop)
             {
-                std::cout << "Drop velocity Y: " << object.velocityY << ", scale high byte: "
-                    << (object.spriteScale >> 8) << ", wait timer: " << object.field_24
+                std::cout << "Drop velocity Y: " << object.velocityY << ", sprite scale: "
+                    << static_cast<unsigned int>(object.spriteScale) << ", wait timer: " << object.field_24
                     << ", splash updates remaining: " << object.field_26
                     << ", animation frame: " << static_cast<unsigned int>(object.animFrame)
                     << "\nWaterDrop sound is routed through AudioHandler; "

@@ -53,8 +53,8 @@ evidence for one universal widget/page interpreter.
 The renderer's existing accessors and the author's layout information are now
 connected to the binary in [Object behavior recovery](BehaviorRecovery.md).
 That page also documents the compilable named-handler scaffold. Pillar,
-LightSource, Door, Flies, behavior 18, FireParticle, BurningFireplace, IdleAnimation,
-SmokeFading, SpawnInCrater, FloatingDebris, Switch1, SwitchGrouped, and WaterDrop are implemented; other handlers remain explicit
+LightSource, PulsatingLight, Door, Flies, behavior 18, FireParticle, BurningFireplace, IdleAnimation,
+SmokeFading, SpawnInCrater, RatAndSnake, FloatingDebris, Switch1, SwitchGrouped, and WaterDrop are implemented; other handlers remain explicit
 placeholders.
 The author's Excel object layout has been compared with the renderer accessors
 and added as the canonical 54-byte `RawGameObject` struct in
@@ -449,7 +449,7 @@ expiration. The initializer preserves Y, phase, and all other unwritten bytes.
 Its numeric enum name is retained pending a sufficiently general visual role.
 
 The shared supplied-object smoke initializer `10AC:044E` is also implemented,
-including its four RNG draws, retained low scale byte and fixed-point fraction,
+including its four RNG draws, retained `behaviorParameter` byte and fixed-point fraction,
 and final floor-height correction. `SpawnInCrater` (139, `0000:3F8A`) is the
 first fully wired caller in this batch: a per-update signed intensity check
 emits at most one particle, with native post-allocation source reads.

@@ -47,6 +47,10 @@ if(BUILD_TESTING)
     target_link_libraries(floating-debris-tests PRIVATE behavior-recovery)
     add_test(NAME floating-debris COMMAND floating-debris-tests
         "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original/LEVEL")
+    add_executable(rat-snake-tests Scaffold/RatSnakeTests.cpp)
+    target_link_libraries(rat-snake-tests PRIVATE behavior-recovery)
+    add_test(NAME rat-snake-behavior COMMAND rat-snake-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original/LEVEL")
     add_test(NAME behavior-recovery-routes COMMAND behavior-recovery-tests
         "${CMAKE_CURRENT_SOURCE_DIR}/../../Game/Original/DESPERAB.EXE"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original/SAMP/S_TAB.PRB")
@@ -60,7 +64,7 @@ foreach(target behavior-recovery desperabis-recovery)
     endif()
 endforeach()
 if(BUILD_TESTING)
-    foreach(target behavior-recovery-tests application-flow-tests fireplace-tests particle-tests floating-debris-tests)
+    foreach(target behavior-recovery-tests application-flow-tests fireplace-tests particle-tests floating-debris-tests rat-snake-tests)
         if(MSVC)
             target_compile_options(${target} PRIVATE /W4 /WX)
         else()

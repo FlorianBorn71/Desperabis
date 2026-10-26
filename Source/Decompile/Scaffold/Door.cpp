@@ -97,7 +97,7 @@ namespace Desperabis
         if (WrapSignedWord(object.field_24) > 0)
         {
             if (object.itemValue > 0) { object.itemValue = WrapSignedWord(object.itemValue - context.tickCount); }
-            if ((object.spriteScale & 0xffu) != 0 && object.blendWeightOrSpriteOpacity > 0)
+            if (object.behaviorParameter != 0 && object.blendWeightOrSpriteOpacity > 0)
             {
                 // Contact recorded before this update reverses closing and refreshes the delay.
                 object.itemValue = WrapSignedWord(object.field_24);
@@ -134,9 +134,8 @@ namespace Desperabis
         const auto collisionValue = object.blendWeightOrSpriteOpacity == 100 ?
             static_cast<std::uint16_t>(object.velocityY) : CollisionMapValue_BlockingWall;
         context.SetDoorCollisionMapAtWorldXZ(object.posX, object.posZ, collisionValue);
-        // Keep the high byte intact; only the low byte is the next update's occupancy marker.
         const auto collision = context.FindCollidingObject(object);
-        object.spriteScale = static_cast<std::uint16_t>((object.spriteScale & 0xff00u) | collision);
+        object.behaviorParameter = static_cast<std::uint8_t>(collision);
         return { DispatchStatus::ExecutedCase, BehaviorType::Door, 0x14ff };
     }
 }

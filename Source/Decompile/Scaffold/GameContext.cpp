@@ -398,9 +398,7 @@ namespace Desperabis
         object.health = WrapSignedWord(riseFactor * 50 + Random(50));
         const auto size = static_cast<std::uint8_t>(Random(
             static_cast<std::uint16_t>(object.collisionRadiusXZ)) + 10);
-        // Only the scale's high byte is initialized; its low byte belongs to the existing record.
-        object.spriteScale = static_cast<std::uint16_t>((object.spriteScale & 0x00ffu) |
-            (static_cast<std::uint16_t>(size) << 8));
+        object.spriteScale = size;
         object.velocityY = WrapSignedWord(riseFactor * 200 + Random(130));
         object.posX = x;
         object.posY = y;
@@ -440,12 +438,17 @@ namespace Desperabis
 
     std::uint8_t GameContext::GetCollisionMapPixelAtWorldXZ(std::int16_t x, std::int16_t z) const
     {
+        const auto column = static_cast<std::int16_t>(WrapSignedWord(static_cast<std::int32_t>(x) - 112) / 25);
+        const auto row = WrapSignedWord(162 - WrapSignedWord(static_cast<std::int32_t>(z) - 38) / 25);
+        return GetCollisionMapPixel(column, row);
+    }
+
+    std::uint8_t GameContext::GetCollisionMapPixel(std::int16_t column, std::int16_t row) const
+    {
         if (!collisionMap)
         {
             throw std::runtime_error("GetCollisionMapPixelAtWorldXZ requires collision-map memory (DS:69C4).");
         }
-        const auto column = WrapSignedWord(static_cast<std::int32_t>(x) - 112) / 25;
-        const auto row = WrapSignedWord(162 - WrapSignedWord(static_cast<std::int32_t>(z) - 38) / 25);
         if (column < 0 || column > 319 || row < 0 || row > 239)
         {
             return 0;
@@ -460,6 +463,48 @@ namespace Desperabis
         // Wrapped offsets can address the header as well as pixel data.
         const auto* bytes = reinterpret_cast<const unsigned char*>(&map);
         return bytes[address];
+    }
+
+    void GameContext::QueryCollisionMapNeighborhood(std::int16_t x, std::int16_t z, std::int16_t step,
+        std::int16_t& correctionX, std::int16_t& correctionZ, std::uint16_t& center, std::uint8_t mask) const
+    {
+        const auto column = WrapSignedWord(x - 112) / 25;
+        const auto zPixel = WrapSignedWord(z - 38) / 25;
+        for (int dx = -1; dx <= 1; ++dx)
+        {
+            for (int dz = -1; dz <= 1; ++dz)
+            {
+                const auto sample = GetCollisionMapPixel(WrapSignedWord(column + dx),
+                    WrapSignedWord(162 - WrapSignedWord(zPixel + dz))) & mask;
+                if (dx == 0 && dz == 0) { center = static_cast<std::uint16_t>(sample); }
+                if (sample > 0)
+                {
+                    correctionX = WrapSignedWord(correctionX - dx * step);
+                    correctionZ = WrapSignedWord(correctionZ - dz * step);
+                }
+            }
+        }
+        correctionX = WrapSignedWord(SignWord(correctionX) * step);
+        correctionZ = WrapSignedWord(SignWord(correctionZ) * step);
+    }
+
+    void GameContext::HandleBlockedObject(RawGameObject& object)
+    {
+        if (discardBlockedObjects)
+        {
+            object.health = 0;
+            return;
+        }
+        const auto found = std::find_if(worldObjects.begin(), worldObjects.end(),
+            [&object](const RawGameObject& candidate) { return &candidate == &object; });
+        if (found == worldObjects.end())
+        {
+            throw std::invalid_argument("Blocked-object diagnostics require a world-object slot.");
+        }
+        object.behavior = BehaviorType::None;
+        object.blendWeightOrSpriteOpacity = -100;
+        object.posY = WrapSignedWord(object.posY + 50);
+        PromptUserMessage("WC-Error Obj " + std::to_string(found - worldObjects.begin()), 50);
     }
 
     void GameContext::SetCollisionMapPixelAtWorldXZ(
@@ -647,10 +692,9 @@ namespace Desperabis
 
     std::uint16_t GameContext::Random(std::uint16_t range)
     {
-        if (range == 0) { throw std::invalid_argument("Random requires a nonzero range."); }
         // 2CE4:170A uses the high seed word modulo the range, not multiply-high scaling.
         randomSeed = randomSeed * 0x08088405u + 1u;
-        return static_cast<std::uint16_t>((randomSeed >> 16) % range);
+        return range == 0 ? 0 : static_cast<std::uint16_t>((randomSeed >> 16) % range);
     }
 
     void GameContext::LoadSoundEffects(const std::uint8_t* data, std::size_t size)

@@ -13,7 +13,7 @@ namespace Desperabis
         if (object.collisionType == CollisionType::Door)
         {
             // Player contact keeps a door open even without an interaction-key press.
-            object.spriteScale = static_cast<std::uint16_t>((object.spriteScale & 0xff00u) | 1u);
+            object.behaviorParameter = 1;
         }
         if (!input.IsKeyPressed(InputKey::InteractionKey)) { return { InteractionStatus::NoEffect }; }
         return HandlePlayerObjectInteraction(object, context);
