@@ -116,7 +116,7 @@ namespace Desperabis
         RoofDoorHandler = 113,
         Behavior_114 = 114,
         NeonLights = 116, // in museum
-        SwimmingParticles = 117, // underwater with large Octopus
+        FloatingDebris = 117, // Parts floating in water near the large octopus, per author recollection; not smoke or an emitter.
         Behavior_118 = 118,
         BurriedVerticalDoor = 119, // level 23
         Teleporter = 120, // various teleporter to jump between map parts in level 10 and 36

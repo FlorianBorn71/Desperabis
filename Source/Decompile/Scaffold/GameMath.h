@@ -15,6 +15,10 @@ namespace Desperabis
 
     std::int16_t WrapSignedWord(std::int32_t value);
 
+    // Original 1E48:2E0A: ordinary (unclamped) sine table, signed high-word products.
+    void GetDirectionDisplacement(std::int16_t& x, std::int16_t& z,
+        std::int16_t angle, std::int16_t speed);
+
     // Original 10AC:384E: whole and fraction by far reference, then one word; RETF 10.
     void AddFixedPoint8(std::int16_t& whole, std::int16_t& fraction, std::int16_t increment);
 

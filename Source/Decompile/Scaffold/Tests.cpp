@@ -122,7 +122,7 @@ namespace
             object.behavior = entry.type;
             object.health = 1;
             object.posX = -100;
-            if (entry.type == BehaviorType::WaterDrop)
+            if (entry.type == BehaviorType::WaterDrop || entry.type == BehaviorType::FloatingDebris)
             {
                 object.posX = 150;
                 object.posZ = 4050;
@@ -131,6 +131,7 @@ namespace
             GameContext context;
             context.tickCount = 3;
             auto level = CreateDummyLevel();
+            level.heightSurfaces[0] = Level::HeightSurface{ 0, 0 };
             context.collisionMap = level.collisionMap.get();
             context.level = &level;
             const auto result = DispatchObjectCase(object, context);
@@ -142,6 +143,7 @@ namespace
                 entry.type == BehaviorType::Door ||
                 entry.type == BehaviorType::Flies ||
                 entry.type == BehaviorType::ExplosionSmokeCloud || entry.type == BehaviorType::SpawnInCrater ||
+                entry.type == BehaviorType::FloatingDebris ||
                 entry.type == BehaviorType::FireParticle || entry.type == BehaviorType::BurningFireplace ||
                 entry.type == BehaviorType::IdleAnimation ||
                 entry.type == BehaviorType::SmokeFading || entry.type == BehaviorType::Switch1 ||
@@ -3138,6 +3140,7 @@ namespace
             object.posX = 150;
             object.posZ = 4050;
             object.behavior = static_cast<BehaviorType>(behavior);
+            level.heightSurfaces[0] = Level::HeightSurface{ 0, 0 };
             const auto result = DispatchObjectCase(object, context);
             Check(result.moduleOffset == originalEntry(behavior) && result.behavior == object.behavior,
                 "C++ routing differs from the original executable's selector instructions.");

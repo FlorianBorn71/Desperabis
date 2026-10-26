@@ -773,9 +773,86 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::NeonLights, 0x3636 };
     }
 
-    DispatchResult Function_SwimmingParticles(RawGameObject&, GameContext&)
+    DispatchResult Function_FloatingDebris(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::SwimmingParticles, 0x372C };
+        if (!context.objectCollisionsEnabled)
+        {
+            return { DispatchStatus::ExecutedCase, BehaviorType::FloatingDebris, 0x372C };
+        }
+
+        const auto oldWinX = object.winX;
+        if (context.FindCollidingObject(object) != 0 || context.OverlapsPlayer(object))
+        {
+            object.field_28 = static_cast<std::uint16_t>(100 + context.Random(300));
+            object.velocityY = WrapSignedWord(std::abs(static_cast<int>(object.velocityY)));
+        }
+        const auto chance = static_cast<std::uint8_t>(object.spriteScale);
+        if (chance > 0 && context.Random(chance) == 0) { object.field_28 = 0; }
+
+        for (int tick = 0; tick < context.tickCount; ++tick)
+        {
+            if (WrapSignedWord(object.field_28) > 0)
+            {
+                object.field_28 = static_cast<std::uint16_t>(object.field_28 - context.Random(2));
+                if (context.Random(10) == 0)
+                {
+                    object.field_24 = static_cast<std::uint16_t>(
+                        (object.field_24 + context.RandomSigned(20)) & 511);
+                }
+                object.winX = static_cast<std::int16_t>(
+                    (object.winX + context.Random(static_cast<std::uint16_t>((object.field_28 >> 4) + 1))) & 511);
+                object.winY = static_cast<std::int16_t>(
+                    (object.winY + context.Random(static_cast<std::uint16_t>((object.field_28 >> 5) + 1))) & 511);
+                if (context.Random(50) == 0) { object.velocityY = static_cast<std::int16_t>(context.Random(30) - 12); }
+                const auto threshold = context.Random(10);
+                if (WrapSignedWord(std::abs(static_cast<int>(object.velocityY))) > threshold)
+                {
+                    object.posY = WrapSignedWord(object.posY + SignWord(object.velocityY));
+                }
+            }
+            else
+            {
+                object.winX = WrapSignedWord(object.winX + GetStepToward(object.winX, 256, 1));
+                if (context.Random(3) == 0) { object.posY = WrapSignedWord(object.posY - 1); }
+                if (context.Random(300) == 0) { object.field_28 = context.Random(100); }
+            }
+        }
+
+        // These operations happen once per call, including when tickCount is zero.
+        if (context.Random(3) == 0) { object.posY = WrapSignedWord(object.posY - 1); }
+        auto floor = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
+        if (static_cast<std::uint8_t>(object.collisionType) != 20)
+        {
+            floor = WrapSignedWord(floor + object.collisionRadiusY);
+        }
+        if (object.posY < floor) { object.posY = floor; }
+        const auto surface = WrapSignedWord(-static_cast<std::int32_t>(context.GetHeightSurfaceDepth(1)));
+        if (object.posY > surface)
+        {
+            object.posY = surface;
+            const auto target = WrapSignedWord(256 + context.RandomSigned(8));
+            object.winX = WrapSignedWord(oldWinX +
+                GetStepToward(oldWinX, target, WrapSignedWord(6 * static_cast<std::int32_t>(context.tickCount))));
+        }
+
+        std::int16_t dx = 0;
+        std::int16_t dz = 0;
+        GetDirectionDisplacement(dx, dz, WrapSignedWord(object.field_24), WrapSignedWord(object.field_28));
+        const auto probeX = WrapSignedWord(object.posX + 3 * SignWord(dx));
+        if ((context.GetCollisionMapPixelAtWorldXZ(probeX, object.posZ) & 39) != 1)
+        {
+            object.field_24 ^= 256;
+            dx = WrapSignedWord(-static_cast<std::int32_t>(dx));
+        }
+        const auto probeZ = WrapSignedWord(object.posZ + 3 * SignWord(dz));
+        if ((context.GetCollisionMapPixelAtWorldXZ(object.posX, probeZ) & 39) != 1)
+        {
+            object.field_24 ^= 256;
+            dz = WrapSignedWord(-static_cast<std::int32_t>(dz));
+        }
+        AddFixedPoint8(object.posX, object.velocityX, dx);
+        AddFixedPoint8(object.posZ, object.velocityZ, dz);
+        return { DispatchStatus::ExecutedCase, BehaviorType::FloatingDebris, 0x372C };
     }
 
     DispatchResult Function_Behavior_118(RawGameObject&, GameContext&)

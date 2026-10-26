@@ -54,7 +54,7 @@ The renderer's existing accessors and the author's layout information are now
 connected to the binary in [Object behavior recovery](BehaviorRecovery.md).
 That page also documents the compilable named-handler scaffold. Pillar,
 LightSource, Door, Flies, behavior 18, FireParticle, BurningFireplace, IdleAnimation,
-SmokeFading, SpawnInCrater, Switch1, SwitchGrouped, and WaterDrop are implemented; other handlers remain explicit
+SmokeFading, SpawnInCrater, FloatingDebris, Switch1, SwitchGrouped, and WaterDrop are implemented; other handlers remain explicit
 placeholders.
 The author's Excel object layout has been compared with the renderer accessors
 and added as the canonical 54-byte `RawGameObject` struct in

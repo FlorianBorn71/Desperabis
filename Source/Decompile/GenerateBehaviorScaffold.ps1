@@ -182,6 +182,7 @@ foreach ($value in @(@($names.Keys) + $caseValues | Sort-Object -Unique)) {
     if ($value -eq 65535) { $name = 'DisabledSentinel' }
     elseif ($value -eq 18) { $name = 'ExplosionSmokeCloud' }
     elseif ($value -eq 21) { $name = 'FireParticle' }
+    elseif ($value -eq 117) { $name = 'FloatingDebris' }
     elseif (-not $name) { $name = 'Behavior_' + $value }
     $specific = $trace.Entry -ne 0x5110
     $references = @{ Instructions = 0; Globals = @(); Calls = @() }
@@ -252,6 +253,8 @@ foreach ($enumName in $enumTypes.Keys) {
                 $comment = '// Likely post-explosion smoke, per author recollection; visual role tentative.'
             } elseif ($row.value -eq 21) {
                 $comment = '// Spawned by BurningFireplace; recovered from the executable.'
+            } elseif ($row.value -eq 117) {
+                $comment = '// Parts floating in water near the large octopus, per author recollection; not smoke or an emitter.'
             }
             $suffix = if ($comment) { ' ' + $comment } else { '' }
             $gameEnums.Add(('        {0} = {1},{2}' -f $row.name, $row.value, $suffix))

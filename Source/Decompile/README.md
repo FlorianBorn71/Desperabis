@@ -68,6 +68,11 @@ For the first explained case and shared collision-map pointer, see
   retention/RNG, floor correction, crater emission, lifecycle/allocation
   edges, and 28 original level-25 emitter records. See
   [particle creation](BehaviorRecovery.md#drifting-particles-and-shared-smoke-creation).
+- `floating-debris-movement-evidence.txt`: complete floating-debris update and
+  its player-overlap, direction, map-predicate, and fixed-point movement helpers.
+- `Scaffold/FloatingDebrisTests.cpp`: full-record/RNG oracle, signed state words,
+  axis reflections, vertical bounds, and all 24 original debris records.
+  See [floating debris](BehaviorRecovery.md#floatingdebris-floating-underwater-parts).
 - `lighting-shade-evidence.txt`: timer-driven shade noise, its quantization
   consumer, a separate global shading term, and per-frame noise-range resets.
 - `object-render-list-evidence.txt`: render-sort-key assignment and signed
@@ -80,7 +85,7 @@ For the first explained case and shared collision-map pointer, see
   per-frame reset, native world-coordinate accumulation, and window culling.
   LightSource objects now add flicker and request their configured sounds;
   the unidentified DS:DC34 accumulator is preserved. No rendering is included.
-- `Scaffold/`: compilable selector, implemented Pillar/LightSource/Door/Flies/behavior-18/FireParticle/BurningFireplace/IdleAnimation/SmokeFading/SpawnInCrater/switch/WaterDrop cases,
+- `Scaffold/`: compilable selector, implemented Pillar/LightSource/Door/Flies/FloatingDebris/behavior-18/FireParticle/BurningFireplace/IdleAnimation/SmokeFading/SpawnInCrater/switch/WaterDrop cases,
   placeholder handlers, and tests.
 - `Scaffold/CollisionMap.cpp`: explicit 200x200 dummy-level creation until proper
   level loading is recovered. Collision-map queries/writers are in `GameContext.cpp`.
@@ -178,7 +183,7 @@ and the corresponding reader/player-blocking rules. `BatIndoor`'s helper at
 module-relative `10AC:3391` remains a later target.
 Pillar's case and point writer, plus the object-local IdleAnimation and
 SmokeFading cases, Flies, two switch behaviors, WaterDrop, LightSource, ordinary
-doors, behavior 18, and the fireplace/crater particle paths are implemented
+doors, FloatingDebris, behavior 18, and the fireplace/crater particle paths are implemented
 and host-tested.
 Flies preserves randomized frame blending, per-update orientation changes, and
 the fixed buzzing effect with doubled-distance attenuation; it does not move

@@ -522,27 +522,40 @@ namespace Desperabis
         }
     }
 
-    std::int16_t GameContext::GetFloorHeight(std::int16_t x, std::int16_t y, std::int16_t z)
+    std::int16_t GameContext::GetHeightSurfaceDepth(std::uint16_t surface)
     {
-        if (!level) { throw std::runtime_error("GetFloorHeight requires level geometry."); }
-        const auto position = GetHeightPosition(x, z);
-        const auto surface = level->surfaceFlags[position.row][position.column] & 31;
+        surface &= 31;
+        floorSurfaceValue = -1;
         std::int16_t depth = 1000;
-        std::int16_t value = -1;
-        if (surface >= 1 && surface <= static_cast<int>(level->heightSurfaces.size()))
+        if (surface >= 1 && surface <= 4)
         {
+            if (!level) { throw std::runtime_error("Surface depth requires level information."); }
             const auto& entry = level->heightSurfaces[surface - 1];
             if (!entry)
             {
                 throw std::runtime_error("Floor surface slot requires height/value metadata from level information.");
             }
             depth = entry->depth;
-            value = entry->value;
+            floorSurfaceValue = entry->value;
         }
-        floorSurfaceValue = value;
+        return depth;
+    }
+
+    std::int16_t GameContext::GetFloorHeight(std::int16_t x, std::int16_t y, std::int16_t z)
+    {
+        if (!level) { throw std::runtime_error("GetFloorHeight requires level geometry."); }
+        const auto position = GetHeightPosition(x, z);
+        const auto depth = GetHeightSurfaceDepth(level->surfaceFlags[position.row][position.column]);
         const auto flatFloor = WrapSignedWord(-static_cast<std::int32_t>(depth));
         if (flatFloor >= -900) { return flatFloor; }
+        return GetTerrainFloorHeight(x, y, z);
+    }
 
+    std::int16_t GameContext::GetTerrainFloorHeight(std::int16_t x, std::int16_t y, std::int16_t z) const
+    {
+        if (!level) { throw std::runtime_error("Terrain floor lookup requires level geometry."); }
+        const auto position = GetHeightPosition(x, z);
+        const auto surface = level->surfaceFlags[position.row][position.column] & 31;
         auto corners = GetCorners(level->floorHeights, position);
         const auto halfY = y >= 0 ? y / 2 : (static_cast<int>(y) - 1) / 2;
         const auto queryHeight = WrapSignedWord(-halfY);
@@ -604,6 +617,11 @@ namespace Desperabis
             }
         }
         return 0;
+    }
+
+    bool GameContext::OverlapsPlayer(const RawGameObject& source) const
+    {
+        return objectCollisionsEnabled && ObjectsOverlap(source, worldObjects[1]);
     }
 
     std::uint16_t GameContext::FindPlayerCollision() const

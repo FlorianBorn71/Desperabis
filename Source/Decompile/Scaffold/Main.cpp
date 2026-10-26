@@ -105,6 +105,7 @@ namespace
                         entry.type == BehaviorType::SmokeFading || entry.type == BehaviorType::FireParticle ||
                         entry.type == BehaviorType::BurningFireplace || entry.type == BehaviorType::Switch1 ||
                         entry.type == BehaviorType::ExplosionSmokeCloud || entry.type == BehaviorType::SpawnInCrater ||
+                        entry.type == BehaviorType::FloatingDebris ||
                         entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ?
                         " implemented case (common processing missing)" :
                         entry.hasSpecificCase ? " unrecovered handler" : " common path only") << '\n';
@@ -288,6 +289,16 @@ namespace
             object.posZ = 4049;
             context.InitializeDriftingParticle(object, 3, 150, 4050);
         }
+        if (!haveObjectFile && object.behavior == BehaviorType::FloatingDebris)
+        {
+            object.health = 1000;
+            object.posX = 150;
+            object.posZ = 4050;
+            object.field_24 = 128;
+            object.field_28 = 300;
+            level.heightSurfaces[0] = Level::HeightSurface{ 0, 0 };
+            std::cout << "Using demo water-surface depth 0; real levels require surface metadata.\n";
+        }
         if (!haveObjectFile && object.behavior == BehaviorType::SpawnInCrater)
         {
             object.health = 1000;
@@ -402,6 +413,11 @@ namespace
                         << ", Y " << particle.posY << ", vertical velocity " << particle.velocityY
                         << ", acceleration " << particle.doorLockOrGroupBitmask << '\n';
                 }
+            }
+            if (object.behavior == BehaviorType::FloatingDebris)
+            {
+                std::cout << "Debris heading: " << object.field_24 << ", drift state: " << object.field_28
+                    << ", X/Z fractions: " << object.velocityX << '/' << object.velocityZ << '\n';
             }
             if (object.behavior == BehaviorType::ExplosionSmokeCloud)
             {

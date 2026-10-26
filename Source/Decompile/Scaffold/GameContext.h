@@ -243,6 +243,10 @@ namespace Desperabis
         // Original 1E48:1B45 and 1E48:1BA6; room height is relative, not absolute Y.
         std::int16_t GetFloorHeight(std::int16_t x, std::int16_t y, std::int16_t z);
         std::int16_t GetRoomHeight(std::int16_t x, std::int16_t z) const;
+        // Original 1E48:18CF: terrain interpolation without the flat-surface shortcut.
+        std::int16_t GetTerrainFloorHeight(std::int16_t x, std::int16_t y, std::int16_t z) const;
+        // Original 1E48:1AF9, including the floorSurfaceValue side effect.
+        std::int16_t GetHeightSurfaceDepth(std::uint16_t surface);
 
         // Original 10AC:387B: three word slots, X/Z/value push order, RETF 6.
         void SetCollisionMapPixelAtWorldXZ(std::int16_t x, std::int16_t z, std::uint16_t value);
@@ -254,6 +258,8 @@ namespace Desperabis
         // Original 1E48:2B33, one source-slot word; returns a slot or zero.
         std::uint16_t FindCollidingObject(std::int16_t sourceSlot) const;
         std::uint16_t FindCollidingObject(const RawGameObject& source) const;
+        // Original 1E48:2D63: no player-health test.
+        bool OverlapsPlayer(const RawGameObject& source) const;
         // Original 0000:CE9E, including its later-slot preference rule.
         std::uint16_t FindPlayerCollision() const;
         // Both native allocators clear the selected record, including fallback slot 165.

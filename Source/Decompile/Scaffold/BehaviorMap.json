@@ -1429,7 +1429,7 @@
     },
     {
       "value": 117,
-      "name": "SwimmingParticles",
+      "name": "FloatingDebris",
       "namedInRenderer": true,
       "hasSpecificCase": true,
       "entry": "0000:372C",

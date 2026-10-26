@@ -218,7 +218,7 @@ case BehaviorType::BatIndoor:
     return Function_BatIndoor(object, context);
 ```
 
-Pillar, LightSource, Door, Flies, behavior 18, FireParticle, BurningFireplace,
+Pillar, LightSource, Door, Flies, FloatingDebris, behavior 18, FireParticle, BurningFireplace,
 IdleAnimation, SmokeFading, SpawnInCrater, Switch1, SwitchGrouped, WaterDrop,
 and DisabledSentinel return `ExecutedCase`. The other
 handlers return `UnimplementedHandler` without moving objects or writing
@@ -1118,6 +1118,76 @@ Run the console's minimal synthetic swamp-style demo with
 `--behavior BurningFireplace --ticks 15`; real object input is never replaced.
 The code is host-tested against static instruction-derived expectations,
 not validated against a running DOS capture.
+
+### FloatingDebris: floating underwater parts
+
+Behavior 117, formerly `SwimmingParticles`, is named `FloatingDebris` at the
+author's request: parts floating in the water near the large octopus, not smoke
+or an emitter. The behavior name override survives scaffold regeneration;
+the renderer's original name and collision enum are not changed.
+
+The wrapper at `0000:372C` calls the complete movement helper
+`10AC:AF92..B2C7` only when `objectCollisionsEnabled` (DS:`D500`) is true.
+The helper's logic is implemented directly in `Function_FloatingDebris` in
+[BehaviorHandlers.cpp](Scaffold/BehaviorHandlers.cpp), with reusable context
+operations defined in [GameContext.cpp](Scaffold/GameContext.cpp) and
+instruction evidence in
+[floating-debris-movement-evidence.txt](floating-debris-movement-evidence.txt).
+It allocates nothing and requests no sound:
+
+1. Save the original `winX`. Object overlap, or player overlap if no object
+   overlapped, sets `field_28 = 100 + Random(300)` and replaces vertical
+   velocity with its wrapped absolute value. Player overlap ignores player
+   health, shares the byte-7 mask, and uses strict signed-word axis bounds.
+2. If the low scale byte is nonzero, `Random(lowByte) == 0` clears `field_28`.
+   The high scale byte is not used for this probability.
+3. Execute exactly `tickCount` iterations. Signed-positive `field_28` loses
+   `Random(2)`; there is a 1/10 chance to perturb heading `field_24` by
+   `RandomSigned(20)`, modulo 512. `winX` and `winY` advance by random amounts
+   bounded by the post-decrement state shifted by four/five, plus one.
+   A 1/50 chance chooses vertical velocity `Random(30)-12`; Y moves by its
+   sign when its wrapped absolute value exceeds `Random(10)`.
+   Nonpositive state instead moves `winX` toward 256 by one, decrements Y
+   with probability 1/3, and with probability 1/300 selects `Random(100)`
+   as the next state. High-bit-set state words therefore take the idle branch.
+4. Once per call, including zero ticks, decrement Y with probability 1/3.
+   Clamp it from below using **terrain interpolation**, not the flat-surface
+   floor shortcut; add the Y radius except for collision type 20.
+   Clamp from above to the wrapped negative depth of **surface slot 1**,
+   independent of the local terrain's surface flags. That lookup updates
+   `floorSurfaceValue`. If this upper clamp fires, replace `winX` with the
+   original saved angle plus a step toward `256 + RandomSigned(8)`, bounded
+   by the wrapped `6*ticks`; do not use the loop-modified angle here.
+5. Calculate X/Z displacement from heading and signed `field_28`, using the
+   ordinary 65536-scale sine table, not the clamped table used by `Sine()`.
+   Native `1E48:2E0A` keeps the signed product's high word for X and negates
+   the cosine product's high word for Z.
+6. Probe three units along each displacement's sign, separately for X and Z,
+   before moving either coordinate. A probe succeeds iff `(mapByte & 39) == 1`.
+   Failure toggles heading bit 8 and negates that axis's displacement; two
+   failures toggle it twice. Finally, native `10AC:37E4` applies fixed-point-8
+   X/Z movement, using `velocityX` and `velocityZ` as fractional accumulators.
+   Horizontal movement is once per call and has no additional tick multiplier.
+
+The floor implementation now exposes its terrain-only path, reusing the existing
+stacked/repeated-floor rules without duplicating interpolation. Missing geometry,
+surface-slot metadata, or map memory fail explicitly. There is no guessed water
+height or renderer dependency. Full rendering/postprocessing remains outside
+this recovered handler.
+
+[FloatingDebrisTests.cpp](Scaffold/FloatingDebrisTests.cpp) compares all 54 bytes
+and RNG state against an instruction-derived oracle over 65,536 seed fixtures
+and all 65,536 drift-state words. It covers all word angles at boundary speeds,
+zero/max ticks, player/object contact, scale-byte probability, all map-byte
+values, independent axis reflections, floor/radius/type-20 rules, surface side
+effects, collision gating, missing inputs, and shared lifetime expiration.
+All **24 original debris records** are also checked with explicit dummy
+terrain, surface metadata, and map, not a reconstruction of their native level.
+This is statically recovered and host-tested, not DOS-runtime validated.
+
+The synthetic `--behavior FloatingDebris --ticks 3` console fixture explicitly
+supplies demo surface-slot metadata. Real-object input still requires the host
+to supply level information; geometry streams alone do not contain that table.
 
 ### Drifting particles and shared smoke creation
 

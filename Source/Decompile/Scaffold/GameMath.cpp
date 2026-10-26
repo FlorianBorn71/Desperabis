@@ -66,6 +66,17 @@ namespace Desperabis
         return static_cast<std::int16_t>(bits >= 0x8000 ? static_cast<std::int32_t>(bits) - 0x10000 : bits);
     }
 
+    void GetDirectionDisplacement(std::int16_t& x, std::int16_t& z,
+        std::int16_t angle, std::int16_t speed)
+    {
+        const auto phase = static_cast<std::uint16_t>(angle) & 511u;
+        const auto xProduct = static_cast<std::uint32_t>(static_cast<std::int64_t>(SineTable[phase]) * speed);
+        const auto zProduct = static_cast<std::uint32_t>(
+            static_cast<std::int64_t>(SineTable[(phase + 128u) & 511u]) * speed);
+        x = WrapSignedWord(static_cast<std::int32_t>(xProduct >> 16));
+        z = WrapSignedWord(-static_cast<std::int32_t>(zProduct >> 16));
+    }
+
     void AddFixedPoint8(std::int16_t& whole, std::int16_t& fraction, std::int16_t increment)
     {
         fraction = WrapSignedWord(static_cast<std::int32_t>(fraction) + increment);
