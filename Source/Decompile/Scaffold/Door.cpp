@@ -39,6 +39,44 @@ namespace Desperabis
         }
     }
 
+    InteractionResult HandleSwitchInteraction(RawGameObject& object, GameContext& context)
+    {
+        if (object.collisionType != CollisionType::Switch)
+        {
+            throw std::invalid_argument("Ordinary switch interaction requires a switch collision type.");
+        }
+        if (object.health <= 0) { return { InteractionStatus::InactiveObject }; }
+        if (object.blendWeightOrSpriteOpacity != 0) { return { InteractionStatus::NoEffect }; }
+
+        const bool activatesTargets = object.itemValue > 0 && object.health == 1000;
+        const auto targetHealth = WrapSignedWord(object.itemValue + 1000);
+        if (activatesTargets)
+        {
+            // 10AC:2060 scans 2..140, not the full update range. Other activation types remain unrecovered.
+            for (std::size_t slot = 2; slot <= 140; ++slot)
+            {
+                const auto& target = context.worldObjects[slot];
+                if (target.health == targetHealth && target.collisionType != CollisionType::Door)
+                {
+                    return { InteractionStatus::UnimplementedHandler };
+                }
+            }
+        }
+        // 10AC:2094 starts the animation even when the target index/health gate fails.
+        object.field_26 = object.field_24;
+        if (activatesTargets)
+        {
+            for (std::size_t slot = 2; slot <= 140; ++slot)
+            {
+                auto& target = context.worldObjects[slot];
+                if (target.health == targetHealth) { ActivateDoor(target, context); }
+            }
+            PlayDoorSound(object, context, static_cast<SoundEffect>(object.soundEffectId),
+                context.GetSoundVolumeAt(object.posX, object.posZ), 1);
+        }
+        return { InteractionStatus::Applied };
+    }
+
     InteractionResult HandleDoorInteraction(RawGameObject& object, GameContext& context)
     {
         if (object.collisionType != CollisionType::Door)

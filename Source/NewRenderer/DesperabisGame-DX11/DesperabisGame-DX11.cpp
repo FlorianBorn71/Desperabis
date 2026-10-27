@@ -313,11 +313,6 @@ namespace
 			wss << L"LEVEL\\FELD" << levelIndex << L".256";
 			source.geometry = ReadGameFile(wss.str());
 		}
-		{
-			std::wstringstream wss;
-			wss << L"LEVEL\\OBJPOS" << levelIndex << L".DAT";
-			source.objectRecords = ReadGameFile(wss.str());
-		}
 
 		// The renderer supplies the initial eye position; GameCore handles terrain support and gravity.
 		source.playerPosition = PosToDesp(g_scene->GetInitialPosition());
@@ -386,7 +381,10 @@ namespace
 			g_renderTargetView.Get(), g_depthStencilView.Get(), g_viewport));
 		FORCE_WAIT(AssetManager::Instance().Initialize());
 
-		g_gameCore = std::make_unique<GameCoreHost>();
+		g_gameCore = std::make_unique<GameCoreHost>([](std::string_view filename)
+		{
+			return ReadGameFile(std::wstring(filename.begin(), filename.end()));
+		});
 
 		g_freeCam = std::make_unique<FreeCamera>();
 		g_freeCam->SetUseGravity(false);

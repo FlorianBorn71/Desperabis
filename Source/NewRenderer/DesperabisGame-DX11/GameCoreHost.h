@@ -2,8 +2,10 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // Renderer-independent level input for the game context. Only plain data crosses this boundary.
@@ -11,7 +13,6 @@ struct GameCoreLevelSource
 {
 	int levelNumber = 0;
 	std::vector<std::uint8_t> geometry;            // FELD<n>.256 file contents
-	std::vector<std::uint8_t> objectRecords;       // consecutive 54-byte native records (OBJPOS<n>.DAT)
 	// Native DOS eye coordinates; the controller settles onto terrain from this starting height.
 	std::array<std::int16_t, 3> playerPosition{};
 	std::array<std::int16_t, 3> playerDirection{}; // native view vector words
@@ -45,7 +46,8 @@ public:
 	static constexpr int FirstObjectSlot = 2;
 	static constexpr int LastObjectSlot = 164;
 	static constexpr int ObjectSize = 54;
-	GameCoreHost();
+	using FileLoader = std::function<std::vector<std::uint8_t>(std::string_view)>;
+	explicit GameCoreHost(FileLoader fileLoader);
 	~GameCoreHost();
 
 	// Starts the level in the game context and completes the load synchronously from the given data.

@@ -10,6 +10,7 @@ namespace Desperabis
     // The host passes the selected object directly; prompt storage and recovered sound requests are game-side.
     InteractionResult HandlePlayerObjectInteraction(RawGameObject& object, GameContext& context);
     InteractionResult HandleDoorInteraction(RawGameObject& object, GameContext& context);
+    InteractionResult HandleSwitchInteraction(RawGameObject& object, GameContext& context);
     InteractionResult UpdatePlayerInteraction(GameContext& context, InputHandler& input);
 
     struct BehaviorDescriptor

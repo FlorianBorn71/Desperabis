@@ -6,6 +6,7 @@
 #include <cstring>
 #include <exception>
 #include <stdexcept>
+#include <utility>
 
 using namespace Desperabis;
 
@@ -80,15 +81,6 @@ namespace
 		const std::vector<std::uint8_t> geometry = ToNativeGeometry(source.geometry);
 		data.level->LoadGeometry(geometry.data(), geometry.size());
 
-		// Assumption: OBJPOS record i maps to native slot i+2 (not proven, see Findings.md).
-		const std::size_t recordCount = source.objectRecords.size() / GameCoreHost::ObjectSize;
-		const std::size_t slotCount = GameCoreHost::LastObjectSlot - GameCoreHost::FirstObjectSlot + 1;
-		for (std::size_t i = 0; i < std::min(recordCount, slotCount); i++)
-		{
-			data.objects[GameCoreHost::FirstObjectSlot + i] =
-				DecodeGameObject(source.objectRecords.data() + i * GameCoreHost::ObjectSize, GameCoreHost::ObjectSize);
-		}
-
 		data.playerSpawn = PlayerCamera{ source.playerPosition, source.playerDirection };
 		return data;
 	}
@@ -97,9 +89,18 @@ namespace
 class GameCoreHost::HostContext final : public GameContext
 {
 public:
+	explicit HostContext(GameCoreHost::FileLoader fileLoader) : m_fileLoader(std::move(fileLoader))
+	{
+		if (!m_fileLoader) { throw std::invalid_argument("GameCoreHost requires a file loader."); }
+	}
 	const GameCoreLevelSource* m_source = nullptr;
 
 protected:
+	std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+	{
+		return m_fileLoader(filename);
+	}
+
 	void LoadLevel(const LevelLoadRequest& request) override
 	{
 		if (m_source == nullptr || m_source->levelNumber != request.levelNumber)
@@ -107,12 +108,17 @@ protected:
 			FailLevelLoad(request.id, "No level data provided by the host.");
 			return;
 		}
-		CompleteLevelLoad(request.id, BuildLevelData(*m_source));
+		auto data = BuildLevelData(*m_source);
+		LoadLevelObjects(request.levelNumber, data);
+		CompleteLevelLoad(request.id, std::move(data));
 	}
+
+private:
+	GameCoreHost::FileLoader m_fileLoader;
 };
 
-GameCoreHost::GameCoreHost()
-	: m_context(std::make_unique<HostContext>())
+GameCoreHost::GameCoreHost(FileLoader fileLoader)
+	: m_context(std::make_unique<HostContext>(std::move(fileLoader)))
 {
 }
 

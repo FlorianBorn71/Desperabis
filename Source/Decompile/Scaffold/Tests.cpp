@@ -1983,7 +1983,7 @@ namespace
         for (const auto type : { CollisionType::BookWithCode, CollisionType::BuyItem,
             CollisionType::WheelToLiftRope, CollisionType::VaseToGrab, CollisionType::MirrorToGrab,
             CollisionType::LevelEnd, CollisionType::Teleporter, CollisionType::SarcophagusWithBones,
-            CollisionType::Switch, CollisionType::PictureMap, CollisionType::Lorry })
+            CollisionType::PictureMap, CollisionType::Lorry })
         {
             auto unsupported = pickup(type);
             const auto before = unsupported;

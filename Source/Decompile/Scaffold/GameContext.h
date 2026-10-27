@@ -13,6 +13,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <vector>
 
 namespace Desperabis
 {
@@ -326,6 +327,10 @@ namespace Desperabis
             std::int16_t z, std::int16_t radiusXZ, std::int16_t riseFactor, std::uint8_t placement);
 
     protected:
+        // Logical asset names, e.g. LEVEL\OBJPOS11.DAT; failures must throw.
+        virtual std::vector<std::uint8_t> LoadFile(std::string_view filename);
+        // Loads ordinary slots 2..164, preserving reserved/player/fallback records.
+        void LoadLevelObjects(std::int16_t levelNumber, LevelLoadData& data);
         // May complete synchronously or start host-side async work. Default reports an explicit error.
         virtual void LoadLevel(const LevelLoadRequest& request);
         // Each modal page owns its input/drawing loop and returns its next application page.

@@ -1,4 +1,5 @@
 #include "GameContext.h"
+#include "BehaviorDispatch.h"
 #include "GameMath.h"
 #include "GameCoreHost.h"
 
@@ -586,7 +587,7 @@ namespace
         GameCoreLevelSource source;
         source.levelNumber = 11;
         source.geometry = readBytes(levelDirectory / "FELD11.256");
-        source.objectRecords = readBytes(levelDirectory / "OBJPOS11.DAT");
+        const auto objectRecords = readBytes(levelDirectory / "OBJPOS11.DAT");
         source.playerDirection = { 0, 0, 100 };
         const auto saved = readBytes(savePath);
         Check(saved.size() >= 299, "Original save fixture must contain the player record at byte 245.");
@@ -595,10 +596,16 @@ namespace
             nativePlayer.collisionRadiusY == 23, "Original standing player collision shape changed.");
         const auto object = [&](std::size_t record)
         {
-            Check(source.objectRecords.size() >= (record + 1) * 54, "Missing original interaction object.");
-            return DecodeGameObject(source.objectRecords.data() + record * 54, 54);
+            Check(objectRecords.size() >= (record + 1) * 54, "Missing original interaction object.");
+            return DecodeGameObject(objectRecords.data() + record * 54, 54);
         };
-        GameCoreHost host;
+        int fileRequests = 0;
+        GameCoreHost host([&](std::string_view filename)
+        {
+            Check(filename == "LEVEL\\OBJPOS11.DAT", "GameCore must choose the requested level's OBJPOS asset.");
+            ++fileRequests;
+            return readBytes(levelDirectory / "OBJPOS11.DAT");
+        });
         const auto worldObject = [&](int slot)
         {
             std::uint8_t bytes[54];
@@ -609,6 +616,13 @@ namespace
         {
             source.playerPosition = { target.posX, static_cast<std::int16_t>(target.posY + 45), target.posZ };
             Check(host.LoadLevel(source), "Real renderer-host level loading failed.");
+            Check(fileRequests > 0, "Level loading must obtain objects through the file service.");
+            for (std::size_t record = 0; record < objectRecords.size() / 54; ++record)
+            {
+                const auto loaded = worldObject(static_cast<int>(record + 2));
+                Check(std::memcmp(&loaded, objectRecords.data() + record * 54, 54) == 0,
+                    "GameCore must load every original OBJPOS record byte-for-byte before simulation.");
+            }
             const auto player = worldObject(1);
             Check(player.field_07 == nativePlayer.field_07 &&
                 player.collisionRadiusXZ == nativePlayer.collisionRadiusXZ &&
@@ -640,9 +654,193 @@ namespace
         const auto trigger = object(9);
         Check(trigger.collisionType == CollisionType::Switch, "Expected ordinary door-trigger fixture.");
         loadAt(trigger);
-        Check(host.Tick(0, 1, enter) &&
-            host.GetLastInteractionMessage().find("Interaction not implemented") == 0,
-            "Unrecovered ordinary switch activation must be reported, not silently discarded.");
+        Check(host.Tick(1, 1, {}), "Initial ordinary-switch behavior tick failed.");
+        const auto linkedDoor = worldObject(6);
+        Check(linkedDoor.health == 1001 && linkedDoor.field_26 == 0,
+            "Expected level-11 door encoded with switch index 1.");
+        Check(host.Tick(1, 1, enter) && worldObject(11).blendWeightOrSpriteOpacity == 10 &&
+            worldObject(6).field_26 == 3 && worldObject(6).blendWeightOrSpriteOpacity == 3 &&
+            host.GetLastInteractionMessage().find("Interaction applied") == 0,
+            "Enter must pull the original level-11 switch and animate its linked door in the same tick.");
+        for (int tick = 0; tick < 40; ++tick) { Check(host.Tick(1, 1, {}), "Switch/door animation tick failed."); }
+        Check(worldObject(6).blendWeightOrSpriteOpacity == 100 &&
+            worldObject(11).blendWeightOrSpriteOpacity == 0,
+            "Linked door must finish opening while the ordinary switch returns to rest.");
+    }
+
+    void TestSimpleSwitchInteraction()
+    {
+        GameContext context;
+        auto& lever = context.worldObjects[150];
+        lever.health = 1000;
+        lever.collisionType = CollisionType::Switch;
+        lever.behavior = BehaviorType::Switch1;
+        lever.itemValue = 1;
+        lever.field_24 = 10;
+        lever.field_32 = 1;
+        const auto resting = lever;
+        for (const int slot : { 2, 140, 141, 164 })
+        {
+            auto& target = context.worldObjects[static_cast<std::size_t>(slot)];
+            target.health = 1001;
+            target.collisionType = CollisionType::Door;
+            target.modelFrame2 = 1;
+            target.field_24 = 30;
+            target.doorLockOrGroupBitmask = -1;
+        }
+        const auto before = context.worldObjects;
+        Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::Applied &&
+            lever.field_26 == 10 && lever.health == 1000 && context.inventory[0].health == 0,
+            "Ordinary switch interaction must start its rate, not pick up a flagged lever.");
+        for (const int slot : { 2, 140 })
+        {
+            const auto& target = context.worldObjects[static_cast<std::size_t>(slot)];
+            Check(target.field_26 == 3 && target.itemValue == 30 && target.health == 1001 &&
+                target.doorLockOrGroupBitmask == -1,
+                "Switch-index matching must open all matching doors without consuming their health link or lock.");
+        }
+        Check(std::memcmp(&before[141], &context.worldObjects[141], sizeof(RawGameObject)) == 0 &&
+            std::memcmp(&before[164], &context.worldObjects[164], sizeof(RawGameObject)) == 0,
+            "Switch target dispatch must stop at native slot 140.");
+
+        for (const auto phase : { -1, 1, 50, 100, 101 })
+        {
+            lever = resting;
+            lever.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(phase);
+            const auto snapshot = context.worldObjects;
+            Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::NoEffect &&
+                std::memcmp(snapshot.data(), context.worldObjects.data(), sizeof(snapshot)) == 0,
+                "Nonzero switch phase must reject reactivation without side effects.");
+        }
+        for (const auto health : { 999, 1001 })
+        {
+            lever = resting;
+            lever.health = static_cast<std::int16_t>(health);
+            context.worldObjects[2].field_26 = 0;
+            Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::Applied &&
+                lever.field_26 == 10 && context.worldObjects[2].field_26 == 0,
+                "A non-1000 live switch must animate but not activate indexed targets.");
+        }
+        for (const auto index : { -1, 0 })
+        {
+            lever = resting;
+            lever.itemValue = static_cast<std::int16_t>(index);
+            Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::Applied &&
+                lever.field_26 == 10, "A nonpositive switch index must still start the local animation.");
+        }
+        lever = resting;
+        context.worldObjects[2].collisionType = CollisionType::Skeleton;
+        const auto unsupported = context.worldObjects;
+        Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::UnimplementedHandler &&
+            std::memcmp(unsupported.data(), context.worldObjects.data(), sizeof(unsupported)) == 0,
+            "Unsupported indexed target types must be explicit and must not partially activate other doors.");
+        context.worldObjects[2].collisionType = CollisionType::Door;
+        context.worldObjects[2].doorLockOrGroupBitmask = 1;
+        context.worldObjects[2].field_26 = 0;
+        lever = resting;
+        Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::Applied &&
+            context.worldObjects[2].field_26 == 0,
+            "Switch activation must preserve positive key locks.");
+
+        lever = resting;
+        lever.itemValue = 32767;
+        context.worldObjects[2].health = -31769;
+        context.worldObjects[2].doorLockOrGroupBitmask = 0;
+        Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::Applied &&
+            context.worldObjects[2].field_26 == 3,
+            "Switch health links must use wrapped word addition, without an extra target-health gate.");
+        lever = resting;
+        lever.behaviorParameter = 1;
+        context.tickCount = 1;
+        HandlePlayerObjectInteraction(lever, context);
+        for (int tick = 0; tick < 20; ++tick) { Function_Switch1(lever, context); }
+        Check(lever.blendWeightOrSpriteOpacity == 100 && lever.field_26 == 0,
+            "A latched ordinary switch must remain pulled and stop animating.");
+        Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::NoEffect,
+            "A fully pulled latched switch must ignore further interaction.");
+        lever = resting;
+        lever.itemValue = 3;
+        lever.field_26 = 123;
+        lever.soundEffectId = 2;
+        context.soundEffectsLoaded = true;
+        context.soundEffects[1].sampleCount = 1;
+        context.soundEffects[1].samples[0] = 1;
+        const auto seed = context.randomSeed;
+        Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::Applied &&
+            lever.field_26 == 10 && context.randomSeed == seed * 134775813u + 1u,
+            "At phase zero, native activation overwrites the rate and requests sound even when no target matches.");
+        lever.health = 0;
+        Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::InactiveObject,
+            "Inactive ordinary switches must reject interaction.");
+    }
+
+    void TestLevelObjectLoading()
+    {
+        class FileHost final : public GameContext
+        {
+        public:
+            using GameContext::LoadLevelObjects;
+            std::vector<std::uint8_t> payload;
+            std::string requested;
+            bool missing = false;
+        protected:
+            std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+            {
+                requested = filename;
+                if (missing) { throw std::runtime_error(std::string(filename) + ": file not found"); }
+                return payload;
+            }
+        };
+        FileHost host;
+        auto data = MakeLevel();
+        data.objects[0].itemValue = 7;
+        data.objects[165].itemValue = 8;
+        const auto before = data.objects;
+        host.payload.resize(163 * 54);
+        for (std::size_t i = 0; i < host.payload.size(); ++i)
+        {
+            host.payload[i] = static_cast<std::uint8_t>(i * 17 + 3);
+        }
+        host.LoadLevelObjects(12, data);
+        Check(host.requested == "LEVEL\\OBJPOS12.DAT" &&
+            std::memcmp(&data.objects[2], host.payload.data(), host.payload.size()) == 0 &&
+            std::memcmp(&data.objects[0], &before[0], 2 * sizeof(RawGameObject)) == 0 &&
+            std::memcmp(&data.objects[165], &before[165], sizeof(RawGameObject)) == 0,
+            "OBJPOS loading must fill all 163 ordinary slots without touching reserved, player or fallback slots.");
+        host.payload.resize(54);
+        host.LoadLevelObjects(99, data);
+        Check(data.objects[3].health == 0 && data.objects[164].health == 0,
+            "Shorter object files must clear unused slots instead of retaining previous objects.");
+        const auto valid = data.objects;
+        for (const std::size_t badSize : { std::size_t{ 53 }, std::size_t{ 55 }, std::size_t{ 164 * 54 } })
+        {
+            host.payload.resize(badSize);
+            ExpectError<std::invalid_argument>([&] { host.LoadLevelObjects(12, data); });
+            Check(std::memcmp(valid.data(), data.objects.data(), sizeof(valid)) == 0,
+                "Invalid OBJPOS data must not partially replace records.");
+        }
+        host.missing = true;
+        ExpectError<std::runtime_error>([&] { host.LoadLevelObjects(12, data); });
+        ExpectError<std::invalid_argument>([&] { host.LoadLevelObjects(0, data); });
+        GameCoreLevelSource source;
+        source.levelNumber = 12;
+        source.geometry.resize(Level::GeometryStreamSize);
+        source.geometry[0] = 49;
+        source.geometry[2] = 39;
+        source.playerPosition = { 1500, 45, 2500 };
+        bool invalid = false;
+        GameCoreHost adapter([&](std::string_view filename) -> std::vector<std::uint8_t>
+        {
+            if (invalid) { return std::vector<std::uint8_t>(55); }
+            throw std::runtime_error(std::string(filename) + ": missing");
+        });
+        Check(!adapter.LoadLevel(source) && !adapter.IsLevelReady() &&
+            adapter.GetLastError().find("OBJPOS12.DAT") != std::string::npos,
+            "Missing object-file errors must reach the host without installing a partial world.");
+        invalid = true;
+        Check(!adapter.LoadLevel(source) && !adapter.IsLevelReady() &&
+            adapter.GetLastError().find("54-byte") != std::string::npos,
+            "Malformed object-file errors must propagate through the level lifecycle.");
     }
 
     void TestObjectBoundary()
@@ -748,6 +946,8 @@ int main(int argc, char** argv)
         TestBasicPlayerMovement();
         TestPlayerGrounding();
         TestRendererHostInteraction(argv[3], argv[4]);
+        TestSimpleSwitchInteraction();
+        TestLevelObjectLoading();
         TestObjectBoundary();
         const auto renderer = ReadText(argv[1]);
         const auto game = ReadText(argv[2]);

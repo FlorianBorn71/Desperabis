@@ -156,6 +156,9 @@ namespace Desperabis
             }
             break;
 
+        case CollisionType::Switch:
+            return HandleSwitchInteraction(object, state);
+
         case CollisionType::GroupedSwitch:
             if (object.field_26 == 0)
             {
@@ -202,7 +205,6 @@ namespace Desperabis
         case CollisionType::LevelEnd:
         case CollisionType::Teleporter:
         case CollisionType::SarcophagusWithBones:
-        case CollisionType::Switch:
         case CollisionType::PictureMap:
         case CollisionType::Lorry:
             return { InteractionStatus::UnimplementedHandler };

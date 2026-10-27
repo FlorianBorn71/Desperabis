@@ -487,8 +487,8 @@ namespace
                     std::cout << "Switch group: " << object.groupIndexOrLock << ", mask: "
                         << static_cast<unsigned int>(context.switchGroupMasks[object.groupIndexOrLock]) << '\n';
                 }
-                std::cout << "Use --interact to request grouped-switch activation; ordinary switch target "
-                    "dispatch remains NOT IMPLEMENTED.\n";
+                std::cout << "Use --interact to activate ordinary or grouped switches; ordinary indexed "
+                    "targets currently support doors only.\n";
             }
             if (object.behavior == BehaviorType::Door)
             {

@@ -414,6 +414,28 @@ Construct a `LevelLoadData` containing:
   gameplay constants. If `playerSpawn` is absent, the supplied slot-1 record is
   preserved unchanged for explicit player-state restoration and recovery fixtures.
 
+For fresh level objects, the host's current `LoadLevel` override calls
+`LoadLevelObjects(request.levelNumber, data)` before completing the load.
+This GameContext helper constructs `LEVEL\OBJPOS<n>.DAT` and calls the protected
+virtual `LoadFile(std::string_view)`, returning `std::vector<std::uint8_t>`.
+The host implements byte retrieval only; file failures must throw (the default
+implementation throws an explicit missing-service error). Names are logical
+ASCII asset paths, not host filesystem paths.
+
+GameCore validates complete 54-byte records and a maximum of 163 objects,
+then decodes ordinary slots 2..164, clearing unused slots and preserving
+reserved slot 0, player slot 1 and fallback slot 165. An empty, successfully
+read file represents zero objects, not a missing file. Invalid sizes are
+rejected before changing the destination. Record `i` maps to slot `i+2`,
+retaining the existing integration mapping; native initialization is not fully
+traced. File/parsing exceptions propagate through `StartLevel` into the existing
+load-failure state, leaving the previous world intact.
+
+This is the first file-owned loading step: geometry and spawn input are still
+provided by the host, whose override prepares those and invokes the object
+loader. The default `LoadLevel` does not yet load a complete level. Wall-derived
+collision-map construction is also still separate work.
+
 Call `CompleteLevelLoad(request.id, std::move(data))`. Validation occurs before
 replacing the current world, including validation of lighting-center coordinate
 division. The context takes level ownership and installs its internal
@@ -801,8 +823,8 @@ levels, geometry, and real object population will follow later.
 Evidence: [switch-evidence.txt](switch-evidence.txt). `Switch1` and
 `SwitchGrouped` per-frame handlers are implemented in
 [BehaviorHandlers.cpp](Scaffold/BehaviorHandlers.cpp), with shared group masks
-in `GameContext`. Activation is separate from per-frame behavior and remains
-unimplemented, as do the other switch variants below.
+in `GameContext`. Ordinary-switch interaction and indexed door activation are
+also implemented; other target types and switch variants remain partial below.
 
 **Ordinary switch (`Switch1`, 50, `0000:1FDD`):** its per-frame case is
 object-local. Byte offset 42 is an animation phase, offset 38 its signed rate,
@@ -825,6 +847,31 @@ calls `10AC:10F5(slot, 0)` for each object whose signed health word equals
 that encoded value. It does not operate on a global switch-bit mask.
 This includes doors but is not limited to them. The 2..140 bound is separate
 from the main update's previously observed 2..164 bound.
+
+**Ordinary switch interaction (`0EF0:0F04`, `10AC:2094`):** implemented by
+`HandleSwitchInteraction` in [Door.cpp](Scaffold/Door.cpp), alongside the shared
+ordinary-door activation helper it reuses. Only phase **zero** accepts a pull.
+The switch copies return speed `field_24` into animation rate `field_26` even
+when its index is nonpositive or its positive health is not exactly 1000.
+No independent rate-zero guard is added. Only positive index plus health 1000
+dispatches targets and requests the switch's configured sound (instance limit 1).
+This branch returns directly, never falling into inventory pickup.
+
+Matching door targets reuse the recovered `10AC:1312..1370` door activation:
+positive key locks still refuse opening, negative switch locks allow it, phase
+below 100 starts rate +3, and the configured closing delay is refreshed.
+Encoded target health is preserved: the `10AC:1132..1196` normalization prefix
+does **not** include doors. Doors continue animating and writing collision-map
+state through their existing behavior. The common epilogue has no extra effects.
+Additional bounded evidence is in
+[simple-switch-activation-evidence.txt](simple-switch-activation-evidence.txt).
+
+The general target activation routine supports more than doors and remains
+incomplete. If an ordinary switch matches a non-door target in slots 2..140,
+the host implementation returns `UnimplementedHandler` **before** changing the
+switch or any targets, rather than silently skipping it or partially opening
+doors. This preflight is an explicit host safety policy, not native ordering.
+No other target types are claimed implemented by this switch path.
 
 **Grouped switch (`SwitchGrouped`, 51):** the case at `0000:2065` passes
 object slot then ticks to `10AC:CAEC` (`RETF 4`). The helper sets collision
@@ -903,7 +950,11 @@ byte writes, object-field isolation, multiple switches sharing a group,
 immediate restoration on expiry, independent contexts, invalid indices, and
 health/dispatch gates. Console output shows phase, raw rate/timer words, and
 the selected group mask, offers explicit grouped-switch interaction through
-`--interact`, and reports ordinary switch target dispatch as unimplemented.
+`--interact`, and supports ordinary-switch interaction with indexed door targets.
+Runtime tests also exercise both target-scan endpoints, unmatched/out-of-range
+targets, wrapped health links, key locks, inactive and moving/latched switches,
+unsupported-target atomicity, configured sound selection, and Enter-driven
+level-11 switch-to-door animation using original OBJPOS records.
 
 **Other variants:** `RopeSwitch` (52) generates a periodic phase through
 `1E48:0051`, with a special object-slot comparison against DS:`DC60`;
@@ -1129,7 +1180,7 @@ identify indices 20 and 23. Their values are retained without speculative
 resource names.
 
 The gameplay branches for books, purchasing, rope wheels, vases/mirrors,
-level exits, teleporters, sarcophagi, ordinary switches, picture maps,
+level exits, teleporters, sarcophagi, picture maps,
 and lorries explicitly return `UnimplementedHandler` without mutating the
 object or inventory. Other collision values follow the original generic
 pickup tail. Door prompts and sound requests are implemented; message rendering,

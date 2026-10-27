@@ -147,8 +147,10 @@ Neither case needs other objects. Cross-object activation will need a shared
 object collection. The large target-interaction routine and player input are
 not fully recovered. Grouped timer arming/rearming is now identified in the
 separate object-interaction dispatcher at `0EF0:09F8`, case `0F52`, and is now
-implemented. Ordinary switch targets and the broader activation system remain
-unimplemented.
+implemented. Ordinary switch interaction now arms the existing animation and
+dispatches index-linked doors through slots 2..140; the broader activation
+system and non-door targets remain incomplete. See the added
+[door-target prefix evidence](simple-switch-activation-evidence.txt).
 See [switch details](BehaviorRecovery.md#switches-local-animation-indexed-activation-and-group-masks)
 and [instruction evidence](switch-evidence.txt) for addresses, object-field
 roles, and other switch variants.

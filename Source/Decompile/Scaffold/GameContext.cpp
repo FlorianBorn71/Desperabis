@@ -386,6 +386,33 @@ namespace Desperabis
         return { GameTickStatus::Advanced, interaction, results, movement };
     }
 
+    std::vector<std::uint8_t> GameContext::LoadFile(std::string_view filename)
+    {
+        throw std::logic_error("The host must implement LoadFile to read " + std::string(filename));
+    }
+
+    void GameContext::LoadLevelObjects(std::int16_t levelNumber, LevelLoadData& data)
+    {
+        if (levelNumber <= 0) { throw std::invalid_argument("Object loading requires a positive level number."); }
+        const auto filename = "LEVEL\\OBJPOS" + std::to_string(levelNumber) + ".DAT";
+        const auto payload = LoadFile(filename);
+        constexpr std::size_t firstSlot = 2;
+        constexpr std::size_t lastSlot = 164;
+        constexpr auto recordSize = sizeof(RawGameObject);
+        if (payload.size() % recordSize != 0 ||
+            payload.size() / recordSize > lastSlot - firstSlot + 1)
+        {
+            throw std::invalid_argument(filename + ": expected at most 163 complete 54-byte object records.");
+        }
+        // Retain the current OBJPOS record-i -> native-slot-i+2 mapping; native initialization is not fully traced.
+        for (std::size_t slot = firstSlot; slot <= lastSlot; ++slot)
+        {
+            const auto offset = (slot - firstSlot) * recordSize;
+            data.objects[slot] = offset < payload.size() ?
+                DecodeGameObject(payload.data() + offset, recordSize) : RawGameObject{};
+        }
+    }
+
     void GameContext::LoadLevel(const LevelLoadRequest&)
     {
         throw std::logic_error("The host must implement level loading.");

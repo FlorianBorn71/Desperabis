@@ -8,9 +8,11 @@ Release uses `Bin`, and Debug uses `Bin\Debug`.
 The project links against `Desperabis-GameCore`. `GameCoreHost.h/.cpp` is the renderer-independent bridge to
 `Desperabis::GameContext`:
 
-* Level loading goes through `GameContext::StartLevel` / `CompleteLevelLoad`. The host reads `FELD<n>.256` and
-  `OBJPOS<n>.DAT`, fills the native object array (OBJPOS record `i` -> slot `i + 2`, player in slot 1) and
-  hands the level to GameCore. The renderer scene does not create game objects itself.
+* Level loading goes through `GameContext::StartLevel` / `CompleteLevelLoad`. The host still supplies
+  `FELD<n>.256` geometry and spawn input. GameContext's `LoadLevelObjects` reads `LEVEL\OBJPOS<n>.DAT`
+  through the host's file-reader callback and decodes the native object array (record `i` -> slot `i + 2`).
+  Malformed or oversized object files fail loading rather than being silently truncated.
+  The renderer scene does not create game objects itself.
 game ticks (33 Hz, as in the original game)
   back the object states. Changed slots update their `RenderableInstance` via `Level::ApplyRenderProperties`.
 * The camera comes from `GameContext::GetPlayerCamera()`: eye position via `Level::DespToPos`, with no extra offset,
@@ -32,7 +34,7 @@ Current assumptions/limitations:
 
 * `WASD` / arrow keys: move/turn the player (simulated by GameCore)
 * `Enter`: interaction key
-  (the window title reports the result and selected native slot/type; ordinary `Switch` activation is still
-  unimplemented, unlike medicine pickup, ordinary doors, and grouped switches)
+  (the window title reports the result and selected native slot/type; supports medicine pickup,
+  ordinary doors, grouped switches, and ordinary switches linked to doors)
 * `F`: toggle free camera (`WASD` move, `Shift` faster, mouse position relative to the window center steers)
 * `Esc` quits
