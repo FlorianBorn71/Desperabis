@@ -60,6 +60,8 @@ int main()
 		std::vector<std::string> outFiles;
         listOfFiles.push_back(csoPath / "StandardGeometry_VS.cso"); outFiles.push_back("StandardGeometry_VS.cso");
         listOfFiles.push_back(csoPath / "StandardGeometry_PS.cso"); outFiles.push_back("StandardGeometry_PS.cso");
+        listOfFiles.push_back(csoPath / "Text_VS.cso"); outFiles.push_back("Text_VS.cso");
+        listOfFiles.push_back(csoPath / "Text_PS.cso"); outFiles.push_back("Text_PS.cso");
         listOfFiles.push_back(csoPath / "MirrorReceiver_VS.cso"); outFiles.push_back("MirrorReceiver_VS.cso");
         listOfFiles.push_back(csoPath / "MirrorReceiver_PS.cso"); outFiles.push_back("MirrorReceiver_PS.cso");
         listOfFiles.push_back(csoPath / "Corona_VS.cso"); outFiles.push_back("Corona_VS.cso");

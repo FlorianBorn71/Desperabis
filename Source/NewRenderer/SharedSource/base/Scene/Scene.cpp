@@ -4,6 +4,7 @@
 #include <Scene/GameObject.h>
 #include <Renderer/Renderable.h>
 #include <Renderer/RenderableInstance.h>
+#include <Renderer/TextMesh.h>
 #include <Asset/AssetManager.h>
 #include <Asset/TextureAnim.h>
 #include <GamePlay/GamePlay.h>
@@ -28,6 +29,7 @@ void Scene::ClearScene()
 	m_collisionFieldTex.reset();
 
 	m_renderInstances.clear();
+	m_textMeshInstances.clear();
 	m_animPoses.clear();
 	m_gameObjects.clear();
 	m_lightSources.clear();
@@ -91,6 +93,16 @@ void Scene::AddRenderableInstance(RenderableInstancePtr inst)
 void Scene::RemoveRenderableInstance(RenderableInstancePtr inst)
 {
     m_renderInstances.erase(std::remove(m_renderInstances.begin(), m_renderInstances.end(), inst), m_renderInstances.end());
+}
+
+void Scene::AddTextMeshInstance(std::shared_ptr<TextMeshInstance> inst)
+{
+    m_textMeshInstances.push_back(std::move(inst));
+}
+
+void Scene::RemoveTextMeshInstance(std::shared_ptr<TextMeshInstance> inst)
+{
+    m_textMeshInstances.erase(std::remove(m_textMeshInstances.begin(), m_textMeshInstances.end(), inst), m_textMeshInstances.end());
 }
 
 void Scene::AddGameObject(std::shared_ptr<GameObject> gameObject)

@@ -181,6 +181,7 @@
     <ClInclude Include="..\SharedSource\base\Asset\LevelInfo.h" />
     <ClInclude Include="..\SharedSource\base\Asset\Model.h" />
     <ClInclude Include="..\SharedSource\base\Asset\ModelAnim.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\Font.h" />
     <ClInclude Include="..\SharedSource\base\Asset\ModelGeometry.h" />
     <ClInclude Include="..\SharedSource\base\Asset\Palette.h" />
     <ClInclude Include="..\SharedSource\base\Asset\RawGameObject.h" />
@@ -203,6 +204,7 @@
     <ClInclude Include="..\SharedSource\base\Renderer\LightSource.h" />
     <ClInclude Include="..\SharedSource\base\Renderer\Renderable.h" />
     <ClInclude Include="..\SharedSource\base\Renderer\RenderableInstance.h" />
+    <ClInclude Include="..\SharedSource\base\Renderer\TextMesh.h" />
     <ClInclude Include="..\SharedSource\base\Renderer\Renderer.h" />
     <ClInclude Include="..\SharedSource\base\Renderer\RendererCommon.h" />
     <ClInclude Include="..\SharedSource\base\Renderer\Visibility.h" />
@@ -218,6 +220,7 @@
     <ClCompile Include="..\SharedSource\base\Asset\AnimationSequence.cpp" />
     <ClCompile Include="..\SharedSource\base\Asset\AssetBase.cpp" />
     <ClCompile Include="..\SharedSource\base\Asset\AssetManager.cpp" />
+    <ClCompile Include="..\SharedSource\base\Asset\Font.cpp" />
     <ClCompile Include="..\SharedSource\base\Asset\DebugGeometry.cpp" />
     <ClCompile Include="..\SharedSource\base\Asset\GridCellArray.cpp" />
     <ClCompile Include="..\SharedSource\base\Asset\Level.cpp" />
@@ -241,6 +244,7 @@
     <ClCompile Include="..\SharedSource\base\Renderer\LightSource.cpp" />
     <ClCompile Include="..\SharedSource\base\Renderer\Renderable.cpp" />
     <ClCompile Include="..\SharedSource\base\Renderer\RenderableInstance.cpp" />
+    <ClCompile Include="..\SharedSource\base\Renderer\TextMesh.cpp" />
     <ClCompile Include="..\SharedSource\base\Renderer\Renderer.cpp" />
     <ClCompile Include="..\SharedSource\base\Renderer\Visibility.cpp" />
     <ClCompile Include="..\SharedSource\base\Renderer\VisibilityTileGrid.cpp" />

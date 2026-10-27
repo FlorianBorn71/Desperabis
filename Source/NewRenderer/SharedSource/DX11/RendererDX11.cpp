@@ -11,10 +11,28 @@
 #include <Asset/ModelGeometry.h>
 #include <Asset/ModelAnim.h>
 #include <Scene/Scene.h>
+#include <Renderer/TextMesh.h>
+
+void RendererDX11::ReleaseWindowSizeDependentResources()
+{
+    if (m_mainRT != nullptr)
+    {
+        static_cast<RenderTargetDX11*>(m_mainRT.get())->Reset();
+    }
+#ifdef ENABLE_ADVANCED_RENDERING
+    m_frameBufferCopy.Reset();
+#endif
+}
 
 void RendererDX11::ReInitialize(ID3D11RenderTargetView1* colorView, ID3D11DepthStencilView* dsView, const D3D11_VIEWPORT& viewport)
 {
 	RenderTargetDX11* mainRT = (RenderTargetDX11*)m_mainRT.get();
+#ifdef ENABLE_ADVANCED_RENDERING
+	if (mainRT->m_width != static_cast<int>(viewport.Width) || mainRT->m_height != static_cast<int>(viewport.Height))
+	{
+		m_frameBufferCopy.Reset();
+	}
+#endif
 	mainRT->Create(m_d3dDevice.Get(), m_d3dContext.Get(), colorView, dsView, viewport);
 	m_mainViewport = viewport;
 
@@ -145,6 +163,7 @@ FUTURE(void) RendererDX11::Initialize(ID3D11Device3* device, ID3D11DeviceContext
     };
 
     ThrowIfFailed(device->CreateInputLayout(vertexDesc, ARRAYSIZE(vertexDesc), &vsData[0], vsData.size(), &m_inputLayout));
+    CO_AWAIT m_textShader.Create(device);
 
     // create blend states:
     CD3D11_BLEND_DESC blendDesc(D3D11_DEFAULT);
@@ -201,8 +220,9 @@ void RendererDX11::Deinitialize()
     m_constantBufferGlobals.Reset();
     m_constantBufferInstance.Reset();
     m_constantBufferMaterial.Reset();
-    m_vertexShader.Reset();
-    m_pixelShader.Reset();
+	m_vertexShader.Reset();
+	m_pixelShader.Reset();
+	m_textShader.Deinitialize();
 	m_vertexShaderFlames.Reset();
 	m_pixelShaderFlames.Reset();
     m_samplerStateWrap.Reset();
@@ -376,6 +396,35 @@ std::shared_ptr<IGraphicsRuntimeObject> RendererDX11::CreateModelBuffers(ModelCo
     return native;
 }
 
+std::shared_ptr<IGraphicsRuntimeObject> RendererDX11::CreateTextMeshBuffers(const TextMesh& textMesh)
+{
+    auto native = std::make_shared<NativeTextMeshObjectDX11>();
+    native->m_Id = m_runtimeIdCounter.fetch_add(1);
+
+    for (const TextMeshBatch& batch : textMesh.GetBatches())
+    {
+        if (batch.m_vertices.empty() || batch.m_indices.empty())
+        {
+            continue;
+        }
+
+        NativeTextMeshBatchDX11& nativeBatch = native->m_batches.emplace_back();
+        nativeBatch.m_atlasTexture = batch.m_atlasTexture;
+        nativeBatch.m_indexCount = static_cast<UINT>(batch.m_indices.size());
+
+        D3D11_SUBRESOURCE_DATA vertexData = {};
+        vertexData.pSysMem = batch.m_vertices.data();
+        const CD3D11_BUFFER_DESC vertexDesc(static_cast<UINT>(batch.m_vertices.size() * sizeof(TextVertex)), D3D11_BIND_VERTEX_BUFFER);
+        ThrowIfFailed(m_d3dDevice->CreateBuffer(&vertexDesc, &vertexData, &nativeBatch.m_vertexBuffer));
+
+        D3D11_SUBRESOURCE_DATA indexData = {};
+        indexData.pSysMem = batch.m_indices.data();
+        const CD3D11_BUFFER_DESC indexDesc(static_cast<UINT>(batch.m_indices.size() * sizeof(uint32_t)), D3D11_BIND_INDEX_BUFFER);
+        ThrowIfFailed(m_d3dDevice->CreateBuffer(&indexDesc, &indexData, &nativeBatch.m_indexBuffer));
+    }
+
+    return native;
+}
 
 void RendererDX11::ConfigureVisibility(IVisibilityContext& visContext)
 {

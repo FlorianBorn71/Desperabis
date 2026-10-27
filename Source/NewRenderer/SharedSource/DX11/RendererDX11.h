@@ -3,6 +3,7 @@
 #include <Renderer/Renderer.h>
 #include <DX11/DX11Decls.h>
 #include <DX11/NativeTextureDX11.h>
+#include <DX11/TextShaderDX11.h>
 
 
 inline void ThrowIfFailed(HRESULT hr)
@@ -21,14 +22,16 @@ public:
     ~RendererDX11() = default;
 
     FUTURE(void) Initialize(ID3D11Device3* device, ID3D11DeviceContext3* context, ID3D11RenderTargetView1* colorView, ID3D11DepthStencilView* dsView, const D3D11_VIEWPORT& viewport);
-    void Deinitialize();
+	void Deinitialize();
+	void ReleaseWindowSizeDependentResources();
 	void ReInitialize(ID3D11RenderTargetView1* colorView, ID3D11DepthStencilView* dsView, const D3D11_VIEWPORT& viewport);
 
-    virtual void RenderSceneElements(const VisibilityResult& elements, const RenderingSettings& renderSettings, ProfilingStats& stats) override final;
+	virtual void RenderSceneElements(const VisibilityResult& elements, const RenderingSettings& renderSettings, ProfilingStats& stats) override final;
 
     virtual void CreateTexture(Texture& tex, TextureLoadingContext& data) override final;
     virtual void CloneTextureRuntime(Texture& tex, Texture& sourcetex) override final;
     std::shared_ptr<IGraphicsRuntimeObject> CreateModelBuffers(ModelConversionContext& data);
+    virtual std::shared_ptr<IGraphicsRuntimeObject> CreateTextMeshBuffers(const TextMesh& textMesh) override final;
 private:
     friend class RenderContextDX11;
 
@@ -72,8 +75,9 @@ private:
     NativeTextureObjectDX11 m_coronaTextureFog;
     NativeTextureObjectDX11 m_frameBufferCopy;
 #endif
-    ComPtr<ID3D11VertexShader> m_vertexShader;
-    ComPtr<ID3D11PixelShader> m_pixelShader;
+	TextShaderDX11 m_textShader;
+	ComPtr<ID3D11VertexShader> m_vertexShader;
+	ComPtr<ID3D11PixelShader> m_pixelShader;
 	ComPtr<ID3D11VertexShader> m_vertexShaderFlames;
 	ComPtr<ID3D11PixelShader> m_pixelShaderFlames;
     ComPtr<ID3D11SamplerState> m_samplerStateWrap;

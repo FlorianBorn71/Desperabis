@@ -34,6 +34,7 @@ inline void Renderer::RenderScene_Impl(const VisibilityResult& elements, const R
     context.EndRenderTargetScope();
     assert(context.m_renderTargetPass == RenderTargetPassType::MainView);
 
+    context.RenderTextMeshes(elements.m_visibleTextMeshInstances);
     context.EndRendering();
 }
 

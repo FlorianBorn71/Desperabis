@@ -11,8 +11,9 @@
 #include <Asset/ModelGeometry.h>
 #include <Asset/ModelAnim.h>
 #include <Scene/Scene.h>
+#include <stdexcept>
 
-static const DepthWriteMode BlendModeToDepthMode[(int)TransparencyMode::TransparencyModeCount] =
+static const DepthWriteMode
 {
     DepthWriteMode::DepthTestBit | DepthWriteMode::DepthWriteBit, //Opaque = 0,
     DepthWriteMode::DepthTestBit, //AlphaBlended = 1,
@@ -45,10 +46,17 @@ void RenderContextOGL::EndRendering()
 	glDepthMask(GL_TRUE);
 }
 
+void RenderContextOGL::RenderTextMeshes(const std::vector<const TextMeshInstance*>& instances)
+{
+	if (!instances.empty())
+	{
+		throw std::runtime_error("The OpenGL renderer does not support text meshes.");
+	}
+}
 
 void RenderContextOGL::SetBlendState(TransparencyMode mode)
 {
-    // blend mode:
+	// blend mode:
 
     // depth write/read mode
     DepthWriteMode dsMode = BlendModeToDepthMode[(int)mode];

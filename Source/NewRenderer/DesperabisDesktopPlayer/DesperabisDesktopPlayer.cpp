@@ -7,8 +7,12 @@
 
 #include <DesperabisCommon.h>
 #include <Asset/AssetManager.h>
+#include <Asset/Font.h>
 #include <Asset/GridCellArray.h>
 #include <Asset/Level.h>
+#include <array>
+#include <cmath>
+#include <stdexcept>
 #include <DX11/RendererDX11.h>
 #include <IO/FileManagerBuiltIn.h>
 #include <IO/BuiltInCppGenerator.h>
@@ -84,6 +88,75 @@ namespace // DX
     std::shared_ptr<Camera> g_mapCamera;
     CameraMode g_useFreeCam = CameraMode::FreeCamera;
 
+    std::array<std::shared_ptr<TextureAnim>, 3> g_fontAnimations;
+    std::unique_ptr<Font> g_promptFont;
+    std::shared_ptr<TextMeshInstance> g_promptInstance;
+    std::chrono::steady_clock::time_point g_promptStartTime;
+    double g_promptDuration = 0.0;
+    constexpr double g_promptFadeDuration = 1.0;
+    constexpr double g_levelPromptDuration = 3.0;
+    int g_promptLevelIndex = -1;
+
+    void PromptMessage(std::string_view txt, double duration)
+    {
+        if (!std::isfinite(duration) || duration < 0.0)
+        {
+            throw std::invalid_argument("Prompt duration must be finite and non-negative.");
+        }
+        if (g_promptFont == nullptr || g_desperabisScene == nullptr || !g_desperabisScene->IsReady())
+        {
+            throw std::logic_error("Prompts require an initialized font and a ready scene.");
+        }
+
+        if (g_promptInstance != nullptr)
+        {
+            g_desperabisScene->RemoveTextMeshInstance(g_promptInstance);
+            g_promptInstance.reset();
+        }
+        if (txt.empty())
+        {
+            return;
+        }
+
+        auto mesh = g_promptFont->CreateGlyphMesh(txt, Color4{ 255,255,255,255 },
+            Font::HorizontalAlignment::Center, Font::VerticalAlignment::Center);
+        g_promptInstance = std::make_shared<TextMeshInstance>(std::move(mesh));
+        g_promptInstance->SetPosition(g_screenViewport.Width * 0.5f, g_screenViewport.Height * 0.5f);
+        g_desperabisScene->AddTextMeshInstance(g_promptInstance);
+        g_promptDuration = duration;
+        g_promptStartTime = std::chrono::steady_clock::now();
+    }
+
+    void UpdatePrompt()
+    {
+        if (g_desperabisScene == nullptr || !g_desperabisScene->IsReady())
+        {
+            return;
+        }
+        if (g_promptLevelIndex != g_desperabisScene->m_levelIndex)
+        {
+            g_promptLevelIndex = g_desperabisScene->m_levelIndex;
+            const std::string levelNumber = (g_promptLevelIndex < 10 ? "0" : "") + std::to_string(g_promptLevelIndex);
+            PromptMessage("Level " + levelNumber, g_levelPromptDuration);
+        }
+        if (g_promptInstance == nullptr)
+        {
+            return;
+        }
+
+        const std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - g_promptStartTime;
+        const double fadeTime = elapsed.count() - g_promptDuration;
+        if (fadeTime >= g_promptFadeDuration)
+        {
+            g_desperabisScene->RemoveTextMeshInstance(g_promptInstance);
+            g_promptInstance.reset();
+            return;
+        }
+
+        const double alpha = 1.0 - std::clamp(fadeTime / g_promptFadeDuration, 0.0, 1.0);
+        g_promptInstance->SetTintColor(Color4{ 255,255,255,static_cast<byte>(std::lround(alpha * 255.0)) });
+        g_promptInstance->SetPosition(g_screenViewport.Width * 0.5f, g_screenViewport.Height * 0.5f);
+    }
 
     void SetCameraMode(CameraMode mode)
     {
@@ -210,11 +283,13 @@ namespace // DX
             if (mapping.menuId == menuId)
             {
 				g_desperabisScene = std::make_unique<RemoteScene>(mapping.levelIndex);
-                g_desperabisScene->m_createGameObjects = !g_connectToDOS;
+				g_desperabisScene->m_createGameObjects = !g_connectToDOS;
 				CO_AWAIT g_desperabisScene->CreateScene();
+				g_promptInstance.reset();
+				g_promptLevelIndex = -1;
 				SetCameraMode(g_useFreeCam);
 				g_freeCam->JumpTo(g_desperabisScene->GetInitialPosition());
-                menuItem.fState = MFS_CHECKED;
+				menuItem.fState = MFS_CHECKED;
             }
             else
             {
@@ -245,6 +320,7 @@ namespace // DX
         {
             g_desperabisScene->Update(deltaTime);
         }
+        UpdatePrompt();
 
         if (g_useFreeCam == CameraMode::FreeCamera && g_freeCam != nullptr)
         {
@@ -320,10 +396,30 @@ namespace // DX
             g_d3dDepthStencilView.Get(),
             g_screenViewport);
 
-        // ...before we can load assets
-        CO_AWAIT AssetManager::Instance().Initialize();
+		// ...before we can load assets
+		CO_AWAIT AssetManager::Instance().Initialize();
 
-        g_freeCam = std::make_unique<FreeCamera>();
+		g_promptFont = std::make_unique<Font>();
+		g_promptFont->SetSpaceWidth(6.f);
+		const std::wstring_view fontFiles[] =
+		{
+			L"ANIMS\\SCHRIFT0.AN2", L"ANIMS\\SCHRIFT1.AN2", L"ANIMS\\SCHRIFT2.AN2"
+		};
+		const std::string_view characterMappings[] =
+		{
+			"abcdefghijklmnopqrstuvwxyz\xe4\xf6\xfc\xdf",
+			"ABCDEFGHIJKLMNOPQRSTUVWXYZ\xc4\xd6\xdc?",
+			"0123456789.:"
+		};
+		auto fontPalette = std::make_shared<Palette>();
+		fontPalette->BuildGrayscale();
+		for (size_t i = 0; i < g_fontAnimations.size(); ++i)
+		{
+			g_fontAnimations[i] = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(fontFiles[i], fontPalette);
+			g_promptFont->AddGlyphs(g_fontAnimations[i].get(), characterMappings[i]);
+		}
+
+		g_freeCam = std::make_unique<FreeCamera>();
 
 		LoadLevel(ID_LEVEL_TRAININGSLEVEL);
 
@@ -345,7 +441,10 @@ namespace // DX
 
     void Desp_Deinit()
     {
+        g_promptInstance.reset();
         g_desperabisScene.reset();
+        g_promptFont.reset();
+        g_fontAnimations = {};
         g_freeCam.reset();
         g_mainCamera.reset();
         g_mapCamera.reset();
@@ -399,6 +498,7 @@ namespace // DX
         // Clear the previous window size specific context.
         ID3D11RenderTargetView* nullViews[] = { nullptr };
         g_d3dContext->OMSetRenderTargets(ARRAYSIZE(nullViews), nullViews, nullptr);
+        g_RendererDX11.ReleaseWindowSizeDependentResources();
         targetRenderTarget = nullptr;
         targetDepthStencil = nullptr;
         g_d3dContext->Flush1(D3D11_CONTEXT_TYPE_ALL, nullptr);
@@ -541,6 +641,16 @@ namespace // DX
     void CreateMainDXWindowResources()
     {
         CreateDXWindowResources(hWnd, g_swapChain, g_d3dRenderTargetView, g_d3dDepthStencilView, g_screenViewport, g_outputResX, g_outputResY);
+        if (g_mainCamera != nullptr)
+        {
+            Matrix4 projection;
+            projection.CreateProjection(g_screenViewport.Width / g_screenViewport.Height);
+            g_mainCamera->SetProjectionMatrix(projection);
+        }
+        if (g_freeCam != nullptr)
+        {
+            g_freeCam->SetWindowCenter(g_screenViewport.Width * 0.5f, g_screenViewport.Height * 0.5f);
+        }
     }
 
     void CreateMapDXWindowResources()
@@ -754,7 +864,16 @@ namespace // DX
             Renderer::Instance().SetCamera(g_mapCamera);
         }
         Renderer::Instance().SetCurrentTime(g_currentTime);
+        const bool promptVisible = g_promptInstance != nullptr && g_promptInstance->GetVisible();
+        if (g_promptInstance != nullptr)
+        {
+            g_promptInstance->SetVisible(false);
+        }
         Renderer::Instance().RenderScene(g_desperabisScene.get(), g_mapRenderSettings, g_mapVisSettings, nullptr);
+        if (g_promptInstance != nullptr)
+        {
+            g_promptInstance->SetVisible(promptVisible);
+        }
 
         g_mapSwapChain->Present(1, 0);
     }
@@ -834,15 +953,24 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
 
     HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_DESPERABISREMOTEPLAYER));
 
-    MSG msg;
+    MSG msg = {};
 
     // Main message loop:
-    while (GetMessage(&msg, nullptr, 0, 0))
+    while (msg.message != WM_QUIT)
     {
-        if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
+        if (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
         {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
+            if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
+            {
+                TranslateMessage(&msg);
+                DispatchMessage(&msg);
+            }
+            continue;
+        }
+        if (IsIconic(hWnd))
+        {
+            WaitMessage();
+            continue;
         }
         RunSimulation();
         RenderDX();
@@ -951,7 +1079,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     case WM_COMMAND:
         {
             int wmId = LOWORD(wParam);
-            if (wmId >= ID_LEVEL_FIRST && wmId <= ID_LEVEL_LAST)
+            if (wmId == ID_LEVEL_TRAININGSLEVEL || (wmId >= ID_LEVEL_FIRST && wmId <= ID_LEVEL_LAST))
             {
                 LoadLevel(wmId);
                 break;
@@ -1036,14 +1164,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
             }
         }
         break;
+    case WM_SIZE:
+        if (g_d3dDevice != nullptr && wParam != SIZE_MINIMIZED)
+        {
+            CreateMainDXWindowResources();
+        }
+        break;
     case WM_PAINT:
         {
-        /*
             PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hWnd, &ps);
-            // TODO: Add any drawing code that uses hdc here...
+            BeginPaint(hWnd, &ps);
             EndPaint(hWnd, &ps);
-            */
         }
         break;
     case WM_DESTROY:

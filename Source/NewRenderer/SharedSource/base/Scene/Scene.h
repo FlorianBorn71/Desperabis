@@ -34,10 +34,12 @@ public:
     void SetCollisionFieldTexture(std::shared_ptr<Texture> tex) { m_collisionFieldTex = tex; }
     std::shared_ptr<Texture> GetCollisionFieldTexture() const { return m_collisionFieldTex; }
 
-    void RegisterUpdateFunction(SceneUpdateFunction fn);
+	void RegisterUpdateFunction(SceneUpdateFunction fn);
 	void AddRenderableInstance(RenderableInstancePtr inst);
-    void RemoveRenderableInstance(RenderableInstancePtr inst);
-    void AddGameObject(std::shared_ptr<GameObject> gameObject);
+	void RemoveRenderableInstance(RenderableInstancePtr inst);
+	void AddTextMeshInstance(std::shared_ptr<TextMeshInstance> inst);
+	void RemoveTextMeshInstance(std::shared_ptr<TextMeshInstance> inst);
+	void AddGameObject(std::shared_ptr<GameObject> gameObject);
 	void RemoveGameObject(std::shared_ptr<GameObject> gameObject);
 	void AddLightSource(std::shared_ptr<LightSource> light);
     void RemoveLightSource(std::shared_ptr<LightSource> light);
@@ -58,7 +60,11 @@ public:
     {
         return m_renderInstances;
     }
-    const std::vector<std::shared_ptr<GameObject>>& GetGameObjects() const 
+    const std::vector<std::shared_ptr<TextMeshInstance>>& GetTextMeshInstances() const
+    {
+        return m_textMeshInstances;
+    }
+    const std::vector<std::shared_ptr<GameObject>>& GetGameObjects() const
     {
         return m_gameObjects;
     }
@@ -111,6 +117,7 @@ protected:
     std::shared_ptr<Texture> m_collisionFieldTex;
 
     std::vector<RenderableInstancePtr> m_renderInstances;
+    std::vector<std::shared_ptr<TextMeshInstance>> m_textMeshInstances;
     std::vector<std::shared_ptr<AnimationPose>> m_animPoses;
     std::vector<std::shared_ptr<GameObject>> m_gameObjects;
     std::vector<std::shared_ptr<LightSource>> m_lightSources;

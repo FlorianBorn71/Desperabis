@@ -35,7 +35,7 @@ public:
     bool IsReady() const {return m_isReady;}
 
     template<typename ASSET_TYPE>
-    inline FUTURE(std::shared_ptr<ASSET_TYPE>) LoadAsset(std::wstring_view filename);
+    inline FUTURE(std::shared_ptr<ASSET_TYPE>) LoadAsset(std::wstring_view filename, std::shared_ptr<const Palette> palette = nullptr);
 
     template<typename ASSET_TYPE>
     std::shared_ptr<ASSET_TYPE> GetAsset(std::wstring_view filename);
@@ -62,7 +62,7 @@ private:
     static AssetManager g_Instance;
 
     template<typename ASSET_TYPE>
-    FUTURE(std::shared_ptr<ASSET_TYPE>) LoadAssetImpl(std::shared_ptr<ASSET_TYPE> asset, std::wstring_view filename);
+    FUTURE(std::shared_ptr<ASSET_TYPE>) LoadAssetImpl(std::shared_ptr<ASSET_TYPE> asset, std::wstring_view filename, std::shared_ptr<const Palette> palette);
     FUTURE(void) LoadLevelInfo();
     FUTURE(void) LoadMapIcons();
     FUTURE(void) CreateDefaultShapes();
@@ -90,14 +90,14 @@ private:
 
 
 template<typename ASSET_TYPE>
-inline FUTURE(std::shared_ptr<ASSET_TYPE>) AssetManager::LoadAssetImpl(std::shared_ptr<ASSET_TYPE> asset, std::wstring_view filename)
+inline FUTURE(std::shared_ptr<ASSET_TYPE>) AssetManager::LoadAssetImpl(std::shared_ptr<ASSET_TYPE> asset, std::wstring_view filename, std::shared_ptr<const Palette> palette)
 {
     assert(asset.get() != nullptr);
     if (!asset->m_loaded)
     {
         std::wstring path = FileManager::Instance().FilenameToNative(filename);
         std::vector<byte> fileData = CO_AWAIT FileManager::Instance().ReadDataFuture(path);
-        AssetStream stream(fileData);
+        AssetStream stream(fileData, std::move(palette));
 		asset->Read(stream);
         asset->CreateRuntimes(Renderer::Instance());
         asset->m_loaded = true;
@@ -107,7 +107,7 @@ inline FUTURE(std::shared_ptr<ASSET_TYPE>) AssetManager::LoadAssetImpl(std::shar
 
 
 template<typename ASSET_TYPE>
-inline FUTURE(std::shared_ptr<ASSET_TYPE>) AssetManager::LoadAsset(std::wstring_view filename)
+inline FUTURE(std::shared_ptr<ASSET_TYPE>) AssetManager::LoadAsset(std::wstring_view filename, std::shared_ptr<const Palette> palette)
 {
     std::shared_ptr<ASSET_TYPE> ptr;
     {
@@ -127,7 +127,7 @@ inline FUTURE(std::shared_ptr<ASSET_TYPE>) AssetManager::LoadAsset(std::wstring_
         }
     }
 
-    return LoadAssetImpl<ASSET_TYPE>(ptr, filename);
+    return LoadAssetImpl<ASSET_TYPE>(ptr, filename, std::move(palette));
 }
 
 template<typename ASSET_TYPE>

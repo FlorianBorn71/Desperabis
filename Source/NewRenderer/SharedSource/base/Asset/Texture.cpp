@@ -25,7 +25,8 @@ void Texture::Read(AssetStream& stream)
 
 void Texture::Read(AssetStream& stream, TextureLoadingContext& context)
 {
-    const Palette& palette = AssetManager::Instance().GetDefaultPalette();
+    const Palette& palette = stream.GetPalette() != nullptr
+        ? *stream.GetPalette() : AssetManager::Instance().GetDefaultPalette();
     m_width = stream.Read<uint16_t>();
     m_height = stream.Read<uint16_t>();
     m_width++;
@@ -36,9 +37,9 @@ void Texture::Read(AssetStream& stream, TextureLoadingContext& context)
     for (int i = 0; i < count; i++)
     {
         byte idx = stream.Read<byte>();
-        m_hasAlpha |= idx == 0;
         Color4& dest = context.m_rgbaData[i];
         dest = palette.GetEntry(idx);
+        m_hasAlpha |= dest.a < 255;
     }
 
     SetDefaultParams();

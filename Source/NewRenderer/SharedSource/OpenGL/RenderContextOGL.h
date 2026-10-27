@@ -24,6 +24,7 @@ public:
     void EndRendering();
     void SetBlendState(TransparencyMode mode);
     void SetGeometryPassType(GeometryPassType pass);
+    void RenderTextMeshes(const std::vector<const TextMeshInstance*>& instances);
 #ifdef ENABLE_ADVANCED_RENDERING
     void RenderPostEffects();
     void BeginWaterRendering();

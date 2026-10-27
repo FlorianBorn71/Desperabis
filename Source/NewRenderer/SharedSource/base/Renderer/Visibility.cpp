@@ -5,6 +5,7 @@
 #include <Renderer/Renderable.h>
 #include <Renderer/Camera.h>
 #include <Renderer/LightSource.h>
+#include <Renderer/TextMesh.h>
 #include <Asset/GridCellArray.h>
 
 
@@ -13,6 +14,7 @@ void VisibilityResult::Reset()
 {
     m_mainCamera = nullptr;
     m_visibleInstances.Reset();
+    m_visibleTextMeshInstances.clear();
 #ifdef ENABLE_ADVANCED_RENDERING
     m_visibileLights.clear();
     m_visibileCoronas.clear();
@@ -288,6 +290,14 @@ void DefaultVisibilityContext::ComputeResultFor(const Camera* camera, const Scen
    
     // determine visible instances in normal view
     DetermineVisibleInstances(result, result.m_visibleInstances, scene, cameraPos, m_frustum, grid, visSettings, true);
+
+    for (const std::shared_ptr<TextMeshInstance>& textInstance : scene->GetTextMeshInstances())
+    {
+        if (textInstance != nullptr && textInstance->GetVisible() && textInstance->GetMesh() != nullptr && textInstance->GetMesh()->IsValid())
+        {
+            result.m_visibleTextMeshInstances.push_back(textInstance.get());
+        }
+    }
 
 #ifdef ENABLE_ADVANCED_RENDERING
     // water rendering

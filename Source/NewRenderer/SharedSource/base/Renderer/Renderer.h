@@ -6,7 +6,6 @@
 #include <Renderer/DrawCall.h>
 #include <Renderer/IGraphicsRuntimeObject.h>
 
-
 class RenderContext
 {
 public:
@@ -66,6 +65,7 @@ public:
     virtual void CreateTexture(Texture& tex, TextureLoadingContext& data) = 0;
     virtual void CloneTextureRuntime(Texture& tex, Texture& sourcetex) = 0;
     virtual std::shared_ptr<IGraphicsRuntimeObject> CreateModelBuffers(ModelConversionContext& data) = 0;
+    virtual std::shared_ptr<IGraphicsRuntimeObject> CreateTextMeshBuffers(const TextMesh& textMesh);
     virtual void ConfigureVisibility(IVisibilityContext& visContext) = 0;
 
 protected:

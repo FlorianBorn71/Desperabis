@@ -70,6 +70,18 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <ItemGroup>
+    <FxCompile Include="..\SharedSource\DX11\shaders\Text_VS.hlsl">
+      <EntryPointName>vs_main_text</EntryPointName>
+      <ShaderType>Vertex</ShaderType>
+      <ShaderModel>5.0</ShaderModel>
+      <ObjectFileOutput>$(ProjectDir)..\AdditionalAssets\shaderbins\%(Filename).cso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="..\SharedSource\DX11\shaders\Text_PS.hlsl">
+      <EntryPointName>ps_main_text</EntryPointName>
+      <ShaderType>Pixel</ShaderType>
+      <ShaderModel>5.0</ShaderModel>
+      <ObjectFileOutput>$(ProjectDir)..\AdditionalAssets\shaderbins\%(Filename).cso</ObjectFileOutput>
+    </FxCompile>
     <FxCompile Include="..\SharedSource\DX11\shaders\Corona_GS.hlsl">
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">gs_main_corona</EntryPointName>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Geometry</ShaderType>

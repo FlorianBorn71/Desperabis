@@ -10,13 +10,14 @@ public:
     virtual ~Palette() = default;
 
     virtual void Read(AssetStream& stream);
+    void BuildGrayscale(int maxIndex = 7);
 
 	inline Color4 GetEntry(int idx) const {
         return m_palette[idx];
 	}
 
 	inline Color4 GetEntryCustomAlpha(int idx, uint8_t alpha=0) const {
-		Color4 col = m_palette[idx];
+		Color4 col = GetEntry(idx);
 		col.a = alpha;
 		return col;
 	}

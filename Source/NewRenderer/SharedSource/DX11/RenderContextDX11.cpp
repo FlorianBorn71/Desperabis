@@ -5,6 +5,7 @@
 #include <Renderer/Camera.h>
 #include <Renderer/Renderable.h>
 #include <Renderer/RenderableInstance.h>
+#include <Renderer/TextMesh.h>
 #include <Renderer/IGraphicsRuntimeObject.h>
 #include <Asset/AssetManager.h>
 #include <Asset/Texture.h>
@@ -74,6 +75,61 @@ void RenderContextDX11::SetBlendState(TransparencyMode mode)
     // depth write/read mode
     DepthWriteMode dsMode = BlendModeToDepthMode[(int)mode];
     m_d3dContext->OMSetDepthStencilState(m_rendererDX11.m_depthState[(int)dsMode].Get(), 0);
+}
+
+void RenderContextDX11::RenderTextMeshes(const std::vector<const TextMeshInstance*>& instances)
+{
+    if (instances.empty())
+    {
+        return;
+    }
+
+    RenderTargetDX11* renderTarget = m_rendererDX11.GetRenderTarget<RenderTargetDX11>(RenderTargetPassType::MainView);
+    assert(renderTarget != nullptr);
+    renderTarget->BindAsTarget(false);
+    m_d3dContext->OMSetBlendState(m_rendererDX11.m_blendState[(int)TransparencyMode::AlphaBlended].Get(), nullptr, 0xFFFFFFFFu);
+    m_d3dContext->OMSetDepthStencilState(m_rendererDX11.m_depthState[(int)DepthWriteMode::None].Get(), 0);
+    m_rendererDX11.m_textShader.Bind(m_d3dContext.Get());
+    m_d3dContext->PSSetSamplers(0, 1, m_rendererDX11.m_samplerStateClamp.GetAddressOf());
+
+    for (const TextMeshInstance* instance : instances)
+    {
+        if (instance == nullptr || !instance->GetVisible() || instance->GetMesh() == nullptr)
+        {
+            continue;
+        }
+
+        TextMesh& mesh = *instance->GetMesh();
+        mesh.CreateRuntimes(m_rendererDX11);
+        NativeTextMeshObjectDX11* nativeMesh = mesh.GetNativeRuntimeObj<NativeTextMeshObjectDX11>();
+        assert(nativeMesh != nullptr);
+
+        m_rendererDX11.m_textShader.UpdateConstants(m_d3dContext.Get(),
+            static_cast<float>(renderTarget->m_width), static_cast<float>(renderTarget->m_height),
+            instance->GetPosition(), instance->GetTintColor(), instance->GetScale());
+
+        for (const NativeTextMeshBatchDX11& batch : nativeMesh->m_batches)
+        {
+            NativeTextureObjectDX11* nativeTexture = batch.m_atlasTexture->GetNativeRuntimeObj<NativeTextureObjectDX11>();
+            if (nativeTexture == nullptr)
+            {
+                continue;
+            }
+
+            m_d3dContext->PSSetShaderResources(0, 1, nativeTexture->m_nativeTexView.GetAddressOf());
+            const UINT stride = sizeof(TextVertex);
+            const UINT offset = 0;
+            m_d3dContext->IASetVertexBuffers(0, 1, batch.m_vertexBuffer.GetAddressOf(), &stride, &offset);
+            m_d3dContext->IASetIndexBuffer(batch.m_indexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
+            m_d3dContext->DrawIndexed(batch.m_indexCount, 0, 0);
+            ++m_profiling.m_numDrawCalls;
+            m_profiling.m_numTriangles += static_cast<int>(batch.m_indexCount / 3);
+        }
+    }
+
+    m_previousMesh = nullptr;
+    m_previousTexture = nullptr;
+    m_lastMaterialHash = 0xffffffff;
 }
 
 void RenderContextDX11::SetGeometryPassType(GeometryPassType pass)

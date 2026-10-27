@@ -15,6 +15,10 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <FxCompile Include="..\SharedSource\DX11\shaders\Text_VS.hlsl" />
+    <FxCompile Include="..\SharedSource\DX11\shaders\Text_PS.hlsl" />
+  </ItemGroup>
+  <ItemGroup>
     <ClInclude Include="framework.h">
       <Filter>Header Files</Filter>
     </ClInclude>

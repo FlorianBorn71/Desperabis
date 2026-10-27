@@ -4,11 +4,13 @@
 class AssetStream
 {
 public:
-    AssetStream(const std::vector<byte>& buffer)
-        : m_rawBuffer(buffer)
+    AssetStream(const std::vector<byte>& buffer, std::shared_ptr<const Palette> palette = nullptr)
+        : m_rawBuffer(buffer), m_palette(std::move(palette))
     {
 
     }
+
+    const Palette* GetPalette() const { return m_palette.get(); }
 
     int Read(char* dest, int count);
 
@@ -46,6 +48,7 @@ public:
 private:
     int m_currentPos = 0;
     const std::vector<byte>& m_rawBuffer;
+    std::shared_ptr<const Palette> m_palette;
 };
 
 class D_IMPEXP AssetBase

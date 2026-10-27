@@ -7,6 +7,7 @@
 #include <Asset/ModelGeometry.h>
 #include <Asset/ModelAnim.h>
 #include <Scene/Scene.h>
+#include <stdexcept>
 
 Renderer* Renderer::g_Instance = nullptr;
 
@@ -63,6 +64,11 @@ void Renderer::RenderScene(const Scene* scene, const RenderingSettings& renderSe
         // complete scene rendering
         RenderSceneElements(m_internalVisResult, renderSettings, stats);
     }
+}
+
+std::shared_ptr<IGraphicsRuntimeObject> Renderer::CreateTextMeshBuffers(const TextMesh&)
+{
+    throw std::runtime_error("The active renderer does not support text meshes.");
 }
 
 void RenderContext::BeginRenderTargetScope(RenderTargetPassType newPasstype, const Camera* camera)

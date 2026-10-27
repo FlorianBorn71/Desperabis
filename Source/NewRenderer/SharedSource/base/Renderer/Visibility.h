@@ -8,7 +8,6 @@
 #include <Renderer/LightSource.h>
 #include <Renderer/Camera.h>
 
-
 /// <summary>
 /// The visibility result is given to the renderer for rendering
 /// </summary>
@@ -61,6 +60,7 @@ struct VisibilityResult
     };
 
     VisibleInstances m_visibleInstances;
+    std::vector<const TextMeshInstance*> m_visibleTextMeshInstances;
 
 #ifdef ENABLE_ADVANCED_RENDERING
     bool m_anyWaterVisible = false;
