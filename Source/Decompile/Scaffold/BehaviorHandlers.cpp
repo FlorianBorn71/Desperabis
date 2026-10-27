@@ -958,9 +958,17 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Teleporter, 0x37B0 };
     }
 
-    DispatchResult Function_LevelStartOverride(RawGameObject&, GameContext&)
+    DispatchResult Function_LevelStartOverride(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::LevelStartOverride, 0x37DD };
+        if (context.OverlapsPlayer(object) && object.health == 1000)
+        {
+            auto& player = context.worldObjects[1];
+            player.posX = object.posX;
+            player.posY = object.posY;
+            player.posZ = object.posZ;
+            object.health = 0;
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::LevelStartOverride, 0x37DD };
     }
 
     DispatchResult Function_DirtFromAbove(RawGameObject&, GameContext&)

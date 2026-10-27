@@ -54,7 +54,7 @@ The renderer's existing accessors and the author's layout information are now
 connected to the binary in [Object behavior recovery](BehaviorRecovery.md).
 That page also documents the compilable named-handler scaffold. Pillar,
 LightSource, PulsatingLight, Door, Flies, behavior 18, FireParticle, BurningFireplace, IdleAnimation,
-SmokeFading, SpawnInCrater, RatAndSnake, FloatingDebris, Switch1, SwitchGrouped, and WaterDrop are implemented; other handlers remain explicit
+SmokeFading, SpawnInCrater, RatAndSnake, FloatingDebris, Switch1, SwitchGrouped, WaterDrop, and LevelStartOverride are implemented; other handlers remain explicit
 placeholders.
 The author's Excel object layout has been compared with the renderer accessors
 and added as the canonical 54-byte `RawGameObject` struct in
@@ -487,7 +487,56 @@ Shared helper names are `AddFixedPoint8` (`10AC:384E`), `GetStepToward`
 [GameMath.cpp](Scaffold/GameMath.cpp) preserve parameter order, reference/word
 widths, and original wrapping/edge behavior.
 
+### Player start marker and LevelStartOverride (implemented)
+
+Native `1E48:1CC6` scans the first FELD plane (wall texture bytes, DS:`32D0`)
+for an **exact byte match** against `0xE0 + startNumber`. Fresh level loading
+at `0000:05D3` passes start number 1, so the common marker is **`0xE1`**.
+It is not a test of the upper three bits alone.
+See [player-start-evidence.txt](player-start-evidence.txt).
+
+For zero-based file column `c` and row `r`, it sets the working eye position:
+`X = 150 + 100*c`, `Z = 4050 - 100*r`,
+`Y = GetTerrainFloorHeight(X, 0, Z) + standingHeight`.
+Fresh loading initializes standing height to 45 at `0000:0455`.
+Columns are scanned outermost, rows innermost; multiple exact matches overwrite
+earlier matches. No match leaves the previous coordinates intact. This helper
+does not set the viewing direction.
+
+Asset check: level 11 has its `0xE1` at column 12, row 4, yielding X=1350,
+Z=3650. It also contains many `0xEF` cells. The renderer currently treats every
+nonzero-texture byte with `wallTextures >> 5 == 7` as a player start in
+[Level.cpp](../NewRenderer/SharedSource/base/Asset/Level.cpp), so those other
+cells can overwrite the real marker. It also uses floor plus 50 instead of
+the native standing eye height 45. The playable host no longer consumes that
+renderer-selected position: GameCore's `InitializeLevelPlayerSpawn` selects the
+exact marker and derives native eye Y from the pending level before completion.
+Explicit recovery-fixture positions remain optional. Missing normal markers
+are explicit fresh-load errors rather than silently retaining old coordinates.
+
+The existing enum's `LevelStartOverride` (121) case at `0000:37DD` is also
+located: when the native player-overlap helper `1E48:2D63` succeeds and object
+health is exactly 1000, it copies the object's XYZ into slot 1's **object-center**
+XYZ and clears the object's health. This is a one-shot, contact-gated behavior,
+not an unconditional object-file initializer. Original records occur in levels
+17 (health 1000) and 23 (health 2000); the latter does not pass this health gate
+as initially stored. The handler is now implemented using `OverlapsPlayer`,
+without imposing an extra player-health test or requiring interaction input.
+An original-assets test confirms that level 17's actual map start overlaps this
+object, raising the player to center Y=66 (eye Y=91), then consuming the object
+so normal gravity begins the cave-entry drop. All 36 complete original maps
+are checked for native marker coordinates and duplicate scan priority.
+
 ### Level height streams and WaterDrop
+
+Fresh-level static wall collision is now recovered at `1E48:594E`:
+plane 6 fills 5x5 material rectangles, then plane 5's low five bits select
+immutable wall icons in native priority order, with transparent-zero overwrite.
+The icon selector is not the visible wall texture index. GameCore loads FELD
+through its file service, retains native variable-size placement/defaults and
+captures the original map dimensions before object behaviors modify it.
+See [static collision details](BehaviorRecovery.md#static-wall-collision-raster)
+and [instruction evidence](wall-collision-evidence.txt).
 
 The renderer's seven-plane geometry layout matches the native 50x40 arrays.
 Floor heights start at DS:`4A40`, relative room heights at `5210`; ceiling

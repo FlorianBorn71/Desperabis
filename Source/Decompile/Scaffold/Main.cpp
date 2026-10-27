@@ -47,7 +47,7 @@ namespace
             "  With --player but without --interact, only collision selection is performed.\n"
             "  Default: CreateDummyLevel() supplies an empty 200x200 collision map.\n"
             "  Add --collision-map map.bin to replace the dummy map with a buffer dump.\n"
-            "  Add --geometry FELD.256 to load 50x40 geometry (header plus seven byte planes).\n"
+            "  Add --geometry FELD.256 to load geometry up to 50x40 (header plus seven byte planes).\n"
             "  Add --sound-table S_TAB.PRB to log sample playback through a console AudioHandler.\n"
             "  Add --collision-map-output updated.bin to save the 40004-byte dummy map allocation.\n"
             "Exit 2: partial recovery only, not a complete gameplay simulation. Exit 1: invalid input/error.\n";
@@ -107,6 +107,7 @@ namespace
                         entry.type == BehaviorType::Switch1 ||
                         entry.type == BehaviorType::ExplosionSmokeCloud || entry.type == BehaviorType::SpawnInCrater ||
                         entry.type == BehaviorType::FloatingDebris ||
+                        entry.type == BehaviorType::LevelStartOverride ||
                         entry.type == BehaviorType::RatAndSnake ||
                         entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ?
                         " implemented case (common processing missing)" :
@@ -156,11 +157,11 @@ namespace
                 if (++i == argc) { throw std::invalid_argument("Missing value for --geometry."); }
                 std::ifstream file(argv[i], std::ios::binary);
                 if (!file) { throw std::runtime_error("Cannot open geometry input."); }
-                std::array<std::uint8_t, Level::GeometryStreamSize> data{};
-                file.read(reinterpret_cast<char*>(data.data()), static_cast<std::streamsize>(data.size()));
-                if (file.gcount() != static_cast<std::streamsize>(data.size()) || file.bad())
+                const std::vector<std::uint8_t> data{
+                    std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
+                if (file.bad())
                 {
-                    throw std::runtime_error("Cannot read complete 50x40 geometry input.");
+                    throw std::runtime_error("Cannot read geometry input.");
                 }
                 level.LoadGeometry(data.data(), data.size());
                 haveGeometry = true;
@@ -326,7 +327,7 @@ namespace
         {
             std::cout << "Using dummy level: 200x200 collision pixels, initially zero.\n";
         }
-        std::cout << (haveGeometry ? "Loaded 50x40 geometry streams.\n" :
+        std::cout << (haveGeometry ? "Loaded FELD geometry streams.\n" :
             "Using dummy geometry: raw floor 0, room height 50, ceiling present, no special surfaces.\n");
         context.soundListenerX = havePlayer ? context.worldObjects[1].posX : object.posX;
         context.soundListenerZ = havePlayer ? context.worldObjects[1].posZ : object.posZ;

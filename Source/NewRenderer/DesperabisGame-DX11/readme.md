@@ -8,25 +8,30 @@ Release uses `Bin`, and Debug uses `Bin\Debug`.
 The project links against `Desperabis-GameCore`. `GameCoreHost.h/.cpp` is the renderer-independent bridge to
 `Desperabis::GameContext`:
 
-* Level loading goes through `GameContext::StartLevel` / `CompleteLevelLoad`. The host still supplies
-  `FELD<n>.256` geometry and spawn input. GameContext's `LoadLevelObjects` reads `LEVEL\OBJPOS<n>.DAT`
-  through the host's file-reader callback and decodes the native object array (record `i` -> slot `i + 2`).
-  Malformed or oversized object files fail loading rather than being silently truncated.
+* Level loading goes through `GameContext::StartLevel` / `CompleteLevelLoad`. The host supplies only
+  level number and initial view direction. GameContext's `LoadLevelGeometry` reads `LEVEL\FELD<n>.256` and builds
+  the static collision map from material bytes and embedded original 5x5 wall icons.
+  `LoadLevelObjects` reads `LEVEL\OBJPOS<n>.DAT` and decodes the native object array (record `i` -> slot `i + 2`).
+  Both use the host's generic file-reader callback. Malformed files fail loading explicitly.
   The renderer scene does not create game objects itself.
 game ticks (33 Hz, as in the original game)
   back the object states. Changed slots update their `RenderableInstance` via `Level::ApplyRenderProperties`.
 * The camera comes from `GameContext::GetPlayerCamera()`: eye position via `Level::DespToPos`, with no extra offset,
   forward = normalize(-dir.x, dir.y, dir.z); a zero direction keeps the previous orientation.
-* The player starts at the renderer's initial eye position and settles onto GameCore's terrain. Its collision
+* GameCore selects the exact `0xE1` marker in FELD's wall-texture plane and computes native eye Y as
+  terrain height plus 45. It does not use the renderer's approximate start position. Its collision
   mask is 3, horizontal radius 15, and normal vertical radius 23, matching original save records. At normal
   standing eye height 45, the object center is 20 above terrain, not 33 as with the former placeholder radius.
-  The host passes only spawn position/direction through `LevelLoadData::playerSpawn`; GameContext initializes
-  the player record and performs eye/center conversion during level completion.
+  `InitializeLevelPlayerSpawn` selects position; the host supplies only direction. GameContext initializes
+  the player record and performs eye/center conversion during level completion. An optional
+  `GameCoreLevelSource::playerPosition` is an explicit recovery-fixture override, unused by normal play.
+* `LevelStartOverride` is a one-shot player-contact behavior. The original cave object moves the player
+  above the floor, consumes itself, and lets normal gravity begin the drop; no Enter press is needed.
 
 Current assumptions/limitations:
 
-* GameCore only accepts 50x40 geometry; smaller FELD levels are padded into the top-left of the native planes.
-* The collision map is a dummy (empty).
+* FELD geometry up to 50x40 uses the recovered native row placement and outside-file defaults.
+  Static collision is built once on loading; doors and pillars then mutate the same map.
 * The initial player direction is a host choice (OBJPOS has no player record).
 * Light sources created for an object are not removed when the object disappears.
 

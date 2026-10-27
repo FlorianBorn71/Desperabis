@@ -229,7 +229,7 @@ case BehaviorType::BatIndoor:
 ```
 
 Pillar, LightSource, PulsatingLight, Door, Flies, RatAndSnake, FloatingDebris, behavior 18, FireParticle, BurningFireplace,
-IdleAnimation, SmokeFading, SpawnInCrater, Switch1, SwitchGrouped, WaterDrop,
+IdleAnimation, SmokeFading, SpawnInCrater, Switch1, SwitchGrouped, WaterDrop, LevelStartOverride,
 and DisabledSentinel return `ExecutedCase`. The other
 handlers return `UnimplementedHandler` without moving objects or writing
 globals. Every handler returns its enum identity, for example:
@@ -407,15 +407,19 @@ Construct a `LevelLoadData` containing:
   ordinary objects 2..164, fallback 165. Do not assume the renderer's vector
   indices match these slots.
 - The level's `floorRepeatHeight`, when applicable.
-- For a fresh level, `playerSpawn = PlayerCamera{eyePosition, viewDirection}`.
+- For a fresh level, call `InitializeLevelPlayerSpawn(data, viewDirection)` after
+  loading geometry, or explicitly supply `playerSpawn = PlayerCamera{eyePosition, viewDirection}`
+  for a recovery fixture.
   `GameContext::InitializeLevelPlayer`, called by `CompleteLevelLoad`, replaces
   slot 1 with a clean normal player (health 1000, mask 3, radii 15/23) and converts
-  eye Y to object-center Y. The host supplies spawn coordinates/direction, not
+  eye Y to object-center Y. Normal play supplies direction only, not
   gameplay constants. If `playerSpawn` is absent, the supplied slot-1 record is
   preserved unchanged for explicit player-state restoration and recovery fixtures.
 
-For fresh level objects, the host's current `LoadLevel` override calls
-`LoadLevelObjects(request.levelNumber, data)` before completing the load.
+For fresh levels, the host's current `LoadLevel` override calls
+`LoadLevelGeometry(request.levelNumber, data)`, then
+`LoadLevelObjects(request.levelNumber, data)` and
+`InitializeLevelPlayerSpawn(data, viewDirection)` before completing the load.
 This GameContext helper constructs `LEVEL\OBJPOS<n>.DAT` and calls the protected
 virtual `LoadFile(std::string_view)`, returning `std::vector<std::uint8_t>`.
 The host implements byte retrieval only; file failures must throw (the default
@@ -431,10 +435,48 @@ retaining the existing integration mapping; native initialization is not fully
 traced. File/parsing exceptions propagate through `StartLevel` into the existing
 load-failure state, leaving the previous world intact.
 
-This is the first file-owned loading step: geometry and spawn input are still
-provided by the host, whose override prepares those and invokes the object
-loader. The default `LoadLevel` does not yet load a complete level. Wall-derived
-collision-map construction is also still separate work.
+`LoadLevelGeometry` reads `LEVEL\FELD<n>.256`, decodes its planes and calls
+`Level::BuildCollisionMap` before objects run. The host supplies only level
+number and initial view direction, not geometry bytes, spawn position, or gameplay object records.
+The default `LoadLevel` does not yet load a complete level; other metadata,
+surface-height tables, sound configuration and presentation assets remain separate.
+
+#### Normal map start and one-shot LevelStartOverride
+
+[player-start-evidence.txt](player-start-evidence.txt) traces normal selection
+at `1E48:1CC6`, its fresh-load call with argument 1 at `0000:05D3`, and
+the behavior-121 case at `0000:37DD`.
+
+`InitializeLevelPlayerSpawn` scans the native wall-texture plane for the
+**exact byte `0xE1`**. Columns are scanned outermost, rows innermost; the last
+matching tile wins. Other shape-7 bytes such as `0xEF` are not normal starts.
+For zero-based column `c`, row `r`, eye X/Z are `150+100*c`, `4050-100*r`.
+Eye Y is the pending level's native `GetTerrainFloorHeight(X, 0, Z) + 45`,
+including its repeat-height setting, not a renderer float height or a query
+against the previous installed level. View direction is preserved.
+
+The original helper retains existing coordinates when no marker matches.
+For a fresh GameCore load, missing markers instead fail explicitly rather than
+silently inheriting a previous level's position. All 36 complete original FELD
+fixtures have a normal marker. Missing geometry and invalid terrain corners
+also fail before assigning the spawn. Explicit player records and recovery
+spawn overrides remain supported; save restoration does not reselect a marker.
+
+`Function_LevelStartOverride` uses the existing native `OverlapsPlayer` helper:
+collision gating enabled, matching masks, and strict XYZ overlap. Only health
+**exactly 1000** activates it. It copies just the object's six XYZ bytes into
+slot 1's **object-center** position and consumes itself by setting health to 0.
+It does not change direction, movement speeds, inventory, sound, or RNG state,
+and does not require the interaction key or positive player health.
+The loader does not unconditionally use every behavior-121 object as a spawn.
+
+Tests cover all complete original level markers, duplicate scan priority,
+pending-level terrain interpolation, eye/center conversion, error atomicity,
+the exact contact/health gates, and both original behavior-121 records.
+In level 17, the actual map start overlaps the health-1000 object at
+`(1095,66,3392)`: its first behavior update puts the eye at Y=91, then gravity
+begins the drop without retriggering. Level 23's initial health-2000 record
+correctly does not fire unless other gameplay changes its state to pass the gate.
 
 Call `CompleteLevelLoad(request.id, std::move(data))`. Validation occurs before
 replacing the current world, including validation of lighting-center coordinate
@@ -769,9 +811,9 @@ TODOs are placed beside the partial implementation in
 5. Implement automatic player damage, teleporting and other contact modes in
    the shared contact pipeline, not in this normal movement subset.
 
-Map collision only works if the host supplies a real collision map. An empty
-dummy map has no walls; this library does not generate collision from renderer
-geometry. No object support or renderer-scene collision is invented.
+Fresh levels loaded through `LoadLevelGeometry` have a real static FELD-derived
+collision map. Explicit dummy fixtures still have no walls unless populated.
+No object support or renderer-scene collision is invented.
 The existing low-level `UpdateObjects`/`DispatchObjectCase` APIs still do not
 move the player; this controller is specific to the host-driven `Tick`.
 
@@ -1900,25 +1942,59 @@ renderer's floating-point interpolation. Evidence is preserved in
 reads an unpacked geometry stream prefix,
 matching the renderer's `ReadLevelData(..., true)`: two little-endian words
 containing width-minus-one and height-minus-one, then seven row-major byte
-planes. Native gameplay requires **50 columns by 40 rows**; other dimensions,
-null pointers, and incomplete streams are errors. The required prefix is
-14,004 bytes; trailing data is not consumed. Headerless savegame blocks,
+planes. Dimensions must fit **50 columns by 40 rows**; null pointers and
+incomplete streams are errors. Each row is copied into the top-left of the
+native stride-50 arrays, as at `1E48:1E12`. Outside-file defaults are floor
+height 255, room height 50, and zero for the other retained planes.
+The required prefix is `4 + 7*width*height` bytes; trailing data is not consumed. Headerless savegame blocks,
 archive extraction, and other level records are not loaded by this method.
 
 | Plane | Contents | Original first byte in DS | Retained here |
 | --- | --- | --- | --- |
-| 0 | Wall texture | `32D0` | No |
+| 0 | Wall texture / exact player start marker | `32D0` | `wallTextures` |
 | 1 | Floor texture/object | `3AA0` | No |
 | 2 | Ceiling texture/object | `4270` | `ceilingObjects` |
 | 3 | Floor height | `4A40` | `floorHeights` |
 | 4 | Room height above floor | `5210` | `roomHeights` |
 | 5 | Wall/surface flags | `59E0` | `surfaceFlags` |
-| 6 | Material | `61B0` | No |
+| 6 | Material | `61B0` | `collisionMaterials` |
 
 The two additional retained planes are needed for correct height queries:
 zero ceiling-object bytes mean no ceiling, and the low five surface bits
 select flat surfaces or stacked/repeated floors. Stream loading does not
 modify the separate collision map or surface metadata.
+
+### Static wall collision raster
+
+`GameContext::LoadLevelGeometry` calls `Level::BuildCollisionMap` in
+[CollisionMap.cpp](Scaffold/CollisionMap.cpp). Evidence:
+[wall-collision-evidence.txt](wall-collision-evidence.txt), native builder
+`1E48:594E`, icon loader `1E48:36DA`, transparent blitter `1E48:2877`,
+and capture call `0000:07EB`. The builder:
+
+- Fills inclusive 5x5 rectangles from plane 6, with a four-pixel tile stride,
+  row first then column; later rectangles overwrite shared edges.
+- Uses **plane 5 & 31**, not plane 0's visible texture/shape index.
+  Selectors 9..27 choose AN2 frames `selector-8`.
+- Draws in native priority order `16,17,18,19,27,9,10,11,12,13,14,15,20,21,22,23,24,25,26`.
+  This is the table at DS:`0352` (EXE file offset `31A72`, main DS module `2E9E`).
+  Zero pixels are transparent; nonzero pixels overwrite, not OR.
+- Discards AN2 relative offsets, just like the native loader, and crops the
+  screen rectangle `(4,3)..(4*(width-1)+5,4*(height-1)+5)`.
+  Final dimensions are `(4*width-2)` by `(4*height-1)`, e.g. level 11 is 98x111.
+  Zero-based tile `(column,row)` starts at map pixel `(4*column-1,4*row)`.
+
+The immutable original wall AN2 frames 1..19 are embedded, including placeholder
+patterns. Asset SHA-256:
+`4186bf3a6bc137a4c003d82734e19bc3ec46ff1ddeab8ca91832e1b00d26290e`.
+No runtime AN2 file service or Unicode filename is needed. Runtime tests independently
+decode the original asset, verify every embedded icon through isolated tiles,
+compare all complete original FELD maps against a screen-raster/crop oracle, exercise
+priority/overlap/materials/borders/high bits, and walk the controller into a real
+level-11 wall. The static map is not rebuilt during ticks, preserving door/pillar edits.
+Original `FELD9.256` and `FELD29.256` are only 703 bytes, versus 732 required by
+their 13x8 headers. They remain explicit loading errors rather than silently
+defaulting the missing 29 material bytes.
 
 The Pascal arrays are indexed `[1..40, 1..50]`. Instructions use bases biased
 backwards by 51 bytes: for example `4A0D`, not the actual first floor byte
@@ -1930,6 +2006,7 @@ Host integration:
 ```cpp
 auto level = CreateDummyLevel();
 level.LoadGeometry(bytes.data(), bytes.size());
+level.BuildCollisionMap();
 GameContext context;
 context.level = &level;
 context.collisionMap = level.collisionMap.get();

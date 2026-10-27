@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -12,9 +13,8 @@
 struct GameCoreLevelSource
 {
 	int levelNumber = 0;
-	std::vector<std::uint8_t> geometry;            // FELD<n>.256 file contents
-	// Native DOS eye coordinates; the controller settles onto terrain from this starting height.
-	std::array<std::int16_t, 3> playerPosition{};
+	// Explicit eye-position override for recovery fixtures; normal play uses the native FELD marker.
+	std::optional<std::array<std::int16_t, 3>> playerPosition;
 	std::array<std::int16_t, 3> playerDirection{}; // native view vector words
 };
 

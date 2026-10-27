@@ -92,7 +92,7 @@ For the first explained case and shared collision-map pointer, see
   per-frame reset, native world-coordinate accumulation, and window culling.
   LightSource objects now add flicker and request their configured sounds;
   the unidentified DS:DC34 accumulator is preserved. No rendering is included.
-- `Scaffold/`: compilable selector, implemented Pillar/LightSource/PulsatingLight/Door/Flies/RatAndSnake/FloatingDebris/behavior-18/FireParticle/BurningFireplace/IdleAnimation/SmokeFading/SpawnInCrater/switch/WaterDrop cases,
+- `Scaffold/`: compilable selector, implemented Pillar/LightSource/PulsatingLight/Door/Flies/RatAndSnake/FloatingDebris/behavior-18/FireParticle/BurningFireplace/IdleAnimation/SmokeFading/SpawnInCrater/switch/WaterDrop/LevelStartOverride cases,
   placeholder handlers, and tests.
 - `Scaffold/CollisionMap.cpp`: explicit 200x200 dummy-level creation until proper
   level loading is recovered. Collision-map queries/writers are in `GameContext.cpp`.
@@ -246,7 +246,7 @@ and the corresponding reader/player-blocking rules. `BatIndoor`'s helper at
 module-relative `10AC:3391` remains a later target.
 Pillar's case and point writer, plus the object-local IdleAnimation and
 SmokeFading cases, Flies, two switch behaviors, WaterDrop, LightSource, PulsatingLight, ordinary
-doors, RatAndSnake, FloatingDebris, behavior 18, and the fireplace/crater particle paths are implemented
+doors, RatAndSnake, FloatingDebris, LevelStartOverride, behavior 18, and the fireplace/crater particle paths are implemented
 and host-tested.
 Flies preserves randomized frame blending, per-update orientation changes, and
 the fixed buzzing effect with doubled-distance attenuation; it does not move

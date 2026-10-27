@@ -97,6 +97,37 @@ namespace Desperabis
             return std::clamp<std::int16_t>(corner, 0, 255);
         }
 
+        std::int16_t GetTerrainHeight(const Level& terrain, std::int16_t repeatHeight,
+            std::int16_t x, std::int16_t y, std::int16_t z)
+        {
+            const auto position = GetHeightPosition(x, z);
+            const auto surface = terrain.surfaceFlags[position.row][position.column] & 31;
+            auto corners = GetCorners(terrain.floorHeights, position);
+            const auto halfY = y >= 0 ? y / 2 : (static_cast<int>(y) - 1) / 2;
+            const auto queryHeight = WrapSignedWord(-halfY);
+            constexpr int stackedFloorSurface = 28;
+            if (surface == stackedFloorSurface)
+            {
+                const auto room = GetCorners(terrain.roomHeights, position);
+                for (std::size_t i = 0; i < corners.size(); ++i)
+                {
+                    corners[i] = WrapSignedWord(corners[i] - room[i]);
+                }
+                if (WrapSignedWord(*std::max_element(corners.begin(), corners.end()) - 5) < queryHeight)
+                {
+                    for (std::size_t i = 0; i < corners.size(); ++i)
+                    {
+                        corners[i] = WrapSignedWord(corners[i] + room[i]);
+                    }
+                }
+            }
+            if (repeatHeight > 0 && surface != 0)
+            {
+                for (auto& corner : corners) { corner = RepeatFloor(corner, queryHeight, repeatHeight); }
+            }
+            return WrapSignedWord(-2 * static_cast<std::int32_t>(InterpolateHeight(corners, position)));
+        }
+
         bool AxisOverlaps(std::int16_t first, std::int16_t second,
             std::int16_t firstRadius, std::int16_t secondRadius)
         {
@@ -391,6 +422,17 @@ namespace Desperabis
         throw std::logic_error("The host must implement LoadFile to read " + std::string(filename));
     }
 
+    void GameContext::LoadLevelGeometry(std::int16_t levelNumber, LevelLoadData& data)
+    {
+        if (levelNumber <= 0) { throw std::invalid_argument("Geometry loading requires a positive level number."); }
+        const auto filename = "LEVEL\\FELD" + std::to_string(levelNumber) + ".256";
+        const auto payload = LoadFile(filename);
+        auto loadedLevel = std::make_unique<Level>();
+        loadedLevel->LoadGeometry(payload.data(), payload.size());
+        loadedLevel->BuildCollisionMap();
+        data.level = std::move(loadedLevel);
+    }
+
     void GameContext::LoadLevelObjects(std::int16_t levelNumber, LevelLoadData& data)
     {
         if (levelNumber <= 0) { throw std::invalid_argument("Object loading requires a positive level number."); }
@@ -411,6 +453,30 @@ namespace Desperabis
             data.objects[slot] = offset < payload.size() ?
                 DecodeGameObject(payload.data() + offset, recordSize) : RawGameObject{};
         }
+    }
+
+    void GameContext::InitializeLevelPlayerSpawn(LevelLoadData& data,
+        const std::array<std::int16_t, 3>& direction)
+    {
+        if (!data.level) { throw std::invalid_argument("Player start selection requires loaded level geometry."); }
+        std::optional<PlayerCamera> spawn;
+        // 1E48:1CC6 scans columns first, retaining the last exact E0+1 match.
+        for (std::size_t column = 0; column < Level::Width; ++column)
+        {
+            for (std::size_t row = 0; row < Level::Height; ++row)
+            {
+                if (data.level->wallTextures[row][column] == 0xe1)
+                {
+                    const auto x = static_cast<std::int16_t>(150 + 100 * column);
+                    const auto z = static_cast<std::int16_t>(4050 - 100 * row);
+                    const auto y = WrapSignedWord(
+                        GetTerrainHeight(*data.level, data.floorRepeatHeight, x, 0, z) + 45);
+                    spawn = PlayerCamera{ { x, y, z }, direction };
+                }
+            }
+        }
+        if (!spawn) { throw std::runtime_error("Level geometry has no normal player start marker (0xE1)."); }
+        data.playerSpawn = *spawn;
     }
 
     void GameContext::LoadLevel(const LevelLoadRequest&)
@@ -905,32 +971,7 @@ namespace Desperabis
     std::int16_t GameContext::GetTerrainFloorHeight(std::int16_t x, std::int16_t y, std::int16_t z) const
     {
         if (!level) { throw std::runtime_error("Terrain floor lookup requires level geometry."); }
-        const auto position = GetHeightPosition(x, z);
-        const auto surface = level->surfaceFlags[position.row][position.column] & 31;
-        auto corners = GetCorners(level->floorHeights, position);
-        const auto halfY = y >= 0 ? y / 2 : (static_cast<int>(y) - 1) / 2;
-        const auto queryHeight = WrapSignedWord(-halfY);
-        constexpr int stackedFloorSurface = 28;
-        if (surface == stackedFloorSurface)
-        {
-            const auto room = GetCorners(level->roomHeights, position);
-            for (std::size_t i = 0; i < corners.size(); ++i)
-            {
-                corners[i] = WrapSignedWord(corners[i] - room[i]);
-            }
-            if (WrapSignedWord(*std::max_element(corners.begin(), corners.end()) - 5) < queryHeight)
-            {
-                for (std::size_t i = 0; i < corners.size(); ++i)
-                {
-                    corners[i] = WrapSignedWord(corners[i] + room[i]);
-                }
-            }
-        }
-        if (floorRepeatHeight > 0 && surface != 0)
-        {
-            for (auto& corner : corners) { corner = RepeatFloor(corner, queryHeight, floorRepeatHeight); }
-        }
-        return WrapSignedWord(-2 * static_cast<std::int32_t>(InterpolateHeight(corners, position)));
+        return GetTerrainHeight(*level, floorRepeatHeight, x, y, z);
     }
 
     std::int16_t GameContext::GetRoomHeight(std::int16_t x, std::int16_t z) const

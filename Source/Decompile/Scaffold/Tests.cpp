@@ -159,7 +159,7 @@ namespace
                 entry.type == BehaviorType::Door ||
                 entry.type == BehaviorType::Flies ||
                 entry.type == BehaviorType::ExplosionSmokeCloud || entry.type == BehaviorType::SpawnInCrater ||
-                entry.type == BehaviorType::FloatingDebris ||
+                entry.type == BehaviorType::FloatingDebris || entry.type == BehaviorType::LevelStartOverride ||
                 entry.type == BehaviorType::RatAndSnake ||
                 entry.type == BehaviorType::FireParticle || entry.type == BehaviorType::BurningFireplace ||
                 entry.type == BehaviorType::PulsatingLight ||
@@ -2641,7 +2641,8 @@ namespace
                 for (std::size_t column = 0; column < Level::Width; ++column)
                 {
                     const auto index = row * Level::Width + column;
-                    Check(level.ceilingObjects[row][column] == static_cast<std::uint8_t>(62 + index * 7) &&
+                    Check(level.wallTextures[row][column] == static_cast<std::uint8_t>(index * 7) &&
+                        level.ceilingObjects[row][column] == static_cast<std::uint8_t>(62 + index * 7) &&
                         level.floorHeights[row][column] == static_cast<std::uint8_t>(93 + index * 7) &&
                         level.roomHeights[row][column] == static_cast<std::uint8_t>(124 + index * 7) &&
                         level.surfaceFlags[row][column] == static_cast<std::uint8_t>(155 + index * 7),
@@ -2654,7 +2655,7 @@ namespace
         for (int invalid = 0; invalid < 4; ++invalid)
         {
             bool rejected = false;
-            data[0] = invalid == 2 ? 48 : 49;
+            data[0] = invalid == 2 ? 50 : 49;
             data[3] = invalid == 3 ? 1 : 0;
             try
             {

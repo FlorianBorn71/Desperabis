@@ -308,14 +308,8 @@ namespace
 
 		GameCoreLevelSource source;
 		source.levelNumber = levelIndex;
-		{
-			std::wstringstream wss;
-			wss << L"LEVEL\\FELD" << levelIndex << L".256";
-			source.geometry = ReadGameFile(wss.str());
-		}
 
-		// The renderer supplies the initial eye position; GameCore handles terrain support and gravity.
-		source.playerPosition = PosToDesp(g_scene->GetInitialPosition());
+		// GameCore selects the native map start; the initial view direction remains a host choice.
 		source.playerDirection = g_initialPlayerDirection;
 
 		if (!g_gameCore->LoadLevel(source))

@@ -125,10 +125,14 @@ namespace Desperabis
         static constexpr std::size_t GeometryStreamSize = 4 + 7 * Width * Height;
 
         std::unique_ptr<CollisionMap> collisionMap;
+        std::uint8_t wallTextures[Height][Width]{};
         std::uint8_t floorHeights[Height][Width]{};
         std::uint8_t roomHeights[Height][Width]{};
         std::uint8_t ceilingObjects[Height][Width]{};
         std::uint8_t surfaceFlags[Height][Width]{};
+        std::uint8_t collisionMaterials[Height][Width]{};
+        std::size_t geometryWidth = Width;
+        std::size_t geometryHeight = Height;
 
         struct HeightSurface
         {
@@ -139,6 +143,7 @@ namespace Desperabis
         std::array<std::optional<HeightSurface>, 4> heightSurfaces{};
 
         void LoadGeometry(const std::uint8_t* data, std::size_t size);
+        void BuildCollisionMap();
     };
 
     Level CreateDummyLevel();
@@ -329,6 +334,10 @@ namespace Desperabis
     protected:
         // Logical asset names, e.g. LEVEL\OBJPOS11.DAT; failures must throw.
         virtual std::vector<std::uint8_t> LoadFile(std::string_view filename);
+        // Loads FELD geometry and builds the initial static collision map before object updates.
+        void LoadLevelGeometry(std::int16_t levelNumber, LevelLoadData& data);
+        // Selects the exact normal map marker and derives eye Y from the pending level's terrain.
+        void InitializeLevelPlayerSpawn(LevelLoadData& data, const std::array<std::int16_t, 3>& direction);
         // Loads ordinary slots 2..164, preserving reserved/player/fallback records.
         void LoadLevelObjects(std::int16_t levelNumber, LevelLoadData& data);
         // May complete synchronously or start host-side async work. Default reports an explicit error.

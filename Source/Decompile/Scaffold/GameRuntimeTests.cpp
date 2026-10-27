@@ -586,7 +586,6 @@ namespace
         };
         GameCoreLevelSource source;
         source.levelNumber = 11;
-        source.geometry = readBytes(levelDirectory / "FELD11.256");
         const auto objectRecords = readBytes(levelDirectory / "OBJPOS11.DAT");
         source.playerDirection = { 0, 0, 100 };
         const auto saved = readBytes(savePath);
@@ -602,9 +601,10 @@ namespace
         int fileRequests = 0;
         GameCoreHost host([&](std::string_view filename)
         {
-            Check(filename == "LEVEL\\OBJPOS11.DAT", "GameCore must choose the requested level's OBJPOS asset.");
             ++fileRequests;
-            return readBytes(levelDirectory / "OBJPOS11.DAT");
+            if (filename == "LEVEL\\FELD11.256") { return readBytes(levelDirectory / "FELD11.256"); }
+            Check(filename == "LEVEL\\OBJPOS11.DAT", "GameCore must choose the requested level's assets.");
+            return objectRecords;
         });
         const auto worldObject = [&](int slot)
         {
@@ -614,7 +614,8 @@ namespace
         };
         const auto loadAt = [&](const RawGameObject& target)
         {
-            source.playerPosition = { target.posX, static_cast<std::int16_t>(target.posY + 45), target.posZ };
+            source.playerPosition = std::array<std::int16_t, 3>{
+                target.posX, static_cast<std::int16_t>(target.posY + 45), target.posZ };
             Check(host.LoadLevel(source), "Real renderer-host level loading failed.");
             Check(fileRequests > 0, "Level loading must obtain objects through the file service.");
             for (std::size_t record = 0; record < objectRecords.size() / 54; ++record)
@@ -627,7 +628,7 @@ namespace
             Check(player.field_07 == nativePlayer.field_07 &&
                 player.collisionRadiusXZ == nativePlayer.collisionRadiusXZ &&
                 player.collisionRadiusY == nativePlayer.collisionRadiusY &&
-                host.GetPlayerCamera().position == source.playerPosition,
+                host.GetPlayerCamera().position == *source.playerPosition,
                 "Host must use the original player collision shape and convert eye/center position exactly once.");
         };
         const auto medicine = object(32);
@@ -824,13 +825,14 @@ namespace
         ExpectError<std::invalid_argument>([&] { host.LoadLevelObjects(0, data); });
         GameCoreLevelSource source;
         source.levelNumber = 12;
-        source.geometry.resize(Level::GeometryStreamSize);
-        source.geometry[0] = 49;
-        source.geometry[2] = 39;
-        source.playerPosition = { 1500, 45, 2500 };
+        std::vector<std::uint8_t> geometry(Level::GeometryStreamSize);
+        geometry[0] = 49;
+        geometry[2] = 39;
+        source.playerPosition = std::array<std::int16_t, 3>{ 1500, 45, 2500 };
         bool invalid = false;
         GameCoreHost adapter([&](std::string_view filename) -> std::vector<std::uint8_t>
         {
+            if (filename == "LEVEL\\FELD12.256") { return geometry; }
             if (invalid) { return std::vector<std::uint8_t>(55); }
             throw std::runtime_error(std::string(filename) + ": missing");
         });
@@ -841,6 +843,447 @@ namespace
         Check(!adapter.LoadLevel(source) && !adapter.IsLevelReady() &&
             adapter.GetLastError().find("54-byte") != std::string::npos,
             "Malformed object-file errors must propagate through the level lifecycle.");
+    }
+
+    void TestWallCollisionLoading(const std::filesystem::path& levelDirectory)
+    {
+        const auto read = [](const std::filesystem::path& path)
+        {
+            std::ifstream file(path, std::ios::binary);
+            if (!file) { throw std::runtime_error("Cannot read wall collision fixture."); }
+            return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+        };
+        std::vector<std::uint8_t> icons;
+        for (const auto& entry : std::filesystem::directory_iterator(levelDirectory))
+        {
+            const auto name = entry.path().filename().u8string();
+            if (name.size() >= 8 && name.front() == 'W' && name.substr(name.size() - 7) == "NDE.AN2")
+            {
+                icons = read(entry.path());
+            }
+        }
+        Check(icons.size() == 662 && icons[0] == 5 && icons[1] == 4, "Expected original twenty-frame wall AN2.");
+        for (std::size_t frame = 0; frame < 20; ++frame)
+        {
+            const auto offset = 2 + frame * 33;
+            Check(icons[offset + 4] == 4 && icons[offset + 5] == 0 &&
+                icons[offset + 6] == 4 && icons[offset + 7] == 0, "Wall icons must be raw 5x5 images.");
+        }
+        const auto verify = [&](const std::vector<std::uint8_t>& feld)
+        {
+            Level level;
+            level.LoadGeometry(feld.data(), feld.size());
+            level.BuildCollisionMap();
+            const auto width = static_cast<std::size_t>(feld[0] | (feld[1] << 8)) + 1;
+            const auto height = static_cast<std::size_t>(feld[2] | (feld[3] << 8)) + 1;
+            const auto planeSize = width * height;
+            // Independent native oracle: draw full screen, then GetImage the native crop.
+            std::array<std::uint8_t, 320 * 240> screen{};
+            const std::array<int, 20> passes{
+                0,16,17,18,19,27,9,10,11,12,13,14,15,20,21,22,23,24,25,26 };
+            for (std::size_t pass = 0; pass < passes.size(); ++pass)
+            {
+                for (std::size_t row = 0; row < height; ++row)
+                {
+                    for (std::size_t column = 0; column < width; ++column)
+                    {
+                        const auto tile = row * width + column;
+                        const auto selector = feld[4 + 5 * planeSize + tile] & 31;
+                        for (std::size_t y = 0; y < 5; ++y)
+                        {
+                            for (std::size_t x = 0; x < 5; ++x)
+                            {
+                                const auto destination = (4 * (row + 1) - 1 + y) * 320 + 4 * (column + 1) - 1 + x;
+                                if (pass == 0) { screen[destination] = feld[4 + 6 * planeSize + tile]; }
+                                if (selector == passes[pass] && selector >= 9 && selector <= 27)
+                                {
+                                    const auto pixel = icons[2 + static_cast<std::size_t>(selector - 8) * 33 + 8 + y * 5 + x];
+                                    if (pixel != 0) { screen[destination] = pixel; }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            const auto mapWidth = 4 * width - 2;
+            const auto mapHeight = 4 * height - 1;
+            Check(level.collisionMap->widthMinusOne + 1u == mapWidth &&
+                level.collisionMap->heightMinusOne + 1u == mapHeight, "Native map capture dimensions differ.");
+            for (std::size_t row = 0; row < mapHeight; ++row)
+            {
+                for (std::size_t column = 0; column < mapWidth; ++column)
+                {
+                    Check(level.collisionMap->data[row * mapWidth + column] == screen[(row + 3) * 320 + column + 4],
+                        "Static map differs from native priority/transparency/capture oracle.");
+                }
+            }
+            Check(std::all_of(std::begin(level.collisionMap->data) + mapWidth * mapHeight,
+                std::end(level.collisionMap->data), [](std::uint8_t value) { return value == 0; }),
+                "Unused collision allocation must remain deterministic.");
+            if (width < Level::Width && height < Level::Height)
+            {
+                Check(level.floorHeights[height][width] == 255 && level.roomHeights[height][width] == 50 &&
+                    level.ceilingObjects[height][width] == 0 && level.surfaceFlags[height][width] == 0 &&
+                    level.collisionMaterials[height][width] == 0, "Native out-of-file plane defaults differ.");
+            }
+        };
+        // Isolated icons test every embedded pixel, including frames with ignored -2,-2 offsets.
+        std::vector<std::uint8_t> synthetic(4 + 7 * 4 * 4, 0);
+        synthetic[0] = 3;
+        synthetic[2] = 3;
+        for (unsigned int selector = 0; selector < 32; ++selector)
+        {
+            std::fill(synthetic.begin() + 4 + 5 * 16, synthetic.end(), std::uint8_t{ 0 });
+            synthetic[4 + 5 * 16 + 5] = static_cast<std::uint8_t>(selector | 0xe0);
+            std::fill(synthetic.begin() + 4 + 6 * 16, synthetic.end(), std::uint8_t{ 7 });
+            verify(synthetic);
+        }
+        std::vector<std::uint8_t> maximum(Level::GeometryStreamSize);
+        maximum[0] = 49;
+        maximum[2] = 39;
+        for (std::size_t i = 4; i < maximum.size(); ++i) { maximum[i] = static_cast<std::uint8_t>(i * 13 + i / 7); }
+        verify(maximum);
+        verify({ 0,0,0,0, 0,0,0,0,0,15,7 });
+        std::size_t originalLevels = 0;
+        for (const auto& entry : std::filesystem::directory_iterator(levelDirectory))
+        {
+            const auto name = entry.path().filename().string();
+            if (name.rfind("FELD", 0) == 0 && entry.path().extension() == ".256")
+            {
+                const auto feld = read(entry.path());
+                if (name == "FELD9.256" || name == "FELD29.256")
+                {
+                    Check(feld.size() == 703, "Known truncated original FELD fixture changed.");
+                    Level level;
+                    ExpectError<std::invalid_argument>([&] { level.LoadGeometry(feld.data(), feld.size()); });
+                }
+                else { verify(feld); }
+                ++originalLevels;
+            }
+        }
+        Check(originalLevels > 0, "No original FELD files checked.");
+
+        class FileHost final : public GameContext
+        {
+        public:
+            using GameContext::LoadLevelGeometry;
+            std::vector<std::uint8_t> payload;
+            std::string requested;
+            bool missing = false;
+        protected:
+            std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+            {
+                requested = filename;
+                if (missing) { throw std::runtime_error("Missing FELD asset."); }
+                return payload;
+            }
+        } host;
+        host.payload = read(levelDirectory / "FELD11.256");
+        auto data = MakeLevel();
+        host.LoadLevelGeometry(11, data);
+        Check(host.requested == "LEVEL\\FELD11.256" && data.level->collisionMap->widthMinusOne == 97 &&
+            data.level->collisionMap->heightMinusOne == 110, "GameCore must load and build the real variable-size map.");
+        {
+            const auto& map = *data.level->collisionMap;
+            const auto pixel = [&](int x, int y) { return map.data[y * 98 + x] & 0x18; };
+            int wallX = 0;
+            int wallY = 0;
+            for (int y = 6; y < 104 && wallX == 0; ++y)
+            {
+                for (int x = 6; x < 92 && wallX == 0; ++x)
+                {
+                    bool suitable = true;
+                    for (int dy = -3; dy <= 3; ++dy) { suitable = suitable && pixel(x, y + dy) != 0; }
+                    for (int dx = -4; dx < 0; ++dx)
+                    {
+                        for (int dy = -1; dy <= 1; ++dy) { suitable = suitable && pixel(x + dx, y + dy) == 0; }
+                    }
+                    if (suitable) { wallX = x; wallY = y; }
+                }
+            }
+            Check(wallX != 0, "Level 11 must contain a straight wall with a clear approach.");
+            auto movementData = MakeLevel();
+            host.LoadLevelGeometry(11, movementData);
+            movementData.playerSpawn = PlayerCamera{
+                { static_cast<std::int16_t>(112 + 25 * (wallX - 3) + 12), 45,
+                  static_cast<std::int16_t>(38 + 25 * (162 - wallY) + 12) }, { 100,0,0 } };
+            Host movement;
+            const auto request = movement.StartLevel(11);
+            movement.CompleteLevelLoad(request.id, std::move(movementData));
+            const auto startX = movement.worldObjects[1].posX;
+            Input input;
+            input.movement[0] = true;
+            for (int tick = 0; tick < 120; ++tick) { movement.Tick({ 0,1 }, input); }
+            Check(movement.worldObjects[1].posX > startX &&
+                movement.worldObjects[1].posX < 112 + 25 * wallX,
+                "The controller must approach but not cross a real FELD11 wall.");
+            const auto altered = static_cast<std::size_t>(wallY * 98 + wallX);
+            movement.collisionMap->data[altered] = 7;
+            movement.Tick({ 0,0 }, input);
+            Check(movement.collisionMap->data[altered] == 7,
+                "Ticks must preserve dynamic map edits instead of rebuilding static walls.");
+        }
+        auto* installed = data.level.get();
+        for (const auto& bad : { std::vector<std::uint8_t>{}, std::vector<std::uint8_t>{ 50,0,39,0 },
+            std::vector<std::uint8_t>{ 0,0,0,0,0 } })
+        {
+            host.payload = bad;
+            ExpectError<std::invalid_argument>([&] { host.LoadLevelGeometry(11, data); });
+            Check(data.level.get() == installed, "Malformed geometry must not partially replace a level.");
+        }
+        ExpectError<std::invalid_argument>([&] { host.LoadLevelGeometry(0, data); });
+        host.missing = true;
+        ExpectError<std::runtime_error>([&] { host.LoadLevelGeometry(11, data); });
+        GameCoreHost adapter([](std::string_view name) -> std::vector<std::uint8_t>
+        {
+            throw std::runtime_error(std::string(name) + ": missing");
+        });
+        GameCoreLevelSource source;
+        source.levelNumber = 11;
+        Check(!adapter.LoadLevel(source) && !adapter.IsLevelReady() &&
+            adapter.GetLastError().find("FELD11.256") != std::string::npos, "Geometry errors must reach the renderer host.");
+    }
+
+    void TestMapPlayerStart(const std::filesystem::path& levelDirectory)
+    {
+        class SpawnHost final : public GameContext
+        {
+        public:
+            using GameContext::InitializeLevelPlayerSpawn;
+        } host;
+        const std::array<std::int16_t, 3> direction{ -100,17,0 };
+        auto data = MakeLevel();
+        data.level->wallTextures[4][12] = 0xe1;
+        data.level->wallTextures[1][1] = 0xe0;
+        data.level->wallTextures[10][20] = 0xe2;
+        data.level->wallTextures[39][49] = 0xef;
+        for (auto& row : data.level->floorHeights) { std::fill(std::begin(row), std::end(row), std::uint8_t{ 10 }); }
+        auto oldTerrain = CreateDummyLevel();
+        for (auto& row : oldTerrain.floorHeights) { std::fill(std::begin(row), std::end(row), std::uint8_t{ 200 }); }
+        host.level = &oldTerrain;
+        host.floorRepeatHeight = 99;
+        host.InitializeLevelPlayerSpawn(data, direction);
+        Check(data.playerSpawn && data.playerSpawn->position == std::array<std::int16_t, 3>{ 1350,29,3650 } &&
+            data.playerSpawn->direction == direction,
+            "Exact E1 selection must use pending terrain and native biased interpolation plus 45, preserving direction.");
+        data.level->wallTextures[4][12] = 0;
+        data.level->wallTextures[20][7] = 0xe1;
+        data.level->wallTextures[1][8] = 0xe1;
+        data.level->wallTextures[2][8] = 0xe1;
+        host.InitializeLevelPlayerSpawn(data, direction);
+        Check(data.playerSpawn->position == std::array<std::int16_t, 3>{ 950,29,3850 },
+            "Last matching column, then last matching row must win, not row-major order.");
+        data.level->surfaceFlags[2][8] = 28;
+        data.floorRepeatHeight = 50;
+        GameContext reference;
+        reference.level = data.level.get();
+        reference.floorRepeatHeight = data.floorRepeatHeight;
+        const auto repeatedY = WrapSignedWord(reference.GetTerrainFloorHeight(950, 0, 3850) + 45);
+        host.InitializeLevelPlayerSpawn(data, direction);
+        Check(data.playerSpawn->position[1] == repeatedY, "Spawn height must honor pending stacked/repeated-floor rules.");
+        const auto preserved = *data.playerSpawn;
+        data.level->wallTextures[20][7] = 0;
+        data.level->wallTextures[1][8] = 0;
+        data.level->wallTextures[2][8] = 0;
+        ExpectError<std::runtime_error>([&] { host.InitializeLevelPlayerSpawn(data, direction); });
+        Check(data.playerSpawn->position == preserved.position && data.playerSpawn->direction == preserved.direction,
+            "Missing-marker errors must not overwrite an existing explicit spawn.");
+        data.level->wallTextures[39][49] = 0xe1;
+        ExpectError<std::out_of_range>([&] { host.InitializeLevelPlayerSpawn(data, direction); });
+        Check(data.playerSpawn->position == preserved.position, "Invalid marker terrain must fail before changing spawn.");
+        LevelLoadData noGeometry;
+        ExpectError<std::invalid_argument>([&] { host.InitializeLevelPlayerSpawn(noGeometry, direction); });
+
+        const auto read = [](const std::filesystem::path& path)
+        {
+            std::ifstream file(path, std::ios::binary);
+            if (!file) { throw std::runtime_error("Cannot read player start fixture."); }
+            return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+        };
+        std::size_t levels = 0;
+        for (const auto& entry : std::filesystem::directory_iterator(levelDirectory))
+        {
+            const auto name = entry.path().filename().u8string();
+            if (name.rfind("FELD", 0) != 0 || entry.path().extension() != ".256" ||
+                name == "FELD9.256" || name == "FELD29.256") { continue; }
+            const auto bytes = read(entry.path());
+            const std::size_t width = static_cast<std::size_t>(bytes[0] | (bytes[1] << 8)) + 1;
+            const std::size_t height = static_cast<std::size_t>(bytes[2] | (bytes[3] << 8)) + 1;
+            auto original = MakeLevel();
+            original.level->LoadGeometry(bytes.data(), bytes.size());
+            int lastColumn = -1;
+            int lastRow = -1;
+            for (std::size_t column = 0; column < width; ++column)
+            {
+                for (std::size_t row = 0; row < height; ++row)
+                {
+                    if (bytes[4 + row * width + column] == 0xe1)
+                    {
+                        lastColumn = static_cast<int>(column);
+                        lastRow = static_cast<int>(row);
+                    }
+                }
+            }
+            Check(lastColumn >= 0, "Original level must have a normal start marker.");
+            host.InitializeLevelPlayerSpawn(original, direction);
+            Check(original.playerSpawn->position[0] == 150 + 100 * lastColumn &&
+                original.playerSpawn->position[2] == 4050 - 100 * lastRow,
+                "Original asset start coordinates or duplicate priority differ from native rules.");
+            Host runtime;
+            const auto request = runtime.StartLevel(11);
+            const auto expected = *original.playerSpawn;
+            if (name == "FELD17.256")
+            {
+                const auto objects = read(levelDirectory / "OBJPOS17.DAT");
+                original.objects[46] = DecodeGameObject(objects.data() + 44 * 54, 54);
+                Check(original.objects[46].behavior == BehaviorType::LevelStartOverride,
+                    "Expected the original cave override in native slot 46.");
+            }
+            runtime.CompleteLevelLoad(request.id, std::move(original));
+            const auto camera = runtime.GetPlayerCamera();
+            Check(camera.position == expected.position && camera.direction == direction &&
+                runtime.worldObjects[1].posY == WrapSignedWord(expected.position[1] - 25),
+                "Level completion must convert selected eye position to player center exactly once.");
+            if (name == "FELD17.256")
+            {
+                Input input;
+                runtime.Tick({ 0,0 }, input);
+                Check(runtime.worldObjects[46].health == 0 &&
+                    runtime.GetPlayerCamera().position == std::array<std::int16_t, 3>{ 1095,91,3392 },
+                    "The real cave marker must overlap its override and start the player above the cave floor.");
+                runtime.Tick({ 0,1 }, input);
+                Check(runtime.GetPlayerCamera().position[1] == 90 && runtime.worldObjects[46].health == 0,
+                    "The consumed cave override must allow normal gravity to start the drop, not repeatedly snap upward.");
+            }
+            ++levels;
+        }
+        Check(levels == 36, "Expected every complete original FELD fixture.");
+        auto geometry = read(levelDirectory / "FELD11.256");
+        const auto objects = read(levelDirectory / "OBJPOS11.DAT");
+        GameCoreHost adapter([&](std::string_view filename)
+        {
+            if (filename == "LEVEL\\FELD11.256") { return geometry; }
+            Check(filename == "LEVEL\\OBJPOS11.DAT", "Unexpected player-start file request.");
+            return objects;
+        });
+        GameCoreLevelSource source;
+        source.levelNumber = 11;
+        source.playerDirection = direction;
+        Check(adapter.LoadLevel(source), "The renderer host must load normal starts without any position input.");
+        Check(adapter.GetPlayerCamera().position[0] == 1350 && adapter.GetPlayerCamera().position[2] == 3650 &&
+            adapter.GetPlayerCamera().direction == direction, "The renderer host must use the exact native level-11 marker.");
+        const auto previous = adapter.GetPlayerCamera();
+        for (std::size_t i = 0; i < 25 * 28; ++i) { if (geometry[4 + i] == 0xe1) { geometry[4 + i] = 0xef; } }
+        Check(!adapter.LoadLevel(source) && !adapter.IsLevelReady() &&
+            adapter.GetLastError().find("0xE1") != std::string::npos &&
+            adapter.GetPlayerCamera().position == previous.position,
+            "Missing normal starts must fail visibly without installing a partial world or reusing renderer guesses.");
+    }
+
+    void TestLevelStartOverride(const std::filesystem::path& levelDirectory)
+    {
+        GameContext context;
+        auto& player = context.worldObjects[1];
+        player.health = 0; // Native overlap deliberately does not test player health.
+        player.field_07 = 3;
+        player.collisionRadiusXZ = 15;
+        player.collisionRadiusY = 23;
+        player.posX = 1000;
+        player.posY = 20;
+        player.posZ = 2500;
+        player.velocityX = -100;
+        player.velocityY = 17;
+        player.velocityZ = 4;
+        auto& object = context.worldObjects[2];
+        object.behavior = BehaviorType::LevelStartOverride;
+        object.health = 1000;
+        object.field_07 = 1;
+        object.posX = 1007;
+        object.posY = 31;
+        object.posZ = 2491;
+        object.collisionRadiusXZ = 10;
+        object.collisionRadiusY = 10;
+        const auto originalObject = object;
+        const auto originalPlayer = player;
+        const auto checkNoEffect = [&]()
+        {
+            const auto beforeObject = object;
+            const auto beforePlayer = player;
+            const auto result = DispatchObjectCase(object, context);
+            Check((result.status == DispatchStatus::ExecutedCase || result.status == DispatchStatus::InactiveObject) &&
+                std::memcmp(&object, &beforeObject, sizeof(object)) == 0 &&
+                std::memcmp(&player, &beforePlayer, sizeof(player)) == 0,
+                "Inactive, gated or non-overlapping start overrides must not mutate either record.");
+        };
+        for (const int health : { 0, -1, 999, 1001, 2000 })
+        {
+            object.health = static_cast<std::int16_t>(health);
+            checkNoEffect();
+        }
+        object = originalObject;
+        context.objectCollisionsEnabled = false;
+        checkNoEffect();
+        context.objectCollisionsEnabled = true;
+        object.field_07 = 4;
+        checkNoEffect();
+        for (int axis = 0; axis < 3; ++axis)
+        {
+            for (const int sign : { -1, 1 })
+            {
+                object = originalObject;
+                if (axis == 0) { object.posX = static_cast<std::int16_t>(player.posX + sign * 25); }
+                if (axis == 1) { object.posY = static_cast<std::int16_t>(player.posY + sign * 33); }
+                if (axis == 2) { object.posZ = static_cast<std::int16_t>(player.posZ + sign * 25); }
+                checkNoEffect();
+            }
+        }
+        object = originalObject;
+        const auto result = DispatchObjectCase(object, context);
+        auto expectedObject = originalObject;
+        expectedObject.health = 0;
+        auto expectedPlayer = originalPlayer;
+        expectedPlayer.posX = originalObject.posX;
+        expectedPlayer.posY = originalObject.posY;
+        expectedPlayer.posZ = originalObject.posZ;
+        Check(result.status == DispatchStatus::ExecutedCase && result.moduleOffset == 0x37dd &&
+            std::memcmp(&object, &expectedObject, sizeof(object)) == 0 &&
+            std::memcmp(&player, &expectedPlayer, sizeof(player)) == 0,
+            "Override must copy precisely six center-coordinate bytes, preserving direction and every other field.");
+        player.posX = 1200;
+        checkNoEffect();
+
+        for (const int levelNumber : { 17, 23 })
+        {
+            std::ifstream file(levelDirectory / ("OBJPOS" + std::to_string(levelNumber) + ".DAT"), std::ios::binary);
+            if (!file) { throw std::runtime_error("Cannot read original start-override fixture."); }
+            const std::vector<std::uint8_t> bytes{
+                std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
+            bool found = false;
+            for (std::size_t offset = 0; offset + 54 <= bytes.size(); offset += 54)
+            {
+                const auto record = DecodeGameObject(bytes.data() + offset, 54);
+                if (record.behavior != BehaviorType::LevelStartOverride) { continue; }
+                found = true;
+                Host runtime;
+                auto levelData = MakeLevel();
+                levelData.objects[2] = record;
+                levelData.playerSpawn = PlayerCamera{
+                    { WrapSignedWord(record.posX - 1), WrapSignedWord(record.posY + 25), record.posZ }, { 0,17,100 } };
+                const auto request = runtime.StartLevel(static_cast<std::int16_t>(levelNumber));
+                runtime.CompleteLevelLoad(request.id, std::move(levelData));
+                const auto before = runtime.worldObjects[1];
+                Input input;
+                Check(runtime.Tick({ 0,0 }, input).objects->at(0).status == DispatchStatus::ExecutedCase,
+                    "Original override must be dispatched in the full behavior loop.");
+                Check(runtime.worldObjects[2].health == (levelNumber == 17 ? 0 : 2000) &&
+                    runtime.worldObjects[1].posX == (levelNumber == 17 ? record.posX : before.posX) &&
+                    runtime.worldObjects[1].posY == before.posY && runtime.worldObjects[1].velocityY == 17,
+                    "Real cave override must fire once, while the initial health-2000 level-23 record must not.");
+                Check(runtime.GetPlayerCamera().position[1] == record.posY + 25,
+                    "Override coordinates are object-center coordinates, not eye coordinates.");
+            }
+            Check(found, "Expected original LevelStartOverride record.");
+        }
     }
 
     void TestObjectBoundary()
@@ -948,6 +1391,9 @@ int main(int argc, char** argv)
         TestRendererHostInteraction(argv[3], argv[4]);
         TestSimpleSwitchInteraction();
         TestLevelObjectLoading();
+        TestWallCollisionLoading(argv[3]);
+        TestMapPlayerStart(argv[3]);
+        TestLevelStartOverride(argv[3]);
         TestObjectBoundary();
         const auto renderer = ReadText(argv[1]);
         const auto game = ReadText(argv[2]);
@@ -957,7 +1403,7 @@ int main(int argc, char** argv)
         Check(pillar != std::string::npos, "Expected renderer Pillar fixture.");
         mismatch.replace(pillar, std::string("Pillar = 8").size(), "Pillar = 9");
         ExpectError<std::runtime_error>([&] { CheckEnums(mismatch, game); });
-        std::cout << "PASS: owned level lifecycle, basic keyboard movement/collision/camera, non-blocking tick/pause/input, separate clocks, "
+        std::cout << "PASS: owned level lifecycle, native static wall loading, basic keyboard movement/collision/camera, non-blocking tick/pause/input, separate clocks, "
             "load errors, 65536 object payloads, and renderer enum compatibility.\n";
         return 0;
     }
