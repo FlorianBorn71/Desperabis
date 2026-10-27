@@ -226,8 +226,19 @@ namespace
 
     void TestNeighborhoodAndFallback()
     {
+        class MessageContext final : public GameContext
+        {
+        public:
+            std::string userMessage;
+            std::int16_t userMessageTicks = 0;
+            void PromptUserMessage(std::string_view text, std::int16_t duration) override
+            {
+                userMessage = text;
+                userMessageTicks = duration;
+            }
+        };
         auto level = CreateDummyLevel();
-        GameContext context;
+        MessageContext context;
         context.level = &level;
         context.collisionMap = level.collisionMap.get();
         for (int pattern = 0; pattern < 512; ++pattern)

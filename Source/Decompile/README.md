@@ -280,9 +280,10 @@ Explicit pickup interactions now populate fourteen inventory objects and
 update the known counters in the game context; grouped-switch interaction
 arms its return timer. Doors support automatic closing, obstruction reopening,
 the native 3x3 collision footprint, grouped activation, and consuming matching
-inventory keys. `GameContext::PromptUserMessage` stores UTF-8 feedback and its
-lifetime without drawing; `UpdateObjects` advances that lifetime once per
-frame. See [doors and unlocking](BehaviorRecovery.md#ordinary-doors-and-key-unlocking)
+inventory keys. The overridable `GameContext::PromptUserMessage` hook sends original DOS-encoded
+feedback to the app, which owns its storage, lifetime and presentation. `IsUserMessageActive`
+lets doors preserve native feedback gating without core-owned message state.
+See [doors and unlocking](BehaviorRecovery.md#ordinary-doors-and-key-unlocking)
 and [gameplay messages](BehaviorRecovery.md#gameplay-user-messages).
 Use `--behavior Door --ticks 3` for an opening-door fixture, or
 `--object object54.bin --interact` to request one

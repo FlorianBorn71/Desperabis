@@ -15,6 +15,23 @@ using namespace Desperabis;
 
 namespace
 {
+    class MessageContext final : public GameContext
+    {
+    public:
+        std::string userMessage;
+        std::int16_t userMessageTicks = 0;
+        int promptCalls = 0;
+
+        void PromptUserMessage(std::string_view text, std::int16_t duration) override
+        {
+            userMessage = text;
+            userMessageTicks = duration;
+            ++promptCalls;
+        }
+
+        bool IsUserMessageActive() const override { return userMessageTicks > 0; }
+    };
+
     void Check(bool condition, const char* message)
     {
         if (!condition) { throw std::runtime_error(message); }
@@ -827,48 +844,31 @@ namespace
 
     void TestUserMessages()
     {
-        GameContext state;
+        MessageContext state;
+        GameContext& core = state;
         for (int bits = 0; bits <= 65535; ++bits)
         {
             const auto duration = ReferenceSignedWord(bits);
-            state.PromptUserMessage("test", duration);
-            Check(state.userMessage == "test" &&
-                state.userMessageTicks == ReferenceSignedWord(duration < 0 ? -duration : duration),
-                "Prompt storage must reproduce signed-word absolute durations.");
-            state.PromptUserMessage("", duration);
-            Check(state.userMessage.empty() && state.userMessageTicks == 0,
-                "Empty prompts must clear both stored text and lifetime.");
+            core.PromptUserMessage("test", duration);
+            Check(state.userMessage == "test" && state.userMessageTicks == duration,
+                "The prompt hook must deliver the original duration without owning its countdown.");
         }
-        state.PromptUserMessage(std::string(151, 'a'), 12);
-        Check(state.userMessage == std::string(150, 'a'), "Prompts must retain the 150-byte limit.");
-        state.PromptUserMessage(std::string(149, 'a') + u8"\u00fc", -20);
-        Check(state.userMessage == std::string(149, 'a') && state.userMessageTicks == 20,
-            "Truncation must not leave an incomplete UTF-8 character.");
-        state.PromptUserMessage(std::string(148, 'a') + u8"\u00fc", 20);
-        Check(state.userMessage == std::string(148, 'a') + u8"\u00fc",
-            "A complete UTF-8 character at the byte limit must be retained.");
-        state.PromptUserMessage(u8"Falscher Schl\u00fcssel", 3);
-        GameContext independent;
-        independent.PromptUserMessage(state.userMessage, state.userMessageTicks);
-        state.UpdateUserMessage(5);
-        Check(state.userMessageTicks == -2 && state.userMessage == u8"Falscher Schl\u00fcssel",
-            "Expired prompts must retain their text and an unclamped countdown.");
-        state.UpdateUserMessage(32767);
-        Check(state.userMessageTicks == -2 && independent.userMessageTicks == 3,
-            "Expired prompts must stop counting, and game contexts must be independent.");
-        state.PromptUserMessage("replacement", 10);
+        for (int byte = 0; byte <= 255; ++byte)
+        {
+            core.PromptUserMessage(std::string(151, static_cast<char>(byte)), 12);
+            Check(state.userMessage == std::string(151, static_cast<char>(byte)),
+                "The prompt hook must deliver original bytes without storing, truncating or transcoding them.");
+        }
+        core.PromptUserMessage("replacement", 10);
+        const auto calls = state.promptCalls;
         state.tickCount = 1;
         state.frameTickCount = 3;
         RawGameObject object;
         object.health = 1000;
         DispatchObjectCase(object, state);
-        Check(state.userMessageTicks == 10, "Individual dispatch must not tick a frame-level prompt.");
         UpdateObjects(state);
-        Check(state.userMessageTicks == 7, "The world update must tick prompts exactly once using frame time.");
-        bool rejected = false;
-        try { state.UpdateUserMessage(-1); }
-        catch (const std::invalid_argument&) { rejected = true; }
-        Check(rejected && state.userMessageTicks == 7, "Negative prompt-update ticks must fail explicitly.");
+        Check(state.userMessageTicks == 10 && state.promptCalls == calls,
+            "Object dispatch and world updates must leave app-owned prompt state alone.");
     }
 
     void TestDoorCollisionMap()
@@ -927,7 +927,7 @@ namespace
 
     void TestDoorUnlocking()
     {
-        GameContext state;
+        MessageContext state;
         auto door = MakeTestDoor();
         const auto original = ObjectBytes(door);
         Check(HandlePlayerObjectInteraction(door, state).status == InteractionStatus::Applied &&
@@ -998,7 +998,7 @@ namespace
         state.PromptUserMessage("existing prompt", 17);
         const auto locked = ObjectBytes(door);
         Check(HandlePlayerObjectInteraction(door, state).status == InteractionStatus::NoEffect &&
-            state.userMessage == u8"Falscher Schl\u00fcssel" && state.userMessageTicks == 90 &&
+            state.userMessage == "Falscher Schl\x81ssel" && state.userMessageTicks == 90 &&
             key.health == 1000 && ObjectBytes(door) == locked,
             "Wrong keys must overwrite active prompts without consuming keys or changing the door.");
         auto& lastKey = state.inventory[13];
@@ -1008,7 +1008,7 @@ namespace
         HandlePlayerObjectInteraction(door, state);
         Check(state.userMessage == "existing prompt" && state.userMessageTicks == 17,
             "A last eligible zero-ID key must take the no-key path and respect active feedback.");
-        state.UpdateUserMessage(20);
+        state.userMessageTicks = -3;
         HandlePlayerObjectInteraction(door, state);
         Check(state.userMessage == "abgeschlossen" && state.userMessageTicks == 60,
             "Expired locked feedback must be replaced with a new 60-tick prompt.");
@@ -3242,6 +3242,20 @@ namespace
             std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>() };
         Check(bytes.size() == 203760 && bytes[0] == 'M' && bytes[1] == 'Z',
             "Unexpected original executable.");
+        MessageContext promptContext;
+        auto door = MakeTestDoor();
+        door.doorLockOrGroupBitmask = 7;
+        auto& key = promptContext.inventory[0];
+        key.health = 1000;
+        key.collisionType = CollisionType::Key;
+        key.itemValue = 8;
+        HandlePlayerObjectInteraction(door, promptContext);
+        const std::size_t wrongKeyMessageOffset = 0x175bb;
+        const std::string originalWrongKeyMessage(
+            bytes.begin() + wrongKeyMessageOffset + 1,
+            bytes.begin() + wrongKeyMessageOffset + 1 + bytes[wrongKeyMessageOffset]);
+        Check(promptContext.userMessage == originalWrongKeyMessage,
+            "Wrong-key prompt bytes must match the original executable's Pascal string exactly.");
         const auto word = [&](std::size_t at) -> int
         {
             Check(at < bytes.size() - 1, "Word is outside the executable.");

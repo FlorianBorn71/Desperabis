@@ -114,7 +114,6 @@ namespace Desperabis
         {
             results[slot - 2] = UpdateObject(context.worldObjects[slot], context);
         }
-        context.UpdateUserMessage(context.frameTickCount);
         return results;
     }
 }

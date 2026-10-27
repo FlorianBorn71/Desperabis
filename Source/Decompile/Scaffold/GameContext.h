@@ -273,12 +273,9 @@ namespace Desperabis
         std::int16_t frameTickCount = 1; // DS:D4CA; burning uses this rather than the behavior argument.
         LightingCache lightingCache;
         std::uint16_t field_DC34 = 0; // Near lights add random values; also used as a timer RNG range.
-        std::string userMessage;
-        std::int16_t userMessageTicks = 0;
-
-        // Store a UTF-8 prompt and its lifetime; drawing and screen placement belong to the host.
-        void PromptUserMessage(std::string_view text, std::int16_t duration);
-        void UpdateUserMessage(std::int16_t ticks);
+        // The app owns prompt bytes, lifetime and presentation. Empty text requests a reset on level completion.
+        virtual void PromptUserMessage(std::string_view text, std::int16_t duration);
+        virtual bool IsUserMessageActive() const;
         std::uint16_t Random(std::uint16_t range);
         // Native signed random helper replaces a zero result with the positive radius.
         std::int16_t RandomSigned(std::uint16_t radius);

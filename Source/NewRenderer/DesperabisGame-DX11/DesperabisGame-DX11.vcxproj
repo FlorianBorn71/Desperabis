@@ -67,7 +67,6 @@
 	<ClInclude Include="..\SharedSource\IO\FileManagerBuiltIn.h" />
 	<ClInclude Include="..\SharedSource\Sample\FreeCamera.h" />
 	<ClInclude Include="..\SharedSource\Sample\LevelScene.h" />
-	<ClInclude Include="GameCoreHost.h" />
 	<ClInclude Include="pch.h" />
   </ItemGroup>
   <ItemGroup>
@@ -85,9 +84,6 @@
 	<ClCompile Include="..\SharedSource\Sample\FreeCamera.cpp" />
 	<ClCompile Include="..\SharedSource\Sample\LevelScene.cpp" />
 	<ClCompile Include="DesperabisGame-DX11.cpp" />
-	<ClCompile Include="GameCoreHost.cpp">
-	  <PrecompiledHeader>NotUsing</PrecompiledHeader>
-	</ClCompile>
 	<ClCompile Include="pch.cpp">
 	  <PrecompiledHeader>Create</PrecompiledHeader>
 	</ClCompile>

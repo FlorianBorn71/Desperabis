@@ -245,8 +245,7 @@ namespace Desperabis
         floorSurfaceValue = -1;
         playerCollisionSlot = 0;
         std::fill(std::begin(switchGroupMasks), std::end(switchGroupMasks), std::uint8_t{ 0xff });
-        userMessage.clear();
-        userMessageTicks = 0;
+        PromptUserMessage({}, 0);
         soundListenerX = worldObjects[1].posX;
         soundListenerZ = worldObjects[1].posZ;
         lightingCache = newLighting;
@@ -1143,23 +1142,12 @@ namespace Desperabis
         throw std::invalid_argument("Object sound sources must belong to GameContext::worldObjects.");
     }
 
-    void GameContext::PromptUserMessage(std::string_view text, std::int16_t duration)
+    void GameContext::PromptUserMessage(std::string_view, std::int16_t)
     {
-        auto length = std::min<std::size_t>(text.size(), 150);
-        // Preserve the original byte limit without cutting a UTF-8 character in half.
-        while (length > 0 && length < text.size() &&
-            (static_cast<unsigned char>(text[length]) & 0xc0u) == 0x80u)
-        {
-            --length;
-        }
-        userMessage = text.substr(0, length);
-        userMessageTicks = text.empty() ? 0 :
-            duration < 0 ? WrapSignedWord(-static_cast<std::int32_t>(duration)) : duration;
     }
 
-    void GameContext::UpdateUserMessage(std::int16_t ticks)
+    bool GameContext::IsUserMessageActive() const
     {
-        if (ticks < 0) { throw std::invalid_argument("Message updates require nonnegative ticks."); }
-        if (userMessageTicks > 0) { userMessageTicks = WrapSignedWord(userMessageTicks - ticks); }
+        return false;
     }
 }

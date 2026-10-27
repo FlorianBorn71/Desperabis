@@ -533,8 +533,8 @@ An advanced tick runs in this host-integration order:
    active radius, and clear `field_DC34` once.
 3. Resolve player contact and interaction input, including the door occupancy
    marker needed by the following object updates.
-4. Run the recovered sequential object loop, which also updates prompt lifetime
-   using the separate frame tick count.
+4. Run the recovered sequential object loop. Prompt storage and countdown belong
+   to the app; the DX11 app advances its timer once after an advanced tick.
 
 This orchestration is a host-facing integration policy, not proof that the
 complete original frame loop has been recovered. Rendering, native player
@@ -1142,9 +1142,9 @@ locates this record as `299 - 54`. These observations establish saved normal
 player state; **the corresponding EXE initializer has not yet been traced**.
 `InitializeLevelPlayer` is a conservative gameplay-owned initialization policy,
 not a claim that the original initializer has been fully recovered.
-The runtime suite also compiles the real renderer-independent `GameCoreHost`
-adapter and checks original level-11 medicine pickup, unlocked-door activation,
-and explicit unsupported-switch reporting. The playable host displays interaction
+The runtime suite uses a direct `GameContext` subclass with original level assets
+and checks level-11 medicine pickup, unlocked-door activation, and linked-switch
+animation. The playable app displays interaction
 outcomes in its window title; it does not silently discard the result.
 
 ### Inventory and explicit interaction
@@ -1225,7 +1225,8 @@ The gameplay branches for books, purchasing, rope wheels, vases/mirrors,
 level exits, teleporters, sarcophagi, picture maps,
 and lorries explicitly return `UnimplementedHandler` without mutating the
 object or inventory. Other collision values follow the original generic
-pickup tail. Door prompts and sound requests are implemented; message rendering,
+pickup tail. Door prompts and sound requests are implemented; the playable DX11
+host now renders messages with the original font assets. Native message placement,
 preview refresh timing, inventory-item use, and platform keyboard polling are not. Input
 interface polling and collision-driven interaction are implemented by the
 frame hook above. The local snapshot
@@ -1300,7 +1301,7 @@ positive lock searches all fourteen inventory records for the first live
 matching Key; success zeros only its health, clears the lock, and activates.
 Negative locks and no-key cases store `"abgeschlossen"` for 60 ticks only if
 no prompt is active. A wrong key overwrites any prompt for 90 ticks with the
-original German wrong-key text, encoded as UTF-8. A selected key ID of zero
+original German wrong-key bytes (`0x81` for the umlaut). A selected key ID of zero
 takes the no-key path. Nonstandard-health doors retain the original generic
 pickup tail if explicitly flagged pickable.
 
@@ -1319,26 +1320,42 @@ a valid opening-door fixture with `--behavior Door --ticks 3`.
 
 ### Gameplay user messages
 
-`GameContext::PromptUserMessage(text, duration)` is the gameplay counterpart of
-`1E48:2459`: it owns the text and replaces the current prompt without drawing.
-`userMessage` holds at most 150 UTF-8 bytes, shortened at a character boundary;
-the original stored at most 150 DOS-encoded bytes. Empty input clears the text
-and lifetime. `userMessageTicks` receives signed-word absolute duration,
-including the original -32768 overflow edge case.
+`GameContext::PromptUserMessage(text, duration)` is an overridable app hook
+corresponding to `1E48:2459`. The core passes borrowed original DOS-encoded bytes
+and the native duration; it does not store text or maintain a countdown.
+`IsUserMessageActive()` lets locked-door feedback respect the app's current
+message. Hosts without a presenter can retain the default no-op prompt hook
+and inactive result. Successful level completion sends an empty reset request.
 
-`UpdateUserMessage(ticks)` follows the countdown part of `1E48:3F2A`: only a
-positive lifetime decrements, without clamping or clearing expired text.
-The host treats positive ticks as active. `UpdateObjects` calls it once after
-all object updates using `frameTickCount`; standalone object dispatch does
-not advance it. Hosts using their own scheduling should call it once per
-frame instead, not once per object or additionally to `UpdateObjects`.
-Negative update ticks are invalid.
+The DX11 app's `GameAppContext` derives directly from `GameContext`. Its
+`PromptUserMessage` override copies the complete message without transcoding
+or the original Pascal string's 150-byte limit and stores the signed-word absolute duration,
+including the original -32768 overflow edge case. Empty input clears both.
+Its `UpdateUserMessage(ticks)` follows the countdown part of `1E48:3F2A`:
+only a positive lifetime decrements, without clamping. The app advances
+the timer once after an advanced tick using the separate frame count;
+paused, loading, failed and standalone object updates do not advance it.
+Negative timer updates are invalid.
+
+The same override builds or replaces the text mesh directly; expiration removes
+the mesh. There is no intermediate host adapter, forwarded callback, message
+snapshot polling API or per-frame text callback. The app loads the same three
+`SCHRIFT0/1/2.AN2` font animations as the desktop sample, keeps their assets alive
+while text meshes reference them, and displays the current positive-lifetime
+message in light orange (`RGB(255, 192, 128)`) at the viewport center. The font mapping
+uses the original DOS byte values directly, including German glyphs. Identical-text
+refreshes reset the app-owned timer without rebuilding the mesh; no wall-clock fade extends expiry.
+Reloads clear the mesh, and resize updates its center without rebuilding text.
+Core integration tests trigger a locked-door message through a direct subclass,
+checking hook dispatch, app-owned activity gating, identical refresh and load reset.
+They do not instantiate the DX11 presenter.
 
 Negative prompt durations originally selected alternate screen placement.
 Their magnitude remains supported, but the screen-layout globals, calculated
 pixel position, and text drawing are deliberately left to the host.
-All duration words, overwrite/expiry rules, independent contexts, UTF-8
-truncation, and once-per-frame timing are tested.
+Core hook tests cover all duration arguments, byte preservation, replacement rules,
+and the executable's wrong-key text. App-owned rendering and countdown remain
+outside the headless core suite.
 
 ### Flies: randomized frame blending and buzzing
 

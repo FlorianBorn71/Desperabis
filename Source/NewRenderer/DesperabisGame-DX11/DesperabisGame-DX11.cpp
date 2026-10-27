@@ -3,20 +3,25 @@
 // presents the world state after each simulation step and follows the player camera.
 
 #include "pch.h"
-#include "GameCoreHost.h"
+#include <GameContext.h>
+#include <GameMath.h>
 
 #include <DesperabisCommon.h>
 #include <Asset/AssetManager.h>
 #include <Asset/Level.h>
+#include <Asset/Font.h>
+#include <Asset/Palette.h>
 #include <DX11/RendererDX11.h>
 #include <IO/FileManagerBuiltIn.h>
 #include <Renderer/RenderableInstance.h>
+#include <Renderer/TextMesh.h>
 #include <Sample/FreeCamera.h>
 #include <Sample/LevelScene.h>
 #include <Renderer/Camera.h>
 #include <Renderer/RenderingSettings.h>
 #include <Renderer/VisibilitySettings.h>
 #include <GamePlay/GamePlay.h>
+#include <stdexcept>
 
 namespace
 {
@@ -26,6 +31,7 @@ namespace
 	constexpr double g_gameTicksPerSecond = 33.0;
 	// Cap catch-up after stalls to one second of game time.
 	constexpr int g_maxTicksPerFrame = 33;
+	constexpr int g_numObjectSlots = static_cast<int>(std::tuple_size_v<decltype(Desperabis::GameContext::worldObjects)>);
 	// OBJPOS has no player record, so the initial view vector is a host choice (faces into level 11's start corridor).
 	// GameContext seeds the player heading from it at load and rewrites velocityX/Z from the heading every tick.
 	constexpr std::array<int16_t, 3> g_initialPlayerDirection = { -256, 0, 0 };
@@ -53,14 +59,17 @@ namespace
 	std::unique_ptr<LevelScene> g_scene;
 	std::unique_ptr<FreeCamera> g_freeCam;
 	std::shared_ptr<Camera> g_camera;
-	std::unique_ptr<GameCoreHost> g_gameCore;
+	class GameAppContext;
+	std::unique_ptr<GameAppContext> g_gameCore;
+	std::array<std::shared_ptr<TextureAnim>, 3> g_fontAnimations;
+	std::unique_ptr<Font> g_promptFont;
 	bool g_initialized = false;
 
 	// presentation of the game world, indexed by native slot
-	RenderableInstancePtr g_objectInst[GameCoreHost::NumSlots];
-	RawGameObject g_objectState[GameCoreHost::NumSlots] = {};
-	RawGameObject g_presentedState[GameCoreHost::NumSlots] = {};
-	bool g_objectBehaviorCreated[GameCoreHost::NumSlots] = {};
+	RenderableInstancePtr g_objectInst[g_numObjectSlots];
+	RawGameObject g_objectState[g_numObjectSlots] = {};
+	RawGameObject g_presentedState[g_numObjectSlots] = {};
+	bool g_objectBehaviorCreated[g_numObjectSlots] = {};
 	double g_tickAccumulator = 0.0;
 	bool g_useFreeCam = false;
 	Vector g_playerForward(0.f, 0.f, 1.f, 0.f);
@@ -76,6 +85,114 @@ namespace
 			assert(false && "Operation failed");
 		}
 	}
+
+	std::vector<byte> ReadGameFile(const std::wstring& filename);
+
+	class GameAppContext final : public Desperabis::GameContext
+	{
+	public:
+		void PromptUserMessage(std::string_view text, std::int16_t duration) override
+		{
+			const auto ticks = text.empty() ? std::int16_t{ 0 } :
+				duration < 0 ? Desperabis::WrapSignedWord(-static_cast<std::int32_t>(duration)) : duration;
+			if (ticks > 0 && (!m_promptInstance || m_promptText != text))
+			{
+				auto mesh = g_promptFont->CreateGlyphMesh(text, Color4{ 204,102,0,255 },
+					Font::HorizontalAlignment::Center, Font::VerticalAlignment::Center);
+				auto instance = std::make_shared<TextMeshInstance>(std::move(mesh));
+				RemovePromptMesh();
+				g_scene->AddTextMeshInstance(instance);
+				m_promptInstance = std::move(instance);
+			}
+			m_promptText = text;
+			m_promptTicks = ticks;
+			if (IsUserMessageActive()) { UpdatePromptPosition(); }
+			else { RemovePromptMesh(); }
+		}
+
+		bool IsUserMessageActive() const override { return m_promptTicks > 0; }
+
+		void UpdateUserMessage(std::int16_t ticks)
+		{
+			if (ticks < 0) { throw std::invalid_argument("Message updates require nonnegative ticks."); }
+			if (m_promptTicks > 0)
+			{
+				m_promptTicks = Desperabis::WrapSignedWord(m_promptTicks - ticks);
+				if (m_promptTicks <= 0) { RemovePromptMesh(); }
+			}
+		}
+
+		void ClearPrompt()
+		{
+			RemovePromptMesh();
+			m_promptText.clear();
+			m_promptTicks = 0;
+		}
+
+		void UpdatePromptPosition()
+		{
+			if (m_promptInstance)
+			{
+				m_promptInstance->SetPosition(g_viewport.Width * 0.5f, g_viewport.Height * 0.5f);
+			}
+		}
+
+	protected:
+		std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+		{
+			return ReadGameFile(std::wstring(filename.begin(), filename.end()));
+		}
+
+		void LoadLevel(const Desperabis::LevelLoadRequest& request) override
+		{
+			Desperabis::LevelLoadData data;
+			LoadLevelGeometry(request.levelNumber, data);
+			LoadLevelObjects(request.levelNumber, data);
+			InitializeLevelPlayerSpawn(data, g_initialPlayerDirection);
+			CompleteLevelLoad(request.id, std::move(data));
+		}
+
+	private:
+		void RemovePromptMesh()
+		{
+			if (m_promptInstance)
+			{
+				g_scene->RemoveTextMeshInstance(m_promptInstance);
+				m_promptInstance.reset();
+			}
+		}
+
+		std::shared_ptr<TextMeshInstance> m_promptInstance;
+		std::string m_promptText;
+		std::int16_t m_promptTicks = 0;
+	};
+
+	class GameInput final : public Desperabis::InputHandler
+	{
+	public:
+		bool forward = false;
+		bool backward = false;
+		bool strafeLeft = false;
+		bool strafeRight = false;
+		bool turnLeft = false;
+		bool turnRight = false;
+		bool interaction = false;
+
+		bool IsKeyPressed(Desperabis::InputKey key) override
+		{
+			switch (key)
+			{
+			case Desperabis::InputKey::ForwardKey: return forward;
+			case Desperabis::InputKey::BackwardKey: return backward;
+			case Desperabis::InputKey::StrafeLeftKey: return strafeLeft;
+			case Desperabis::InputKey::StrafeRightKey: return strafeRight;
+			case Desperabis::InputKey::TurnLeftKey: return turnLeft;
+			case Desperabis::InputKey::TurnRightKey: return turnRight;
+			case Desperabis::InputKey::InteractionKey: return interaction;
+			}
+			throw std::invalid_argument("Unknown game input key.");
+		}
+	};
 
 	void CreateWindowSizeDependentResources()
 	{
@@ -132,6 +249,7 @@ namespace
 
 		g_viewport = CD3D11_VIEWPORT(0.0f, 0.0f, (float)width, (float)height);
 		g_d3dContext->RSSetViewports(1, &g_viewport);
+		if (g_gameCore) { g_gameCore->UpdatePromptPosition(); }
 	}
 
 	void UpdateProjection()
@@ -219,15 +337,38 @@ namespace
 		return { ToNativeWord(pos.GetX() * invScale + xofs), ToNativeWord(pos.GetY() * invScale), ToNativeWord(zofs - pos.GetZ() * invScale) };
 	}
 
-	void ReportGameCoreError(const char* context)
+	void ReportGameCoreError(const char* context, const std::string& error)
 	{
-		std::string msg = std::string("GameCore: ") + context + ": " + g_gameCore->GetLastError() + "\n";
+		std::string msg = std::string("GameCore: ") + context + ": " + error + "\n";
 		OutputDebugStringA(msg.c_str());
+	}
+
+	std::string DescribeInteraction(const Desperabis::InteractionResult& interaction)
+	{
+		std::string message;
+		switch (interaction.status)
+		{
+		case Desperabis::InteractionStatus::Applied: message = "Interaction applied"; break;
+		case Desperabis::InteractionStatus::NoEffect:
+			message = g_gameCore->playerCollisionSlot == 0 ?
+				"No interaction target in reach" : "Interaction had no effect (locked, busy, or not pickable)";
+			break;
+		case Desperabis::InteractionStatus::InventoryFull: message = "Inventory full"; break;
+		case Desperabis::InteractionStatus::InactiveObject: message = "Interaction target is inactive"; break;
+		case Desperabis::InteractionStatus::UnimplementedHandler: message = "Interaction not implemented"; break;
+		}
+		const auto slot = g_gameCore->playerCollisionSlot;
+		if (slot != 0)
+		{
+			message += " [slot " + std::to_string(slot) + ", collision type " +
+				std::to_string(static_cast<unsigned int>(g_gameCore->GetWorldObjects()[slot].collisionType)) + "]";
+		}
+		return message;
 	}
 
 	void ClearGameObjects()
 	{
-		for (int slot = 0; slot < GameCoreHost::NumSlots; slot++)
+		for (int slot = 0; slot < g_numObjectSlots; slot++)
 		{
 			if (g_objectInst[slot] != nullptr && g_scene != nullptr)
 			{
@@ -244,12 +385,12 @@ namespace
 	void SyncGameObjects()
 	{
 		Level* level = g_scene->m_level;
-		for (int slot = GameCoreHost::FirstObjectSlot; slot <= GameCoreHost::LastObjectSlot; slot++)
+		for (int slot = 2; slot <= 164; slot++)
 		{
 			RawGameObject& state = g_objectState[slot];
 			state.m_level = level;
 			state.m_objectNumber = slot;
-			g_gameCore->GetObjectBytes(slot, state.m_rawBytes);
+			Desperabis::EncodeGameObject(g_gameCore->GetWorldObjects().at(slot), state.m_rawBytes, sizeof(state.m_rawBytes));
 			state.m_rawBytes[48] = 0; // render-list scratch, rewritten every tick
 			state.m_rawBytes[49] = 0;
 			if (state == g_presentedState[slot])
@@ -303,18 +444,21 @@ namespace
 
 	void LoadGameLevel(int levelIndex)
 	{
+		g_gameCore->ClearPrompt();
 		ClearGameObjects();
 		g_tickAccumulator = 0.0;
 
-		GameCoreLevelSource source;
-		source.levelNumber = levelIndex;
-
-		// GameCore selects the native map start; the initial view direction remains a host choice.
-		source.playerDirection = g_initialPlayerDirection;
-
-		if (!g_gameCore->LoadLevel(source))
+		try
 		{
-			ReportGameCoreError("level load failed");
+			g_gameCore->StartLevel(static_cast<std::int16_t>(levelIndex));
+			if (g_gameCore->GetRuntimeState() != Desperabis::GameRuntimeState::Ready)
+			{
+				throw std::runtime_error(g_gameCore->GetLevelLoadError());
+			}
+		}
+		catch (const std::exception& error)
+		{
+			ReportGameCoreError("level load failed", error.what());
 			g_useFreeCam = true;
 			return;
 		}
@@ -323,7 +467,7 @@ namespace
 
 	void ApplyPlayerCamera()
 	{
-		const GameCorePlayerCamera playerCam = g_gameCore->GetPlayerCamera();
+		const auto playerCam = g_gameCore->GetPlayerCamera();
 		const Vector pos = Level::DespToPos(playerCam.position[0], playerCam.position[1], playerCam.position[2]);
 
 		// a zero direction is not a valid orientation: keep the previous one
@@ -353,7 +497,7 @@ namespace
 
 	void ToggleFreeCamera()
 	{
-		if (!g_gameCore->IsLevelReady())
+		if (g_gameCore->GetRuntimeState() != Desperabis::GameRuntimeState::Ready)
 		{
 			return;
 		}
@@ -375,10 +519,31 @@ namespace
 			g_renderTargetView.Get(), g_depthStencilView.Get(), g_viewport));
 		FORCE_WAIT(AssetManager::Instance().Initialize());
 
-		g_gameCore = std::make_unique<GameCoreHost>([](std::string_view filename)
+		g_promptFont = std::make_unique<Font>();
+		g_promptFont->SetSpaceWidth(6.f);
+		const std::wstring_view fontFiles[] =
 		{
-			return ReadGameFile(std::wstring(filename.begin(), filename.end()));
-		});
+			L"ANIMS\\SCHRIFT0.AN2", L"ANIMS\\SCHRIFT1.AN2", L"ANIMS\\SCHRIFT2.AN2"
+		};
+		const std::string_view characterMappings[] =
+		{
+			"abcdefghijklmnopqrstuvwxyz\x84\x94\x81\xe1",
+			"ABCDEFGHIJKLMNOPQRSTUVWXYZ\x8e\x99\x9a?",
+			"0123456789.:"
+		};
+		auto fontPalette = std::make_shared<Palette>();
+		fontPalette->BuildGrayscale();
+		for (size_t i = 0; i < g_fontAnimations.size(); ++i)
+		{
+#if defined(D_ASYNC)
+			g_fontAnimations[i] = AssetManager::Instance().LoadAsset<TextureAnim>(fontFiles[i], fontPalette).get();
+#else
+			g_fontAnimations[i] = AssetManager::Instance().LoadAsset<TextureAnim>(fontFiles[i], fontPalette);
+#endif
+			g_promptFont->AddGlyphs(g_fontAnimations[i].get(), characterMappings[i]);
+		}
+
+		g_gameCore = std::make_unique<GameAppContext>();
 
 		g_freeCam = std::make_unique<FreeCamera>();
 		g_freeCam->SetUseGravity(false);
@@ -402,8 +567,11 @@ namespace
 	void DeinitDesperabis()
 	{
 		g_initialized = false;
+		g_gameCore->ClearPrompt();
 		ClearGameObjects();
 		g_scene.reset();
+		g_promptFont.reset();
+		g_fontAnimations = {};
 		g_freeCam.reset();
 		g_camera.reset();
 		g_gameCore.reset();
@@ -432,9 +600,9 @@ namespace
 		auto IsKeyPressed = [hasFocus](int key) { return hasFocus && (GetAsyncKeyState(key) & 0x8000) != 0; };
 
 		// advance the game simulation and present the resulting world state
-		if (g_gameCore->IsLevelReady())
+		if (g_gameCore->GetRuntimeState() == Desperabis::GameRuntimeState::Ready)
 		{
-			GameCoreInput input;
+			GameInput input;
 			if (!g_useFreeCam)
 			{
 				input.forward = IsKeyPressed('W') || IsKeyPressed(VK_UP);
@@ -452,18 +620,24 @@ namespace
 			{
 				g_tickAccumulator -= ticks;
 				const int clampedTicks = __min(ticks, g_maxTicksPerFrame);
-				if (g_gameCore->Tick(clampedTicks, clampedTicks, input))
+				try
 				{
-					SyncGameObjects();
-					if (input.interaction)
+					const auto nativeTicks = static_cast<std::int16_t>(clampedTicks);
+					const auto result = g_gameCore->Tick({ nativeTicks, nativeTicks }, input);
+					if (result.status == Desperabis::GameTickStatus::Advanced)
 					{
-						const std::string title = "Desperabis (DX11) - " + g_gameCore->GetLastInteractionMessage();
-						SetWindowTextA(g_hWnd, title.c_str());
+						g_gameCore->UpdateUserMessage(nativeTicks);
+						SyncGameObjects();
+						if (input.interaction && result.interaction)
+						{
+							const std::string title = "Desperabis (DX11) - " + DescribeInteraction(*result.interaction);
+							SetWindowTextA(g_hWnd, title.c_str());
+						}
 					}
 				}
-				else if (!g_gameCore->GetLastError().empty())
+				catch (const std::exception& error)
 				{
-					ReportGameCoreError("tick failed");
+					ReportGameCoreError("tick failed", error.what());
 				}
 			}
 		}

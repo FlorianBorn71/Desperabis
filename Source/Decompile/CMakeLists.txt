@@ -41,9 +41,7 @@ foreach(target Continuous Experimental Nightly NightlyMemoryCheck)
     endif()
 endforeach()
 if(BUILD_TESTING)
-    add_executable(game-runtime-tests Scaffold/GameRuntimeTests.cpp
-        ../NewRenderer/DesperabisGame-DX11/GameCoreHost.cpp)
-    target_include_directories(game-runtime-tests PRIVATE ../NewRenderer/DesperabisGame-DX11)
+    add_executable(game-runtime-tests Scaffold/GameRuntimeTests.cpp)
     target_link_libraries(game-runtime-tests PRIVATE Desperabis::GameCore)
     add_test(NAME game-runtime COMMAND game-runtime-tests
         "${CMAKE_CURRENT_SOURCE_DIR}/../NewRenderer/SharedSource/base/GamePlay/GamePlay.h"

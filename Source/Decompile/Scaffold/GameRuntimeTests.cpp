@@ -1,11 +1,11 @@
 #include "GameContext.h"
 #include "BehaviorDispatch.h"
 #include "GameMath.h"
-#include "GameCoreHost.h"
 
 #include <algorithm>
 #include <cstring>
 #include <fstream>
+#include <functional>
 #include <filesystem>
 #include <iostream>
 #include <iterator>
@@ -52,13 +52,42 @@ namespace
         std::vector<LevelLoadRequest> requests;
         bool synchronous = false;
         bool fail = false;
+        std::function<std::vector<std::uint8_t>(std::string_view)> files;
+        std::optional<PlayerCamera> playerSpawn;
+        std::array<std::int16_t, 3> initialDirection{ 0, 0, 100 };
+        std::string userMessage;
+        std::int16_t userMessageTicks = 0;
+        int promptCalls = 0;
+
+        void PromptUserMessage(std::string_view text, std::int16_t duration) override
+        {
+            userMessage = text;
+            userMessageTicks = duration;
+            ++promptCalls;
+        }
+
+        bool IsUserMessageActive() const override { return userMessageTicks > 0; }
 
     protected:
+        std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+        {
+            return files ? files(filename) : GameContext::LoadFile(filename);
+        }
+
         void LoadLevel(const LevelLoadRequest& request) override
         {
             requests.push_back(request);
             if (fail) { throw std::runtime_error("Host asset loading failed."); }
-            if (synchronous) { CompleteLevelLoad(request.id, MakeLevel()); }
+            if (files)
+            {
+                LevelLoadData data;
+                LoadLevelGeometry(request.levelNumber, data);
+                LoadLevelObjects(request.levelNumber, data);
+                if (playerSpawn) { data.playerSpawn = playerSpawn; }
+                else { InitializeLevelPlayerSpawn(data, initialDirection); }
+                CompleteLevelLoad(request.id, std::move(data));
+            }
+            else if (synchronous) { CompleteLevelLoad(request.id, MakeLevel()); }
         }
     };
 
@@ -237,7 +266,7 @@ namespace
             (*result.objects)[1].status == DispatchStatus::ExecutedCase &&
             (*result.objects)[2].status == DispatchStatus::UnimplementedHandler,
             "Tick must run input/contact before objects and expose unrecovered behavior results.");
-        Check(host.tickCount == 0 && host.frameTickCount == 3 && host.userMessageTicks == 17 &&
+        Check(host.tickCount == 0 && host.frameTickCount == 3 && host.userMessageTicks == 20 &&
             static_cast<std::uint8_t>(host.worldObjects[5].displayType) == expectedDisplay &&
             host.randomSeed == expectedSeed &&
             host.GetLightingCache().contributions[11][10] == 30 &&
@@ -245,7 +274,7 @@ namespace
             "Frame and behavior clocks must remain distinct; lighting/noise reset once per advanced tick.");
         const auto seed = host.randomSeed;
         host.Tick({ 0, 0 }, input);
-        Check(host.randomSeed != seed && host.userMessageTicks == 17 &&
+        Check(host.randomSeed != seed && host.userMessageTicks == 20 &&
             host.GetLightingCache().contributions[11][10] == 30,
             "Zero native ticks must still update once; successive frames must not accumulate old lighting.");
 
@@ -256,7 +285,7 @@ namespace
         host.SetPaused(true);
         const auto paused = host.Tick({ 10, 10 }, input);
         Check(host.IsPaused() && paused.status == GameTickStatus::Paused &&
-            !paused.interaction && !paused.objects && host.userMessageTicks == 17,
+            !paused.interaction && !paused.objects && host.userMessageTicks == 20,
             "Explicit pause must return without simulation or input.");
         host.SetPaused(false);
         host.SetMenuPage(MenuPage::Inventory);
@@ -574,7 +603,7 @@ namespace
         ExpectError<std::out_of_range>([&] { host.Tick({}, input); });
     }
 
-    void TestRendererHostInteraction(const std::filesystem::path& levelDirectory,
+    void TestLoadedLevelInteraction(const std::filesystem::path& levelDirectory,
         const std::filesystem::path& savePath)
     {
         const auto readBytes = [](const std::filesystem::path& path)
@@ -584,10 +613,7 @@ namespace
             return std::vector<std::uint8_t>(
                 std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>());
         };
-        GameCoreLevelSource source;
-        source.levelNumber = 11;
         const auto objectRecords = readBytes(levelDirectory / "OBJPOS11.DAT");
-        source.playerDirection = { 0, 0, 100 };
         const auto saved = readBytes(savePath);
         Check(saved.size() >= 299, "Original save fixture must contain the player record at byte 245.");
         const auto nativePlayer = DecodeGameObject(saved.data() + 245, 54);
@@ -599,24 +625,24 @@ namespace
             return DecodeGameObject(objectRecords.data() + record * 54, 54);
         };
         int fileRequests = 0;
-        GameCoreHost host([&](std::string_view filename)
+        Host host;
+        host.files = [&](std::string_view filename)
         {
             ++fileRequests;
             if (filename == "LEVEL\\FELD11.256") { return readBytes(levelDirectory / "FELD11.256"); }
             Check(filename == "LEVEL\\OBJPOS11.DAT", "GameCore must choose the requested level's assets.");
             return objectRecords;
-        });
+        };
         const auto worldObject = [&](int slot)
         {
-            std::uint8_t bytes[54];
-            host.GetObjectBytes(slot, bytes);
-            return DecodeGameObject(bytes, sizeof(bytes));
+            return host.GetWorldObjects().at(slot);
         };
         const auto loadAt = [&](const RawGameObject& target)
         {
-            source.playerPosition = std::array<std::int16_t, 3>{
-                target.posX, static_cast<std::int16_t>(target.posY + 45), target.posZ };
-            Check(host.LoadLevel(source), "Real renderer-host level loading failed.");
+            host.playerSpawn = PlayerCamera{
+                { target.posX, static_cast<std::int16_t>(target.posY + 45), target.posZ }, { 0,0,100 } };
+            host.StartLevel(11);
+            Check(host.GetRuntimeState() == GameRuntimeState::Ready, "Real fixture level loading failed.");
             Check(fileRequests > 0, "Level loading must obtain objects through the file service.");
             for (std::size_t record = 0; record < objectRecords.size() / 54; ++record)
             {
@@ -628,45 +654,103 @@ namespace
             Check(player.field_07 == nativePlayer.field_07 &&
                 player.collisionRadiusXZ == nativePlayer.collisionRadiusXZ &&
                 player.collisionRadiusY == nativePlayer.collisionRadiusY &&
-                host.GetPlayerCamera().position == *source.playerPosition,
+                host.GetPlayerCamera().position == host.playerSpawn->position,
                 "Host must use the original player collision shape and convert eye/center position exactly once.");
         };
         const auto medicine = object(32);
         Check(medicine.collisionType == CollisionType::Medicine && medicine.posY == 5,
             "Expected original level-11 floor medicine fixture.");
         loadAt(medicine);
-        Check(host.Tick(0, 1, {}) && worldObject(34).health == 1000,
+        Input input;
+        Check(host.Tick({ 0,1 }, input).status == GameTickStatus::Advanced && worldObject(34).health == 1000,
             "Contact without Enter must not consume medicine.");
-        GameCoreInput enter;
-        enter.interaction = true;
-        Check(host.Tick(0, 1, enter) && worldObject(34).health == 0 &&
-            host.GetLastInteractionMessage().find("Interaction applied") == 0,
-            "Enter through the actual host must pick up real floor medicine after grounding.");
+        Input enter;
+        enter.pressed = true;
+        const auto medicineTick = host.Tick({ 0,1 }, enter);
+        Check(medicineTick.status == GameTickStatus::Advanced && worldObject(34).health == 0 &&
+            medicineTick.interaction && medicineTick.interaction->status == InteractionStatus::Applied,
+            "Enter through the context must pick up real floor medicine after grounding.");
         const auto door = object(0);
         loadAt(door);
-        Check(host.Tick(1, 1, enter), "Real unlocked-door host tick failed.");
-        if (worldObject(2).field_26 != 3 || host.GetLastInteractionMessage().find("Interaction applied") != 0)
-        {
-            throw std::runtime_error("Real unlocked-door interaction failed: " + host.GetLastInteractionMessage() +
-                ", player Y " + std::to_string(worldObject(1).posY) +
-                ", door Y " + std::to_string(worldObject(2).posY) +
-                ", rate " + std::to_string(worldObject(2).field_26));
-        }
+        const auto doorTick = host.Tick({ 1,1 }, enter);
+        Check(doorTick.status == GameTickStatus::Advanced && worldObject(2).field_26 == 3 &&
+            doorTick.interaction && doorTick.interaction->status == InteractionStatus::Applied,
+            "Real unlocked-door interaction must activate the native door.");
         const auto trigger = object(9);
         Check(trigger.collisionType == CollisionType::Switch, "Expected ordinary door-trigger fixture.");
         loadAt(trigger);
-        Check(host.Tick(1, 1, {}), "Initial ordinary-switch behavior tick failed.");
+        Check(host.Tick({ 1,1 }, input).status == GameTickStatus::Advanced,
+            "Initial ordinary-switch behavior tick failed.");
         const auto linkedDoor = worldObject(6);
         Check(linkedDoor.health == 1001 && linkedDoor.field_26 == 0,
             "Expected level-11 door encoded with switch index 1.");
-        Check(host.Tick(1, 1, enter) && worldObject(11).blendWeightOrSpriteOpacity == 10 &&
+        const auto switchTick = host.Tick({ 1,1 }, enter);
+        Check(switchTick.status == GameTickStatus::Advanced && worldObject(11).blendWeightOrSpriteOpacity == 10 &&
             worldObject(6).field_26 == 3 && worldObject(6).blendWeightOrSpriteOpacity == 3 &&
-            host.GetLastInteractionMessage().find("Interaction applied") == 0,
+            switchTick.interaction && switchTick.interaction->status == InteractionStatus::Applied,
             "Enter must pull the original level-11 switch and animate its linked door in the same tick.");
-        for (int tick = 0; tick < 40; ++tick) { Check(host.Tick(1, 1, {}), "Switch/door animation tick failed."); }
+        for (int tick = 0; tick < 40; ++tick)
+        {
+            Check(host.Tick({ 1,1 }, input).status == GameTickStatus::Advanced, "Switch/door animation tick failed.");
+        }
         Check(worldObject(6).blendWeightOrSpriteOpacity == 100 &&
             worldObject(11).blendWeightOrSpriteOpacity == 0,
             "Linked door must finish opening while the ordinary switch returns to rest.");
+    }
+
+    void TestPromptHooks()
+    {
+        std::vector<std::uint8_t> geometry(Level::GeometryStreamSize);
+        geometry[0] = 49;
+        geometry[2] = 39;
+        RawGameObject door;
+        door.health = 1000;
+        door.field_07 = 3;
+        door.collisionType = CollisionType::Door;
+        door.doorLockOrGroupBitmask = -1;
+        door.posX = 1500;
+        door.posZ = 2500;
+        door.collisionRadiusXZ = 100;
+        door.collisionRadiusY = 100;
+        std::vector<std::uint8_t> records(54);
+        EncodeGameObject(door, records.data(), records.size());
+        Host host;
+        host.files = [&](std::string_view filename)
+        {
+            if (filename == "LEVEL\\FELD11.256") { return geometry; }
+            Check(filename == "LEVEL\\OBJPOS11.DAT", "Unexpected prompt-test file request.");
+            return records;
+        };
+        Check(host.promptCalls == 0 && !host.IsUserMessageActive(),
+            "A new context must not emit a prompt or require polling.");
+        host.playerSpawn = PlayerCamera{ { 1500,45,2500 }, { 0,0,100 } };
+        host.StartLevel(11);
+        Check(host.GetRuntimeState() == GameRuntimeState::Ready, "Prompt fixture level loading failed.");
+        Input input;
+        input.pressed = true;
+        Check(host.Tick({ 0,1 }, input).status == GameTickStatus::Advanced, "Locked-door prompt tick failed.");
+        const auto firstText = host.userMessage;
+        const auto firstNotification = host.promptCalls;
+        Check(firstText == "abgeschlossen" && host.userMessageTicks == 60 &&
+            host.IsUserMessageActive() && firstNotification == 2,
+            "The core must call the app's virtual hook directly for level reset and door prompts.");
+        input.pressed = false;
+        Check(host.Tick({ 0,59 }, input).status == GameTickStatus::Advanced &&
+            host.promptCalls == firstNotification && host.userMessageTicks == 60,
+            "Core updates must not own or decrement the app's prompt timer.");
+        host.userMessageTicks = -1;
+        input.pressed = true;
+        Check(host.Tick({ 0,1 }, input).status == GameTickStatus::Advanced &&
+            host.userMessage == firstText && host.userMessageTicks == 60 &&
+            host.promptCalls == firstNotification + 1 && host.IsUserMessageActive(),
+            "An identical message must reach the hook again after the app marks it expired.");
+        Check(host.Tick({ 0,1 }, input).status == GameTickStatus::Advanced &&
+            host.promptCalls == firstNotification + 1,
+            "The core must query app-owned activity before requesting another locked-door prompt.");
+        host.StartLevel(11);
+        Check(host.userMessage.empty() && host.userMessageTicks == 0 &&
+            host.promptCalls == firstNotification + 2 && !host.IsUserMessageActive(),
+            "Level changes must call the same virtual hook with an empty reset request.");
     }
 
     void TestSimpleSwitchInteraction()
@@ -823,25 +907,26 @@ namespace
         host.missing = true;
         ExpectError<std::runtime_error>([&] { host.LoadLevelObjects(12, data); });
         ExpectError<std::invalid_argument>([&] { host.LoadLevelObjects(0, data); });
-        GameCoreLevelSource source;
-        source.levelNumber = 12;
         std::vector<std::uint8_t> geometry(Level::GeometryStreamSize);
         geometry[0] = 49;
         geometry[2] = 39;
-        source.playerPosition = std::array<std::int16_t, 3>{ 1500, 45, 2500 };
         bool invalid = false;
-        GameCoreHost adapter([&](std::string_view filename) -> std::vector<std::uint8_t>
+        Host adapter;
+        adapter.playerSpawn = PlayerCamera{ { 1500,45,2500 }, { 0,0,100 } };
+        adapter.files = [&](std::string_view filename) -> std::vector<std::uint8_t>
         {
             if (filename == "LEVEL\\FELD12.256") { return geometry; }
             if (invalid) { return std::vector<std::uint8_t>(55); }
             throw std::runtime_error(std::string(filename) + ": missing");
-        });
-        Check(!adapter.LoadLevel(source) && !adapter.IsLevelReady() &&
-            adapter.GetLastError().find("OBJPOS12.DAT") != std::string::npos,
+        };
+        ExpectError<std::runtime_error>([&] { adapter.StartLevel(12); });
+        Check(adapter.GetRuntimeState() == GameRuntimeState::LoadFailed &&
+            adapter.GetLevelLoadError().find("OBJPOS12.DAT") != std::string::npos,
             "Missing object-file errors must reach the host without installing a partial world.");
         invalid = true;
-        Check(!adapter.LoadLevel(source) && !adapter.IsLevelReady() &&
-            adapter.GetLastError().find("54-byte") != std::string::npos,
+        ExpectError<std::invalid_argument>([&] { adapter.StartLevel(12); });
+        Check(adapter.GetRuntimeState() == GameRuntimeState::LoadFailed &&
+            adapter.GetLevelLoadError().find("54-byte") != std::string::npos,
             "Malformed object-file errors must propagate through the level lifecycle.");
     }
 
@@ -1034,14 +1119,15 @@ namespace
         ExpectError<std::invalid_argument>([&] { host.LoadLevelGeometry(0, data); });
         host.missing = true;
         ExpectError<std::runtime_error>([&] { host.LoadLevelGeometry(11, data); });
-        GameCoreHost adapter([](std::string_view name) -> std::vector<std::uint8_t>
+        Host adapter;
+        adapter.files = [](std::string_view name) -> std::vector<std::uint8_t>
         {
             throw std::runtime_error(std::string(name) + ": missing");
-        });
-        GameCoreLevelSource source;
-        source.levelNumber = 11;
-        Check(!adapter.LoadLevel(source) && !adapter.IsLevelReady() &&
-            adapter.GetLastError().find("FELD11.256") != std::string::npos, "Geometry errors must reach the renderer host.");
+        };
+        ExpectError<std::runtime_error>([&] { adapter.StartLevel(11); });
+        Check(adapter.GetRuntimeState() == GameRuntimeState::LoadFailed &&
+            adapter.GetLevelLoadError().find("FELD11.256") != std::string::npos,
+            "Geometry errors must reach the derived context.");
     }
 
     void TestMapPlayerStart(const std::filesystem::path& levelDirectory)
@@ -1160,22 +1246,24 @@ namespace
         Check(levels == 36, "Expected every complete original FELD fixture.");
         auto geometry = read(levelDirectory / "FELD11.256");
         const auto objects = read(levelDirectory / "OBJPOS11.DAT");
-        GameCoreHost adapter([&](std::string_view filename)
+        Host adapter;
+        adapter.files = [&](std::string_view filename)
         {
             if (filename == "LEVEL\\FELD11.256") { return geometry; }
             Check(filename == "LEVEL\\OBJPOS11.DAT", "Unexpected player-start file request.");
             return objects;
-        });
-        GameCoreLevelSource source;
-        source.levelNumber = 11;
-        source.playerDirection = direction;
-        Check(adapter.LoadLevel(source), "The renderer host must load normal starts without any position input.");
+        };
+        adapter.initialDirection = direction;
+        adapter.StartLevel(11);
+        Check(adapter.GetRuntimeState() == GameRuntimeState::Ready,
+            "The derived context must load normal starts without any position input.");
         Check(adapter.GetPlayerCamera().position[0] == 1350 && adapter.GetPlayerCamera().position[2] == 3650 &&
             adapter.GetPlayerCamera().direction == direction, "The renderer host must use the exact native level-11 marker.");
         const auto previous = adapter.GetPlayerCamera();
         for (std::size_t i = 0; i < 25 * 28; ++i) { if (geometry[4 + i] == 0xe1) { geometry[4 + i] = 0xef; } }
-        Check(!adapter.LoadLevel(source) && !adapter.IsLevelReady() &&
-            adapter.GetLastError().find("0xE1") != std::string::npos &&
+        ExpectError<std::runtime_error>([&] { adapter.StartLevel(11); });
+        Check(adapter.GetRuntimeState() == GameRuntimeState::LoadFailed &&
+            adapter.GetLevelLoadError().find("0xE1") != std::string::npos &&
             adapter.GetPlayerCamera().position == previous.position,
             "Missing normal starts must fail visibly without installing a partial world or reusing renderer guesses.");
     }
@@ -1388,7 +1476,8 @@ int main(int argc, char** argv)
         TestPlayerCamera();
         TestBasicPlayerMovement();
         TestPlayerGrounding();
-        TestRendererHostInteraction(argv[3], argv[4]);
+        TestLoadedLevelInteraction(argv[3], argv[4]);
+        TestPromptHooks();
         TestSimpleSwitchInteraction();
         TestLevelObjectLoading();
         TestWallCollisionLoading(argv[3]);

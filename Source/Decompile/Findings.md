@@ -377,8 +377,8 @@ slot, so a zero-ID key has a special failure edge case.
 
 This establishes ordinary key matching, consumption, and activation.
 Ordinary-door unlocking and activation are now implemented, including both
-failure prompts. `GameContext::PromptUserMessage` owns the text and lifetime
-without rendering; the original storage routine is `1E48:2459`, with countdown
+failure prompts. `GameContext::PromptUserMessage` is an overridable app hook;
+the app owns text, lifetime and rendering. The original storage routine is `1E48:2459`, with countdown
 at `1E48:3F2A`. The hand-slot icon redraw scheduling remains outside gameplay.
 See [message and door integration evidence](door-message-evidence.txt) and
 [implementation contract](BehaviorRecovery.md#ordinary-doors-and-key-unlocking).

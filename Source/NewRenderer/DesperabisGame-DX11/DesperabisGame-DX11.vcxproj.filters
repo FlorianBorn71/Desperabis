@@ -28,7 +28,6 @@
 	<ClInclude Include="..\SharedSource\IO\FileManagerBuiltIn.h"><Filter>Shared\IO</Filter></ClInclude>
 	<ClInclude Include="..\SharedSource\Sample\FreeCamera.h"><Filter>Shared\Sample</Filter></ClInclude>
 	<ClInclude Include="..\SharedSource\Sample\LevelScene.h"><Filter>Shared\Sample</Filter></ClInclude>
-	<ClInclude Include="GameCoreHost.h"><Filter>Source</Filter></ClInclude>
 	<ClInclude Include="pch.h"><Filter>Source</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -46,7 +45,6 @@
 	<ClCompile Include="..\SharedSource\Sample\FreeCamera.cpp"><Filter>Shared\Sample</Filter></ClCompile>
 	<ClCompile Include="..\SharedSource\Sample\LevelScene.cpp"><Filter>Shared\Sample</Filter></ClCompile>
 	<ClCompile Include="DesperabisGame-DX11.cpp"><Filter>Source</Filter></ClCompile>
-	<ClCompile Include="GameCoreHost.cpp"><Filter>Source</Filter></ClCompile>
 	<ClCompile Include="pch.cpp"><Filter>Source</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>

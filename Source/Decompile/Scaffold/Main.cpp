@@ -13,6 +13,19 @@ using namespace Desperabis;
 
 namespace
 {
+    class ConsoleGameContext final : public GameContext
+    {
+    public:
+        void PromptUserMessage(std::string_view text, std::int16_t duration) override
+        {
+            if (!text.empty())
+            {
+                std::cout << "User message: " << text
+                    << " (" << duration << " ticks requested; no rendering).\n";
+            }
+        }
+    };
+
     struct ConsoleInputHandler final : InputHandler
     {
         bool interactionKeyPressed = false;
@@ -115,7 +128,7 @@ namespace
             }
             return 0;
         }
-        GameContext context;
+        ConsoleGameContext context;
         RawGameObject& object = context.worldObjects[2];
         ConsoleAudioHandler audio;
         auto level = CreateDummyLevel();
@@ -392,11 +405,6 @@ namespace
                     std::cout << "Weapon/resource " << i << ": amount " << context.weaponAmounts[i]
                         << ", inventory slot " << context.weaponInventorySlots[i] << '\n';
                 }
-            }
-            if (context.userMessageTicks > 0)
-            {
-                std::cout << "User message: " << context.userMessage
-                    << " (" << context.userMessageTicks << " ticks remaining; no rendering).\n";
             }
             std::cout << "Message rendering, inventory use, and unsupported interactions are NOT IMPLEMENTED.\n";
         }
