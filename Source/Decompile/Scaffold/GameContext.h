@@ -126,6 +126,7 @@ namespace Desperabis
 
         std::unique_ptr<CollisionMap> collisionMap;
         std::uint8_t wallTextures[Height][Width]{};
+        std::uint8_t floorObjects[Height][Width]{};
         std::uint8_t floorHeights[Height][Width]{};
         std::uint8_t roomHeights[Height][Width]{};
         std::uint8_t ceilingObjects[Height][Width]{};
@@ -133,6 +134,7 @@ namespace Desperabis
         std::uint8_t collisionMaterials[Height][Width]{};
         std::size_t geometryWidth = Width;
         std::size_t geometryHeight = Height;
+        std::uint64_t geometryRevision = 0;
 
         struct HeightSurface
         {
@@ -183,7 +185,10 @@ namespace Desperabis
         StrafeRightKey,
         TurnLeftKey,
         TurnRightKey,
-        InteractionKey
+        InteractionKey,
+        AttackKey,
+        SelectDaggerKey,
+        SelectSwordKey
     };
 
     class InputHandler
@@ -258,7 +263,7 @@ namespace Desperabis
         bool objectCollisionsEnabled = true;
         bool discardBlockedObjects = false; // DS:D501; false exposes the native WC-Error diagnostic path.
         std::uint16_t playerCollisionSlot = 0;
-        const Level* level = nullptr;
+        Level* level = nullptr;
         std::int16_t floorSurfaceValue = -1; // DS:D4CC, meaning not fully established.
         std::int16_t floorRepeatHeight = 0; // DS:D4CE, in raw heightfield units.
         AudioHandler* audioHandler = nullptr;
@@ -270,6 +275,41 @@ namespace Desperabis
         std::int16_t soundListenerX = 0; // DS:D4D2.
         std::int16_t soundListenerZ = 0; // DS:D4D6.
         bool positionalSoundsSuppressed = false; // DS:D4FA forces distance 10000.
+        // DS:2DBA meter: maximum at +2, signed 16.16 current value at +4.
+        std::int16_t playerLifeMaximum = 360;
+        std::int32_t playerLife = 360 * 65536;
+        std::int16_t playerLifeDeltaSuppressed = 0; // DS:2DDD.
+        std::int16_t playerHitEffectTicks = 0; // DS:D514; presentation consumer not yet ported.
+        std::int16_t playerDeathState = 0; // DS:D4B4 becomes -1 on depletion.
+        WeaponType selectedWeapon = WeaponType::None; // DS:DDB6.
+        WeaponType requestedWeapon = WeaponType::None; // DS:DDB7.
+        std::uint8_t weaponSpriteFrame = 0; // DS:DDB8.
+        std::uint8_t weaponHand = 0; // DS:DDB9, original inventory slot 1/2.
+        std::uint8_t requestedWeaponHand = 0; // DS:DDBA.
+        bool weaponReady = true; // DS:DDC5; resource/strike latch, not the cooldown counter.
+        // Historical name: DS:DDBB is a phase/countdown, including negative command sentinels.
+        std::int16_t weaponAnimationSpeed = 0; // DS:DDBB.
+        std::int16_t weaponAnimationPosition = 0; // DS:DDBD.
+        std::int16_t weaponAnimationRecoil = 0; // DS:DDBF, set by digging contacts.
+        std::int16_t playerLookHeight = 110; // DS:D4A4, screen horizon rather than an angle.
+        bool playerUnderwater = false; // DS:D4FC; swimming controller remains separate.
+        bool field_D500 = true; // Native body-mode gate, also used by the unarmed weapon branch.
+        bool debugWeaponColliders = false; // DS:D502.
+        void RefreshWeaponInventory();
+        bool SelectWeapon(WeaponType weapon);
+        WeaponActionStatus AttackWithSelectedWeapon();
+        WeaponActionStatus UpdateWeaponAnimation(std::int16_t ticks);
+        std::int16_t GetPlayerHeading() const;
+        void ApplyPlayerLifeDelta(std::int32_t delta);
+        // Native 10AC:10F5: zero activates, positive values damage, -1 selects special destruction.
+        void DamageObject(RawGameObject& object, std::int16_t amount);
+        void ActivateObjectGroup(std::int16_t group);
+        void StopAllSoundEffects();
+        // Recovered collision-type-30 branch of 10AC:10F5.
+        void DamageSkeleton(RawGameObject& object, std::int16_t amount);
+        void SpawnSkeletonFragment(const RawGameObject& source, std::uint16_t part,
+            std::int16_t x, std::int16_t y, std::int16_t z);
+        void SpawnWaterImpact(std::int16_t x, std::int16_t z);
         std::int16_t frameTickCount = 1; // DS:D4CA; burning uses this rather than the behavior argument.
         LightingCache lightingCache;
         std::uint16_t field_DC34 = 0; // Near lights add random values; also used as a timer RNG range.
@@ -281,6 +321,7 @@ namespace Desperabis
         std::int16_t RandomSigned(std::uint16_t radius);
         void LoadSoundEffects(const std::uint8_t* data, std::size_t size);
         std::int16_t GetSoundDistanceAt(std::int16_t x, std::int16_t z) const;
+        static std::uint8_t GetSoundVolume(std::int16_t distance);
         std::uint8_t GetSoundVolumeAt(std::int16_t x, std::int16_t z, std::int16_t distanceScale = 1) const;
         SoundPlaybackStatus PlaySoundEffect(SoundEffect effect, std::uint8_t volume,
             std::int16_t sourceId, std::int16_t instanceLimit);
@@ -353,6 +394,15 @@ namespace Desperabis
         virtual void InitializeNewGame(std::int16_t chapter);
 
     private:
+        void UpdateWeaponSelection();
+        void CommitWeaponSelection();
+        void InitializeWeaponCollider(std::uint16_t slot, std::int16_t reach, std::int16_t yOffset,
+            std::uint8_t damage, std::int16_t radiusXZ, std::int16_t radiusY, std::int16_t lifetime);
+        void ApplyObjectKnockback(RawGameObject& object, std::int16_t amount);
+        void SpawnBreakupParticle(const RawGameObject& source, std::int16_t selector,
+            std::int16_t radiusX, std::int16_t radiusY, std::int16_t radiusZ);
+        void SpawnActivationParticle(std::int16_t x, std::int16_t y, std::int16_t z,
+            std::int16_t angle, std::int16_t speed);
         static RawGameObject InitializeLevelPlayer(const PlayerCamera& spawn);
         BasicPlayerMovementResult UpdateBasicPlayerMovement(InputHandler& input);
         std::int16_t playerForwardSpeed = 0;

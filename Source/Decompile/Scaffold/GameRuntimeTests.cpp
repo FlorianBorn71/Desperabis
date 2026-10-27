@@ -100,6 +100,10 @@ namespace
         int movementCalls = 0;
         bool IsKeyPressed(InputKey key) override
         {
+            if (key == InputKey::AttackKey || key == InputKey::SelectDaggerKey || key == InputKey::SelectSwordKey)
+            {
+                return false;
+            }
             if (key != InputKey::InteractionKey)
             {
                 ++movementCalls;
@@ -814,12 +818,13 @@ namespace
                 lever.field_26 == 10, "A nonpositive switch index must still start the local animation.");
         }
         lever = resting;
-        context.worldObjects[2].collisionType = CollisionType::Skeleton;
-        const auto unsupported = context.worldObjects;
-        Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::UnimplementedHandler &&
-            std::memcmp(unsupported.data(), context.worldObjects.data(), sizeof(unsupported)) == 0,
-            "Unsupported indexed target types must be explicit and must not partially activate other doors.");
+        context.worldObjects[2].collisionType = CollisionType::Ghost;
+        Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::Applied &&
+            lever.field_26 == 10 && context.worldObjects[2].health == 1000 &&
+            context.worldObjects[140].field_26 == 3,
+            "Indexed activation must dispatch mixed non-door/door targets through the shared native helper.");
         context.worldObjects[2].collisionType = CollisionType::Door;
+        context.worldObjects[2].health = 1001;
         context.worldObjects[2].doorLockOrGroupBitmask = 1;
         context.worldObjects[2].field_26 = 0;
         lever = resting;

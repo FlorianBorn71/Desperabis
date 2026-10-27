@@ -80,6 +80,27 @@ For the first explained case and shared collision-map pointer, see
 - `Scaffold/RatSnakeTests.cpp`: movement/RNG, health gates, steering, neighborhood
   retries, sound and all 40 native rat/snake records. See
   [rat/snake recovery](BehaviorRecovery.md#ratandsnake-movement-and-separate-contact-damage).
+- `skeleton-*-evidence.txt`: skeleton movement, attacks/parrying, fixed-point
+  player life, death fragmentation and fragment/water lifecycles.
+- `Scaffold/SkeletonTests.cpp`: native arithmetic/RNG oracle, wall navigation,
+  strike/parry gates, life/death state, eight-part creation/settling, and all
+  15 original skeleton records. See
+  [skeleton recovery](BehaviorRecovery.md#skeleton-movement-combat-and-death)
+  for player-weapon, remaining activation-driver and death-presentation boundaries.
+- `damage-activation-evidence.txt`, `damage-support-evidence.txt`,
+  `damage-projectile-evidence.txt`, `damage-projectile-tail-evidence.txt`:
+  complete shared damage/activation cascade and its direct dependencies.
+- `Scaffold/DamageTests.cpp`: weapon contacts, all collision selectors, full-record
+  death transitions, signed-word arithmetic, activation groups, geometry writes,
+  secondary spawning, fallback/alias allocation, and audio cancellation.
+  See [weapon damage and shared activation](BehaviorRecovery.md#weapon-damage-and-shared-activation).
+- `weapon-trigger-evidence.txt`, `weapon-sequence-evidence.txt`,
+  `weapon-selection-evidence.txt`, `weapon-selection-tail-evidence.txt`,
+  `weapon-environment-evidence.txt`: dagger/sword attack input, shared state,
+  equip/holster selection, exact contacts and gameplay update order.
+- `Scaffold/WeaponTests.cpp`: exhaustive phase-word tests, swing/recovery
+  timelines, contact records, hand/registry selection, audio and live `Tick`
+  pickup-to-hit integration. See [melee attack sequence](BehaviorRecovery.md#player-melee-attack-sequence).
 - `lighting-shade-evidence.txt`: timer-driven shade noise, its quantization
   consumer, a separate global shading term, and per-frame noise-range resets.
 - `object-render-list-evidence.txt`: render-sort-key assignment and signed
@@ -92,7 +113,7 @@ For the first explained case and shared collision-map pointer, see
   per-frame reset, native world-coordinate accumulation, and window culling.
   LightSource objects now add flicker and request their configured sounds;
   the unidentified DS:DC34 accumulator is preserved. No rendering is included.
-- `Scaffold/`: compilable selector, implemented Pillar/LightSource/PulsatingLight/Door/Flies/RatAndSnake/FloatingDebris/behavior-18/FireParticle/BurningFireplace/IdleAnimation/SmokeFading/SpawnInCrater/switch/WaterDrop/LevelStartOverride cases,
+- `Scaffold/`: compilable selector, implemented Pillar/LightSource/PulsatingLight/Door/Flies/RatAndSnake/Skeleton/FloatingDebris/WeaponDamageCollider/DriftingParticle/WaterImpact/SinkingObject/FireParticle/BurningFireplace/IdleAnimation/SmokeFading/SpawnInCrater/switch/WaterDrop/LevelStartOverride cases,
   placeholder handlers, and tests.
 - `Scaffold/CollisionMap.cpp`: explicit 200x200 dummy-level creation until proper
   level loading is recovered. Collision-map queries/writers are in `GameContext.cpp`.

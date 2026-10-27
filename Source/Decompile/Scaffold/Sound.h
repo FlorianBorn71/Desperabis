@@ -34,6 +34,7 @@ namespace Desperabis
         // Host channels are zero-based; sample references retain their original one-based IDs.
         virtual bool IsChannelPlaying(std::size_t channel) const = 0;
         virtual void PlaySample(std::size_t channel, std::uint8_t sample, std::uint8_t volume) = 0;
+        virtual void StopAllSamples() = 0;
     };
 
     enum class SoundPlaybackStatus

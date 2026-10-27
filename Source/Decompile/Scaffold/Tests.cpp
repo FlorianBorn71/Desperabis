@@ -155,7 +155,8 @@ namespace
             object.behavior = entry.type;
             object.health = 1;
             object.posX = -100;
-            if (entry.type == BehaviorType::WaterDrop || entry.type == BehaviorType::FloatingDebris)
+            if (entry.type == BehaviorType::WaterDrop || entry.type == BehaviorType::FloatingDebris ||
+                entry.type == BehaviorType::SinkingObject)
             {
                 object.posX = 150;
                 object.posZ = 4050;
@@ -175,9 +176,12 @@ namespace
             const bool implemented = entry.type == BehaviorType::Pillar || entry.type == BehaviorType::LightSource ||
                 entry.type == BehaviorType::Door ||
                 entry.type == BehaviorType::Flies ||
-                entry.type == BehaviorType::ExplosionSmokeCloud || entry.type == BehaviorType::SpawnInCrater ||
+                entry.type == BehaviorType::WeaponDamageCollider ||
+                entry.type == BehaviorType::DriftingParticle || entry.type == BehaviorType::SpawnInCrater ||
                 entry.type == BehaviorType::FloatingDebris || entry.type == BehaviorType::LevelStartOverride ||
                 entry.type == BehaviorType::RatAndSnake ||
+                entry.type == BehaviorType::Skeleton || entry.type == BehaviorType::WaterImpact ||
+                entry.type == BehaviorType::SinkingObject ||
                 entry.type == BehaviorType::FireParticle || entry.type == BehaviorType::BurningFireplace ||
                 entry.type == BehaviorType::PulsatingLight ||
                 entry.type == BehaviorType::IdleAnimation ||
@@ -598,15 +602,16 @@ namespace
     {
         struct Keys final : InputHandler
         {
-            std::array<bool, 7> pressed{};
+            std::array<bool, 10> pressed{};
             bool IsKeyPressed(InputKey key) override { return pressed.at(static_cast<std::size_t>(key)); }
         } keys;
         constexpr std::array inputs{
             InputKey::ForwardKey, InputKey::BackwardKey, InputKey::StrafeLeftKey,
-            InputKey::StrafeRightKey, InputKey::TurnLeftKey, InputKey::TurnRightKey, InputKey::InteractionKey
+            InputKey::StrafeRightKey, InputKey::TurnLeftKey, InputKey::TurnRightKey, InputKey::InteractionKey,
+            InputKey::AttackKey, InputKey::SelectDaggerKey, InputKey::SelectSwordKey
         };
         InputHandler& input = keys;
-        for (unsigned mask = 0; mask < 128; ++mask)
+        for (unsigned mask = 0; mask < 1024; ++mask)
         {
             for (std::size_t i = 0; i < inputs.size(); ++i) { keys.pressed[i] = (mask & (1u << i)) != 0; }
             for (std::size_t i = 0; i < inputs.size(); ++i)

@@ -7,7 +7,18 @@ changed by this investigation.
 **Subsequent implementation:** behavior 18 and its supplied-object initializer,
 the shared smoke initializer, and the complete `SpawnInCrater` emitter are now
 implemented and host-tested. See [particle recovery](BehaviorRecovery.md#drifting-particles-and-shared-smoke-creation).
-The discovery snapshot and numeric enum names below remain unchanged.
+The discovery evidence remains unchanged; the table below uses current recovered names.
+
+**Subsequent sword-hit identification:** the sword driver creates behavior-2
+contact objects; on a Skeleton hit, `0000:11E3..11F8` converts that same object
+through `10AC:07F2` into **behavior 18**, frame 2, before applying damage.
+This identifies the separate nonfatal hit particle, not behavior-1 death parts.
+The initializer/update and behavior-2 contact dispatch are implemented.
+The player dagger/sword input/animation driver is now implemented; see
+[melee sequences](BehaviorRecovery.md#player-melee-attack-sequence).
+See [sword contact evidence](skeleton-sword-contact-evidence.txt),
+[hit dispatch evidence](skeleton-hit-dispatch-evidence.txt), and
+[the skeleton contract](BehaviorRecovery.md#skeleton-movement-combat-and-death).
 
 ## Results
 
@@ -38,13 +49,13 @@ The following initial-record counts include every record, regardless of health.
 | ID | Current name | Creation/initialization evidence | Initial records |
 | --- | --- | --- | ---: |
 | 1 | `Behavior_1` | Multiple branches in `10AC:091C`; also `0000:A8F7` | 0 |
-| 2 | `Behavior_2` | Shared initializer `10AC:0384`, store `10AC:03D2` | 0 |
+| 2 | `WeaponDamageCollider` | Shared initializer `10AC:0384`, store `10AC:03D2` | 0 |
 | 3 | `Behavior_3` | `0000:A8F7`, store `0000:AA0A` | 0 |
 | 4 | `Behavior_4` | `0000:A8F7`, store `0000:AB65` | 0 |
-| 18 | `ExplosionSmokeCloud` (tentative visual role, per author recollection) | Initializer `10AC:07F2` and allocation inside `10AC:B33C` | 0 |
+| 18 | `DriftingParticle` | Initializer `10AC:07F2` and allocation inside `10AC:B33C` | 0 |
 | 21 | `FireParticle` | Fire branch, store `10AC:09AC` | 0 |
 | 24 | `SmokeFading` | Shared initializer `10AC:044E`, store `10AC:047A`; other direct creation | 0 |
-| 33 | `Behavior_33` | Factory `10AC:0629`, store `10AC:0729` | 0 |
+| 33 | `WaterImpact` | Factory `10AC:0629`, store `10AC:0729` | 0 |
 | 41 | `FlyingArrow` | Factory `10AC:4106`, store `10AC:4145` | 21 |
 | 42 | `MercuryLamp` | Another branch of `10AC:4106`, store `10AC:4653` | 1 |
 | 103 | `Behavior_103` | Factory `10AC:056C`, store `10AC:061F` | 0 |

@@ -27,14 +27,7 @@ namespace Desperabis
             {
                 return false;
             }
-            if (object.blendWeightOrSpriteOpacity < 100)
-            {
-                object.field_26 = 3;
-                if (object.modelFrame2 == 0) { object.displayType = DisplayType::Hidden; }
-                PlayDoorSound(object, context, static_cast<SoundEffect>(object.soundEffectId),
-                    context.GetSoundVolumeAt(object.posX, object.posZ), 1);
-            }
-            object.itemValue = WrapSignedWord(object.field_24);
+            context.DamageObject(object, 0);
             return true;
         }
     }
@@ -49,28 +42,11 @@ namespace Desperabis
         if (object.blendWeightOrSpriteOpacity != 0) { return { InteractionStatus::NoEffect }; }
 
         const bool activatesTargets = object.itemValue > 0 && object.health == 1000;
-        const auto targetHealth = WrapSignedWord(object.itemValue + 1000);
-        if (activatesTargets)
-        {
-            // 10AC:2060 scans 2..140, not the full update range. Other activation types remain unrecovered.
-            for (std::size_t slot = 2; slot <= 140; ++slot)
-            {
-                const auto& target = context.worldObjects[slot];
-                if (target.health == targetHealth && target.collisionType != CollisionType::Door)
-                {
-                    return { InteractionStatus::UnimplementedHandler };
-                }
-            }
-        }
         // 10AC:2094 starts the animation even when the target index/health gate fails.
         object.field_26 = object.field_24;
         if (activatesTargets)
         {
-            for (std::size_t slot = 2; slot <= 140; ++slot)
-            {
-                auto& target = context.worldObjects[slot];
-                if (target.health == targetHealth) { ActivateDoor(target, context); }
-            }
+            context.ActivateObjectGroup(object.itemValue);
             PlayDoorSound(object, context, static_cast<SoundEffect>(object.soundEffectId),
                 context.GetSoundVolumeAt(object.posX, object.posZ), 1);
         }

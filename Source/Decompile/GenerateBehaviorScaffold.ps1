@@ -180,9 +180,12 @@ foreach ($value in @(@($names.Keys) + $caseValues | Sort-Object -Unique)) {
     $trace = Trace-Selector $value
     $name = $names[$value]
     if ($value -eq 65535) { $name = 'DisabledSentinel' }
-    elseif ($value -eq 18) { $name = 'ExplosionSmokeCloud' }
+    elseif ($value -eq 2) { $name = 'WeaponDamageCollider' }
+    elseif ($value -eq 18) { $name = 'DriftingParticle' }
     elseif ($value -eq 21) { $name = 'FireParticle' }
+    elseif ($value -eq 33) { $name = 'WaterImpact' }
     elseif ($value -eq 117) { $name = 'FloatingDebris' }
+    elseif ($value -eq 118) { $name = 'SinkingObject' }
     elseif (-not $name) { $name = 'Behavior_' + $value }
     $specific = $trace.Entry -ne 0x5110
     $references = @{ Instructions = 0; Globals = @(); Calls = @() }

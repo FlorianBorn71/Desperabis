@@ -177,6 +177,9 @@ namespace
 		bool turnLeft = false;
 		bool turnRight = false;
 		bool interaction = false;
+		bool attack = false;
+		bool selectDagger = false;
+		bool selectSword = false;
 
 		bool IsKeyPressed(Desperabis::InputKey key) override
 		{
@@ -189,6 +192,9 @@ namespace
 			case Desperabis::InputKey::TurnLeftKey: return turnLeft;
 			case Desperabis::InputKey::TurnRightKey: return turnRight;
 			case Desperabis::InputKey::InteractionKey: return interaction;
+			case Desperabis::InputKey::AttackKey: return attack;
+			case Desperabis::InputKey::SelectDaggerKey: return selectDagger;
+			case Desperabis::InputKey::SelectSwordKey: return selectSword;
 			}
 			throw std::invalid_argument("Unknown game input key.");
 		}
@@ -611,6 +617,9 @@ namespace
 				input.strafeRight = IsKeyPressed('D');
 				input.turnLeft = IsKeyPressed(VK_LEFT);
 				input.turnRight = IsKeyPressed(VK_RIGHT);
+				input.attack = IsKeyPressed(VK_CONTROL) || IsKeyPressed(VK_LBUTTON);
+				input.selectDagger = IsKeyPressed('1');
+				input.selectSword = IsKeyPressed('2');
 			}
 			input.interaction = IsKeyPressed(VK_RETURN);
 
@@ -628,6 +637,11 @@ namespace
 					{
 						g_gameCore->UpdateUserMessage(nativeTicks);
 						SyncGameObjects();
+						if (input.attack && result.weapon &&
+							result.weapon->attack == Desperabis::WeaponActionStatus::UnimplementedWeapon)
+						{
+							SetWindowTextA(g_hWnd, "Desperabis (DX11) - this weapon's attack is not recovered yet");
+						}
 						if (input.interaction && result.interaction)
 						{
 							const std::string title = "Desperabis (DX11) - " + DescribeInteraction(*result.interaction);

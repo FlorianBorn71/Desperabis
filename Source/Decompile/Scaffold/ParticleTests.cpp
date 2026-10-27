@@ -117,7 +117,7 @@ namespace
             for (unsigned int value = 0; value <= 65535; ++value)
             {
                 auto object = DirtyRecord();
-                object.behavior = BehaviorType::ExplosionSmokeCloud;
+                object.behavior = BehaviorType::DriftingParticle;
                 object.health = 50;
                 object.blendWeightOrSpriteOpacity = Word(value);
                 object.itemValue = Word(value * 3);
@@ -125,31 +125,31 @@ namespace
                 object.velocityY = Word(value * 7);
                 object.velocityZ = Word(value * 11);
                 const auto expected = DriftUpdate(object, ticks);
-                const auto result = Function_ExplosionSmokeCloud(object, context);
+                const auto result = Function_DriftingParticle(object, context);
                 Check(Equal(object, expected) && result.status == DispatchStatus::ExecutedCase &&
-                    result.behavior == BehaviorType::ExplosionSmokeCloud && result.moduleOffset == 0x16e5 &&
+                    result.behavior == BehaviorType::DriftingParticle && result.moduleOffset == 0x16e5 &&
                     context.randomSeed == 0, "Drifting-particle tick arithmetic or untouched fields differ.");
             }
         }
         context.tickCount = 32767;
         auto object = DirtyRecord();
-        object.behavior = BehaviorType::ExplosionSmokeCloud;
+        object.behavior = BehaviorType::DriftingParticle;
         auto expected = DriftUpdate(object, context.tickCount);
-        Function_ExplosionSmokeCloud(object, context);
+        Function_DriftingParticle(object, context);
         Check(Equal(object, expected), "The maximum tick count must not truncate or stop early after death.");
 
         context.tickCount = 20;
         object = {};
-        object.behavior = BehaviorType::ExplosionSmokeCloud;
+        object.behavior = BehaviorType::DriftingParticle;
         object.health = 50;
         object.blendWeightOrSpriteOpacity = 100;
         expected = DriftUpdate(object, 20);
-        Function_ExplosionSmokeCloud(object, context);
+        Function_DriftingParticle(object, context);
         Check(Equal(object, expected) && object.health == 50 && object.blendWeightOrSpriteOpacity == 0,
             "Exactly zero fade must not kill the particle.");
         context.tickCount = 2;
         expected = DriftUpdate(object, 2);
-        Function_ExplosionSmokeCloud(object, context);
+        Function_DriftingParticle(object, context);
         Check(Equal(object, expected) && object.health == 0 && object.blendWeightOrSpriteOpacity == -10,
             "Fade death must be strict and must not interrupt the remaining ticks.");
     }
@@ -175,7 +175,7 @@ namespace
             expected.modelFrame2 = 1;
             expected.blendWeightOrSpriteOpacity = 100;
             expected.displayType = DisplayType::Type30;
-            expected.behavior = BehaviorType::ExplosionSmokeCloud;
+            expected.behavior = BehaviorType::DriftingParticle;
             expected.collisionType = CollisionType::None;
             expected.velocityY = 1;
             const auto dx = Word(object.posX - x);

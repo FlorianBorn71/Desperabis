@@ -294,7 +294,7 @@ namespace Desperabis
     {
         BasicPlayerMovementResult result;
         auto& player = worldObjects[1];
-        if (frameTickCount == 0 || player.health <= 0) { return result; }
+        if (frameTickCount == 0 || player.health <= 0 || playerDeathState == -1) { return result; }
 
         // Normal keyboard mode, C603..C679 and C74E..C774; sample once per host tick, not per substep.
         if (input.IsKeyPressed(InputKey::TurnLeftKey)) { playerTurnSpeed = WrapSignedWord(playerTurnSpeed - 7); }
@@ -412,8 +412,14 @@ namespace Desperabis
         lightingCache.Reset(soundListenerX, soundListenerZ, lightingCache.activeRadius);
         field_DC34 = 0;
         const auto interaction = UpdatePlayerInteraction(*this, input);
+        UpdateWeaponSelection();
         const auto results = UpdateObjects(*this);
-        return { GameTickStatus::Advanced, interaction, results, movement };
+        PlayerWeaponResult weapon;
+        weapon.animation = UpdateWeaponAnimation(frameTickCount);
+        if (input.IsKeyPressed(InputKey::SelectDaggerKey)) { SelectWeapon(WeaponType::Dagger); }
+        if (input.IsKeyPressed(InputKey::SelectSwordKey)) { SelectWeapon(WeaponType::Sword); }
+        if (input.IsKeyPressed(InputKey::AttackKey)) { weapon.attack = AttackWithSelectedWeapon(); }
+        return { GameTickStatus::Advanced, interaction, results, movement, weapon };
     }
 
     std::vector<std::uint8_t> GameContext::LoadFile(std::string_view filename)
@@ -693,6 +699,676 @@ namespace Desperabis
         return value == 0 ? static_cast<std::int16_t>(radius) : value;
     }
 
+    std::int16_t GameContext::GetPlayerHeading() const
+    {
+        return playerHeading;
+    }
+
+    void GameContext::ApplyPlayerLifeDelta(std::int32_t delta)
+    {
+        if (playerLifeDeltaSuppressed == 0)
+        {
+            const auto bits = static_cast<std::uint32_t>(playerLife) + static_cast<std::uint32_t>(delta);
+            playerLife = bits <= 0x7fffffffu ? static_cast<std::int32_t>(bits) :
+                static_cast<std::int32_t>(static_cast<std::int64_t>(bits) - 0x100000000LL);
+        }
+        if (playerLife >= static_cast<std::int32_t>(playerLifeMaximum) * 65536)
+        {
+            playerLife = static_cast<std::int32_t>(playerLifeMaximum) * 65536;
+        }
+        if (playerLife <= 0)
+        {
+            playerLife = 0;
+            if (!positionalSoundsSuppressed)
+            {
+                playerHitEffectTicks = 1000;
+                playerDeathState = -1;
+                positionalSoundsSuppressed = true;
+                worldObjects[1].velocityZ = 400;
+            }
+        }
+    }
+
+    void GameContext::StopAllSoundEffects()
+    {
+        if (audioHandler) { audioHandler->StopAllSamples(); }
+        soundChannelSources.fill(0);
+    }
+
+    void GameContext::ActivateObjectGroup(std::int16_t group)
+    {
+        const auto health = WrapSignedWord(group + 1000);
+        for (std::size_t slot = 2; slot <= 140; ++slot)
+        {
+            if (worldObjects[slot].health == health) { DamageObject(worldObjects[slot], 0); }
+        }
+    }
+
+    void GameContext::ApplyObjectKnockback(RawGameObject& object, std::int16_t amount)
+    {
+        if (object.health != 1000) { return; }
+        amount = std::min<std::int16_t>(amount, 30);
+        const auto dx = WrapSignedWord(soundListenerX - object.posX);
+        const auto dz = WrapSignedWord(soundListenerZ - object.posZ);
+        const auto distance = WrapSignedWord(AbsoluteWord(dx) + AbsoluteWord(dz));
+        if (distance == 0) { throw std::runtime_error("Native object knockback would divide by zero."); }
+        const auto numeratorX = WrapSignedWord(-static_cast<std::int32_t>(dx) * amount);
+        const auto numeratorZ = WrapSignedWord(-static_cast<std::int32_t>(dz) * amount);
+        if (distance == -1 && (numeratorX == -32768 || numeratorZ == -32768))
+        {
+            throw std::overflow_error("Native object knockback would overflow signed-word division.");
+        }
+        const auto x = numeratorX / distance;
+        object.itemValue = WrapSignedWord(numeratorZ / distance);
+        std::int16_t correctionX = 0;
+        std::int16_t correctionZ = 0;
+        std::uint16_t center = 0;
+        QueryCollisionMapNeighborhood(WrapSignedWord(object.posX + x),
+            WrapSignedWord(object.posZ + object.itemValue), 1, correctionX, correctionZ, center, 0x38);
+        if (correctionX == 0 && correctionZ == 0)
+        {
+            object.posX = WrapSignedWord(object.posX + x);
+            object.posZ = WrapSignedWord(object.posZ + object.itemValue);
+        }
+    }
+
+    void GameContext::SpawnBreakupParticle(const RawGameObject& source, std::int16_t selector,
+        std::int16_t radiusX, std::int16_t radiusY, std::int16_t radiusZ)
+    {
+        auto& particle = worldObjects[FindFreeObjectIndex()];
+        if (source.collisionType != CollisionType::Type_22) { return; }
+        const auto linkedSlot = source.field_24;
+        particle.health = static_cast<std::int16_t>(Random(50) + 50);
+        particle.modelId = 1;
+        particle.modelAnim = 5;
+        particle.animFrame = static_cast<std::uint8_t>(Random(2) + 1);
+        particle.displayType = DisplayType::SpriteTransparent;
+        particle.blendWeightOrSpriteOpacity = 10;
+        particle.winY = static_cast<std::int16_t>(Random(2));
+        particle.spriteScale = 24;
+        particle.groupIndexOrLock = 5;
+        particle.itemValue = 75;
+        particle.field_24 = 1;
+        if (selector == 0)
+        {
+            particle.posX = WrapSignedWord(source.posX + RandomSigned(static_cast<std::uint16_t>(radiusX)));
+            particle.posY = WrapSignedWord(source.posY + RandomSigned(static_cast<std::uint16_t>(radiusY)));
+            particle.posZ = WrapSignedWord(source.posZ + RandomSigned(static_cast<std::uint16_t>(radiusZ)));
+            std::int16_t x;
+            std::int16_t z;
+            std::uint16_t center;
+            do
+            {
+                x = 0;
+                z = 0;
+                center = 0;
+                QueryCollisionMapNeighborhood(particle.posX, particle.posZ, 5, x, z, center, 8);
+                particle.posX = WrapSignedWord(particle.posX + x);
+                particle.posZ = WrapSignedWord(particle.posZ + z);
+            } while ((x != 0 || z != 0) && center != 8);
+            particle.velocityX = RandomSigned(4);
+            particle.velocityY = static_cast<std::int16_t>(Random(6) + 2);
+            particle.velocityZ = RandomSigned(4);
+            particle.behavior = BehaviorType::Behavior_1;
+        }
+        else
+        {
+            if (linkedSlot >= worldObjects.size())
+            {
+                throw std::out_of_range("Breakup particle references a world-object slot outside 0..165.");
+            }
+            const auto& linked = worldObjects[linkedSlot];
+            const auto radius = static_cast<std::uint16_t>(linked.collisionRadiusXZ);
+            const auto offsetX = RandomSigned(radius >> 1);
+            const auto x = WrapSignedWord(linked.posX +
+                GetStepToward(linked.posX, soundListenerX, radius >> 2) + offsetX);
+            const auto halfY = linked.collisionRadiusY >= 0 ? linked.collisionRadiusY / 2 :
+                -((-static_cast<int>(linked.collisionRadiusY) + 1) / 2);
+            const auto y = WrapSignedWord(linked.posY + RandomSigned(static_cast<std::uint16_t>(halfY)));
+            const auto offsetZ = RandomSigned(radius >> 1);
+            const auto z = WrapSignedWord(linked.posZ +
+                GetStepToward(linked.posZ, soundListenerZ, radius >> 2) + offsetZ);
+            InitializeSmokeParticle(particle, x, y, z, linked.collisionRadiusXZ, 1, linked.renderPlacementMode);
+        }
+    }
+
+    void GameContext::SpawnActivationParticle(std::int16_t x, std::int16_t y, std::int16_t z,
+        std::int16_t angle, std::int16_t speed)
+    {
+        auto& particle = worldObjects[FindFreeOrLowestHealthObjectIndex()];
+        particle.health = 100;
+        particle.field_07 = 1;
+        particle.spriteScale = 35;
+        particle.behavior = BehaviorType::FlyingArrow;
+        particle.collisionType = CollisionType::FlyingArrow;
+        particle.posX = x;
+        particle.posY = y;
+        particle.posZ = z;
+        GetClampedDirectionDisplacement(particle.velocityX, particle.velocityZ,
+            static_cast<std::int16_t>(angle & 511), speed);
+        particle.modelId = 1;
+        particle.animFrame = static_cast<std::uint8_t>(Random(2) + 1);
+        particle.modelAnim = 5;
+        particle.displayType = DisplayType::SpriteTransparent;
+        particle.velocityY = static_cast<std::int16_t>(Random(6));
+        particle.itemValue = 6;
+        particle.behaviorParameter = 70;
+        particle.collisionRadiusXZ = 55;
+        particle.collisionRadiusY = 25;
+        particle.spriteScale = static_cast<std::uint8_t>(Random(20) + 40);
+        particle.health = static_cast<std::int16_t>(Random(10) + 25);
+        particle.renderPlacementMode = 3;
+        particle.blendWeightOrSpriteOpacity = 20;
+        const auto floor = WrapSignedWord(GetTerrainFloorHeight(x, y, z) + 8);
+        if (particle.posY < floor) { particle.posY = floor; }
+    }
+
+    void GameContext::DamageObject(RawGameObject& object, std::int16_t amount)
+    {
+        const auto volume = GetSoundVolumeAt(object.posX, object.posZ);
+        const auto originalStrength = object.groupIndexOrLock;
+        const auto play = [&](std::uint8_t effect, std::uint8_t loudness, std::int16_t limit)
+        {
+            if (effect != 0) { PlaySoundEffect(static_cast<SoundEffect>(effect), loudness, object, limit); }
+        };
+        if (amount == 0 && object.health > 1000 && object.health < 2000)
+        {
+            switch (object.collisionType)
+            {
+            case CollisionType::BurnableOilPuddle:
+                if (object.displayType == DisplayType::VectorNormal)
+                {
+                    object.displayType = DisplayType::LastVectorBurning;
+                }
+                break;
+            case CollisionType::None:
+            case CollisionType::RotatingBlades:
+            case CollisionType::Ghost:
+            case CollisionType::ClimbableLadder:
+            case CollisionType::AttachableDamageObject:
+            case CollisionType::Key:
+            case CollisionType::Medicine:
+            case CollisionType::LiftUp:
+            case CollisionType::WalkablePlanks:
+            case CollisionType::Weapon:
+            case CollisionType::PushPlayer:
+                object.health = 1000;
+                break;
+            default: break;
+            }
+        }
+        // Keep the existing skeleton helper's subtraction and fragment ordering in one place.
+        if (object.collisionType == CollisionType::Skeleton) { DamageSkeleton(object, amount); return; }
+        if (object.groupIndexOrLock > 0)
+        {
+            object.groupIndexOrLock = WrapSignedWord(object.groupIndexOrLock - amount);
+        }
+        switch (object.collisionType)
+        {
+        case CollisionType::CeilingConcreteSlabStake: return;
+        case CollisionType::RopeSwitch:
+            object.posY = WrapSignedWord(object.posY + amount);
+            return;
+        case CollisionType::MirrorToGrab:
+            if (amount > 100) { object.winX = 128; }
+            return;
+        case CollisionType::KnightShootsArrow:
+            play(object.soundEffectId, volume, 2);
+            object.groupIndexOrLock = originalStrength;
+            return;
+        case CollisionType::VaseToGrab:
+            if (amount < 200) { object.groupIndexOrLock = originalStrength; return; }
+            if (object.groupIndexOrLock > 0) { return; }
+            StopAllSoundEffects();
+            play(object.soundEffectId, volume, 2);
+            object.collisionType = CollisionType::None;
+            object.field_07 = 0;
+            object.behavior = BehaviorType::None;
+            if (object.modelFrame2 > 0) { object.animFrame = object.modelFrame2; }
+            if (WrapSignedWord(object.field_28) > 0)
+            {
+                const auto slot = FindFreeOrLowestHealthObjectIndex();
+                worldObjects[slot] = object;
+                object.collisionType = CollisionType::Key;
+                object.field_32 = 4;
+                object.field_07 = 3;
+                object.displayType = DisplayType::VectorUnlit;
+                object.renderPlacementMode = 5;
+                object.modelId = 39;
+                object.modelAnim = 1;
+                object.animFrame = 1;
+                object.itemValue = WrapSignedWord(object.field_28);
+            }
+            return;
+        case CollisionType::Weapon:
+        case CollisionType::Ammo:
+            if (amount == -1) { object.field_07 = 0; object.health = 10; }
+            else { object.groupIndexOrLock = originalStrength; }
+            return;
+        case CollisionType::Type_138:
+            object.behavior = static_cast<BehaviorType>(static_cast<std::uint16_t>(object.doorLockOrGroupBitmask));
+            object.collisionType = CollisionType::None;
+            object.displayType = DisplayType::SpriteTransparent;
+            return;
+        case CollisionType::Door:
+            if (object.doorLockOrGroupBitmask < 1 && amount == 0)
+            {
+                if (object.blendWeightOrSpriteOpacity < 100)
+                {
+                    object.field_26 = 3;
+                    if (object.modelFrame2 == 0) { object.displayType = DisplayType::Hidden; }
+                    play(object.soundEffectId, volume, 1);
+                }
+                object.itemValue = WrapSignedWord(object.field_24);
+            }
+            return;
+        case CollisionType::WallDestruction:
+        {
+            if (!level || !collisionMap) { throw std::runtime_error("Wall destruction requires level geometry and collision memory."); }
+            const auto cell = GetHeightPosition(object.posX, object.posZ);
+            const auto column = WrapSignedWord(object.posX - 112) / 25;
+            const auto row = WrapSignedWord(162 - WrapSignedWord(object.posZ - 38) / 25);
+            const auto stride = static_cast<std::size_t>(collisionMap->widthMinusOne) + 1;
+            for (int dx = -1; dx <= 2; ++dx)
+            {
+                for (int dz = -1; dz <= 2; ++dz)
+                {
+                    const int px = column + dx;
+                    const int pz = row + dz;
+                    if (px < 0 || pz < 0 || px > collisionMap->widthMinusOne || pz > collisionMap->heightMinusOne) { continue; }
+                    const auto index = static_cast<std::size_t>(pz) * stride + px;
+                    if (index >= CollisionMap::VARIABLE_SIZE) { throw std::out_of_range("Wall destruction exceeds collision-map storage."); }
+                    auto& pixel = collisionMap->data[index];
+                    if ((pixel & 0x38) == 0x38) { pixel = 0; }
+                }
+            }
+            object.health = 0;
+            object.posX = WrapSignedWord(object.posX / 100);
+            object.posZ = WrapSignedWord(41 - object.posZ / 100);
+            level->wallTextures[cell.row][cell.column] = 0;
+            ++level->geometryRevision;
+            return;
+        }
+        case CollisionType::WaterRecharge:
+        {
+            if (!level) { throw std::runtime_error("Water-recharge activation requires level geometry."); }
+            const auto cell = GetHeightPosition(object.posX, object.posZ);
+            object.collisionType = CollisionType::None;
+            level->floorObjects[cell.row][cell.column] = static_cast<std::uint8_t>(object.itemValue);
+            ++level->geometryRevision;
+            return;
+        }
+        case CollisionType::PushingEnemy:
+            if (object.groupIndexOrLock < 1)
+            {
+                object.animFrame = 1; object.modelFrame2 = 2; object.modelAnim = 3;
+                object.collisionType = CollisionType::None; object.field_07 = 0;
+                object.field_24 = 1; object.field_26 = 0;
+                object.blendWeightOrSpriteOpacity = 0; object.itemValue = 0;
+                object.renderPlacementMode = 3;
+                play(12, volume, 2);
+            }
+            else if (amount > 1)
+            {
+                play(11, volume, 1);
+                ApplyObjectKnockback(object, amount);
+            }
+            return;
+        case CollisionType::SpiderLarge:
+        {
+            constexpr std::array<std::array<std::uint8_t, 2>, 32> sounds{{ {16,13}, {26,26} }};
+            if (object.soundEffectId >= sounds.size()) { throw std::out_of_range("Spider sound-pair index must be in 0..31."); }
+            if (object.groupIndexOrLock < 1)
+            {
+                object.animFrame = 5; object.modelFrame2 = 4;
+                object.collisionType = CollisionType::None; object.field_07 = 0;
+                object.velocityY = 10; object.posY = WrapSignedWord(object.posY + object.velocityY);
+                object.field_24 = 1; object.blendWeightOrSpriteOpacity = -100;
+                StopAllSoundEffects();
+                play(sounds[object.soundEffectId][0], volume, 2);
+            }
+            else if (amount > 1) { play(sounds[object.soundEffectId][1], volume, 1); }
+            return;
+        }
+        case CollisionType::Harvestman:
+            if (object.groupIndexOrLock < 1)
+            {
+                object.modelFrame2 = 15; object.collisionType = CollisionType::None; object.field_07 = 0;
+                object.field_24 = 1; object.blendWeightOrSpriteOpacity = 0; object.field_26 = 0;
+            }
+            return;
+        case CollisionType::Devil:
+            if (object.groupIndexOrLock < 1)
+            {
+                object.modelFrame2 = object.animFrame; object.modelAnim = 1; object.animFrame = 4;
+                object.collisionType = CollisionType::None; object.field_07 = 0;
+                object.field_24 = 1; object.blendWeightOrSpriteOpacity = 100; object.field_26 = 0;
+                play(12, volume, 2);
+            }
+            else if (amount > 1) { play(11, volume, 1); }
+            return;
+        case CollisionType::Dragon:
+            if (object.groupIndexOrLock < 1 && object.behavior != BehaviorType::Behavior_61)
+            {
+                object.doorLockOrGroupBitmask = 0; object.behavior = BehaviorType::Behavior_61;
+                object.blendWeightOrSpriteOpacity = 0; object.animFrame = 1; object.modelFrame2 = 2;
+                object.modelAnim = 2; object.field_26 = 0; object.itemValue = 4; object.field_24 = 250;
+            }
+            else
+            {
+                if (originalStrength / 1000 != object.groupIndexOrLock / 1000 && Random(3) == 0)
+                {
+                    object.itemValue = -130;
+                    play(42, GetSoundVolume(static_cast<std::int16_t>(
+                        GetSoundDistanceAt(object.posX, object.posZ) / 2)), 3);
+                }
+                object.velocityY = 100;
+            }
+            return;
+        case CollisionType::Cockroach:
+            if (object.groupIndexOrLock < 1)
+            {
+                if (amount < 100) { play(object.soundEffectId, volume, 1); }
+                if (object.itemValue < 7)
+                {
+                    object.collisionType = CollisionType::None;
+                    if (object.field_07 != 131) { object.field_07 = 0; }
+                    object.itemValue = 7; object.winX = 0; object.winZ = 0;
+                }
+                if (object.itemValue == 15) { object.itemValue = 16; object.blendWeightOrSpriteOpacity = -100; }
+                if (object.displayType == DisplayType::Hidden) { object.health = 0; }
+            }
+            else { play(26, volume, 1); }
+            return;
+        case CollisionType::Shark:
+            if (object.groupIndexOrLock < 1 && object.health == 1000)
+            {
+                object.modelAnim = 3; object.velocityY = 3; object.health = 2000;
+                object.animFrame = 1; object.modelFrame2 = 2; object.itemValue = 200;
+            }
+            SpawnWaterImpact(object.posX, object.posZ);
+            return;
+        case CollisionType::Crab:
+            if (object.groupIndexOrLock <= 0)
+            {
+                object.field_07 = 0; object.behavior = BehaviorType::None;
+                object.modelAnim = 2; object.animFrame = 1; object.modelFrame2 = 0;
+                play(26, volume, 1);
+            }
+            return;
+        case CollisionType::Switch:
+            if (object.itemValue > 0 && object.blendWeightOrSpriteOpacity == 0)
+            {
+                if (object.health == 1000) { ActivateObjectGroup(object.itemValue); }
+                object.groupIndexOrLock = 1; object.field_26 = 10;
+                play(object.soundEffectId, volume, 1);
+            }
+            return;
+        case CollisionType::BatIndoor:
+            if (object.groupIndexOrLock < 1)
+            {
+                object.velocityY = 2; object.collisionType = CollisionType::None;
+                object.health = 2000; object.blendWeightOrSpriteOpacity = -100;
+            }
+            return;
+        case CollisionType::RatAndSnake:
+            if (object.health == 1000)
+            {
+                if (object.modelAnim == 1) { play(17, GetSoundVolume(0), 1); }
+                else if (object.modelAnim == 2) { play(20, GetSoundVolume(200), 1); }
+                object.modelFrame2 = object.animFrame; object.animFrame = 3;
+                object.field_07 = 0; object.collisionType = CollisionType::None; object.health = 1500;
+                object.velocityY = 8; object.posY = WrapSignedWord(object.posY + object.velocityY);
+                object.blendWeightOrSpriteOpacity = -100;
+            }
+            return;
+        case CollisionType::FlyingArrow:
+            if (object.health == 1000) { object.health = 0; }
+            return;
+        case CollisionType::Type_22:
+            object.posX = WrapSignedWord(object.posX - 2 * object.velocityX);
+            object.posZ = WrapSignedWord(object.posZ - 2 * object.velocityZ);
+            PlaySoundEffect(static_cast<SoundEffect>(37), volume, 467, 1);
+            for (int i = 0; i < 9; ++i) { SpawnBreakupParticle(object, amount, 10, 10, 10); }
+            object.health = 0;
+            return;
+        case CollisionType::DestroyOnCollide:
+            object.field_07 = 0; object.collisionType = CollisionType::None;
+            object.animFrame = static_cast<std::uint8_t>(object.animFrame + 1);
+            return;
+        case CollisionType::DestroyableBarrier:
+            if (object.soundEffectId == 0) { play(52, GetSoundVolume(0), 1); }
+            object.field_24 = static_cast<std::uint16_t>(object.field_24 + object.behaviorParameter * amount);
+            if (static_cast<std::int16_t>(object.field_24 >> 8) >= object.doorLockOrGroupBitmask)
+            {
+                object.field_07 = 0; object.field_24 = 32000;
+            }
+            return;
+        case CollisionType::DiggableGround:
+            if (amount == 5)
+            {
+                if (selectedWeapon == WeaponType::Showel) { weaponAnimationRecoil = 2; }
+                play(54, GetSoundVolume(0), 1);
+                object.itemValue = WrapSignedWord(object.itemValue + object.behaviorParameter);
+            }
+            else { object.groupIndexOrLock = originalStrength; }
+            return;
+        case CollisionType::Dog:
+            if (object.groupIndexOrLock < 1)
+            {
+                play(50, volume, 2);
+                object.itemValue = 100; object.modelAnim = 1; object.animFrame = 3; object.modelFrame2 = 4;
+                object.blendWeightOrSpriteOpacity = 0; object.field_26 = 0;
+                object.field_07 = 0; object.collisionType = CollisionType::None;
+            }
+            else if (object.itemValue == 1) { object.itemValue = -2; }
+            return;
+        case CollisionType::AnacondaHead:
+            if (object.groupIndexOrLock < 1)
+            {
+                play(48, GetSoundVolume(0), 1);
+                object.behavior = BehaviorType::Behavior_87; object.health = 2000;
+                object.modelAnim = 3; object.animFrame = 3; object.modelFrame2 = 0; object.renderPlacementMode = 1;
+            }
+            else
+            {
+                object.field_24 = 10;
+                if (amount > 1) { play(object.soundEffectId, volume, 1); }
+            }
+            return;
+        case CollisionType::AnacondaTail:
+            if (object.groupIndexOrLock < 1)
+            {
+                object.health = 2000; play(3, volume, 1); object.modelAnim = 3; object.animFrame = 1;
+            }
+            return;
+        case CollisionType::AttachableDamageObject:
+        case CollisionType::KrakenHead:
+            if (object.groupIndexOrLock < 1 && object.health == 1000)
+            {
+                if (object.collisionType == CollisionType::AttachableDamageObject)
+                {
+                    object.modelFrame2 = 5;
+                    if (object.doorLockOrGroupBitmask > 0)
+                    {
+                        const auto slot = static_cast<std::size_t>(object.doorLockOrGroupBitmask);
+                        if (slot >= worldObjects.size()) { throw std::out_of_range("Attached damage target is outside 0..165."); }
+                        worldObjects[slot].field_28 = static_cast<std::uint16_t>(worldObjects[slot].field_28 - object.field_28);
+                    }
+                }
+                else { object.modelFrame2 = 2; }
+                play(16, volume, 1);
+                object.field_07 = 0; object.collisionType = CollisionType::None; object.health = 2000;
+                object.blendWeightOrSpriteOpacity = 0; object.behavior = BehaviorType::AttachableDamageObject;
+            }
+            return;
+        case CollisionType::ActivateSpiders:
+            if (object.groupIndexOrLock < 1 && object.health == 1000)
+            {
+                if (amount < 200) { object.groupIndexOrLock = originalStrength; return; }
+                for (int i = 1; i <= 20; ++i)
+                {
+                    const auto x = WrapSignedWord(object.posX + RandomSigned(15));
+                    const auto heightOffset = Random(10);
+                    const auto y = WrapSignedWord(GetTerrainFloorHeight(object.posX, object.posY, object.posZ) + heightOffset);
+                    const auto z = WrapSignedWord(object.posZ + RandomSigned(15));
+                    const auto angle = static_cast<std::int16_t>(Random(512));
+                    const auto speed = static_cast<std::int16_t>(Random(
+                        static_cast<std::uint16_t>(WrapSignedWord(object.doorLockOrGroupBitmask + 1))));
+                    SpawnActivationParticle(x, y, z, angle, speed);
+                }
+                object.health = 35;
+                play(object.soundEffectId, GetSoundVolume(0), 1);
+            }
+            return;
+        case CollisionType::DamageObj:
+            if (amount == -1)
+            {
+                object.behavior = BehaviorType::WalkableDrawBridge;
+                std::swap(object.animFrame, object.modelFrame2);
+                object.blendWeightOrSpriteOpacity = 100; object.velocityZ = 3;
+                object.displayType = static_cast<DisplayType>(80); object.field_07 = 0;
+                play(20, GetSoundVolume(0), 1);
+                for (int i = -1; i <= 3; ++i)
+                {
+                    auto& particle = worldObjects[FindFreeObjectIndex()];
+                    const auto x = WrapSignedWord(object.posX + RandomSigned(
+                        static_cast<std::uint16_t>(object.collisionRadiusXZ)));
+                    const auto y = WrapSignedWord(object.posY + i * 3);
+                    const auto z = WrapSignedWord(object.posZ + RandomSigned(
+                        static_cast<std::uint16_t>(object.collisionRadiusXZ)));
+                    InitializeSmokeParticle(particle, x, y, z, object.collisionRadiusXZ, 1, object.renderPlacementMode);
+                }
+            }
+            return;
+        default:
+            object.groupIndexOrLock = originalStrength;
+            return;
+        }
+    }
+
+    void GameContext::SpawnSkeletonFragment(const RawGameObject& source, std::uint16_t part,
+        std::int16_t x, std::int16_t y, std::int16_t z)
+    {
+        const auto slot = FindFreeObjectIndex();
+        // The native allocator can clear the source itself; read it after allocation.
+        if (source.collisionType == CollisionType::None) { return; }
+        if (source.collisionType != CollisionType::Skeleton)
+        {
+            throw std::invalid_argument("SpawnSkeletonFragment requires collision type Skeleton.");
+        }
+        auto& fragment = worldObjects[slot];
+        fragment.modelId = source.modelId;
+        fragment.modelAnim = static_cast<std::uint8_t>(part);
+        fragment.displayType = source.displayType;
+        fragment.animFrame = 5;
+        fragment.winY = WrapSignedWord(source.winY + part);
+        part &= 255;
+        fragment.health = 1000;
+        fragment.soundEffectId = 6;
+        fragment.behavior = BehaviorType::Behavior_1;
+        fragment.itemValue = 85;
+        fragment.field_24 = 8;
+        fragment.winX = 128;
+        fragment.velocityX = RandomSigned(2);
+        fragment.velocityZ = RandomSigned(2);
+        fragment.velocityY = WrapSignedWord(5 - part);
+        if (part == 1 || part == 2) { fragment.itemValue = 40; }
+        else if (part == 4 || part == 5) { fragment.modelFrame2 = 35; }
+        else if (part == 6)
+        {
+            fragment.modelId = 39;
+            fragment.modelAnim = 2;
+            fragment.animFrame = 2;
+            fragment.doorLockOrGroupBitmask = 6;
+            fragment.spriteScale = 41;
+            fragment.field_07 = 1;
+            fragment.winX = 0;
+            fragment.itemValue = 2;
+            fragment.collisionType = CollisionType::Weapon;
+            fragment.displayType = DisplayType::VectorNormal;
+            fragment.field_24 = 0;
+            fragment.collisionRadiusXZ = 15;
+            fragment.collisionRadiusY = 10;
+            fragment.field_32 = 40;
+            fragment.soundEffectId = 39;
+        }
+        fragment.posX = WrapSignedWord(source.posX + x);
+        fragment.posY = WrapSignedWord(source.posY - y);
+        fragment.posZ = WrapSignedWord(source.posZ + z);
+    }
+
+    void GameContext::DamageSkeleton(RawGameObject& object, std::int16_t amount)
+    {
+        if (object.collisionType != CollisionType::Skeleton)
+        {
+            throw std::invalid_argument("DamageSkeleton requires collision type Skeleton.");
+        }
+        const auto volume = GetSoundVolumeAt(object.posX, object.posZ);
+        if (object.groupIndexOrLock > 0)
+        {
+            object.groupIndexOrLock = WrapSignedWord(object.groupIndexOrLock - amount);
+        }
+        if (object.groupIndexOrLock < 1)
+        {
+            std::int16_t x;
+            std::int16_t z;
+            GetClampedDirectionDisplacement(x, z, WrapSignedWord(object.winY - 128), 3);
+            SpawnSkeletonFragment(object, 1, 0, -28, 0);
+            SpawnSkeletonFragment(object, 2, 0, -12, 0);
+            SpawnSkeletonFragment(object, 3, 0, 0, 0);
+            SpawnSkeletonFragment(object, 6, WrapSignedWord(x * 4), 5, WrapSignedWord(z * 4));
+            SpawnSkeletonFragment(object, 4, x, -8, z);
+            SpawnSkeletonFragment(object, 260, WrapSignedWord(-x), -8, WrapSignedWord(-z));
+            SpawnSkeletonFragment(object, 4, x, 14, z);
+            SpawnSkeletonFragment(object, 260, WrapSignedWord(-x), 14, WrapSignedWord(-z));
+            object.health = 0;
+        }
+        else if (amount > 1)
+        {
+            PlaySoundEffect(static_cast<SoundEffect>(11), volume, object, 1);
+        }
+    }
+
+    void GameContext::SpawnWaterImpact(std::int16_t x, std::int16_t z)
+    {
+        auto& impact = worldObjects[FindFreeOrLowestHealthObjectIndex()];
+        impact.posX = x;
+        impact.posZ = z;
+        const auto isWater = [this](std::int16_t px, std::int16_t pz)
+        {
+            const auto material = GetCollisionMapPixelAtWorldXZ(px, pz) & 7;
+            return material == 1 || material == 3;
+        };
+        for (int dx = -1; dx <= 1; ++dx)
+        {
+            for (int dz = -1; dz <= 1; ++dz)
+            {
+                if (!isWater(WrapSignedWord(impact.posX + dx * 25), WrapSignedWord(impact.posZ + dz * 25)))
+                {
+                    impact.posX = WrapSignedWord(impact.posX - dx * 25);
+                    impact.posZ = WrapSignedWord(impact.posZ - dz * 25);
+                }
+            }
+        }
+        PlaySoundEffect(static_cast<SoundEffect>(43), GetSoundVolumeAt(x, z), -7, 2);
+        impact.modelId = 39;
+        impact.posY = GetFloorHeight(impact.posX, 0, impact.posZ);
+        impact.modelAnim = 4;
+        impact.animFrame = 1;
+        impact.modelFrame2 = 2;
+        impact.health = 1000;
+        impact.displayType = DisplayType::VectorNormal;
+        impact.winY = static_cast<std::int16_t>(Random(512));
+        impact.behavior = BehaviorType::WaterImpact;
+        impact.itemValue = 3;
+        impact.renderPlacementMode = 3;
+        if ((GetCollisionMapPixelAtWorldXZ(impact.posX, impact.posZ) & 7) == 3)
+        {
+            impact.displayType = DisplayType::VectorBrightness1;
+        }
+    }
+
     std::uint16_t GameContext::SpawnFireParticle(const RawGameObject& source)
     {
         const auto x = source.posX;
@@ -741,7 +1417,7 @@ namespace Desperabis
         object.modelFrame2 = 1;
         object.blendWeightOrSpriteOpacity = 100;
         object.displayType = DisplayType::Type30;
-        object.behavior = BehaviorType::ExplosionSmokeCloud;
+        object.behavior = BehaviorType::DriftingParticle;
         object.collisionType = CollisionType::None;
         object.velocityY = 1;
         // The old position chooses the drift direction before X/Z are replaced.
@@ -777,6 +1453,268 @@ namespace Desperabis
         object.renderPlacementMode = placement;
         const auto floor = GetFloorHeight(object.posX, object.posY, object.posZ);
         if (object.posY < floor) { object.posY = floor; }
+    }
+
+    void GameContext::RefreshWeaponInventory()
+    {
+        if (inventory[1].collisionType == CollisionType::Weapon && inventory[1].health == 1000)
+        {
+            requestedWeaponHand = 2;
+        }
+        else if (inventory[0].collisionType == CollisionType::Weapon && inventory[0].health == 1000)
+        {
+            requestedWeaponHand = 1;
+        }
+        weaponInventorySlots.fill(0);
+        for (std::size_t index = 0; index < inventory.size(); ++index)
+        {
+            const auto& item = inventory[index];
+            if (item.collisionType != CollisionType::Weapon || item.health != 1000 || item.itemValue <= 0)
+            {
+                continue;
+            }
+            if (static_cast<std::size_t>(item.itemValue) >= weaponInventorySlots.size())
+            {
+                throw std::out_of_range("Inventory weapon ID must fit the native 32-entry registry.");
+            }
+            weaponInventorySlots[static_cast<std::size_t>(item.itemValue)] =
+                static_cast<std::uint16_t>(index + 1);
+        }
+    }
+
+    void GameContext::UpdateWeaponSelection()
+    {
+        if (positionalSoundsSuppressed) { return; }
+        requestedWeaponHand = 0;
+        for (int hand = 2; hand >= 1; --hand)
+        {
+            const auto& item = inventory[static_cast<std::size_t>(hand - 1)];
+            if (item.collisionType != CollisionType::Weapon || item.health != 1000) { continue; }
+            if (item.itemValue < 0 || static_cast<std::size_t>(item.itemValue) >= weaponAmounts.size())
+            {
+                throw std::out_of_range("Held weapon ID must fit the native 32-entry amount table.");
+            }
+            requestedWeaponHand = static_cast<std::uint8_t>(hand);
+            break;
+        }
+        const auto next = requestedWeaponHand == 0 ? WeaponType::None :
+            static_cast<WeaponType>(inventory[requestedWeaponHand - 1].itemValue);
+        if (requestedWeapon != next)
+        {
+            weaponAnimationSpeed = -1;
+            requestedWeapon = next;
+        }
+    }
+
+    void GameContext::CommitWeaponSelection()
+    {
+        const auto index = static_cast<std::size_t>(requestedWeapon);
+        if (index >= weaponAmounts.size()) { throw std::out_of_range("Invalid requested weapon ID."); }
+        weaponAnimationSpeed = -2;
+        selectedWeapon = requestedWeapon;
+        weaponSpriteFrame = 0;
+        weaponHand = requestedWeaponHand;
+        weaponReady = weaponAmounts[index] > 0;
+    }
+
+    bool GameContext::SelectWeapon(WeaponType weapon)
+    {
+        const auto index = static_cast<std::size_t>(weapon);
+        if (index >= weaponAmounts.size()) { throw std::out_of_range("Invalid weapon selection ID."); }
+        if (weaponAnimationSpeed != 0 || selectedWeapon == weapon ||
+            weaponInventorySlots[index] == 0 || weaponAmounts[index] <= 0)
+        {
+            return false;
+        }
+        const auto slot = weaponInventorySlots[index];
+        if (slot > inventory.size()) { throw std::out_of_range("Weapon registry slot must be in 1..14."); }
+        std::swap(inventory[1], inventory[slot - 1]);
+        if (selectedWeapon == WeaponType::TrapOrPole)
+        {
+            if (weaponHand == 2) { weaponHand = static_cast<std::uint8_t>(slot); }
+            else if (weaponHand == slot) { weaponHand = 2; }
+        }
+        RefreshWeaponInventory();
+        requestedWeapon = weapon;
+        requestedWeaponHand = 2;
+        weaponAnimationSpeed = -1;
+        return true;
+    }
+
+    void GameContext::InitializeWeaponCollider(std::uint16_t slot, std::int16_t reach,
+        std::int16_t yOffset, std::uint8_t damage, std::int16_t radiusXZ,
+        std::int16_t radiusY, std::int16_t lifetime)
+    {
+        if (slot == 0) { return; }
+        if (slot >= worldObjects.size()) { throw std::out_of_range("Weapon collider slot exceeds 165."); }
+        auto& object = worldObjects[slot];
+        object.health = lifetime;
+        object.collisionRadiusXZ = radiusXZ;
+        object.collisionRadiusY = radiusY;
+        object.field_07 = 254;
+        object.behaviorParameter = damage;
+        object.behavior = BehaviorType::WeaponDamageCollider;
+        const auto displacement = [reach](std::int16_t direction)
+        {
+            const auto result = WrapSignedWord(direction * reach) / 100;
+            if (result < -128 || result > 127)
+            {
+                throw std::overflow_error("Weapon contact displacement overflows native signed-byte division.");
+            }
+            return result;
+        };
+        const auto camera = GetPlayerCamera();
+        object.posX = WrapSignedWord(camera.position[0] + displacement(worldObjects[1].velocityX));
+        const auto look = WrapSignedWord(playerLookHeight - 90);
+        const auto pitchOffset = look >= 0 ? look / 4 : (static_cast<int>(look) - 3) / 4;
+        object.posY = WrapSignedWord(camera.position[1] + yOffset + pitchOffset);
+        object.posZ = WrapSignedWord(camera.position[2] + displacement(worldObjects[1].velocityZ));
+        if (debugWeaponColliders)
+        {
+            object.modelId = 1;
+            object.modelAnim = 1;
+            object.displayType = DisplayType::SpriteTransparent;
+            object.renderPlacementMode = 64;
+        }
+    }
+
+    WeaponActionStatus GameContext::AttackWithSelectedWeapon()
+    {
+        if (weaponAnimationSpeed != 0 || !weaponReady || positionalSoundsSuppressed)
+        {
+            return WeaponActionStatus::NoEffect;
+        }
+        if (selectedWeapon != WeaponType::None && selectedWeapon != WeaponType::Dagger &&
+            selectedWeapon != WeaponType::Sword)
+        {
+            return WeaponActionStatus::UnimplementedWeapon;
+        }
+        const auto index = static_cast<std::size_t>(selectedWeapon);
+        weaponReady = weaponAmounts[index] > 0;
+        if (playerUnderwater && selectedWeapon > WeaponType::Dagger) { return WeaponActionStatus::NoEffect; }
+        weaponAmounts[index] = WrapSignedWord(weaponAmounts[index] - 1);
+        weaponReady = weaponAmounts[index] > 0;
+        const auto slot = FindFreeOrLowestHealthObjectIndex();
+        weaponAnimationSpeed = -3;
+        if (selectedWeapon == WeaponType::Dagger)
+        {
+            InitializeWeaponCollider(slot, 40, -12, 8, 18, 8, 10);
+        }
+        // Sword/unarmed input still clears a reclaiming allocation; their contact is delayed.
+        RefreshWeaponInventory();
+        return WeaponActionStatus::Applied;
+    }
+
+    WeaponActionStatus GameContext::UpdateWeaponAnimation(std::int16_t ticks)
+    {
+        if (ticks < 0) { throw std::invalid_argument("Weapon animation ticks must be nonnegative."); }
+        if (worldObjects[1].itemValue > 0) { return WeaponActionStatus::NoEffect; }
+        const auto decay = [&]
+        {
+            if (weaponAnimationSpeed > 0)
+            {
+                weaponAnimationSpeed = WrapSignedWord(weaponAnimationSpeed +
+                    GetStepToward(weaponAnimationSpeed, 0, ticks));
+            }
+        };
+        if (selectedWeapon == WeaponType::None)
+        {
+            if (field_D500)
+            {
+                weaponSpriteFrame = 1;
+                weaponAmounts[0] = 100;
+                if (weaponAnimationSpeed == -1 || weaponAnimationSpeed == -2) { weaponAnimationSpeed = 0; }
+                else if (weaponAnimationSpeed == -3) { weaponAnimationSpeed = 14; }
+                decay();
+                if (weaponAnimationSpeed >= 11 && weaponAnimationSpeed <= 20)
+                {
+                    weaponAnimationPosition = WrapSignedWord(70 - (weaponAnimationSpeed - 11) * 22);
+                }
+                else if (weaponAnimationSpeed >= 0 && weaponAnimationSpeed <= 10)
+                {
+                    weaponAnimationPosition = WrapSignedWord(weaponAnimationSpeed * 6 + 10);
+                }
+                else if (selectedWeapon != requestedWeapon)
+                {
+                    CommitWeaponSelection();
+                    return WeaponActionStatus::Applied;
+                }
+                if (weaponAnimationSpeed <= 10 && WrapSignedWord(weaponAnimationSpeed + ticks) > 10)
+                {
+                    InitializeWeaponCollider(FindFreeObjectIndex(), 30, -10, 4, 10, 10, 3);
+                }
+            }
+        }
+        else if (selectedWeapon == WeaponType::Dagger)
+        {
+            weaponSpriteFrame = 1;
+            weaponAmounts[1] = 100;
+            weaponReady = true;
+            const auto phase = weaponAnimationSpeed;
+            if (phase == -3) { weaponAnimationSpeed = 40; }
+            else if (phase == -1) { weaponAnimationSpeed = 20; }
+            else if (phase == -2) { weaponAnimationPosition = 1; weaponAnimationSpeed = 6; }
+            else if (phase == 0) { weaponAnimationPosition = 10; }
+            else if (phase >= 1 && phase <= 5) { weaponAnimationPosition = WrapSignedWord(10 - phase * 5); }
+            else if (phase >= 15 && phase <= 20) { weaponAnimationPosition = WrapSignedWord((phase - 15) * 5); }
+            else if (phase >= 21 && phase <= 30) { weaponAnimationSpeed = 0; }
+            else if (phase >= 31 && phase <= 40) { weaponAnimationPosition = WrapSignedWord((phase - 31) * 6 + 10); }
+            else
+            {
+                weaponAnimationPosition = 1;
+                if (selectedWeapon != requestedWeapon)
+                {
+                    CommitWeaponSelection();
+                    return WeaponActionStatus::Applied;
+                }
+            }
+            decay();
+        }
+        else if (selectedWeapon == WeaponType::Sword)
+        {
+            for (int tick = 0; tick < ticks; ++tick)
+            {
+                weaponAmounts[2] = 100;
+                weaponReady = true;
+                weaponSpriteFrame = 1;
+                switch (weaponAnimationSpeed)
+                {
+                case 0: weaponAnimationPosition = 20; break;
+                case -3: weaponAnimationPosition = 21; weaponAnimationSpeed = 20; break;
+                case -2: weaponAnimationPosition = 10; weaponAnimationSpeed = 10; break;
+                case -1: weaponAnimationPosition = 0; weaponAnimationSpeed = 1010; break;
+                case -4: weaponAnimationPosition = 0; weaponAnimationSpeed = 0; break;
+                default:
+                    if (weaponAnimationSpeed >= 900 && weaponAnimationSpeed <= 1000 &&
+                        selectedWeapon != requestedWeapon)
+                    {
+                        CommitWeaponSelection();
+                        return WeaponActionStatus::Applied;
+                    }
+                    break;
+                }
+                if (weaponAnimationSpeed > 0) { --weaponAnimationSpeed; }
+                if (weaponAnimationPosition != 20) { weaponAnimationPosition = WrapSignedWord(weaponAnimationPosition + 1); }
+                if (weaponAnimationPosition == 32 && weaponReady)
+                {
+                    PlaySoundEffect(static_cast<SoundEffect>(19), GetSoundVolume(0), -3, 2);
+                    InitializeWeaponCollider(FindFreeObjectIndex(), 45, -10, 20, 22, 12, 10);
+                    weaponReady = false;
+                }
+                if (weaponAnimationPosition >= 40)
+                {
+                    weaponAnimationSpeed = -2;
+                    weaponAnimationPosition = 10;
+                }
+            }
+        }
+        else { return WeaponActionStatus::UnimplementedWeapon; }
+        if (weaponAnimationSpeed == 0 &&
+            (weaponHand != requestedWeaponHand || selectedWeapon != requestedWeapon))
+        {
+            CommitWeaponSelection();
+        }
+        return WeaponActionStatus::Applied;
     }
 
     std::uint16_t GameContext::FindFreeObjectIndex()
@@ -1076,7 +2014,12 @@ namespace Desperabis
     {
         const auto distance = GetSoundDistanceAt(x, z);
         const auto scaled = WrapSignedWord(static_cast<std::int32_t>(distance) * distanceScale);
-        const auto magnitude = static_cast<std::uint16_t>(AbsoluteWord(scaled));
+        return GetSoundVolume(scaled);
+    }
+
+    std::uint8_t GameContext::GetSoundVolume(std::int16_t distance)
+    {
+        const auto magnitude = static_cast<std::uint16_t>(AbsoluteWord(distance));
         return static_cast<std::uint8_t>(std::clamp(355 - static_cast<int>(magnitude >> 1), 0, 255));
     }
 

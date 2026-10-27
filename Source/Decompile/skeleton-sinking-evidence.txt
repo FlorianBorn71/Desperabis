@@ -1,0 +1,50 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 10AC:29F5:0039
+10AC:29F5  C8 04 00 00              ENTER 0x4,0x0
+10AC:29F9  6B 7E 06 36              IMUL DI,word ptr [BP + 0x6],0x36
+10AC:29FD  81 C7 3C 82              ADD DI,0x823c
+10AC:2A01  89 7E FC                 MOV word ptr [BP + -0x4],DI
+10AC:2A04  8C 5E FE                 MOV word ptr [BP + -0x2],DS
+10AC:2A07  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:2A0A  26 C6 45 32 03           MOV byte ptr ES:[DI + 0x32],0x3
+10AC:2A0F  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:2A12  31 C0                    XOR AX,AX
+10AC:2A14  26 89 45 08              MOV word ptr ES:[DI + 0x8],AX
+10AC:2A18  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:2A1B  26 C7 45 22 05 00        MOV word ptr ES:[DI + 0x22],0x5
+10AC:2A21  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:2A24  26 C7 45 18 16 00        MOV word ptr ES:[DI + 0x18],0x16
+10AC:2A2A  C9                       LEAVE
+10AC:2A2B  CA 02 00                 RETF 0x2
+
+Range 0000:3746:005F
+0000:3746  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:3749  26 FF 75 0E              PUSH word ptr ES:[DI + 0xe]
+0000:374D  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:3750  26 FF 75 0C              PUSH word ptr ES:[DI + 0xc]
+0000:3754  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:3757  26 FF 75 0E              PUSH word ptr ES:[DI + 0xe]
+0000:375B  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:375E  26 FF 75 10              PUSH word ptr ES:[DI + 0x10]
+0000:3762  9A CF 18 48 2E           CALLF 0x2000:fd4f ; encoded analysis target 2E48:18CF, module 1E48:18CF
+0000:3767  50                       PUSH AX
+0000:3768  FF 76 04                 PUSH word ptr [BP + 0x4]
+0000:376B  9A 6C 0A 48 2E           CALLF 0x2000:eeec ; encoded analysis target 2E48:0A6C, module 1E48:0A6C
+0000:3770  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:3773  26 01 45 0E              ADD word ptr ES:[DI + 0xe],AX
+0000:3777  E9 96 19                 JMP 0x1000:5110 ; logical module target 0000:5110
+0000:377A  3D 77 00                 CMP AX,0x77
+0000:377D  75 2C                    JNZ 0x1000:37ab ; logical module target 0000:37AB
+0000:377F  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:3782  26 6B 7D 28 36           IMUL DI,word ptr ES:[DI + 0x28],0x36
+0000:3787  83 BD 44 82 00           CMP word ptr [DI + 0x8244],0x0
+0000:378C  75 1A                    JNZ 0x1000:37a8 ; logical module target 0000:37A8
+0000:378E  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:3791  26 C7 45 08 78 00        MOV word ptr ES:[DI + 0x8],0x78
+0000:3797  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:379A  26 C6 45 07 03           MOV byte ptr ES:[DI + 0x7],0x3
+0000:379F  C4 7E C6                 LES DI,[BP + -0x3a]
+STOP: instruction crosses requested range end.

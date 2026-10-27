@@ -1,0 +1,144 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 0000:03B4:000B
+0000:03B4  C6 06 00 D5 01           MOV byte ptr [0xd500],0x1
+0000:03B9  C6 06 02 D5 00           MOV byte ptr [0xd502],0x0
+STOP: instruction crosses requested range end.
+
+Range 0000:0DC8:000C
+0000:0DC8  C7 06 A4 D4 6E 00        MOV word ptr [0xd4a4],0x6e
+0000:0DCE  C7 06 B6 D4 6E 00        MOV word ptr [0xd4b6],0x6e
+
+Range 0000:DE38:00D8
+0000:DE38  07                       POP ES
+0000:DE39  00 8B F8 8A              ADD byte ptr [BP + DI + 0x8af8],CL
+0000:DE3D  85 86 03 30              TEST word ptr [BP + 0x3003],AX
+0000:DE41  E4 89                    IN AL,0x89
+0000:DE43  46                       INC SI
+0000:DE44  D8 83 7E EE              FADD float ptr [BP + DI + 0xee7e]
+0000:DE48  01 74 11                 ADD word ptr [SI + 0x11],SI
+0000:DE4B  83 3E 9A 82 01           CMP word ptr [0x829a],0x1
+0000:DE50  75 0A                    JNZ 0x1000:de5c ; logical module target 0000:DE5C
+0000:DE52  31 C0                    XOR AX,AX
+0000:DE54  A3 9A 82                 MOV [0x829a],AX
+0000:DE57  9A 23 CF AC 20           CALLF 0x2000:d9e3 ; encoded analysis target 20AC:CF23, module 10AC:CF23
+0000:DE5C  C6 06 FC D4 00           MOV byte ptr [0xd4fc],0x0
+0000:DE61  8B 46 EE                 MOV AX,word ptr [BP + -0x12]
+0000:DE64  25 07 00                 AND AX,0x7
+0000:DE67  3D 01 00                 CMP AX,0x1
+0000:DE6A  74 05                    JZ 0x1000:de71 ; logical module target 0000:DE71
+0000:DE6C  3D 03 00                 CMP AX,0x3
+0000:DE6F  75 65                    JNZ 0x1000:ded6 ; logical module target 0000:DED6
+0000:DE71  A1 D4 D4                 MOV AX,[0xd4d4]
+0000:DE74  2B 46 EA                 SUB AX,word ptr [BP + -0x16]
+0000:DE77  3D 05 00                 CMP AX,0x5
+0000:DE7A  7D 58                    JGE 0x1000:ded4 ; logical module target 0000:DED4
+0000:DE7C  9A 4B CF AC 20           CALLF 0x2000:da0b ; encoded analysis target 20AC:CF4B, module 10AC:CF4B
+0000:DE81  C7 06 9A 82 01 00        MOV word ptr [0x829a],0x1
+0000:DE87  FF 36 D2 D4              PUSH word ptr [0xd4d2]
+0000:DE8B  58                       POP AX
+0000:DE8C  B3 64                    MOV BL,0x64
+0000:DE8E  F6 FB                    IDIV BL
+0000:DE90  98                       CBW
+0000:DE91  50                       PUSH AX
+0000:DE92  FF 36 D6 D4              PUSH word ptr [0xd4d6]
+0000:DE96  58                       POP AX
+0000:DE97  B3 64                    MOV BL,0x64
+0000:DE99  F6 FB                    IDIV BL
+0000:DE9B  98                       CBW
+0000:DE9C  8B D0                    MOV DX,AX
+0000:DE9E  B8 29 00                 MOV AX,0x29
+0000:DEA1  2B C2                    SUB AX,DX
+0000:DEA3  6B F8 32                 IMUL DI,AX,0x32
+0000:DEA6  58                       POP AX
+0000:DEA7  03 F8                    ADD DI,AX
+0000:DEA9  8A 85 AD 59              MOV AL,byte ptr [DI + 0x59ad]
+0000:DEAD  30 E4                    XOR AH,AH
+0000:DEAF  50                       PUSH AX
+0000:DEB0  9A F9 1A 48 2E           CALLF 0x2000:ff79 ; encoded analysis target 2E48:1AF9, module 1E48:1AF9
+0000:DEB5  03 06 D4 D4              ADD AX,word ptr [0xd4d4]
+0000:DEB9  09 C0                    OR AX,AX
+0000:DEBB  7D 17                    JGE 0x1000:ded4 ; logical module target 0000:DED4
+0000:DEBD  C6 06 FC D4 01           MOV byte ptr [0xd4fc],0x1
+0000:DEC2  C6 86 D5 FE 00           MOV byte ptr [BP + 0xfed5],0x0
+0000:DEC7  6A 06                    PUSH 0x6
+0000:DEC9  9A 0A 17 E4 3C           CALLF 0x3000:e54a ; encoded analysis target 3CE4:170A, module 2CE4:170A
+0000:DECE  40                       INC AX
+0000:DECF  40                       INC AX
+0000:DED0  01 06 6C DC              ADD word ptr [0xdc6c],AX
+0000:DED4  EB 28                    JMP 0x1000:defe ; logical module target 0000:DEFE
+0000:DED6  3D 04 00                 CMP AX,0x4
+0000:DED9  75 18                    JNZ 0x1000:def3 ; logical module target 0000:DEF3
+0000:DEDB  C7 06 6A DC 02 00        MOV word ptr [0xdc6a],0x2
+0000:DEE1  6A 05                    PUSH 0x5
+0000:DEE3  9A 0A 17 E4 3C           CALLF 0x3000:e54a ; encoded analysis target 3CE4:170A, module 2CE4:170A
+0000:DEE8  09 C0                    OR AX,AX
+0000:DEEA  75 05                    JNZ 0x1000:def1 ; logical module target 0000:DEF1
+0000:DEEC  C7 46 D8 34 00           MOV word ptr [BP + -0x28],0x34
+0000:DEF1  EB 0B                    JMP 0x1000:defe ; logical module target 0000:DEFE
+0000:DEF3  3D 06 00                 CMP AX,0x6
+0000:DEF6  75 06                    JNZ 0x1000:defe ; logical module target 0000:DEFE
+0000:DEF8  C7 06 6A DC 03 00        MOV word ptr [0xdc6a],0x3
+0000:DEFE  80 3E CD 04 00           CMP byte ptr [0x4cd],0x0
+0000:DF03  74 63                    JZ 0x1000:df68 ; logical module target 0000:DF68
+0000:DF05  A1 D4 D4                 MOV AX,[0xd4d4]
+0000:DF08  2B 46 EA                 SUB AX,word ptr [BP + -0x16]
+0000:DF0B  3D 05 00                 CMP AX,0x5
+0000:DF0E  7D 58                    JGE 0x1000:df68 ; logical module target 0000:DF68
+
+Range 0000:DD60:0040
+0000:DD60  46                       INC SI
+0000:DD61  E8 50 6A                 CALL 0x1000:47b4 ; logical module target 0000:47B4
+0000:DD64  05 9A 6C                 ADD AX,0x6c9a
+0000:DD67  0A 48 2E                 OR CL,byte ptr [BX + SI + 0x2e]
+0000:DD6A  01 06 A4 D4              ADD word ptr [0xd4a4],AX
+0000:DD6E  83 3E C4 D4 00           CMP word ptr [0xd4c4],0x0
+0000:DD73  7E 19                    JLE 0x1000:dd8e ; logical module target 0000:DD8E
+0000:DD75  A1 A8 D4                 MOV AX,[0xd4a8]
+0000:DD78  03 06 C4 D4              ADD AX,word ptr [0xd4c4]
+0000:DD7C  48                       DEC AX
+0000:DD7D  89 46 E6                 MOV word ptr [BP + -0x1a],AX
+0000:DD80  A1 A4 D4                 MOV AX,[0xd4a4]
+0000:DD83  3B 46 E6                 CMP AX,word ptr [BP + -0x1a]
+0000:DD86  7E 06                    JLE 0x1000:dd8e ; logical module target 0000:DD8E
+0000:DD88  8B 46 E6                 MOV AX,word ptr [BP + -0x1a]
+0000:DD8B  A3 A4 D4                 MOV [0xd4a4],AX
+0000:DD8E  A1 A4 D4                 MOV AX,[0xd4a4]
+0000:DD91  25 FE FF                 AND AX,0xfffe
+0000:DD94  A3 A4 D4                 MOV [0xd4a4],AX
+0000:DD97  80 3E 00 D5 00           CMP byte ptr [0xd500],0x0
+0000:DD9C  74 6C                    JZ 0x1000:de0a ; logical module target 0000:DE0A
+STOP: instruction crosses requested range end.
+
+Range 1E48:2049:0060
+1E48:2049  C8 04 00 00              ENTER 0x4,0x0
+1E48:204D  C7 46 FC 01 00           MOV word ptr [BP + -0x4],0x1
+1E48:2052  FF 46 FC                 INC word ptr [BP + -0x4]
+1E48:2055  81 7E FC A5 00           CMP word ptr [BP + -0x4],0xa5
+1E48:205A  74 0B                    JZ 0x3000:04e7 ; logical module target 1E48:2067
+1E48:205C  6B 7E FC 36              IMUL DI,word ptr [BP + -0x4],0x36
+1E48:2060  83 BD 46 82 00           CMP word ptr [DI + 0x8246],0x0
+1E48:2065  75 EB                    JNZ 0x3000:04d2 ; logical module target 1E48:2052
+1E48:2067  6B 7E FC 36              IMUL DI,word ptr [BP + -0x4],0x36
+1E48:206B  81 C7 3C 82              ADD DI,0x823c
+1E48:206F  1E                       PUSH DS
+1E48:2070  57                       PUSH DI
+1E48:2071  6A 36                    PUSH 0x36
+1E48:2073  6A 00                    PUSH 0x0
+1E48:2075  9A 8C 1B E4 3C           CALLF 0x3000:e9cc ; encoded analysis target 3CE4:1B8C, module 2CE4:1B8C
+1E48:207A  8B 46 FC                 MOV AX,word ptr [BP + -0x4]
+1E48:207D  89 46 FE                 MOV word ptr [BP + -0x2],AX
+1E48:2080  8B 46 FE                 MOV AX,word ptr [BP + -0x2]
+1E48:2083  C9                       LEAVE
+1E48:2084  CB                       RETF
+1E48:2085  C8 0C 00 00              ENTER 0xc,0x0
+1E48:2089  C7 46 FC 01 00           MOV word ptr [BP + -0x4],0x1
+1E48:208E  C7 46 FA E8 03           MOV word ptr [BP + -0x6],0x3e8
+1E48:2093  C7 46 F8 A5 00           MOV word ptr [BP + -0x8],0xa5
+1E48:2098  FF 46 FC                 INC word ptr [BP + -0x4]
+1E48:209B  6B 7E FC 36              IMUL DI,word ptr [BP + -0x4],0x36
+1E48:209F  81 C7 3C 82              ADD DI,0x823c
+1E48:20A3  89 7E F4                 MOV word ptr [BP + -0xc],DI
+1E48:20A6  8C 5E F6                 MOV word ptr [BP + -0xa],DS

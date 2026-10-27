@@ -9,7 +9,7 @@ namespace Desperabis
     {
         None = 0,
         Behavior_1 = 1,
-        Behavior_2 = 2,
+        WeaponDamageCollider = 2,
         Behavior_3 = 3,
         Behavior_4 = 4,
         Behavior_5 = 5,
@@ -25,7 +25,7 @@ namespace Desperabis
         IdleAnimation = 15, // for vertex anims, e.g. spider web
         Flies = 16, // a few instances in both forest levels
         BatOutdoor = 17, // Unlike 'Bat' does not collide with walls?
-        ExplosionSmokeCloud = 18, // Likely post-explosion smoke, per author recollection; visual role tentative.
+        DriftingParticle = 18, // Shared weapon-hit and emitter particle.
         FireFly = 19,
         FireParticle = 21, // Spawned by BurningFireplace; recovered from the executable.
         BurningFireplace = 22, // e.g. lorry rails
@@ -38,7 +38,7 @@ namespace Desperabis
         RollingRock = 29, // The ones that roll in submarine level 32, but also the blades in castle level
         Skeleton = 30,
         Cockroach = 31, // also brown spider
-        Behavior_33 = 33,
+        WaterImpact = 33,
         RollingRockSlope = 34,
         Mummie = 35,
         SpiderLarge = 36, // both the black/red and the white ones
@@ -117,7 +117,7 @@ namespace Desperabis
         Behavior_114 = 114,
         NeonLights = 116, // in museum
         FloatingDebris = 117, // Parts floating in water near the large octopus, per author recollection; not smoke or an emitter.
-        Behavior_118 = 118,
+        SinkingObject = 118,
         BurriedVerticalDoor = 119, // level 23
         Teleporter = 120, // various teleporter to jump between map parts in level 10 and 36
         LevelStartOverride = 121, // in cave
@@ -221,6 +221,7 @@ namespace Desperabis
         BuyItem = 17,
         Ammo = 20,
         Weapon = 21,
+        Type_22 = 22, // Breakup-particle source in 10AC:10F5.
         DestroyableBarrier = 26, // e.g. wood in forest
         Skeleton = 30,
         Cockroach = 31, // also brown spider
@@ -271,6 +272,7 @@ namespace Desperabis
         SarcophagusWithBones = 121, // reveals bones to feed dogs
         BurnableOilPuddle = 125,
         CeilingConcreteSlabStake = 126, // level 23 - the wood that holds CeilingConcreteSlab
+        Type_138 = 138, // Activation copies field_2E into the behavior.
         CrackingSubmarineWindow = 144,
         PuzzleSpool = 149, // the ones with roman numbers in level 35
         GrandfatherClockItem = 155, // level 35

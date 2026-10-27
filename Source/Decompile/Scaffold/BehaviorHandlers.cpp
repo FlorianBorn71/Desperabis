@@ -9,14 +9,127 @@
 
 namespace Desperabis
 {
-    DispatchResult Function_Behavior_1(RawGameObject&, GameContext&)
+    DispatchResult Function_Behavior_1(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_1, 0x1167 };
+        if (object.modelId < 30 || (object.field_24 != 0 && object.field_24 != 8))
+        {
+            return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_1, 0x1167 };
+        }
+        const auto volume = context.GetSoundVolumeAt(object.posX, object.posZ);
+        const auto shift = [](std::int16_t value, int bits)
+        {
+            const auto divisor = 1 << bits;
+            return static_cast<std::int16_t>(value >= 0 ? value / divisor :
+                -((-static_cast<int>(value) + divisor - 1) / divisor));
+        };
+        for (int tick = 0; tick < context.tickCount; ++tick)
+        {
+            const auto floor = context.GetFloorHeight(object.posX, object.posY, object.posZ);
+            if (object.posY < floor)
+            {
+                object.posY = floor;
+                ++object.field_26;
+                const auto magnitude = WrapSignedWord(std::abs(static_cast<int>(object.velocityY)));
+                object.velocityY = shift(WrapSignedWord(magnitude * object.itemValue), 7);
+                const auto material = context.GetCollisionMapPixelAtWorldXZ(object.posX, object.posZ) & 7;
+                if (material == 1 || material == 3)
+                {
+                    context.SpawnWaterImpact(object.posX, object.posZ);
+                    if (context.floorSurfaceValue != 16)
+                    {
+                        object.health = 5;
+                        object.velocityY = 0;
+                        object.behavior = BehaviorType::None;
+                    }
+                    else
+                    {
+                        object.field_32 = 3;
+                        object.itemValue = 5;
+                        object.collisionRadiusXZ = 22;
+                        object.behavior = BehaviorType::SinkingObject;
+                    }
+                }
+                if (object.velocityY < 2)
+                {
+                    object.behavior = static_cast<BehaviorType>(object.groupIndexOrLock);
+                }
+                object.velocityX = WrapSignedWord(object.velocityX - SignWord(object.velocityX));
+                object.velocityZ = WrapSignedWord(object.velocityZ - SignWord(object.velocityZ));
+                if (object.velocityY > 0)
+                {
+                    context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId), volume, object, 1);
+                }
+            }
+            else { object.velocityY = WrapSignedWord(object.velocityY - 1); }
+            const auto ceiling = WrapSignedWord(context.GetRoomHeight(object.posX, object.posZ) + floor);
+            if (object.posY > ceiling)
+            {
+                ++object.field_26;
+                object.posY = WrapSignedWord(ceiling - 1);
+                object.velocityY = 0;
+            }
+            if (object.field_24 == 8)
+            {
+                object.winX = WrapSignedWord(object.winX + GetStepToward(
+                    object.winX, 0, WrapSignedWord(object.field_26 * 8)));
+                const auto magnitude = WrapSignedWord(std::abs(static_cast<int>(object.velocityY)));
+                object.winY = WrapSignedWord(object.winY +
+                    context.RandomSigned(static_cast<std::uint16_t>(WrapSignedWord(magnitude * 6 + 1))));
+                object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity +
+                    GetStepToward(object.blendWeightOrSpriteOpacity, 100, WrapSignedWord(object.field_26 * 2)));
+            }
+            if ((context.GetCollisionMapPixelAtWorldXZ(
+                WrapSignedWord(object.posX + object.velocityX), object.posZ) & 8) == 8)
+            {
+                // Native uses an uninitialized local source ID on this branch; use the actual fragment.
+                context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId), volume, object, 1);
+                ++object.field_26;
+                object.velocityX = WrapSignedWord(-object.velocityX);
+            }
+            if ((context.GetCollisionMapPixelAtWorldXZ(
+                object.posX, WrapSignedWord(object.posZ + object.velocityZ)) & 8) == 8)
+            {
+                context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId), volume, object, 1);
+                ++object.field_26;
+                object.velocityZ = WrapSignedWord(-object.velocityZ);
+            }
+            if (context.objectCollisionsEnabled)
+            {
+                object.posX = WrapSignedWord(object.posX + object.velocityX);
+                object.posY = WrapSignedWord(object.posY + object.velocityY);
+                object.posZ = WrapSignedWord(object.posZ + object.velocityZ);
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::Behavior_1, 0x1167 };
     }
 
-    DispatchResult Function_Behavior_2(RawGameObject&, GameContext&)
+    DispatchResult Function_WeaponDamageCollider(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_2, 0x1198 };
+        const auto slot = context.FindCollidingObject(object);
+        if (slot > 1)
+        {
+            object.health = 0;
+            auto& target = context.worldObjects[slot];
+            std::uint8_t frame = 0;
+            switch (target.collisionType)
+            {
+            case CollisionType::Skeleton:
+            case CollisionType::PushingEnemy: frame = 2; break;
+            case CollisionType::Devil:
+            case CollisionType::SpiderLarge: frame = 4; break;
+            case CollisionType::CeilingConcreteSlabStake:
+            case CollisionType::DestroyableBarrier: frame = 3; break;
+            default: break;
+            }
+            if (frame != 0)
+            {
+                context.InitializeDriftingParticle(object, frame, target.posX, target.posZ);
+            }
+            const auto amount = target.collisionType == CollisionType::Dragon ?
+                object.behaviorParameter / 2 : object.behaviorParameter;
+            context.DamageObject(target, static_cast<std::int16_t>(amount));
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::WeaponDamageCollider, 0x1198 };
     }
 
     DispatchResult Function_Behavior_3(RawGameObject&, GameContext&)
@@ -211,7 +324,7 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::BatOutdoor, 0x16A3 };
     }
 
-    DispatchResult Function_ExplosionSmokeCloud(RawGameObject& object, GameContext& context)
+    DispatchResult Function_DriftingParticle(RawGameObject& object, GameContext& context)
     {
         // This particle uses whole-unit movement per tick, not the fire particle's fixed-point motion.
         for (int tick = 0; tick < context.tickCount; ++tick)
@@ -230,7 +343,7 @@ namespace Desperabis
             const auto shade = 37 - (blend >= 0 ? blend / 8 : -((-blend + 7) / 8));
             object.displayType = static_cast<DisplayType>(std::clamp(shade, 30, 36));
         }
-        return { DispatchStatus::ExecutedCase, BehaviorType::ExplosionSmokeCloud, 0x16E5 };
+        return { DispatchStatus::ExecutedCase, BehaviorType::DriftingParticle, 0x16E5 };
     }
 
     DispatchResult Function_FireFly(RawGameObject&, GameContext&)
@@ -357,9 +470,158 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::RollingRock, 0x1BAD };
     }
 
-    DispatchResult Function_Skeleton(RawGameObject&, GameContext&)
+    DispatchResult Function_Skeleton(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Skeleton, 0x1BE9 };
+        const auto distance = context.GetSoundDistanceAt(object.posX, object.posZ);
+        const auto volume = context.GetSoundVolumeAt(object.posX, object.posZ);
+        const auto footstepVolume = GameContext::GetSoundVolume(WrapSignedWord(distance * 3));
+        for (int tick = 0; tick < context.tickCount; ++tick)
+        {
+            if (object.health == 1000)
+            {
+                object.posY = WrapSignedWord(context.GetTerrainFloorHeight(
+                    object.posX, object.posY, object.posZ) + object.collisionRadiusY);
+                if (object.itemValue == 0)
+                {
+                    object.posX = WrapSignedWord(object.posX + object.velocityX);
+                    object.posZ = WrapSignedWord(object.posZ + object.velocityZ);
+                }
+                const auto phase = WrapSignedWord(object.animFrame * 100 + object.blendWeightOrSpriteOpacity);
+                if ((distance > 37 && distance < 61 && object.itemValue == 0) ||
+                    object.doorLockOrGroupBitmask > 0)
+                {
+                    object.blendWeightOrSpriteOpacity = 0;
+                    object.itemValue = static_cast<std::int16_t>(context.Random(2) + 4);
+                    object.field_26 = 0;
+                    object.animFrame = 1;
+                    object.modelFrame2 = 2;
+                }
+                auto target = object.velocityX != 0 || object.velocityZ != 0 ?
+                    GetVectorAngle(object.velocityX, object.velocityZ) : object.winY;
+                const auto difference = WrapSignedWord(phase - 250);
+                const auto magnitude = WrapSignedWord(std::abs(static_cast<int>(difference)));
+                target = WrapSignedWord(target - WrapSignedWord(magnitude - 125) / 6);
+                NormalizeAnglePair(object.winY, target);
+                object.winY = WrapSignedWord(object.winY + GetStepToward(
+                    object.winY, target, static_cast<std::int16_t>(context.Random(8) + 11)));
+                object.modelAnim = static_cast<std::uint8_t>(
+                    ((object.winY + context.GetPlayerHeading() + 85) & 511) / 171 + 1);
+                if (object.itemValue > 0) { object.modelAnim = static_cast<std::uint8_t>(object.itemValue); }
+                object.doorLockOrGroupBitmask = 0;
+                object.field_26 = static_cast<std::uint16_t>(object.field_26 + context.Random(5));
+                if (object.itemValue == 0)
+                {
+                    object.blendWeightOrSpriteOpacity = WrapSignedWord(
+                        object.blendWeightOrSpriteOpacity + context.Random(8) + 10);
+                }
+                else
+                {
+                    if (object.animFrame == 4)
+                    {
+                        object.field_26 = static_cast<std::uint16_t>(object.field_26 +
+                            GetStepToward(WrapSignedWord(object.field_26), 1, 3));
+                    }
+                    object.blendWeightOrSpriteOpacity = WrapSignedWord(
+                        object.blendWeightOrSpriteOpacity + WrapSignedWord(object.field_26));
+                    target = GetVectorAngle(WrapSignedWord(context.soundListenerX - object.posX),
+                        WrapSignedWord(context.soundListenerZ - object.posZ));
+                    target = WrapSignedWord(target + WrapSignedWord(phase - 350) / 3);
+                    NormalizeAnglePair(object.winY, target);
+                    object.winY = WrapSignedWord(object.winY + GetStepToward(object.winY, target, 19));
+                }
+                bool advanced = false;
+                while (object.blendWeightOrSpriteOpacity > 100)
+                {
+                    advanced = true;
+                    object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity - 100);
+                    object.animFrame = static_cast<std::uint8_t>((object.animFrame & 3) + 1);
+                    object.modelFrame2 = static_cast<std::uint8_t>((object.animFrame & 3) + 1);
+                }
+                if (std::abs(object.posX % 100 - 50) / 2 < 2 &&
+                    std::abs(object.posZ % 100 - 50) / 2 < 2)
+                {
+                    const auto first = context.Random(4);
+                    const auto dx = WrapSignedWord(context.soundListenerX - object.posX);
+                    const auto dz = WrapSignedWord(context.soundListenerZ - object.posZ);
+                    std::int16_t x = 0;
+                    std::int16_t z = 0;
+                    if (!context.positionalSoundsSuppressed)
+                    {
+                        if (WrapSignedWord(std::abs(static_cast<int>(dx))) >
+                            WrapSignedWord(std::abs(static_cast<int>(dz)))) { x = SignWord(dx); }
+                        else { z = SignWord(dz); }
+                    }
+                    const auto clear = [&](std::int16_t stepX, std::int16_t stepZ)
+                    {
+                        bool result = true;
+                        for (int step = 1; step <= 3; ++step)
+                        {
+                            if ((context.GetCollisionMapPixelAtWorldXZ(
+                                WrapSignedWord(object.posX + stepX * step * 25),
+                                WrapSignedWord(object.posZ + stepZ * step * 25)) & 0x38) != 0)
+                            {
+                                result = false;
+                            }
+                        }
+                        return result;
+                    };
+                    bool canMove = clear(x, z);
+                    if (!canMove || context.Random(8) == 0)
+                    {
+                        constexpr std::int16_t directions[4][2] = { {0,1}, {1,0}, {0,-1}, {-1,0} };
+                        for (int index = first; index <= first + 3; ++index)
+                        {
+                            const auto& direction = directions[index & 3];
+                            if (clear(direction[0], direction[1]))
+                            {
+                                x = direction[0];
+                                z = direction[1];
+                                canMove = true;
+                            }
+                        }
+                    }
+                    object.velocityX = canMove ? static_cast<std::int16_t>(x * 2) : 0;
+                    object.velocityZ = canMove ? static_cast<std::int16_t>(z * 2) : 0;
+                }
+                if (advanced && (object.itemValue == 0 || object.animFrame != 4)) { object.field_26 = 3; }
+                if (advanced && object.itemValue == 0 && (object.animFrame & 1) != 0)
+                {
+                    context.PlaySoundEffect(static_cast<SoundEffect>(106),
+                        footstepVolume, object, 1);
+                }
+                if (object.itemValue > 0 && advanced)
+                {
+                    if (object.animFrame == 3)
+                    {
+                        context.PlaySoundEffect(static_cast<SoundEffect>(19), volume, object, 1);
+                    }
+                    else if (object.animFrame == 4 && distance < 72)
+                    {
+                        if (context.selectedWeapon == WeaponType::Sword &&
+                            context.weaponAnimationPosition > 29 && context.weaponAnimationPosition < 41)
+                        {
+                            context.weaponAnimationSpeed = -4;
+                            context.PlaySoundEffect(static_cast<SoundEffect>(39), GameContext::GetSoundVolume(0), object, 2);
+                        }
+                        else
+                        {
+                            context.playerHitEffectTicks = 5;
+                            context.ApplyPlayerLifeDelta(-29491 * object.behaviorParameter);
+                        }
+                    }
+                    else if (object.animFrame == 1) { object.itemValue = 0; }
+                }
+            }
+            else if (object.health >= 3000 && object.health <= 3050)
+            {
+                context.DamageSkeleton(object, 1000);
+            }
+            else if (object.health >= 3050 && object.health <= 3900)
+            {
+                object.health = WrapSignedWord(object.health - 1);
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::Skeleton, 0x1BE9 };
     }
 
     DispatchResult Function_Cockroach(RawGameObject&, GameContext&)
@@ -367,9 +629,20 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Cockroach, 0x1C17 };
     }
 
-    DispatchResult Function_Behavior_33(RawGameObject&, GameContext&)
+    DispatchResult Function_WaterImpact(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_33, 0x1C45 };
+        object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity +
+            object.itemValue * context.tickCount);
+        object.itemValue = WrapSignedWord(object.itemValue + context.tickCount);
+        while (object.blendWeightOrSpriteOpacity > 100)
+        {
+            object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity - 100);
+            ++object.animFrame;
+            ++object.modelFrame2;
+            object.itemValue = 3;
+            if (object.modelFrame2 == 4) { object.health = 0; }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::WaterImpact, 0x1C45 };
     }
 
     DispatchResult Function_RollingRockSlope(RawGameObject&, GameContext&)
@@ -943,9 +1216,11 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::FloatingDebris, 0x372C };
     }
 
-    DispatchResult Function_Behavior_118(RawGameObject&, GameContext&)
+    DispatchResult Function_SinkingObject(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_118, 0x3746 };
+        object.posY = WrapSignedWord(object.posY + GetStepToward(object.posY,
+            context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ), context.tickCount));
+        return { DispatchStatus::ExecutedCase, BehaviorType::SinkingObject, 0x3746 };
     }
 
     DispatchResult Function_BurriedVerticalDoor(RawGameObject&, GameContext&)

@@ -82,6 +82,19 @@ namespace Desperabis
         std::uint16_t blockedTicks = 0; // Proposed X/Z was rolled back after unresolved map collision.
     };
 
+    enum class WeaponActionStatus
+    {
+        NoEffect,
+        Applied,
+        UnimplementedWeapon
+    };
+
+    struct PlayerWeaponResult
+    {
+        WeaponActionStatus animation = WeaponActionStatus::NoEffect;
+        WeaponActionStatus attack = WeaponActionStatus::NoEffect;
+    };
+
     struct GameTickResult
     {
         GameTickStatus status;
@@ -89,5 +102,6 @@ namespace Desperabis
         // Present only when advanced; entries correspond to native slots 2..164.
         std::optional<std::array<DispatchResult, 163>> objects;
         std::optional<BasicPlayerMovementResult> playerMovement = {};
+        std::optional<PlayerWeaponResult> weapon = {};
     };
 }

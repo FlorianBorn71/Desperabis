@@ -118,12 +118,16 @@ namespace
                         entry.type == BehaviorType::SmokeFading || entry.type == BehaviorType::FireParticle ||
                         entry.type == BehaviorType::BurningFireplace || entry.type == BehaviorType::PulsatingLight ||
                         entry.type == BehaviorType::Switch1 ||
-                        entry.type == BehaviorType::ExplosionSmokeCloud || entry.type == BehaviorType::SpawnInCrater ||
+                        entry.type == BehaviorType::WeaponDamageCollider ||
+                        entry.type == BehaviorType::DriftingParticle || entry.type == BehaviorType::SpawnInCrater ||
                         entry.type == BehaviorType::FloatingDebris ||
                         entry.type == BehaviorType::LevelStartOverride ||
                         entry.type == BehaviorType::RatAndSnake ||
+                        entry.type == BehaviorType::Skeleton || entry.type == BehaviorType::WaterImpact ||
+                        entry.type == BehaviorType::SinkingObject ||
                         entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ?
                         " implemented case (common processing missing)" :
+                        entry.type == BehaviorType::Behavior_1 ? " partial case (skeleton fragments)" :
                         entry.hasSpecificCase ? " unrecovered handler" : " common path only") << '\n';
             }
             return 0;
@@ -298,7 +302,7 @@ namespace
             object.collisionRadiusY = 43;
             object.doorLockOrGroupBitmask = 7;
         }
-        if (!haveObjectFile && object.behavior == BehaviorType::ExplosionSmokeCloud)
+        if (!haveObjectFile && object.behavior == BehaviorType::DriftingParticle)
         {
             object.posX = 151;
             object.posY = 20;
@@ -440,7 +444,7 @@ namespace
                 std::cout << "Debris heading: " << object.field_24 << ", drift state: " << object.field_28
                     << ", X/Z fractions: " << object.velocityX << '/' << object.velocityZ << '\n';
             }
-            if (object.behavior == BehaviorType::ExplosionSmokeCloud)
+            if (object.behavior == BehaviorType::DriftingParticle)
             {
                 std::cout << "Drifting particle: fade " << object.blendWeightOrSpriteOpacity
                     << ", vertical velocity " << object.velocityY << ", phase " << object.itemValue << '\n';

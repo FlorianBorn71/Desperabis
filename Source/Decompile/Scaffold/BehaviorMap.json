@@ -33,7 +33,7 @@
     },
     {
       "value": 2,
-      "name": "Behavior_2",
+      "name": "WeaponDamageCollider",
       "namedInRenderer": false,
       "hasSpecificCase": true,
       "entry": "0000:1198",
@@ -236,7 +236,7 @@
     },
     {
       "value": 18,
-      "name": "ExplosionSmokeCloud",
+      "name": "DriftingParticle",
       "namedInRenderer": false,
       "hasSpecificCase": true,
       "entry": "0000:16E5",
@@ -409,7 +409,7 @@
     },
     {
       "value": 33,
-      "name": "Behavior_33",
+      "name": "WaterImpact",
       "namedInRenderer": false,
       "hasSpecificCase": true,
       "entry": "0000:1C45",
@@ -1443,7 +1443,7 @@
     },
     {
       "value": 118,
-      "name": "Behavior_118",
+      "name": "SinkingObject",
       "namedInRenderer": false,
       "hasSpecificCase": true,
       "entry": "0000:3746",

@@ -865,8 +865,8 @@ levels, geometry, and real object population will follow later.
 Evidence: [switch-evidence.txt](switch-evidence.txt). `Switch1` and
 `SwitchGrouped` per-frame handlers are implemented in
 [BehaviorHandlers.cpp](Scaffold/BehaviorHandlers.cpp), with shared group masks
-in `GameContext`. Ordinary-switch interaction and indexed door activation are
-also implemented; other target types and switch variants remain partial below.
+in `GameContext`. Ordinary-switch interaction now uses the complete shared
+damage/activation dispatcher for indexed targets; other switch variants remain partial.
 
 **Ordinary switch (`Switch1`, 50, `0000:1FDD`):** its per-frame case is
 object-local. Byte offset 42 is an animation phase, offset 38 its signed rate,
@@ -892,7 +892,7 @@ from the main update's previously observed 2..164 bound.
 
 **Ordinary switch interaction (`0EF0:0F04`, `10AC:2094`):** implemented by
 `HandleSwitchInteraction` in [Door.cpp](Scaffold/Door.cpp), alongside the shared
-ordinary-door activation helper it reuses. Only phase **zero** accepts a pull.
+general `GameContext::ActivateObjectGroup` helper it reuses. Only phase **zero** accepts a pull.
 The switch copies return speed `field_24` into animation rate `field_26` even
 when its index is nonpositive or its positive health is not exactly 1000.
 No independent rate-zero guard is added. Only positive index plus health 1000
@@ -908,12 +908,10 @@ state through their existing behavior. The common epilogue has no extra effects.
 Additional bounded evidence is in
 [simple-switch-activation-evidence.txt](simple-switch-activation-evidence.txt).
 
-The general target activation routine supports more than doors and remains
-incomplete. If an ordinary switch matches a non-door target in slots 2..140,
-the host implementation returns `UnimplementedHandler` **before** changing the
-switch or any targets, rather than silently skipping it or partially opening
-doors. This preflight is an explicit host safety policy, not native ordering.
-No other target types are claimed implemented by this switch path.
+The complete `10AC:10F5` target cascade is now implemented by `DamageObject`.
+The former non-door preflight has been removed: targets execute sequentially
+in native slot order, including their activation, destruction and secondary
+effects. See [weapon damage and shared activation](#weapon-damage-and-shared-activation).
 
 **Grouped switch (`SwitchGrouped`, 51):** the case at `0000:2065` passes
 object slot then ticks to `10AC:CAEC` (`RETF 4`). The helper sets collision
@@ -967,13 +965,10 @@ the handler, including this check.
 
 The per-frame handlers do not need access to other objects: the ordinary case
 only updates its own animation, and the grouped case updates its own animation
-and shared masks. The future index-based activation helper will need the
-shared object collection to scan slots 2..140. Its target selection is known,
-but its callee `10AC:10F5` handles many collision/interaction types and effects;
-only selected paths have been traced. No object collection or success-shaped
-partial activation helper has been added solely to accommodate that future
-code. Ordinary doors are now implemented below; game-window input polling and
-general target interaction remain unimplemented. Explicit grouped-switch interaction and
+and shared masks. Index-based activation now scans the shared object collection
+at slots 2..140 and calls the recovered `10AC:10F5` target cascade. Ordinary doors
+are implemented below; the automatic player-contact cascade and other explicit
+interaction cases remain separate. Explicit grouped-switch interaction and
 timer arming/rearming are implemented separately from per-frame dispatch.
 
 **Unlocking subsequently traced:** `10AC:3DCE` checks movement state and the
@@ -1635,9 +1630,11 @@ other 36 initial rat/snake records have factor **1**.
 `1E48:D579` is a shared signed fixed-point meter update: the current value is
 a dword at meter +4, with maximum at +2. For the player meter it suppresses
 the incoming delta when DS:`2DDD` is nonzero, clamps the meter and can invoke
-the shared player-death path on depletion. The DS:`0300` sign/time scaling,
-meter lifecycle, death response and DS:`D514` consumer are separate player
-systems; **contact damage is identified, not implemented by this change**.
+the shared player-death path on depletion. Subsequent skeleton recovery identified
+DS:`0300` as the immutable signed dword **-29491** and implemented the player
+meter update/depletion state; see [skeleton recovery](#skeleton-movement-combat-and-death).
+The automatic rat/snake contact cascade and the DS:`D514` presentation consumer
+remain separate player systems; **rat/snake contact damage is not implemented**.
 `UpdatePlayerInteraction` still handles interaction-key/door contact only.
 Do not subtract guessed damage from the player's object `health` or add
 damage in the rat movement handler: that would use the wrong storage or
@@ -1649,6 +1646,130 @@ direction tables, angle normalization, all 512 binary neighborhood patterns,
 16-attempt diagnostics/discard, sound admission and **all 40 original records**.
 Asset checks use explicit dummy terrain/map, not native level reconstruction.
 This is statically recovered and host-tested, not DOS-runtime validated.
+
+### Skeleton: movement, combat and death
+
+Behavior 30 dispatches `10AC:4DAB` once per behavior tick. The full local skeleton
+routine is implemented in [BehaviorHandlers.cpp](Scaffold/BehaviorHandlers.cpp),
+with supporting context operations in [GameContext.cpp](Scaffold/GameContext.cpp).
+Evidence is split into the bounded exports
+[dispatch](skeleton-dispatch-evidence.txt),
+[movement](skeleton-movement-evidence.txt),
+[animation/map predicates](skeleton-support-evidence.txt),
+[combat and damage](skeleton-combat-evidence.txt),
+[fragment creation](skeleton-fragments-evidence.txt),
+[meter initialization and fragment physics](skeleton-lifecycle-evidence.txt),
+[fragment tail](skeleton-fragment-tail-evidence.txt),
+[water effects](skeleton-water-evidence.txt), and
+[sinking transition](skeleton-sinking-evidence.txt).
+
+**Movement and animation**
+
+- Only health **1000** executes the live path. Health 1010, present in three
+  original level-11 records, is deliberately not treated as an awake skeleton.
+- Each substep samples terrain before moving and adds the object's vertical
+  collision radius. State `itemValue == 0` adds the stored X/Z velocity even
+  when the general object-collision-enable flag is off.
+- At tile centers (`abs(position % 100 - 50) / 2 < 2` on both axes), select
+  pursuit along the dominant player-relative axis, with Z winning ties.
+  Probe 25, 50 and 75 units ahead against mask `0x38`.
+- A blocked path, or a one-in-eight wander choice, scans four cardinal paths
+  starting from a random index. **The last clear path wins**, not the first.
+  Movement is two units along the chosen axis. The existing DS:`D4FA` flag
+  suppresses pursuit as well as positional sound.
+- Native signed-word arithmetic, angle normalization, randomized turn limits,
+  frame-pair blending, and walking/attack facing rules are preserved.
+  Walking sprite direction uses the existing applied player heading DS:`D4D0`.
+- Distance and normal sound volume are cached once at dispatch entry, before
+  all substeps. Footsteps (effect 106) use three times that cached distance;
+  effect 19 accompanies attack frame three.
+
+**Attacks and player life**
+
+- Start an attack when cached distance is **38..60** and walking, or when
+  `doorLockOrGroupBitmask > 0`. Choose animation 4 or 5, then clear the request.
+- On an animation advance to frame four, hit if cached distance is **<72**.
+  A sword selected at DS:`DDB6`, with weapon-animation position **30..40**
+  (DS:`DDBD`), parries: set DS:`DDBB` to -4 and play effect 39 at full volume.
+  Otherwise set hit-effect ticks DS:`D514` to 5 and update player life.
+- EXE data at DS:`0300` is `CD 8C FF FF`, signed **-29491** (16.16 units).
+  Multiply it by the object's `behaviorParameter` byte. This is not a
+  subtraction from `worldObjects[1].health`.
+- Native initialization `0000:0E64..0E71` calls `1E48:D4F7` with current and
+  maximum **360**, type 1. `playerLife` retains the signed 16.16 dword;
+  `playerLifeMaximum` retains the maximum word. These are context-owned,
+  initialized once and preserved across ordinary level loads.
+- `ApplyPlayerLifeDelta` implements the player-specific `1E48:D579` branch:
+  wrap the dword sum, suppress the delta when DS:`2DDD` is nonzero, clamp,
+  and install the `1E48:D544` depletion state once. This sets life to zero,
+  hit-effect ticks to 1000, DS:`D4B4` to -1, DS:`D4FA` true, and slot-1
+  `velocityZ` to 400. The partial keyboard controller stops accepting movement
+  in this state rather than overwriting the native death view marker.
+
+**Skeleton death and fragments**
+
+- Health **3000..3050** calls the collision-type-30 branch of `10AC:10F5`
+  with damage 1000. Health **3051..3900** counts down one per substep.
+- `DamageSkeleton` subtracts damage from a positive `groupIndexOrLock`.
+  A surviving skeleton plays effect 11 when damage exceeds one.
+  Once the field falls below one, create eight fragments and clear source health.
+  This is the recovered skeleton-specific damage branch, not a guessed general
+  object-activation implementation.
+- Factory `10AC:091C` receives part selectors **1,2,3,6,4,260,4,260**.
+  Preserve the 260 angle bias before masking the animation selector to a byte.
+  Part 6 is a **pickable sword** (collision type Weapon, item value 2), not a
+  bone. Allocation follows the existing clear/free-slot/fallback-165 behavior.
+- The model-ID >=30 fragment paths for subtype 8 (skeleton body parts)
+  and subtype 0 (including the dropped sword) are implemented in behavior 1:
+  gravity, bounce/damping, ceiling/wall reflection, rolling/blending, and settling.
+  Other behavior-1 styles, including model-metadata-dependent vector fragments,
+  still return `UnimplementedHandler` without mutation.
+- Water contact creates the native `WaterImpact` (33) animation; ordinary
+  water leaves a five-tick remnant, while effective-surface value 16 installs
+  the native `SinkingObject` (118) path. Their update cases are implemented too.
+  `SinkingObject` moves Y toward the terrain floor by at most `tickCount` per
+  update; it does not itself remove the object. These names replace the numeric
+  placeholders without changing the original behavior values.
+  The native wall-bounce sound uses an uninitialized local source ID on these
+  fragment paths; the port deliberately uses the actual fragment as source.
+
+**Nonfatal sword-hit particle: identified separately**
+
+The sword path (`0000:B8DB`, selected weapon 2) creates a temporary behavior-2
+contact object through `10AC:0384` at `0000:B9C9..B9DB`.
+See [sword contact evidence](skeleton-sword-contact-evidence.txt).
+Its collision handler `0000:1198` finds another object and initially clears
+the contact's health. For collision type **30 (Skeleton)** or 35, however,
+`0000:11E3..11F8` calls `10AC:07F2` with **frame 2** and the target's X/Z,
+then applies damage through `10AC:10F5`.
+See [hit dispatch evidence](skeleton-hit-dispatch-evidence.txt).
+
+That initializer is already recovered: it **reuses the contact object** as
+behavior **18** (`DriftingParticle`),
+model 39, animation 3, frame 2, second frame 1, blend 100 and health 50.
+It preserves the contact Y and sets X/Z to the hit target's position, with
+outward drift derived from the contact's former X/Z. This runs for a
+nonfatal hit too; it is not the behavior-1 death-fragment factory.
+Behavior 2 is now named `WeaponDamageCollider`; its collision path and the
+shared damage/activation helper are implemented. The player sword driver
+that creates these temporary contacts is now implemented below.
+
+**Integration boundary:** no unknown global blocks the recovered skeleton
+routine. Dagger/sword input, attack timing and automatic contact creation are
+implemented in [the melee sequence](#player-melee-attack-sequence).
+Remaining dormant-object activation drivers, meter HUD, damage-screen
+effect, death camera animation and menu/restart flow are not implemented here.
+The new weapon/parry fields and `DamageObject` expose their native contracts
+for that separate work. Merely pressing Enter is still interaction, not attack.
+The DOS death-path recording/string update is presentation-specific and is not
+reproduced. This is a static recovery with host tests, not DOS-runtime validation.
+
+[SkeletonTests.cpp](Scaffold/SkeletonTests.cpp) checks 65,536 independent
+full-record/arithmetic/RNG fixtures, all four-direction obstacle combinations
+at all three probe depths, strict distance/parry/frame gates, cached sound
+distance, meter suppression/depletion, eight-part creation and settling,
+fallback allocation, water animation, and all **15** original skeleton records
+(models 37/38 in levels 0/11/13).
 
 ### FloatingDebris: floating underwater parts
 
@@ -1720,19 +1841,334 @@ The synthetic `--behavior FloatingDebris --ticks 3` console fixture explicitly
 supplies demo surface-slot metadata. Real-object input still requires the host
 to supply level information; geometry streams alone do not contain that table.
 
+### Weapon damage and shared activation
+
+Evidence: [complete damage cascade](damage-activation-evidence.txt),
+[direct helpers](damage-support-evidence.txt),
+[projectile subtype 8](damage-projectile-evidence.txt) and
+[projectile floor clamp](damage-projectile-tail-evidence.txt), together with
+the [weapon-contact case](skeleton-hit-dispatch-evidence.txt).
+All addresses below use the original executable hash recorded in those files.
+
+**WeaponDamageCollider (2, `0000:1198`):** the author confirms this is a
+generic weapon-spawned damage collider. Once per dispatch, even with zero
+behavior ticks, it calls `FindCollidingObject`. No hit leaves the record alone;
+the query excludes player slot 1 and obeys the global object-collision gate.
+A hit first clears the contact's health, then selects the following path:
+
+| Target collision type | In-place particle frame | Damage |
+| --- | --- | --- |
+| 30 Skeleton, 35 PushingEnemy | 2 | byte 52 |
+| 36 SpiderLarge, 38 Devil | 4 | byte 52 |
+| 26 DestroyableBarrier, 126 CeilingConcreteSlabStake | 3 | byte 52 |
+| 60 Dragon | None | byte 52 divided by 2 |
+| Any other collision selector | None | byte 52 |
+
+Particle conversion calls `InitializeDriftingParticle` before reading the
+damage byte and invoking `DamageObject`. It allocates nothing, preserves Y
+and byte 52, restores health to 50, and installs behavior 18. Without a
+conversion, the consumed contact remains at health zero unless the target's
+own secondary allocation reuses its slot. Damage is not multiplied by ticks.
+
+**Shared `DamageObject` (`10AC:10F5..1F49`):** the complete native selector
+cascade is ported in [GameContext.cpp](Scaffold/GameContext.cpp). Amounts are
+signed words: positive values are damage, zero is also used for activation,
+and -1 selects special destruction for some types. It caches target-local
+audio volume and the old strength/group word, performs the exact zero-amount
+activation prefix, then subtracts the amount only from positive strength.
+
+For amount zero and health strictly between 1000 and 2000, collision types
+0, 103, 67, 48, 88, 6, 2, 76, 47, 21 and 9 normalize health to 1000.
+Collision 125 instead changes display byte 4 to 120; other display values
+survive. This is a fixed native list, **not** a blanket wake-up for all enemies.
+In particular, this prefix does not normalize skeleton health.
+
+The target-specific branches are:
+
+| Collision selector | Recovered effect after the common prefix |
+| --- | --- |
+| 126 | Keep the strength subtraction; no additional effect |
+| 59 | Add amount to Y with word wrapping |
+| 93 | Set X angle 128 only when amount >100 |
+| 91 | Play configured sound, restore original strength |
+| 92 | Below 200 restore strength; otherwise break when depleted, stop sound channels, optionally copy the broken shell and initialize a key in the original slot |
+| 20, 21 | Only amount -1 clears the mask and sets lifetime 10; otherwise restore strength |
+| 138 | Copy the complete offset-46 word into behavior, clear collision type, set display 1 |
+| 5 | Amount zero and lock <1 start/refresh ordinary-door opening |
+| 8 | Clear health, masked wall collision pixels, and the exact wall-texture cell; retain the native conversion of object X/Z into one-based tile coordinates |
+| 105 | Clear collision type and write the low item-value byte into the floor-object plane, **not** the floor-height plane |
+| 35 | Native death animation setup or sound/knockback for a surviving target and amount >1 |
+| 36 | Native spider death setup and audio cancellation; paired hit/death sounds |
+| 37 | Install the harvestman's final frame, counters and zero blend |
+| 38 | Install devil death frames/counters, or hit sound above amount 1 |
+| 30 | Existing skeleton damage and eight-part/sword factory |
+| 60 | Enter behavior 61 once on depletion; otherwise thousand-bucket roar test and vertical reaction |
+| 31 | Cockroach/spider phase transitions, special mask 131 retention and hidden-object deletion |
+| 65 | Shark death setup at health 1000 and a water impact on every call |
+| 66 | Stop crab behavior and install its final animation on depletion |
+| 4 | Damage-activated switch group dispatch, strength latch 1 and animation rate 10 |
+| 14 | Bat falling/death state |
+| 13 | Rat/snake death state at health 1000, with model-animation-specific sound |
+| 41 | Clear health only when it is exactly 1000 |
+| 22 | Back up twice the horizontal velocities, play effect 37/source 467, emit nine fragments/smoke particles and clear health |
+| 10 | Clear collision fields and increment the frame byte with wrapping |
+| 26 | Add low-word `byte52*amount` to offset 36; compare its unsigned high byte to offset 46 and install 32000 on destruction |
+| 63 | Only amount 5 digs; add byte 52 to the progress word, set DS:DDBF=2 for the shovel, and play effect 54; otherwise restore strength |
+| 68 | Dog death setup, or change live attacking phase 1 to -2 |
+| 34 | Anaconda-head death behavior 87, or live hit counter 10 |
+| 33 | Anaconda-tail death health/animation |
+| 88, 89 | Attached-part/head death behavior 88; type 88 also subtracts offset 40 from its parent object's offset 40 |
+| 61 | At health 1000, depleted strength and amount >=200, emit exactly twenty subtype-8 projectiles and set lifetime 35; weaker damage restores strength |
+| 49 | Amount -1 installs native behavior value **49**, swaps frame bytes, sets display 80, and emits five smoke particles |
+| All other byte selectors | Restore the original strength/group word; activation-prefix effects remain |
+
+Collision selectors 22 and 138 now have numeric placeholder enum members
+`Type_22` and `Type_138`; their visual identities remain unassigned. Behavior 1
+has deliberately **not** been renamed. Original behavior values 49, 87 and 88
+are retained even where their existing author-derived names do not describe
+every use of the shared updater.
+
+The small spider sound-pair table starts at DS:`0482`: pair 0 is death/hit
+16/13, pair 1 is 26/26, and the remaining pairs through DS:`04C1` are zero.
+Its file offset is `0x2D40 + 0x2E9E*16 + 0x482`. Pair indices outside 0..31
+are rejected instead of reading neighboring globals as a table.
+Native `1E48:D20C` clears the four ten-byte channel records, so
+`StopAllSoundEffects` calls `AudioHandler::StopAllSamples` and clears source
+tracking. An attached backend must implement cancellation; the default throws
+explicitly rather than pretending playback stopped. No audio backend is required
+for headless recovery. Configured sound zero remains silent.
+
+`ActivateObjectGroup(group)` ports `10AC:2060`: compare health against wrapped
+`group+1000` and call `DamageObject(target,0)` in slot order **2..140**.
+Ordinary switch interaction and ordinary door activation now reuse these
+shared paths. Damage-activated switch rate 10 is distinct from explicit
+interaction's `field_24` rate; both native entry points are preserved.
+
+**Direct dependencies:** `ApplyObjectKnockback` retains low-word products,
+Manhattan normalization, a 30-unit amount cap and the original correction-only
+wall test. Symmetric obstacles can cancel corrections; no extra center-pixel
+gate is invented. Native division-by-zero/overflow becomes an explicit host
+exception. Collision-22 breakup preserves its three initial RNG draws even
+when the record is subsequently overwritten by the smoke initializer.
+All allocation occurs in native order, including fallback 165 and source
+self-aliasing. Twenty activation projectiles use the reclaiming allocator;
+the nine breakup particles and five smoke particles use the first-free allocator.
+The existing sword-fragment and water-impact factories also now retain their
+literal native display byte **4**, rather than the enum's differently valued
+`VectorUnlit` name.
+
+FELD plane 1 is retained in `Level::floorObjects`. Wall/floor-object writes
+increment `Level::geometryRevision`, providing a host-visible invalidation
+token. The DX11 sample still caches its static meshes and does **not** yet
+consume that revision; these changes implement core geometry state, not a
+renderer mesh-rebuild feature.
+
+**Boundary:** dagger/sword input and contact creation have subsequently been
+implemented below. Other weapon families, automatic player-contact damage,
+and all downstream behavior updaters are not claimed
+implemented by this shared routine. Transitions into unrecovered behaviors
+remain visible through their normal `UnimplementedHandler` status. This work
+recovers every target branch of the shared helper, not the rest of every
+enemy or weapon system.
+
+[DamageTests.cpp](Scaffold/DamageTests.cpp) covers all 256 selector values,
+full-record death fixtures, all 65,536 damage-word patterns for subtraction/
+rope/barrier arithmetic, activation gates, particle frames, damage ordering,
+zero-tick contacts, lifetime-to-zero dispatch, dragon half damage/roar RNG,
+knockback quirks/faults, geometry planes and masked writes, mixed activation
+groups, audio cancellation, secondary factory counts/RNG, and fallback/self-alias
+allocation. Existing particle/skeleton/runtime suites exercise the reused paths.
+These are static-instruction-derived host tests, not DOS-runtime comparisons.
+
+### Player melee attack sequence
+
+The dagger/sword sequence is recovered from
+[weapon input and gameplay order](weapon-trigger-evidence.txt),
+[animation and contact initialization](weapon-sequence-evidence.txt),
+[selection and inventory registration](weapon-selection-evidence.txt),
+[selection request helper](weapon-selection-tail-evidence.txt), and
+[environment gates/defaults](weapon-environment-evidence.txt).
+There are no unresolved globals blocking these two attacks.
+
+| Native location | Recovered responsibility |
+| --- | --- |
+| `0000:A8F7` | Attack-button action |
+| `0000:B5E6` | Weapon update/draw dispatcher; gameplay state is ported, DOS drawing is not |
+| `0000:B57A` | Commit requested weapon/hand, start drawing |
+| `0000:C91E` | Weapon-number selection, inventory swap into hand 2 |
+| `0000:793E` | Refresh weapon inventory references; last eligible duplicate wins |
+| `0000:CD57` | Prefer eligible hand 2, otherwise hand 1; request type change |
+| `1E48:CDD2` | Set requested type and holster command if the requested type changed |
+| `10AC:0384` | Initialize a supplied temporary weapon-damage collider |
+
+#### Recovered shared state
+
+| Original DS address | Context member | Meaning |
+| --- | --- | --- |
+| `DDB6` / `DDB7` | `selectedWeapon` / `requestedWeapon` | Current/requested weapon type |
+| `DDB8` | `weaponSpriteFrame` | Weapon image selection; melee uses 1, selection commit clears to 0 |
+| `DDB9` / `DDBA` | `weaponHand` / `requestedWeaponHand` | Original one-based inventory slot |
+| `DDBB` | `weaponAnimationSpeed` | Historical API name: actually a signed phase/countdown, **not** a constant speed |
+| `DDBD` | `weaponAnimationPosition` | Weapon pose/animation position, also read by skeleton combat |
+| `DDBF` | `weaponAnimationRecoil` | Existing digging recoil; neither melee branch needs it |
+| `DDC5` | `weaponReady` | Resource/strike latch; not sufficient alone to permit attack |
+| `DD36` / `DD76` | `weaponAmounts` / `weaponInventorySlots` | Existing 32-entry resource and one-based inventory-reference tables |
+| `D4A4` | `playerLookHeight` | Screen horizon, initially 110; **not** a degree-valued pitch |
+| `D4FC` | `playerUnderwater` | Blocks sword/other types above dagger at attack input |
+| `D500` | `field_D500` | Existing native body-mode gate; controls the unarmed updater |
+| `D502` | `debugWeaponColliders` | Optional native contact visualization bytes; initially false |
+| `D4FA` | Existing `positionalSoundsSuppressed` | Also gates attack input and automatic hand selection |
+| `8294` | `worldObjects[1].itemValue` | Positive values skip the entire weapon-animation update |
+
+Negative phase commands are -1 holster, -2 draw, and -3 attack.
+The sword also accepts -4 as a reset reaction. The native new-game initializer
+clears selected/requested type, hand, pose and phase, sets ready true, and
+clears the sprite selector. Ordinary level transitions retain these globals
+and inventory; the host does not reset them on `StartLevel`.
+
+#### Attack input and contacts
+
+`AttackWithSelectedWeapon()` ports the supported branches of `A8F7`.
+It requires phase exactly zero, the **old** ready latch true, and DS:D4FA false.
+It refreshes readiness from the resource word; underwater sword input returns
+before spending or allocation. Otherwise it decrements the word with wrapping,
+refreshes the latch, invokes the **reclaiming** allocator even for a sword,
+and writes the attack sentinel -3. The dagger immediately initializes that
+allocation; the sword leaves it cleared for its later strike. This seemingly
+redundant allocation is retained because a full pool can reclaim a live record.
+The final inventory-registry refresh also preserves native hand preference.
+The native stale-latch case can spend resource zero into -1; no extra gate is invented.
+
+`InitializeWeaponCollider` does not clear or allocate a record. Its callers do.
+It installs mask 254, behavior 2, the given lifetime/radii/damage byte, and:
+
+```text
+X = playerEyeX + signedByteDivide(low16(playerDirectionX * reach), 100)
+Z = playerEyeZ + signedByteDivide(low16(playerDirectionZ * reach), 100)
+Y = playerEyeY + yOffset + (low16(playerLookHeight - 90) SAR 2)
+```
+
+Coordinates wrap as words. The native signed-byte division can fault even
+when a full-width host multiplication would look reasonable; host code
+throws on that overflow. Player direction is the existing 100-scale vector,
+not the heading angle. Native debug mode additionally assigns model/animation/
+display 1 and placement 64. Normal contacts are invisible until converted into
+an impact particle.
+
+| Attack | Contact moment | Reach | Y offset | Damage | Radius XZ/Y | Lifetime |
+| --- | --- | --- | --- | --- | --- | --- |
+| Dagger | Immediately at input | 40 | -12 | 8 | 18/8 | 10 |
+| Sword | Pose reaches exactly 32 | 45 | -10 | 20 | 22/12 | 10 |
+| Unarmed transition branch | Countdown crosses 10 | 30 | -10 | 4 | 10/10 | 3 |
+
+These are native constants, not weapon-record damage parameters.
+No new line-of-sight/wall test is inserted; the existing behavior-2 collision
+query performs target selection and forwards to `DamageObject`.
+
+#### Dagger sequence
+
+The dagger updater runs **once per call**, even for zero ticks. It restores
+amount 100 and readiness true, selects sprite 1, then maps the old phase:
+
+| Old phase | Before the final countdown decay |
+| --- | --- |
+| -3 | Phase 40, preserve pose |
+| -1 | Phase 20, preserve pose |
+| -2 | Pose 1, phase 6 |
+| 0 | Pose 10 |
+| 1..5 | Pose `10 - phase*5` |
+| 15..20 | Pose `(phase-15)*5` |
+| 21..30 | Phase 0 |
+| 31..40 | Pose `(phase-31)*6 + 10` |
+| Other | Pose 1; commit a changed requested type immediately |
+
+Finally a positive phase approaches zero by the entire supplied tick count.
+The common tail commits selection at phase zero if hand or type differs.
+With one tick per call, drawing completes in six calls, holstering changes
+type on the seventh, and an attack becomes ready again after eleven calls.
+Batched dagger frames deliberately do **not** behave like repeated one-tick
+animation calls; the native branch mapping only happens once.
+
+#### Sword sequence
+
+The sword runs exactly `ticks` substeps; zero ticks skips branch-local updates.
+Each substep restores amount 100/readiness true and sprite 1, then handles:
+
+- Phase 0: pose 20.
+- -3: pose 21, phase 20.
+- -2: pose 10, phase 10.
+- -1: pose 0, phase 1010.
+- -4: pose 0, phase 0.
+- Phase 900..1000: commit a different requested type and return immediately.
+
+Then decrement a positive phase and increment pose unless it is exactly 20.
+At pose exactly 32 with readiness true, play sound effect 19 at full volume,
+source -3, limit 2, allocate a **first-free** contact and clear readiness.
+The next substep restores that latch, as in the EXE. Pose >=40 enters phase -2
+and pose 10. All increments and comparisons preserve signed-word behavior.
+
+With one-tick calls, a fresh attack strikes on call 11, enters recovery on
+call 19, and returns to idle on call 29. Drawing takes ten substeps;
+holstering commits the changed type on substep 11. A large batch cannot
+skip the exact strike pose or repeat the hit during recovery. Existing
+skeleton reactions continue to read/write the same shared phase and pose.
+
+#### Runtime and demo integration
+
+`Tick` retains existing pickup interaction, then updates hand selection,
+world objects, weapon animation, weapon-number input, and finally held attack
+input. Thus a newly created contact first runs in the **next** world pass;
+the sword cannot damage a target in the object pass that precedes its strike.
+The late animation/input order follows `E463`, `E4A4`, `E4A7`.
+Existing host pickup interaction remains before the object pass, rather than
+being moved with the still-incomplete native input dispatcher.
+Held attack repeats when phase zero is reached; no release-edge requirement
+is added. Pause/loading/menu frames neither sample weapon input nor animate.
+
+`SelectWeapon` preserves native busy/current/missing/depleted gates, swaps the
+registered inventory slot into hand 2, refreshes the registry, and requests
+holstering. Automatic selection requires health **exactly 1000** and prefers
+hand 2 over hand 1. Numeric selectors 1/2 correspond to dagger/sword; the DX11
+sample maps held Ctrl or left mouse to attack. Those physical attack bindings
+are sample choices, not a claim about the original configurable keyboard default
+(native attack binding byte is DS:323D).
+
+`GameTickResult::weapon` exposes animation and attack statuses.
+Other weapon families report `UnimplementedWeapon` without executing a
+success-shaped partial trigger. Their amount/allocation prefix is not applied
+until those complete attack branches are recovered. The renderer reports
+an attempted unsupported attack in its window title.
+
+**Presentation boundary:** DOS held-weapon bitmap loading/drawing and the
+weapon HUD are not reproduced here. The timing/hand/pose fields are available
+to a future presenter; DX11 currently shows world hits/particles, not a held
+dagger/sword overlay. Swimming/look control also remains partial; the recovered
+environment fields are explicit rather than silently inferred from incomplete
+movement code.
+
+[WeaponTests.cpp](Scaffold/WeaponTests.cpp) tests full contact records,
+all 65,536 signed phase words for each weapon, dagger batching, sword strike/
+recovery thresholds and maximum batches, direction/pitch arithmetic, sound
+and RNG, native allocation side effects/fallbacks, inventory/hand priority,
+hotkey swaps, blocked input, unsupported weapon status, and pickup-to-enemy-hit
+sequences through `Tick`. These are static-instruction-derived host tests,
+not DOS-runtime comparisons.
+
 ### Drifting particles and shared smoke creation
 
 The complete wrappers and supplied-object initializers are preserved in
 [particle-spawn-evidence.txt](particle-spawn-evidence.txt). This batch adds
 behavior 18 and `SpawnInCrater` (139), plus `GameContext` member initializers
 in [GameContext.cpp](Scaffold/GameContext.cpp). Other discovered behaviors,
-player weapons, and damage handling remain outside this implementation.
+other weapon families remain outside this implementation. Shared damage,
+contact behavior and dagger/sword controls have subsequently been implemented above.
 
-#### ExplosionSmokeCloud (18): whole-unit drifting and fading
+#### DriftingParticle (18): whole-unit drifting and fading
 
-The name reflects the author's recollection that this is likely a smoke cloud
-after an explosion; its exact visual role remains tentative. The update mechanics
-are recovered. Entry `0000:16E5` executes a loop
+This replaces the tentative name `ExplosionSmokeCloud`. The same particle
+serves weapon impacts and non-weapon emitters, so the name describes its
+verified motion rather than assigning a smoke-only visual role.
+Entry `0000:16E5` executes a loop
 of exactly `tickCount` iterations; zero ticks make no object-local changes.
 Each iteration:
 
@@ -1830,7 +2266,7 @@ updates, and all 28 original emitter records.
 Console examples:
 
 ```powershell
-.\Source\Decompile\build\Debug\desperabis-recovery.exe --behavior ExplosionSmokeCloud --ticks 3
+.\Source\Decompile\build\Debug\desperabis-recovery.exe --behavior DriftingParticle --ticks 3
 .\Source\Decompile\build\Debug\desperabis-recovery.exe --behavior SpawnInCrater --ticks 3
 ```
 
@@ -1969,7 +2405,7 @@ archive extraction, and other level records are not loaded by this method.
 | Plane | Contents | Original first byte in DS | Retained here |
 | --- | --- | --- | --- |
 | 0 | Wall texture / exact player start marker | `32D0` | `wallTextures` |
-| 1 | Floor texture/object | `3AA0` | No |
+| 1 | Floor texture/object | `3AA0` | `floorObjects` |
 | 2 | Ceiling texture/object | `4270` | `ceilingObjects` |
 | 3 | Floor height | `4A40` | `floorHeights` |
 | 4 | Room height above floor | `5210` | `roomHeights` |

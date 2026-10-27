@@ -841,6 +841,40 @@ The most useful next batch is the slab and bones. The three
 object-local cases are smaller supplementary candidates. No runtime code
 was changed when this shortlist was originally traced; Flies has since been ported.
 
+**Subsequent skeleton recovery:** behavior 30 (`10AC:4DAB`) is now ported,
+including attacks, the sword-parry window, fixed-point player-life updates,
+skeleton-specific damage/death, eight-part spawning and the required sprite
+fragment/water paths. DS:`0300` is immutable **-29491**, not an unknown time
+accumulator. Player meter DS:`2DBA` starts with maximum/current 360; weapon
+selection DS:`DDB6` value 2 is Sword, and DS:`DDBD` 30..40 is the blocking
+window. These dependencies no longer block the local skeleton behavior.
+Dagger/sword controls and contact creation are now implemented below. Remaining activation drivers and
+complete player-death presentation remain separate work. See the
+[complete skeleton contract](BehaviorRecovery.md#skeleton-movement-combat-and-death).
+
+**Subsequent weapon-contact recovery:** behavior 2 is `WeaponDamageCollider`;
+behavior 18 is `DriftingParticle`, replacing its tentative smoke-only name.
+The complete `10AC:10F5` damage/activation cascade now handles every native
+collision selector, including its default no-effect branch, with target-specific
+death/activation, geometry writes, sound cancellation and secondary spawning.
+Ordinary switches use this shared helper for all indexed targets, not just
+doors. FELD plane 1 is retained as `floorObjects` for collision-105 writes.
+Follow-on behavior updates not yet recovered still report their own unsupported
+status. Renderer mesh rebuilding remains separate.
+See [the full contract](BehaviorRecovery.md#weapon-damage-and-shared-activation).
+
+**Player melee sequence:** `0000:A8F7` is the attack-button routine;
+`0000:B5E6` updates the weapon state and draws its DOS presentation.
+The dagger emits an 8-damage contact immediately; the sword emits a
+20-damage contact at pose 32 after its wind-up. Their shared globals
+`DDB6..DDC5`, resource tables, hand selection, and signed phase sentinels
+are recovered and ported. GameCore now runs equip/holster, held-input
+repetition, swing/recovery and delayed contacts. The DX11 sample accepts
+Ctrl/left mouse to attack and 1/2 to select dagger/sword. The original
+held-weapon drawing is still a presentation boundary, and other weapon
+families return an explicit unsupported status. See
+[the complete melee contract](BehaviorRecovery.md#player-melee-attack-sequence).
+
 ### Rotation lookup tables and fixed-point arithmetic
 
 **Author-confirmed:** a full turn is 512 angle units; sine uses `angle&511`,
