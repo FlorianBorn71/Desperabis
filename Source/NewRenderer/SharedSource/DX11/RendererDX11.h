@@ -25,6 +25,8 @@ public:
 	void Deinitialize();
 	void ReleaseWindowSizeDependentResources();
 	void ReInitialize(ID3D11RenderTargetView1* colorView, ID3D11DepthStencilView* dsView, const D3D11_VIEWPORT& viewport);
+    // Retained for one render; nullptr hides the preview. World depth is discarded after post-effects.
+    void SetItemPreview(std::shared_ptr<const RenderableInstance> instance, bool isSprite, const D3D11_VIEWPORT& viewport);
 
 	virtual void RenderSceneElements(const VisibilityResult& elements, const RenderingSettings& renderSettings, ProfilingStats& stats) override final;
 
@@ -35,6 +37,7 @@ public:
 private:
     friend class RenderContextDX11;
 
+    void RenderHudGeometry(const RenderingSettings& settings, ProfilingStats& stats);
     virtual void ConfigureVisibility(IVisibilityContext& visContext) override final;
     void CreateAtlasDataCB(Texture& tex, NativeTextureObjectDX11& runtime);
 #ifdef ENABLE_ADVANCED_RENDERING
@@ -87,4 +90,7 @@ private:
 
     std::atomic_int32_t m_runtimeIdCounter = 0;
     bool m_isStereo = false;
+    std::shared_ptr<const RenderableInstance> m_itemPreview;
+    bool m_itemPreviewIsSprite = false;
+    D3D11_VIEWPORT m_itemPreviewViewport = {};
 };

@@ -66,6 +66,11 @@ void RenderContextDX11::EndRendering()
 }
 
 
+void RenderContextDX11::RenderHudGeometry()
+{
+    m_rendererDX11.RenderHudGeometry(m_settings, m_profiling);
+}
+
 void RenderContextDX11::SetBlendState(TransparencyMode mode)
 {
     // blend mode:

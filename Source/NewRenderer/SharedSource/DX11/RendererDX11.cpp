@@ -12,6 +12,8 @@
 #include <Asset/ModelAnim.h>
 #include <Scene/Scene.h>
 #include <Renderer/TextMesh.h>
+#include <cmath>
+#include <stdexcept>
 
 void RendererDX11::ReleaseWindowSizeDependentResources()
 {
@@ -214,6 +216,7 @@ FUTURE(void) RendererDX11::Initialize(ID3D11Device3* device, ID3D11DeviceContext
 
 void RendererDX11::Deinitialize()
 {
+    m_itemPreview.reset();
     m_d3dDevice.Reset();
     m_d3dContext.Reset();
     m_inputLayout.Reset();
@@ -251,6 +254,117 @@ void RendererDX11::Deinitialize()
 void RendererDX11::RenderSceneElements(const VisibilityResult& elements, const RenderingSettings& renderSettings, ProfilingStats& stats)
 {
     RenderScene_Impl<RenderContextDX11>(elements, renderSettings, stats);
+}
+
+void RendererDX11::SetItemPreview(std::shared_ptr<const RenderableInstance> instance, bool isSprite, const D3D11_VIEWPORT& viewport)
+{
+    if (instance != nullptr && (!instance->IsValid() ||
+        !std::isfinite(viewport.TopLeftX) || !std::isfinite(viewport.TopLeftY) ||
+        !std::isfinite(viewport.Width) || !std::isfinite(viewport.Height) ||
+        viewport.TopLeftX < m_mainViewport.TopLeftX || viewport.TopLeftY < m_mainViewport.TopLeftY ||
+        viewport.Width <= 0.f || viewport.Height <= 0.f ||
+        viewport.TopLeftX + viewport.Width > m_mainViewport.TopLeftX + m_mainViewport.Width ||
+        viewport.TopLeftY + viewport.Height > m_mainViewport.TopLeftY + m_mainViewport.Height))
+    {
+        throw std::invalid_argument("Item preview requires a renderable and a finite rectangle inside the main viewport.");
+    }
+    m_itemPreview = std::move(instance);
+    m_itemPreviewIsSprite = isSprite;
+    m_itemPreviewViewport = viewport;
+    m_itemPreviewViewport.MinDepth = 0.f;
+    m_itemPreviewViewport.MaxDepth = 1.f;
+}
+
+void RendererDX11::RenderHudGeometry(const RenderingSettings& settings, ProfilingStats& stats)
+{
+    const auto item = std::move(m_itemPreview);
+    if (item == nullptr) { return; }
+    const auto& viewport = m_itemPreviewViewport;
+    VisibilityResult elements;
+    if (m_itemPreviewIsSprite)
+    {
+        const auto& materials = item->GetMaterialOverrides();
+        const Texture* texture = materials.empty() ?
+            item->GetRenderable()->m_drawCalls.at(0).m_material.m_texture : materials[0].m_texture;
+        if (texture == nullptr || texture->m_width == 0 || texture->m_height == 0)
+        {
+            throw std::runtime_error("Pickup sprite preview has no texture.");
+        }
+        const float scale = (std::min)(viewport.Width / texture->m_width, viewport.Height / texture->m_height);
+        const float width = texture->m_width * scale;
+        const float height = texture->m_height * scale;
+        TextMeshInstance sprite(TextMesh::CreateTexturedQuad(*texture, width, height));
+        sprite.SetScale(1.f);
+        sprite.SetPosition(viewport.TopLeftX + (viewport.Width - width) * 0.5f,
+            viewport.TopLeftY + (viewport.Height - height) * 0.5f);
+        sprite.SetTintColor(item->m_tintColor);
+        RenderContextDX11 context(*this, elements, settings, stats);
+        context.RenderTextMeshes({ &sprite });
+        return;
+    }
+
+    RenderableInstance preview = *item;
+    const auto setPreviewLighting = [](RenderableInstance& instance)
+    {
+        instance.m_tintColor = { 255,255,255,instance.m_tintColor.a };
+        for (auto& material : instance.GetOrCreateMaterialOverrides())
+        {
+            material.m_applyLighting = false;
+            material.ComputeHash();
+        }
+    };
+    setPreviewLighting(preview);
+    for (auto& sub : preview.m_subInstances) { setPreviewLighting(sub); }
+    BoundingVolume bounds = preview.GetRenderable()->m_localBounds;
+    if (const auto* blendTarget = preview.GetBlendTargetRenderable()) { bounds.Add(blendTarget->m_localBounds); }
+    bounds.OnUpdated();
+    const float radius = bounds.GetSphereRadius();
+    if (!std::isfinite(radius) || radius <= 0.f)
+    {
+        throw std::runtime_error("Pickup model preview requires nonempty finite model bounds.");
+    }
+    preview.m_uniformScale = 1.f / radius;
+    for (auto& sub : preview.m_subInstances) { sub.m_uniformScale /= radius; }
+    Matrix4 center, rotation, tilt, placement;
+    const Vector& pivot = bounds.GetCenter();
+    center.SetTranslation(Vector(-pivot.GetX(), -pivot.GetY(), -pivot.GetZ()));
+    rotation.Create(Vector(), Vector(static_cast<float>(std::fmod(m_currentTime * 0.8, 2.0 * Math::Pi)), 0.f, 0.f), 1.f / radius);
+    tilt.Create(Vector(), Vector(0.f, 0.3f, 0.f));
+    placement.SetTranslation(Vector(0.f, 0.f, -3.f));
+    preview.SetTransform(center * rotation * tilt * placement);
+    preview.PrepareSubInstancesForRendering();
+    const auto addInstance = [&elements](const RenderableInstance& instance)
+    {
+        if (!instance.GetRenderable()->HasOwnDrawcalls()) { return; }
+        if (instance.HasOpaqueMaterials()) { elements.m_visibleInstances.m_opaqueInstances.push_back({ &instance,0 }); }
+        if (instance.HasTransparentMaterials()) { elements.m_visibleInstances.m_transparentInstances.push_back({ &instance,0 }); }
+        elements.m_visibleInstances.m_visibleTransparencyTypes |= instance.GetUsedTransparencyMask();
+    };
+    addInstance(preview);
+    for (const auto& sub : preview.m_subInstances) { addInstance(sub); }
+    Camera camera;
+    Matrix4 projection;
+    const float aspect = viewport.Width / viewport.Height;
+    projection.CreateOrthographic(2.4f * (std::max)(1.f, aspect), 2.4f * (std::max)(1.f, 1.f / aspect), 0.1f, 10.f);
+    camera.SetProjectionMatrix(projection);
+    elements.m_mainCamera = &camera;
+    elements.m_ambientColor = { 1.f,1.f,1.f };
+    elements.m_ambientNrmlContribution = 0.f;
+    elements.m_fogFalloff = 0.f;
+    elements.m_lightmap = AssetManager::Instance().GetPlainWhiteTexture();
+    RenderContextDX11 context(*this, elements, settings, stats);
+    context.BeginRendering();
+    context.BeginRenderTargetScope(RenderTargetPassType::MainView);
+    context.TrackGlobals();
+    auto* target = GetRenderTarget<RenderTargetDX11>(RenderTargetPassType::MainView);
+    // No world-depth consumers remain. Keep the world color and use fresh depth for self-occlusion.
+    m_d3dContext->ClearDepthStencilView(target->m_depthStencilView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+    m_d3dContext->RSSetViewports(1, &viewport);
+    RenderOpaqueGeometry(context, elements.m_visibleInstances);
+    RenderTransparentGeometry(context, elements.m_visibleInstances);
+    context.EndRenderTargetScope();
+    context.EndRendering();
+    target->BindAsTarget(false);
 }
 
 void RendererDX11::CreateAtlasDataCB(Texture& tex, NativeTextureObjectDX11& runtime)

@@ -1310,8 +1310,12 @@ level exits, teleporters, sarcophagi, picture maps,
 and lorries explicitly return `UnimplementedHandler` without mutating the
 object or inventory. Other collision values follow the original generic
 pickup tail. Door prompts and sound requests are implemented; the playable DX11
-host now renders messages with the original font assets. Native message placement,
-preview refresh timing, inventory-item use, and platform keyboard polling are not. Input
+host now renders messages with the original font assets and shows the selected
+pickable contact in a bottom-right HUD preview. That preview is renderer-only:
+3D assets rotate in an independent orthographic view; sprites remain flat.
+The host validates the current slot/health each render rather than retaining
+the native scratch record. Native message placement, preview refresh timing,
+inventory-item use, and platform keyboard polling are not recovered. Input
 interface polling and collision-driven interaction are implemented by the
 frame hook above. The local snapshot
 does not reproduce the original UI's possibly older preview copy.

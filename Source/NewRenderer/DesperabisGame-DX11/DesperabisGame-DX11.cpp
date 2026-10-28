@@ -101,13 +101,19 @@ namespace
 			UpdateHealthBar();
 		}
 
+		float GetHealthBarHeight() const
+		{
+			const auto* frame = g_hudAnimations->GetFrame(1, 0);
+			return (std::min)(g_viewport.Height,
+				g_viewport.Width * static_cast<float>(frame->m_height) / frame->m_width) * 0.25f;
+		}
+
 		void UpdateHealthBar()
 		{
 			if (!g_scene || GetRuntimeState() != Desperabis::GameRuntimeState::Ready) { return; }
 			if (playerLifeMaximum <= 0) { throw std::logic_error("Health bar requires a positive player-life maximum."); }
 			const auto* frame = g_hudAnimations->GetFrame(1, 0);
-			const float height = (std::min)(g_viewport.Height,
-				g_viewport.Width * static_cast<float>(frame->m_height) / frame->m_width) * 0.25f;
+			const float height = GetHealthBarHeight();
 			const float fraction = std::clamp(
 				static_cast<float>(playerLife) / (static_cast<float>(playerLifeMaximum) * 65536.f), 0.f, 1.f);
 			auto background = std::make_shared<TextMeshInstance>(TextMesh::CreateTexturedQuad(
@@ -528,6 +534,7 @@ namespace
 
 	void ClearGameObjects()
 	{
+		g_renderer.SetItemPreview(nullptr, false, {});
 		for (int slot = 0; slot < g_numObjectSlots; slot++)
 		{
 			if (g_objectInst[slot] != nullptr && g_scene != nullptr)
@@ -539,6 +546,32 @@ namespace
 			g_presentedState[slot] = {};
 			g_objectBehaviorCreated[slot] = false;
 		}
+	}
+
+	void UpdateItemPreview()
+	{
+		g_renderer.SetItemPreview(nullptr, false, {});
+		if (g_useFreeCam || g_gameCore->GetRuntimeState() != Desperabis::GameRuntimeState::Ready ||
+			g_gameCore->playerLife <= 0) { return; }
+		const auto slot = g_gameCore->playerCollisionSlot;
+		if (slot < 2 || slot > 164) { return; }
+		const auto& object = g_gameCore->GetWorldObjects().at(slot);
+		using Desperabis::CollisionType;
+		const bool pickable = object.pickupType != Desperabis::PickupType::None ||
+			object.collisionType == CollisionType::Poison || object.collisionType == CollisionType::Medicine ||
+			object.collisionType == CollisionType::Gold || object.collisionType == CollisionType::PickableMap;
+		const auto& instance = g_objectInst[slot];
+		if (object.health <= 0 || !pickable || !instance || !instance->IsValid() || !instance->GetVisible()) { return; }
+		const float margin = (std::min)(g_viewport.Width, g_viewport.Height) * 0.02f;
+		const float side = (std::min)(g_viewport.Width - margin * 2.f,
+			g_viewport.Height - g_gameCore->GetHealthBarHeight() - margin * 2.f) * 0.16f;
+		if (side <= 0.f) { return; }
+		const D3D11_VIEWPORT viewport = {
+			g_viewport.Width - margin - side,
+			g_viewport.Height - g_gameCore->GetHealthBarHeight() - margin - side,
+			side,side,0.f,1.f };
+		const GamePlay::PropertyAccessorBase properties(g_objectState[slot]);
+		g_renderer.SetItemPreview(instance, GamePlay::IsSpriteDisplayType(properties.GetDisplayType()), viewport);
 	}
 
 	// Copies the world state out of the game context and updates the renderables of changed slots.
@@ -922,6 +955,7 @@ namespace
 
 		Renderer::Instance().SetCamera(g_camera);
 		Renderer::Instance().SetCurrentTime(g_currentTime);
+		UpdateItemPreview();
 		Renderer::Instance().RenderScene(g_scene.get(), g_renderSettings, g_visSettings, nullptr);
 
 		g_swapChain->Present(1, 0);

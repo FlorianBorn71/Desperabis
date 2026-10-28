@@ -60,6 +60,27 @@ game ticks (33 Hz, as in the original game)
   The sample does not yet draw a held-weapon overlay, but world hits/particles are active.
   Player-life depletion installs the core death state and disables normal keyboard movement,
   but the death camera and restart/menu presentation are not yet available.
+* The selected pickable contact has a bottom-right preview above the health bar.
+  Selection follows `playerCollisionSlot`; inactive/non-pickable contacts, death
+  and free-camera mode hide it. Collectibles that do not require a pickup flag
+  (poison, medicine, gold and maps) are included. Picking an item up removes its
+  preview immediately, without retaining its world slot or changing gameplay.
+  3D items share the world's assets/materials but use a separate instance, a
+  sphere-fitted orthographic camera and a slow independent rotation with a fixed
+  camera-space tilt of about 17 degrees to show their depth. Sprites
+  remain flat, preserving their aspect ratio and atlas mapping.
+  `RendererDX11::SetItemPreview` retains a shared instance and viewport for
+  one render. HUD geometry uses the statically dispatched render context, not a
+  renderer virtual hook. The pass runs after world transparency, water and
+  depth-reading coronas, but before text/health. For 3D previews it clears and
+  reuses the main depth buffer (not its color), retaining normal self-occlusion.
+  No world-depth consumer may be scheduled after this pass. Copied preview
+  materials use full-bright rendering with a neutral white tint, retaining
+  original texture/vertex colors and opacity but ignoring world brightness,
+  light maps, fog and lights. World instances and shared materials are unchanged.
+  Ambient is uploaded normally by `TrackGlobals`; full-bright is an explicit HUD
+  policy, not a workaround for missing ambient tracking.
+  This is modern presentation, not a reconstruction of native preview timing.
 * A full-width health track is anchored to the viewport bottom. The default-empty
   core hook `OnPlayerHealthChanged(previousLife, currentLife)` is overridden to
   update it immediately after actual life changes; no per-frame health polling
