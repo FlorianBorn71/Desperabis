@@ -2,7 +2,7 @@ cbuffer TextConstants : register(b0)
 {
     float4 ScreenAndPosition;
     float4 TintColor;
-    float4 Scale;
+    float4 ScaleAndTextureMode;
 };
 
 struct VertexInput
@@ -22,7 +22,7 @@ struct PixelInput
 PixelInput vs_main_text(VertexInput input)
 {
     PixelInput output;
-    float2 screenPosition = input.position * Scale.x + ScreenAndPosition.zw;
+    float2 screenPosition = input.position * ScaleAndTextureMode.x + ScreenAndPosition.zw;
     output.position = float4(
         screenPosition.x * (2.0f / ScreenAndPosition.x) - 1.0f,
         1.0f - screenPosition.y * (2.0f / ScreenAndPosition.y),

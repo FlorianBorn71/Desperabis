@@ -59,7 +59,23 @@ game ticks (33 Hz, as in the original game)
   Their sprite bounds and images come from the level-mapped common animation bank.
   The sample does not yet draw a held-weapon overlay, but world hits/particles are active.
   Player-life depletion installs the core death state and disables normal keyboard movement,
-  but the native meter HUD, death camera and restart/menu presentation are not yet available.
+  but the death camera and restart/menu presentation are not yet available.
+* A full-width health track is anchored to the viewport bottom. The default-empty
+  core hook `OnPlayerHealthChanged(previousLife, currentLife)` is overridden to
+  update it immediately after actual life changes; no per-frame health polling
+  or rounding to whole health points is used. It is also built on level load and
+  rebuilt on resize, while health itself persists across ordinary level changes.
+  The texture is the original 90x2 `ANIMS\AMA_ANI.AN2` frame `(2,1)` (one-based),
+  using the default `BACKGR1.PAL`. Native maximum health is 360, not the texture's
+  90-pixel width. Filled width and UVs are cropped by current/max health, so low
+  health leaves the red end visible; the empty track stays dark even at zero.
+  Height is one quarter of the original texture-aspect height at the current screen width.
+  `TextMesh::CreateTexturedQuad` supplies regular textured screen-space triangles
+  to the existing text shader, using RGBA sampling rather than the font batches'
+  red-channel coverage mode. Atlas scale/bias is baked into the vertices once,
+  before the shader samples the shared atlas; no second UV transform is applied.
+  Quad UVs are inset to texel centers. The health fill samples only the first
+  pixel row of the 90x2 frame, preventing filtering into its different second row.
 * Gameplay prompts from the overridable `GameContext::PromptUserMessage` hook are displayed as
   centered light-orange screen text (`RGB(255, 192, 128)`).
   The game loads `ANIMS\SCHRIFT0.AN2`, `SCHRIFT1.AN2`, and `SCHRIFT2.AN2` with the desktop

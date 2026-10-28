@@ -14,6 +14,7 @@ struct TextMeshBatch
 {
 	const TextureAnim* m_animation = nullptr;
 	const Texture* m_atlasTexture = nullptr;
+	bool m_useTextureColor = false;
 	std::vector<TextVertex> m_vertices;
 	std::vector<uint32_t> m_indices;
 };
@@ -21,6 +22,11 @@ struct TextMeshBatch
 class D_IMPEXP TextMesh
 {
 public:
+	// RGBA screen-space geometry with texel-center atlas UVs and optional source cropping.
+	// The caller must retain the texture (or its owning animation) while the mesh is used.
+	static std::shared_ptr<TextMesh> CreateTexturedQuad(
+	    const Texture& texture, float width, float height,
+	    float sourceWidthFraction = 1.f, float sourceHeightFraction = 1.f);
 	const Vector2& GetExtent() const { return m_extent; }
 	const std::vector<TextMeshBatch>& GetBatches() const { return m_batches; }
 	bool IsValid() const { return !m_batches.empty(); }

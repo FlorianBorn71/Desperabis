@@ -153,6 +153,7 @@ namespace Desperabis
 
     void GameContext::OnObjectCreated(int) {}
     void GameContext::OnObjectDestroyed(int) {}
+    void GameContext::OnPlayerHealthChanged(std::int32_t, std::int32_t) {}
 
     int GameContext::FindWorldObjectSlot(const RawGameObject& object) const
     {
@@ -879,6 +880,7 @@ namespace Desperabis
 
     void GameContext::ApplyPlayerLifeDelta(std::int32_t delta)
     {
+        const auto previousLife = playerLife;
         if (playerLifeDeltaSuppressed == 0)
         {
             const auto bits = static_cast<std::uint32_t>(playerLife) + static_cast<std::uint32_t>(delta);
@@ -900,6 +902,7 @@ namespace Desperabis
                 worldObjects[1].velocityZ = 400;
             }
         }
+        if (playerLife != previousLife) { OnPlayerHealthChanged(previousLife, playerLife); }
     }
 
     void GameContext::StopAllSoundEffects()

@@ -104,10 +104,6 @@ void RenderContextDX11::RenderTextMeshes(const std::vector<const TextMeshInstanc
         NativeTextMeshObjectDX11* nativeMesh = mesh.GetNativeRuntimeObj<NativeTextMeshObjectDX11>();
         assert(nativeMesh != nullptr);
 
-        m_rendererDX11.m_textShader.UpdateConstants(m_d3dContext.Get(),
-            static_cast<float>(renderTarget->m_width), static_cast<float>(renderTarget->m_height),
-            instance->GetPosition(), instance->GetTintColor(), instance->GetScale());
-
         for (const NativeTextMeshBatchDX11& batch : nativeMesh->m_batches)
         {
             NativeTextureObjectDX11* nativeTexture = batch.m_atlasTexture->GetNativeRuntimeObj<NativeTextureObjectDX11>();
@@ -116,6 +112,9 @@ void RenderContextDX11::RenderTextMeshes(const std::vector<const TextMeshInstanc
                 continue;
             }
 
+            m_rendererDX11.m_textShader.UpdateConstants(m_d3dContext.Get(),
+                static_cast<float>(renderTarget->m_width), static_cast<float>(renderTarget->m_height),
+                instance->GetPosition(), instance->GetTintColor(), instance->GetScale(), batch.m_useTextureColor);
             m_d3dContext->PSSetShaderResources(0, 1, nativeTexture->m_nativeTexView.GetAddressOf());
             const UINT stride = sizeof(TextVertex);
             const UINT offset = 0;
@@ -458,4 +457,3 @@ void RenderContextDX11::RenderPostEffects()
     }
 }
 #endif // ENABLE_ADVANCED_RENDERING
-

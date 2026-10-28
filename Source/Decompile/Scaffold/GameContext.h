@@ -240,6 +240,9 @@ namespace Desperabis
         // Hooks must not throw or mutate the world/reenter gameplay.
         virtual void OnObjectCreated(int slot);
         virtual void OnObjectDestroyed(int slot);
+        // Immediate after clamping/depletion; both arguments are signed 16.16 life values.
+        // Only actual changes through ApplyPlayerLifeDelta notify; do not mutate/reenter gameplay.
+        virtual void OnPlayerHealthChanged(std::int32_t previousLife, std::int32_t currentLife);
         // Use these for external lifecycle changes; raw worldObjects writes bypass notifications.
         void ReplaceWorldObject(int slot, RawGameObject object);
         void SetObjectHealth(RawGameObject& object, std::int16_t health);
@@ -331,6 +334,7 @@ namespace Desperabis
         void RequestPlayerCrouch();
         // Native 0000:DA3C: selected cockroach contact uses forward speed, not an interaction key.
         InteractionResult HandleCockroachContact(RawGameObject& object);
+        // Authoritative player-life update, including suppression, clamping, death and notification.
         void ApplyPlayerLifeDelta(std::int32_t delta);
         // Native 10AC:10F5: zero activates, positive values damage, -1 selects special destruction.
         void DamageObject(RawGameObject& object, std::int16_t amount);

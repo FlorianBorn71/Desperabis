@@ -2,7 +2,7 @@ cbuffer TextConstants : register(b0)
 {
     float4 ScreenAndPosition;
     float4 TintColor;
-    float4 Scale;
+    float4 ScaleAndTextureMode;
 };
 
 Texture2D glyphAtlas : register(t0);
@@ -17,7 +17,11 @@ struct PixelInput
 
 float4 ps_main_text(PixelInput input) : SV_TARGET
 {
-    float coverage = glyphAtlas.Sample(glyphSampler, input.texCoord).r;
+    float4 texel = glyphAtlas.Sample(glyphSampler, input.texCoord);
     float4 color = input.color * TintColor;
-    return float4(color.rgb, color.a * coverage);
+    if (ScaleAndTextureMode.y > 0.5f)
+    {
+        return color * texel;
+    }
+    return float4(color.rgb, color.a * texel.r);
 }

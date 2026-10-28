@@ -410,6 +410,7 @@ std::shared_ptr<IGraphicsRuntimeObject> RendererDX11::CreateTextMeshBuffers(cons
 
         NativeTextMeshBatchDX11& nativeBatch = native->m_batches.emplace_back();
         nativeBatch.m_atlasTexture = batch.m_atlasTexture;
+        nativeBatch.m_useTextureColor = batch.m_useTextureColor;
         nativeBatch.m_indexCount = static_cast<UINT>(batch.m_indices.size());
 
         D3D11_SUBRESOURCE_DATA vertexData = {};

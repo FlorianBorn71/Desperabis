@@ -60,11 +60,11 @@ inline void TextShaderDX11::Bind(ID3D11DeviceContext3* context)
 	context->PSSetConstantBuffers(0, 1, m_constantBuffer.GetAddressOf());
 }
 
-inline void TextShaderDX11::UpdateConstants(ID3D11DeviceContext3* context, float screenWidth, float screenHeight, const Vector2& position, const Color4& tint, float scale)
+inline void TextShaderDX11::UpdateConstants(ID3D11DeviceContext3* context, float screenWidth, float screenHeight, const Vector2& position, const Color4& tint, float scale, bool useTextureColor)
 {
 	TextShaderConstants constants = {};
 	constants.m_screenAndPosition = { screenWidth, screenHeight, position.x, position.y };
 	tint.ToFloat(&constants.m_tintColor.x);
-	constants.m_scale = { scale, 0.f, 0.f, 0.f };
+	constants.m_scaleAndTextureMode = { scale, useTextureColor ? 1.f : 0.f, 0.f, 0.f };
 	context->UpdateSubresource(m_constantBuffer.Get(), 0, nullptr, &constants, 0, 0);
 }

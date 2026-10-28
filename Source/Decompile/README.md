@@ -291,6 +291,19 @@ do not emit hooks; hosts must clean up their own resources when retiring a conte
 There is no end-of-tick lifecycle scan. Continue using `GetWorldObjects()` for
 ordinary per-frame changes such as position and animation.
 
+`OnPlayerHealthChanged(previousLife, currentLife)` is a separate default-empty
+virtual hook for the authoritative signed 16.16 `playerLife` meter, not slot 1's
+object-health word. `ApplyPlayerLifeDelta` calls it immediately after suppression,
+clamping and depletion processing, only if the final value changed. Fractional
+damage/healing notifies too; unchanged/suppressed deltas do not. Use that helper
+for player-life updates: direct field writes bypass notification. Hooks must not
+mutate gameplay or reenter updates; callback exceptions propagate after life is
+committed. Construction and ordinary level changes do not emit this hook; the
+host should build its initial UI from current life/max and rebuild when replacing
+its scene. Native initial/max health is **360**, even though the gradient has
+**90** texels. The `player-health` suite covers immediate ordering, fractional
+changes, clamps, suppression, depletion, gameplay damage and level transitions.
+
 `LoadLevelGeometry` requires both the requested FELD file and `LEVEL\LEVELS.INF`.
 It installs the four native surface depth/value pairs and repeated-floor height
 alongside geometry and collision data, so water contact does not encounter

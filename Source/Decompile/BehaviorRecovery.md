@@ -1858,6 +1858,24 @@ Evidence is split into the bounded exports
   hit-effect ticks to 1000, DS:`D4B4` to -1, DS:`D4FA` true, and slot-1
   `velocityZ` to 400. The partial keyboard controller stops accepting movement
   in this state rather than overwriting the native death view marker.
+- Its final changed value immediately invokes the default-empty host hook
+  `OnPlayerHealthChanged(previousLife, currentLife)`. Both values retain signed
+  16.16 precision; notification follows clamping and the complete depletion state.
+  Suppressed/no-op updates do not notify. Direct public-field assignments cannot
+  be intercepted. The `player-health` suite checks this contract independently
+  of renderer timing.
+- The DX11 sample uses this callback to redraw a full-width bottom meter through
+  the existing text shader. `AMA_ANI.AN2` row 2/frame 1 (zero-based `(1,0)`) is
+  the original **90x2** strip: its first row goes red to green; the second has
+  different colors. It uses `BACKGR1.PAL`, not the font's grayscale palette.
+  The filled width and source UV width are both `playerLife/(65536*maximum)`,
+  leaving a dark empty track and retaining only the red end at low life.
+  The host uses one quarter of the texture-aspect height and anchors the track
+  to the full viewport bottom. Quads sample RGBA rather than the font shader's
+  red-channel coverage, with atlas UV transforms baked into vertices once.
+  The fill uses only the first pixel row, with texel-center UV bounds to avoid
+  interpolation into the different second row.
+  This responsive presentation is not an exact DOS HUD port.
 
 **Skeleton death and fragments**
 
@@ -1910,7 +1928,7 @@ that creates these temporary contacts is now implemented below.
 **Integration boundary:** no unknown global blocks the recovered skeleton
 routine. Dagger/sword input, attack timing and automatic contact creation are
 implemented in [the melee sequence](#player-melee-attack-sequence).
-Remaining dormant-object activation drivers, meter HUD, damage-screen
+Remaining dormant-object activation drivers, the complete DOS meter HUD, damage-screen
 effect, death camera animation and menu/restart flow are not implemented here.
 The new weapon/parry fields and `DamageObject` expose their native contracts
 for that separate work. Merely pressing Enter is still interaction, not attack.

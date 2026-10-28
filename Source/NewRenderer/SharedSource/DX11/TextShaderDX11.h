@@ -8,7 +8,7 @@ struct TextShaderConstants
 {
 	Float4Storage m_screenAndPosition;
 	Float4Storage m_tintColor;
-	Float4Storage m_scale;
+	Float4Storage m_scaleAndTextureMode;
 };
 
 struct NativeTextMeshBatchDX11
@@ -16,6 +16,7 @@ struct NativeTextMeshBatchDX11
 	ComPtr<ID3D11Buffer> m_vertexBuffer;
 	ComPtr<ID3D11Buffer> m_indexBuffer;
 	const Texture* m_atlasTexture = nullptr;
+	bool m_useTextureColor = false;
 	UINT m_indexCount = 0;
 };
 
@@ -31,7 +32,7 @@ public:
 	FUTURE(void) Create(ID3D11Device3* device);
 	void Deinitialize();
 	void Bind(ID3D11DeviceContext3* context);
-	void UpdateConstants(ID3D11DeviceContext3* context, float screenWidth, float screenHeight, const Vector2& position, const Color4& tint, float scale);
+	void UpdateConstants(ID3D11DeviceContext3* context, float screenWidth, float screenHeight, const Vector2& position, const Color4& tint, float scale, bool useTextureColor);
 
 private:
 	ComPtr<ID3D11VertexShader> m_vertexShader;

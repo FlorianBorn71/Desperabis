@@ -61,6 +61,7 @@ namespace
 	VisibilitySettings g_visSettings{ (uint32_t)GamePlay::VisibilityFilter::NormalRendering };
 	std::unique_ptr<LevelScene> g_scene;
 	std::shared_ptr<TextureAnim> g_fireballFrames;
+	std::shared_ptr<TextureAnim> g_hudAnimations;
 	std::unique_ptr<FreeCamera> g_freeCam;
 	std::shared_ptr<Camera> g_camera;
 	class GameAppContext;
@@ -95,6 +96,49 @@ namespace
 	class GameAppContext final : public Desperabis::GameContext
 	{
 	public:
+		void OnPlayerHealthChanged(std::int32_t, std::int32_t) override
+		{
+			UpdateHealthBar();
+		}
+
+		void UpdateHealthBar()
+		{
+			if (!g_scene || GetRuntimeState() != Desperabis::GameRuntimeState::Ready) { return; }
+			if (playerLifeMaximum <= 0) { throw std::logic_error("Health bar requires a positive player-life maximum."); }
+			const auto* frame = g_hudAnimations->GetFrame(1, 0);
+			const float height = (std::min)(g_viewport.Height,
+				g_viewport.Width * static_cast<float>(frame->m_height) / frame->m_width) * 0.25f;
+			const float fraction = std::clamp(
+				static_cast<float>(playerLife) / (static_cast<float>(playerLifeMaximum) * 65536.f), 0.f, 1.f);
+			auto background = std::make_shared<TextMeshInstance>(TextMesh::CreateTexturedQuad(
+				*AssetManager::Instance().GetPlainWhiteTexture(), g_viewport.Width, height));
+			background->SetScale(1.f);
+			background->SetPosition(0.f, g_viewport.Height - height);
+			background->SetTintColor(Color4{ 24,24,24,255 });
+			std::shared_ptr<TextMeshInstance> fill;
+			if (fraction > 0.f)
+			{
+				fill = std::make_shared<TextMeshInstance>(TextMesh::CreateTexturedQuad(
+					*frame, g_viewport.Width * fraction, height, fraction, 0.5f));
+				fill->SetScale(1.f);
+				fill->SetPosition(0.f, g_viewport.Height - height);
+			}
+			ClearHealthBar();
+			g_scene->AddTextMeshInstance(background);
+			m_healthBackground = std::move(background);
+			if (fill)
+			{
+				g_scene->AddTextMeshInstance(fill);
+				m_healthFill = std::move(fill);
+			}
+		}
+
+		void ClearHealthBar()
+		{
+			if (m_healthBackground) { g_scene->RemoveTextMeshInstance(m_healthBackground); m_healthBackground.reset(); }
+			if (m_healthFill) { g_scene->RemoveTextMeshInstance(m_healthFill); m_healthFill.reset(); }
+		}
+
 		void PromptUserMessage(std::string_view text, std::int16_t duration) override
 		{
 			const auto ticks = text.empty() ? std::int16_t{ 0 } :
@@ -245,6 +289,8 @@ namespace
 		}
 
 		std::shared_ptr<TextMeshInstance> m_promptInstance;
+		std::shared_ptr<TextMeshInstance> m_healthBackground;
+		std::shared_ptr<TextMeshInstance> m_healthFill;
 		std::string m_promptText;
 		std::int16_t m_promptTicks = 0;
 	};
@@ -307,6 +353,7 @@ namespace
 	{
 		ID3D11RenderTargetView* nullViews[] = { nullptr };
 		g_d3dContext->OMSetRenderTargets(ARRAYSIZE(nullViews), nullViews, nullptr);
+		g_renderer.ReleaseWindowSizeDependentResources();
 		g_renderTargetView.Reset();
 		g_depthStencilView.Reset();
 		g_d3dContext->Flush();
@@ -358,7 +405,11 @@ namespace
 
 		g_viewport = CD3D11_VIEWPORT(0.0f, 0.0f, (float)width, (float)height);
 		g_d3dContext->RSSetViewports(1, &g_viewport);
-		if (g_gameCore) { g_gameCore->UpdatePromptPosition(); }
+		if (g_gameCore)
+		{
+			g_gameCore->UpdatePromptPosition();
+			g_gameCore->UpdateHealthBar();
+		}
 	}
 
 	void UpdateProjection()
@@ -573,6 +624,7 @@ namespace
 			scene->m_createMapIcons = false;
 			FORCE_WAIT(scene->CreateScene());
 			g_gameCore->ClearPrompt();
+			g_gameCore->ClearHealthBar();
 			ClearGameObjects();
 			g_scene = std::move(scene);
 			g_freeCam->JumpTo(g_scene->GetInitialPosition());
@@ -582,6 +634,7 @@ namespace
 				throw std::runtime_error(g_gameCore->GetLevelLoadError());
 			}
 			SyncGameObjects();
+			g_gameCore->UpdateHealthBar();
 			const auto title = "Desperabis (DX11) - level " + std::to_string(levelIndex);
 			SetWindowTextA(g_hWnd, title.c_str());
 		}
@@ -693,12 +746,19 @@ namespace
 		g_gameCore = std::make_unique<GameAppContext>();
 #if defined(D_ASYNC)
 		g_fireballFrames = AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\SCHUSS1.AN2").get();
+		g_hudAnimations = AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\AMA_ANI.AN2").get();
 #else
 		g_fireballFrames = AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\SCHUSS1.AN2");
+		g_hudAnimations = AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\AMA_ANI.AN2");
 #endif
 		if (!g_fireballFrames || g_fireballFrames->m_frames.size() != 10)
 		{
 			throw std::runtime_error("Expected the original ten-frame SCHUSS1 fireball animation.");
+		}
+		if (!g_hudAnimations || !g_hudAnimations->IsValidFrame(1, 0) ||
+			g_hudAnimations->GetFrame(1, 0)->m_width != 90 || g_hudAnimations->GetFrame(1, 0)->m_height != 2)
+		{
+			throw std::runtime_error("Expected the original 90x2 AMA_ANI health gradient.");
 		}
 
 		g_freeCam = std::make_unique<FreeCamera>();
@@ -717,10 +777,12 @@ namespace
 	{
 		g_initialized = false;
 		g_gameCore->ClearPrompt();
+		g_gameCore->ClearHealthBar();
 		ClearGameObjects();
 		g_scene.reset();
 		g_promptFont.reset();
 		g_fontAnimations = {};
+		g_hudAnimations.reset();
 		g_freeCam.reset();
 		g_camera.reset();
 		g_gameCore.reset();
