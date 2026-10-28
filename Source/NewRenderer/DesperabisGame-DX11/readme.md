@@ -27,6 +27,9 @@ game ticks (33 Hz, as in the original game)
   supply `LevelLoadData::playerSpawn`; normal play always uses the native map marker.
 * `LevelStartOverride` is a one-shot player-contact behavior. The original cave object moves the player
   above the floor, consumes itself, and lets normal gravity begin the drop; no Enter press is needed.
+* Jump/crouch use the recovered 45/28 body heights, changing collision radius and camera height.
+  Low rooms cancel ascent and force crouching. Water contact also forces crouching; submersion
+  is detected separately. Swimming/buoyancy, oxygen and other underwater effects remain deferred.
 * Awake skeletons use recovered pursuit, wall avoidance, attacks and fixed-point player-life damage.
   Skeleton death creates moving body parts and a pickable sword. `WeaponDamageCollider` (2)
   now resolves hits through the complete shared damage/activation dispatcher, reusing the contact
@@ -71,5 +74,7 @@ Current assumptions/limitations:
 * `Ctrl` or left mouse: attack with the equipped weapon (normal player camera only)
 * `1` / `2`: select dagger / sword from inventory (normal player camera only)
   The weapon must be available and its current animation idle; selection uses native holster/draw timing.
+* `Space`: jump, or stand up first when crouched (normal player camera only)
+* `C`: crouch; release keeps the stance, as in the original. Use `Space` to stand.
 * `F`: toggle free camera (`WASD` move, `Shift` faster, mouse position relative to the window center steers)
 * `Esc` quits

@@ -407,7 +407,7 @@ namespace
         meter.ApplyPlayerLifeDelta(100000);
         Check(meter.playerLife == 360 * 65536, "Player life must clamp to its native maximum.");
         meter.ApplyPlayerLifeDelta(-360 * 65536);
-        Check(meter.playerLife == 0 && meter.playerDeathState == -1 && meter.positionalSoundsSuppressed &&
+        Check(meter.playerLife == 0 && meter.playerPostureDelta == -1 && meter.positionalSoundsSuppressed &&
             meter.playerHitEffectTicks == 1000 && meter.worldObjects[1].velocityZ == 400,
             "Meter depletion must install the recovered player-death state.");
         meter.playerHitEffectTicks = 1;
@@ -534,7 +534,7 @@ namespace
         Check(host.playerLife == 65536, "Pausing must prevent skeleton damage.");
         host.SetPaused(false);
         Check(host.Tick({ 1,1 }, input).status == GameTickStatus::Advanced &&
-            host.playerLife == 0 && host.playerDeathState == -1 && host.worldObjects[1].velocityZ == 400,
+            host.playerLife == 0 && host.playerPostureDelta == -1 && host.worldObjects[1].velocityZ == 400,
             "The installed game tick must dispatch the attack and preserve player-death setup.");
         const auto player = host.worldObjects[1];
         host.Tick({ 8,8 }, input);

@@ -236,6 +236,10 @@ namespace Desperabis
         playerSidewaysSpeed = 0;
         playerTurnSpeed = 0;
         playerVerticalSpeed = 0;
+        playerBodyHeight = 45;
+        playerPostureDelta = 0;
+        playerGrounded = false;
+        playerUnderwater = false;
         // Host policy: seed normal heading from its supplied view vector; zero means face +Z.
         // TODO: Load native DS:D4D0/DC4C and the working camera position from recovered level/save initialization.
         playerHeading = worldObjects[1].velocityX == 0 && worldObjects[1].velocityZ == 0 ? 0 :
@@ -290,11 +294,24 @@ namespace Desperabis
             { player.velocityX, player.velocityY, player.velocityZ } };
     }
 
+    void GameContext::RequestPlayerJump()
+    {
+        if (worldObjects[1].field_28 != 0) { return; }
+        if (playerBodyHeight == 45 && playerGrounded) { playerVerticalSpeed = 7; }
+        else { playerPostureDelta = 6; }
+    }
+
+    void GameContext::RequestPlayerCrouch()
+    {
+        playerPostureDelta = -6;
+        if (playerVerticalSpeed > 0) { playerVerticalSpeed = 0; }
+    }
+
     BasicPlayerMovementResult GameContext::UpdateBasicPlayerMovement(InputHandler& input)
     {
         BasicPlayerMovementResult result;
         auto& player = worldObjects[1];
-        if (frameTickCount == 0 || player.health <= 0 || playerDeathState == -1) { return result; }
+        if (frameTickCount == 0 || player.health <= 0 || playerLife <= 0) { return result; }
 
         // Normal keyboard mode, C603..C679 and C74E..C774; sample once per host tick, not per substep.
         if (input.IsKeyPressed(InputKey::TurnLeftKey)) { playerTurnSpeed = WrapSignedWord(playerTurnSpeed - 7); }
@@ -303,15 +320,19 @@ namespace Desperabis
         if (input.IsKeyPressed(InputKey::BackwardKey)) { playerForwardSpeed = WrapSignedWord(playerForwardSpeed - 4); }
         if (input.IsKeyPressed(InputKey::StrafeRightKey)) { playerSidewaysSpeed = WrapSignedWord(playerSidewaysSpeed + 4); }
         if (input.IsKeyPressed(InputKey::StrafeLeftKey)) { playerSidewaysSpeed = WrapSignedWord(playerSidewaysSpeed - 4); }
+        if (input.IsKeyPressed(InputKey::JumpKey)) { RequestPlayerJump(); }
+        if (input.IsKeyPressed(InputKey::CrouchKey)) { RequestPlayerCrouch(); }
         playerForwardSpeed = WrapSignedWord(playerForwardSpeed - SignWord(playerForwardSpeed));
         playerSidewaysSpeed = WrapSignedWord(playerSidewaysSpeed - SignWord(playerSidewaysSpeed));
         playerTurnSpeed = WrapSignedWord(playerTurnSpeed - SignWord(playerTurnSpeed));
 
-        // TODO: Recover special speed limits, mouse/look controls, jumping, swimming and crouching.
-        // TODO: Recover room clearance, steep-slope correction, bridge support and bobbing.
+        // TODO: Recover remaining special speed limits, mouse/look controls and swimming.
+        // TODO: Recover steep-slope correction, bridge support and bobbing.
         for (int tick = 0; tick < frameTickCount; ++tick)
         {
-            const auto limit = playerForwardSpeed != 0 && playerSidewaysSpeed != 0 ? 3 : 5;
+            int limit = playerBodyHeight < 45 && behaviorDispatchEnabled ? 2 : 5;
+            if (playerUnderwater) { limit = 3; }
+            if (playerForwardSpeed != 0 && playerSidewaysSpeed != 0) { limit = 2 * limit / 3; }
             playerForwardSpeed = static_cast<std::int16_t>(std::clamp<int>(playerForwardSpeed, -limit, limit));
             playerSidewaysSpeed = static_cast<std::int16_t>(std::clamp<int>(playerSidewaysSpeed, -limit, limit));
             playerTurnSpeed = static_cast<std::int16_t>(std::clamp<int>(playerTurnSpeed, -6, 6));
@@ -325,6 +346,28 @@ namespace Desperabis
             std::int16_t negativeDirectionZ;
             GetDirectionDisplacement(directionX, negativeDirectionZ, playerHeading, 100);
             const auto directionZ = WrapSignedWord(-static_cast<int>(negativeDirectionZ));
+            playerBodyHeight = WrapSignedWord(playerBodyHeight + GetStepToward(playerBodyHeight,
+                WrapSignedWord(playerBodyHeight + playerPostureDelta), 3));
+            if (player.itemValue == 0 && field_D500)
+            {
+                if (playerBodyHeight < 28) { playerBodyHeight = 28; playerPostureDelta = 0; }
+                if (playerBodyHeight > 45) { playerBodyHeight = 45; playerPostureDelta = 0; }
+            }
+            // D6FA..D745 samples ahead using arithmetic shifts, including negative directions.
+            const auto shift3 = [](std::int16_t value)
+            {
+                return value < 0 ? -((-static_cast<int>(value) + 7) / 8) : value / 8;
+            };
+            const auto room = GetRoomHeight(WrapSignedWord(player.posX + shift3(directionX)),
+                WrapSignedWord(player.posZ + shift3(directionZ)));
+            // Keep physical speed separate from the host's view-vector Y.
+            playerVerticalSpeed = WrapSignedWord(playerVerticalSpeed - 1);
+            if (room < 96 && playerVerticalSpeed > 0) { playerVerticalSpeed = 0; }
+            if (room < 65)
+            {
+                playerBodyHeight = WrapSignedWord(
+                    playerBodyHeight + GetStepToward(playerBodyHeight, 28, 8));
+            }
             const auto deltaX = WrapSignedWord(directionX * playerForwardSpeed +
                 directionZ * playerSidewaysSpeed) / 100;
             const auto deltaZ = WrapSignedWord(directionZ * playerForwardSpeed -
@@ -362,17 +405,34 @@ namespace Desperabis
             {
                 ++result.blockedTicks;
             }
-            // Normal gravity D6F6/D79D, standing height E8E4, terrain support D844..D8AE.
-            // Keep physical vertical speed separate from the host-supplied view-vector Y.
-            playerVerticalSpeed = WrapSignedWord(playerVerticalSpeed - 1);
             auto eyeY = WrapSignedWord(player.posY + player.collisionRadiusY + 2 + playerVerticalSpeed);
             const auto supportY = WrapSignedWord(
-                GetTerrainFloorHeight(player.posX, eyeY, player.posZ) + 45);
-            if (eyeY < supportY)
+                GetTerrainFloorHeight(player.posX, eyeY, player.posZ) + playerBodyHeight);
+            playerGrounded = supportY > eyeY;
+            if (playerGrounded)
             {
                 eyeY = supportY;
                 playerVerticalSpeed = 0;
             }
+            // DE45..DED4: the map byte controls contact; FELD surfaceFlags supplies depth.
+            const auto surface = field_D500 ? GetCollisionMapPixelAtWorldXZ(player.posX, player.posZ) : 0;
+            if (surface != 1 && player.field_28 == 1)
+            {
+                player.field_28 = 0;
+                RequestPlayerJump();
+            }
+            playerUnderwater = false;
+            if (((surface & 7) == 1 || (surface & 7) == 3) && WrapSignedWord(eyeY - supportY) < 5)
+            {
+                RequestPlayerCrouch();
+                player.field_28 = 1;
+                const auto position = GetHeightPosition(player.posX, player.posZ);
+                const auto depth = GetHeightSurfaceDepth(level->surfaceFlags[position.row][position.column]);
+                playerUnderwater = WrapSignedWord(eyeY + depth) < 0;
+            }
+            const auto halfHeight = playerBodyHeight < 0 ?
+                -((-static_cast<int>(playerBodyHeight) + 1) / 2) : playerBodyHeight / 2;
+            player.collisionRadiusY = WrapSignedWord(halfHeight + 1);
             player.posY = WrapSignedWord(eyeY - player.collisionRadiusY - 2);
             player.velocityX = directionX;
             player.velocityZ = directionZ;
@@ -722,7 +782,7 @@ namespace Desperabis
             if (!positionalSoundsSuppressed)
             {
                 playerHitEffectTicks = 1000;
-                playerDeathState = -1;
+                playerPostureDelta = -1;
                 positionalSoundsSuppressed = true;
                 worldObjects[1].velocityZ = 400;
             }

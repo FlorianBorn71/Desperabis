@@ -180,6 +180,8 @@ namespace
 		bool attack = false;
 		bool selectDagger = false;
 		bool selectSword = false;
+		bool jump = false;
+		bool crouch = false;
 
 		bool IsKeyPressed(Desperabis::InputKey key) override
 		{
@@ -195,6 +197,8 @@ namespace
 			case Desperabis::InputKey::AttackKey: return attack;
 			case Desperabis::InputKey::SelectDaggerKey: return selectDagger;
 			case Desperabis::InputKey::SelectSwordKey: return selectSword;
+			case Desperabis::InputKey::JumpKey: return jump;
+			case Desperabis::InputKey::CrouchKey: return crouch;
 			}
 			throw std::invalid_argument("Unknown game input key.");
 		}
@@ -620,6 +624,8 @@ namespace
 				input.attack = IsKeyPressed(VK_CONTROL) || IsKeyPressed(VK_LBUTTON);
 				input.selectDagger = IsKeyPressed('1');
 				input.selectSword = IsKeyPressed('2');
+				input.jump = IsKeyPressed(VK_SPACE);
+				input.crouch = IsKeyPressed('C');
 			}
 			input.interaction = IsKeyPressed(VK_RETURN);
 

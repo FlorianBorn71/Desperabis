@@ -602,16 +602,17 @@ namespace
     {
         struct Keys final : InputHandler
         {
-            std::array<bool, 10> pressed{};
+            std::array<bool, 12> pressed{};
             bool IsKeyPressed(InputKey key) override { return pressed.at(static_cast<std::size_t>(key)); }
         } keys;
         constexpr std::array inputs{
             InputKey::ForwardKey, InputKey::BackwardKey, InputKey::StrafeLeftKey,
             InputKey::StrafeRightKey, InputKey::TurnLeftKey, InputKey::TurnRightKey, InputKey::InteractionKey,
-            InputKey::AttackKey, InputKey::SelectDaggerKey, InputKey::SelectSwordKey
+            InputKey::AttackKey, InputKey::SelectDaggerKey, InputKey::SelectSwordKey,
+            InputKey::JumpKey, InputKey::CrouchKey
         };
         InputHandler& input = keys;
-        for (unsigned mask = 0; mask < 1024; ++mask)
+        for (unsigned mask = 0; mask < (1u << inputs.size()); ++mask)
         {
             for (std::size_t i = 0; i < inputs.size(); ++i) { keys.pressed[i] = (mask & (1u << i)) != 0; }
             for (std::size_t i = 0; i < inputs.size(); ++i)

@@ -98,8 +98,16 @@ namespace
         int calls = 0;
         std::array<bool, 6> movement{};
         int movementCalls = 0;
+        bool jump = false;
+        bool crouch = false;
+        int postureCalls = 0;
         bool IsKeyPressed(InputKey key) override
         {
+            if (key == InputKey::JumpKey || key == InputKey::CrouchKey)
+            {
+                ++postureCalls;
+                return key == InputKey::JumpKey ? jump : crouch;
+            }
             if (key == InputKey::AttackKey || key == InputKey::SelectDaggerKey || key == InputKey::SelectSwordKey)
             {
                 return false;
@@ -380,7 +388,7 @@ namespace
                 int turn = 0;
                 int heading = initialHeading;
                 int x = 1500;
-                int y = 73;
+                int eyeY = 85;
                 int verticalSpeed = 0;
                 int z = 2500;
                 // Exhaust all key combinations across held input, braking and normal/diagonal limits.
@@ -411,8 +419,8 @@ namespace
                         const int dz = fixed100(SineTable[static_cast<std::size_t>((heading + 128) % 512)]);
                         x += (dx * forward + dz * side) / 100;
                         z += (dz * forward - dx * side) / 100;
-                        y += --verticalSpeed;
-                        if (y < 33) { y = 33; verticalSpeed = 0; }
+                        eyeY += --verticalSpeed;
+                        if (eyeY < 45) { eyeY = 45; verticalSpeed = 0; }
                     }
                     const auto before = host.worldObjects;
                     const auto seed = host.randomSeed;
@@ -420,14 +428,15 @@ namespace
                     const auto camera = host.GetPlayerCamera();
                     Check(result.playerMovement && result.playerMovement->simulatedTicks == ticks &&
                         result.playerMovement->blockedTicks == 0 && camera.position[0] == x &&
-                        camera.position[2] == z && camera.position[1] == y + 12 && camera.direction[1] == 17 &&
+                        camera.position[2] == z && camera.position[1] == eyeY && camera.direction[1] == 17 &&
                         camera.direction[0] == fixed100(SineTable[static_cast<std::size_t>(heading)]) &&
                         camera.direction[2] == fixed100(SineTable[static_cast<std::size_t>((heading + 128) % 512)]) &&
                         host.soundListenerX == x && host.soundListenerZ == z && host.randomSeed == seed,
                         "Basic movement differs from normal keyboard/local-axis arithmetic, view direction, or listener order.");
                     auto expected = before;
                     expected[1].posX = static_cast<std::int16_t>(x);
-                    expected[1].posY = static_cast<std::int16_t>(y);
+                    expected[1].posY = static_cast<std::int16_t>(eyeY - 25);
+                    expected[1].collisionRadiusY = 23;
                     expected[1].posZ = static_cast<std::int16_t>(z);
                     expected[1].velocityX = camera.direction[0];
                     expected[1].velocityZ = camera.direction[2];
@@ -527,6 +536,7 @@ namespace
             data.objects[1].posY = y;
             data.objects[1].posZ = 2500;
             data.objects[1].velocityZ = 100;
+            data.objects[1].collisionRadiusY = 23;
             const auto request = host.StartLevel(10);
             auto* geometry = data.level.get();
             host.CompleteLevelLoad(request.id, std::move(data));
@@ -535,21 +545,21 @@ namespace
         Host host;
         Input input;
         load(host, 73);
-        for (const int centerY : { 72, 70, 67, 63, 58, 52, 45, 37, 33, 33 })
+        for (const int centerY : { 72, 70, 67, 63, 58, 52, 45, 37, 28, 20 })
         {
             host.Tick({ 0, 1 }, input);
             Check(host.worldObjects[1].posY == centerY &&
-                host.GetPlayerCamera().position[1] == centerY + 12 &&
+                host.GetPlayerCamera().position[1] == centerY + 25 &&
                 host.GetPlayerCamera().direction[1] == 0,
                 "Gravity must accelerate by one per frame, land at eye height 45, and not pitch the view.");
         }
         load(host, 73);
         host.Tick({ 0, 10 }, input);
-        Check(host.worldObjects[1].posY == 33 && host.GetPlayerCamera().position[1] == 45,
+        Check(host.worldObjects[1].posY == 20 && host.GetPlayerCamera().position[1] == 45,
             "Batched vertical substeps must land identically to single-frame ticks.");
         load(host, -90);
         host.Tick({}, input);
-        Check(host.worldObjects[1].posY == 33,
+        Check(host.worldObjects[1].posY == 20,
             "A player below terrain must be lifted to support rather than fall through it.");
 
         load(host, 73);
@@ -578,7 +588,7 @@ namespace
             }
         }
         host.worldObjects[1].posY = static_cast<std::int16_t>(
-            host.GetTerrainFloorHeight(1500, 45, 2500) + 33);
+            host.GetTerrainFloorHeight(1500, 45, 2500) + 20);
         const auto initialY = host.GetPlayerCamera().position[1];
         input.movement[static_cast<std::size_t>(InputKey::StrafeLeftKey)] = true;
         for (int tick = 0; tick < 80; ++tick)
@@ -586,7 +596,7 @@ namespace
             host.Tick({}, input);
             const auto camera = host.GetPlayerCamera();
             const auto floor = host.GetTerrainFloorHeight(camera.position[0], camera.position[1], camera.position[2]);
-            Check(camera.position[1] == floor + 45 && host.worldObjects[1].posY == floor + 33,
+            Check(camera.position[1] == floor + 45 && host.worldObjects[1].posY == floor + 20,
                 "Walking uphill must follow interpolated terrain at the final horizontal position.");
         }
         Check(host.GetPlayerCamera().position[1] > initialY, "Uphill fixture must actually change elevation.");

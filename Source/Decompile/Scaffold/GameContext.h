@@ -188,7 +188,9 @@ namespace Desperabis
         InteractionKey,
         AttackKey,
         SelectDaggerKey,
-        SelectSwordKey
+        SelectSwordKey,
+        JumpKey,
+        CrouchKey
     };
 
     class InputHandler
@@ -280,7 +282,9 @@ namespace Desperabis
         std::int32_t playerLife = 360 * 65536;
         std::int16_t playerLifeDeltaSuppressed = 0; // DS:2DDD.
         std::int16_t playerHitEffectTicks = 0; // DS:D514; presentation consumer not yet ported.
-        std::int16_t playerDeathState = 0; // DS:D4B4 becomes -1 on depletion.
+        std::int16_t playerBodyHeight = 45; // DS:D4B2: standing 45, crouching 28.
+        std::int16_t playerPostureDelta = 0; // DS:D4B4: raise/lower request; also -1 on depletion.
+        bool playerGrounded = false; // DS:05D4.
         WeaponType selectedWeapon = WeaponType::None; // DS:DDB6.
         WeaponType requestedWeapon = WeaponType::None; // DS:DDB7.
         std::uint8_t weaponSpriteFrame = 0; // DS:DDB8.
@@ -300,6 +304,9 @@ namespace Desperabis
         WeaponActionStatus AttackWithSelectedWeapon();
         WeaponActionStatus UpdateWeaponAnimation(std::int16_t ticks);
         std::int16_t GetPlayerHeading() const;
+        // Native 10AC:CF23/CF4B; raising from crouch precedes jumping.
+        void RequestPlayerJump();
+        void RequestPlayerCrouch();
         void ApplyPlayerLifeDelta(std::int32_t delta);
         // Native 10AC:10F5: zero activates, positive values damage, -1 selects special destruction.
         void DamageObject(RawGameObject& object, std::int16_t amount);

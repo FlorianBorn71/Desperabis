@@ -282,10 +282,10 @@ investigation. Evidence: [player movement](player-movement-evidence.txt),
 [earlier contact cascade](player-collision-evidence.txt), and
 [main-loop timing](HighLevelStructure.md#gameplay-timing-and-ordering).
 
-**Author's additional movement context:** forced crouch may be associated with
-being underwater; teleporting and walking on collider objects such as bridges
-also affect movement. These are recovery leads, not yet verified mappings to
-the individual globals/branches. A basic normal-keyboard horizontal subset has
+**Author's additional movement context:** forced crouch is associated with
+water; teleporting and walking on collider objects such as bridges also affect
+movement. Water forcing is now verified below; bridge/teleport integration
+remains deferred. A basic normal-keyboard horizontal subset has
 subsequently been implemented for host-driven `Tick`; see the
 [controller contract and TODOs](BehaviorRecovery.md#basic-horizontal-player-controller).
 The normal subset now includes per-frame gravity and interpolated terrain support,
@@ -293,9 +293,37 @@ using standing height 45 (`E8E4`) and the exact center/view offset
 `objectY = viewY - radiusY - 2` (`E1FD..E206`). The camera getter returns view/eye
 position for loaded worlds; hosts must not add another eye offset. Falling speed
 is kept separately from the host-supplied view vector. Steep-slope corrections,
-ceilings, object-supported floors and special vertical states remain deferred.
-The input abstraction now exposes the seven confirmed actions through virtual
+full ceiling collision, object-supported floors and special vertical states remain deferred.
+The input abstraction exposes recovered actions through virtual
 `IsKeyPressed(InputKey)`, without tying them to physical keys.
+
+#### Jump/crouch and water-forced posture
+
+The previously unknown normal-posture globals are now resolved:
+DS:`D4B2` is body/eye height (45 standing, 28 crouched), DS:`D4B4` its
+raise/lower request, and DS:`05D4` the grounded flag. DS:`D4B4` was previously
+misnamed `playerDeathState`; the -1 written on life depletion is another use
+of the same posture word, not evidence for a dedicated death enum.
+
+`10AC:CF23` jumps with velocity 7 only when standing and grounded; otherwise
+it requests raising (+6), unless player `field_28` blocks it.
+`10AC:CF4B` requests lowering (-6) and cancels ascent. The controller applies
+step-3 height interpolation, guarded 28/45 clamps, and derives radius Y from
+half the body height plus one. Jump raises from crouch; releasing crouch does
+not automatically stand. Relative room height below 96 cancels ascent and
+below 65 forces step-8 crouching.
+
+`DE45..DEBD` confirms water-forced crouching: collision-map low-three-bit
+categories 1/3, near terrain support, request lowering and set player
+`field_28=1`. Actual submersion is separately `eyeY + surfaceDepth < 0`,
+using FELD surface metadata. Thus water contact can force crouch before the
+head is underwater. Leaving the native water latch requests raising again.
+These paths are implemented and covered by `player-posture` tests; the
+DS:`D4FF` special-vertical path and broader swimming effects remain deferred.
+See [controller details](BehaviorRecovery.md#jumping-crouching-and-water-forced-posture)
+and [helper/controller evidence](player-posture-evidence.txt),
+[input/context evidence](player-posture-context-evidence.txt),
+[water forcing evidence](player-posture-tail-evidence.txt).
 
 ### Shared object loop and free-object allocation
 

@@ -235,16 +235,19 @@ No modal UI override is required. See the
 [runtime integration contract](BehaviorRecovery.md#host-driven-runtime-integration)
 for lifetime, timing, pause, error, and object-copy details.
 
-`Tick` now includes a **basic normal walking controller**: forward/back,
+`Tick` now includes a **basic normal walking/posture controller**: forward/back,
 strafe, turn, normal acceleration/damping, collision-map correction, gravity
-and interpolated terrain support. It uses
+and interpolated terrain support, jumping, crouching and low-room clearance. It uses
 `frameTicks` for player substeps and updates the camera/listener before contacts
 and object behaviors. Set `basicPlayerMovementEnabled = false` if the host owns
 movement. `result.playerMovement` reports simulated and blocked substeps.
-The normal standing eye height is 45 native units above terrain.
+The normal standing eye height is 45 native units above terrain; crouched height
+is 28, with the original gradual transitions and changing collision radius.
+`JumpKey` raises a crouched player before jumping; releasing `CrouchKey` does not
+automatically stand. Water contact forces crouching; full swimming is deferred.
 `GetPlayerCamera()` returns eye position, not object-center Y; do not add another
-host eye offset. Steep-slope correction, bridge support, ceilings, pitch,
-jump/crouch/swim and special contacts remain TODOs. Supply a valid starting
+host eye offset. Steep-slope correction, bridge support, full ceiling collision,
+pitch, swimming and other special contacts remain TODOs. Supply a valid starting
 position, a horizontal view vector, and real map data for walls. See the
 [basic controller contract](BehaviorRecovery.md#basic-horizontal-player-controller).
 

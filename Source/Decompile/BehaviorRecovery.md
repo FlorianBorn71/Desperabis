@@ -733,14 +733,15 @@ it reports `simulatedTicks` and `blockedTicks`. Loading/paused/failed ticks have
 no movement result. Inactive players and zero frame ticks simulate zero steps
 and do not query movement keys.
 
-This is a **partial normal walking controller**, not the complete native controller.
+This is a **partial normal walking/posture controller**, not the complete native controller.
 It uses the existing [player-movement-evidence.txt](player-movement-evidence.txt)
 and reusable math/collision helpers:
 
-- Sample the six confirmed movement keys once per advanced host tick with
+- Sample the six horizontal movement keys and jump/crouch once per advanced host tick with
   positive `frameTicks`, in native keyboard order. Add/subtract 4 to forward
   and sideways speeds, add/subtract 7 to turn speed, then reduce each speed
   toward zero by 1 (`C603..C679`, `C74E..C774`, keyboard mode zero).
+  Jump/raise precedes crouch (`C679..C69F`); neither input is edge-triggered.
 - Run one normal horizontal substep per **frame tick**, not per behavior tick,
   matching the normal loop's repeated `D060(6)` calls at `E39A..E3BC`.
   `Tick({0, 3}, input)` therefore moves the player three substeps while leaving
@@ -749,8 +750,9 @@ and reusable math/collision helpers:
 - Clamp straight speed to 5, diagonal axes to 3 (native `2*5/3`), and turn
   speed to +/-6. Approach target heading using the existing native angle-pair
   normalization and `GetStepToward(..., 6)`, wrapping phase to 0..511.
-  The special speed-2/3 state gates and alternate loop's approach step 2 are
-  not implemented.
+  Crouched height below 45 limits speed to 2 when `behaviorDispatchEnabled`
+  (DS:`04CD`); underwater overrides that with 3. Diagonal limits use `2*limit/3`.
+  Other special speed gates and the alternate loop's approach step 2 remain deferred.
 - Compute the 100-scale horizontal direction from the **ordinary**, not
   clamped, sine/cosine table (`D699..D6D2`). Integrate local forward/sideways
   speeds with the word-product/truncating-division formulas at `D763..D79C`.
@@ -761,7 +763,7 @@ and reusable math/collision helpers:
   renderer physics is substituted.
 - Decrement physical vertical speed by one per frame tick (`D6F6`), integrate
   working/view Y (`D79D`), and clamp it from below to interpolated terrain plus
-  the normal standing height **45** (`E8E4`, `D844..D8AE`). Landing clears falling
+  the current body height, normally **45** (`E8E4`, `D844..D8AE`). Landing clears falling
   speed. Convert working/view Y back to object-center Y by subtracting the
   vertical radius and 2 (`E1F4..E210`). Uphill movement lifts the player onto
   terrain; downhill movement falls onto the lower support. Terrain support uses
@@ -772,6 +774,8 @@ Explicit host policies, not recovered native initialization/fallbacks:
 - Level installation resets all controller speeds and derives initial heading
   from the supplied player's horizontal view vector. A zero X/Z direction
   starts at heading 0 (+Z). No record Euler field is assumed to be player yaw.
+  Body height/request reset to 45/0, grounded/submerged flags to false, as at
+  native `0DD4..0DF2`. Complete restoration of posture from a save is not implemented.
 - Each positive substep writes horizontal direction at the native 100 scale to
   player `velocityX/Z`, so `GetPlayerCamera` reflects yaw. The supplied
   `velocityY` view component remains untouched. Falling speed is a separate
@@ -802,10 +806,10 @@ TODOs are placed beside the partial implementation in
 1. Load the actual working camera position, applied/target headings, and speed
    state from native level/save initialization.
 2. Recover the remaining view-vector pipeline, steep-slope X/Z corrections
-   (`1E48:3621`), bridges/platforms, room clearance, bobbing, variable standing
-   height and pitch. Normal gravity and center-terrain support are implemented,
-   but ceilings and object-supported floors are not.
-3. Add special speed states, mouse/look, jump/crouch/swim controls and the
+   (`1E48:3621`), bridges/platforms, bobbing and pitch. Normal gravity,
+   posture, room-clearance gates and center-terrain support are implemented;
+   full ceiling collision and object-supported floors are not.
+3. Add remaining special speed states, mouse/look, swimming controls and the
    alternate controller path.
 4. Recover DS:`2DDC` collision gating and native stuck recovery.
 5. Implement automatic player damage, teleporting and other contact modes in
@@ -814,6 +818,53 @@ TODOs are placed beside the partial implementation in
 Fresh levels loaded through `LoadLevelGeometry` have a real static FELD-derived
 collision map. Explicit dummy fixtures still have no walls unless populated.
 No object support or renderer-scene collision is invented.
+
+#### Jumping, crouching and water-forced posture
+
+Evidence: [posture helpers/controller](player-posture-evidence.txt),
+[input/initialization/context](player-posture-context-evidence.txt), and
+[water forcing and eye/center conversion](player-posture-tail-evidence.txt).
+
+- `playerBodyHeight` is DS:`D4B2`, normally 45 standing and 28 crouched.
+  `playerPostureDelta` is DS:`D4B4`, **not a dedicated death-state word**
+  (correcting the earlier `playerDeathState` interpretation). Life depletion
+  still writes -1 to this word; keyboard death gating now checks the actual
+  fixed-point player-life meter, not a posture request.
+- `RequestPlayerJump` (`10AC:CF23`) does nothing when player `field_28` is
+  nonzero. Otherwise, body height exactly 45 plus `playerGrounded` (DS:`05D4`)
+  sets physical vertical speed to 7. All other cases request raising with +6.
+  A crouched player stands first; another input sample can jump once standing.
+- `RequestPlayerCrouch` (`10AC:CF4B`) requests -6 and cancels positive physical
+  vertical speed. Releasing it leaves the stance unchanged; jump/raise stands up.
+- Each simulation substep applies `GetStepToward(height, height+request, 3)`,
+  including word wrapping. With player `itemValue == 0` and `field_D500`,
+  overshooting 28/45 clamps height and clears the request; equality alone
+  does not clear it (`D1AE..D1FE`).
+- Query relative room height at `X/Z + (directionX/Z SAR 3)`. Below 96 cancels
+  ascent; below 65 additionally approaches height 28 at step 8 (`D6FA..D745`).
+  These are the native clearance gates, not a generic absolute-ceiling clamp.
+- Landing uses a strict `supportY > eyeY` comparison. Normal gravity clears
+  grounded when not clamped, including exact equality (`D88C..D8BE`).
+  Vertical radius is `(height SAR 1)+1`: 23 standing, 15 crouched. Camera and
+  collision center remain related by `objectY = eyeY-radiusY-2`.
+- The **collision-map byte**, not FELD `surfaceFlags`, selects water contact.
+  If it is not exactly 1 and player `field_28 == 1`, clear that latch and
+  invoke jump/raise (`DE45..DE5B`). For low-three-bit category 1 or 3 with
+  `eyeY-supportY < 5`, request crouch and set that latch to 1 (`DE61..DE86`).
+  The full-byte exit comparison is intentionally preserved, including category 3.
+  Contact can force crouching while the head is still above water.
+- On that contact path, `GetHeightSurfaceDepth` reads the current tile's full
+  FELD surface byte; `eyeY+depth < 0` sets `playerUnderwater` (`DE87..DEBD`).
+  Normal controller substeps recompute the flag. Hosts disabling the controller
+  must maintain their own posture/environment state.
+
+The native DS:`D4FF` special-vertical mode, swimming/buoyancy, oxygen,
+underwater presentation and environmental damage are **not ported here**.
+Normal terrain gravity still applies underwater. The native death animation
+also remains separate. `player-posture` tests cover the jump arc, input
+ordering/batching, posture boundaries, camera/radius coherence, clearance and
+speed thresholds, water forcing/exit/submersion, and lifecycle gates.
+
 The existing low-level `UpdateObjects`/`DispatchObjectCase` APIs still do not
 move the player; this controller is specific to the host-driven `Tick`.
 
