@@ -200,7 +200,10 @@ namespace Desperabis
         SelectElectricityKey,
         SelectShovelKey,
         SelectScytheKey,
-        SelectLentilsKey
+        SelectLentilsKey,
+        LookUpKey,
+        LookDownKey,
+        CenterLookKey
     };
 
     class InputHandler
@@ -314,6 +317,7 @@ namespace Desperabis
         std::int16_t weaponAnimationPosition = 0; // DS:DDBD.
         std::int16_t weaponAnimationRecoil = 0; // DS:DDBF, set by digging contacts.
         std::int16_t playerLookHeight = 110; // DS:D4A4, screen horizon rather than an angle.
+        std::int16_t playerTargetLookHeight = 110; // DS:D4B6, keyboard-requested horizon.
         bool playerUnderwater = false; // DS:D4FC; swimming controller remains separate.
         bool field_D500 = true; // Native body-mode gate, also used by the unarmed weapon branch.
         bool debugWeaponColliders = false; // DS:D502.
@@ -403,7 +407,7 @@ namespace Desperabis
     protected:
         // Logical asset names, e.g. LEVEL\OBJPOS11.DAT; failures must throw.
         virtual std::vector<std::uint8_t> LoadFile(std::string_view filename);
-        // Loads FELD geometry and builds the initial static collision map before object updates.
+        // Loads FELD geometry, LEVELS.INF surface metadata and the initial static collision map.
         void LoadLevelGeometry(std::int16_t levelNumber, LevelLoadData& data);
         // Selects the exact normal map marker and derives eye Y from the pending level's terrain.
         void InitializeLevelPlayerSpawn(LevelLoadData& data, const std::array<std::int16_t, 3>& direction);

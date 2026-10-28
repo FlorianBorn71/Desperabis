@@ -285,6 +285,8 @@ namespace Desperabis
         playerSidewaysSpeed = 0;
         playerTurnSpeed = 0;
         playerVerticalSpeed = 0;
+        playerLookHeight = 110;
+        playerTargetLookHeight = 110;
         playerBodyHeight = 45;
         playerPostureDelta = 0;
         playerGrounded = false;
@@ -344,7 +346,7 @@ namespace Desperabis
         const auto eyeY = loadedLevelNumber ?
             WrapSignedWord(player.posY + player.collisionRadiusY + 2) : player.posY;
         return { { player.posX, eyeY, player.posZ },
-            { player.velocityX, player.velocityY, player.velocityZ } };
+            { player.velocityX, player.velocityY, player.velocityZ }, playerLookHeight };
     }
 
     void GameContext::RequestPlayerJump()
@@ -375,11 +377,20 @@ namespace Desperabis
         if (input.IsKeyPressed(InputKey::StrafeLeftKey)) { playerSidewaysSpeed = WrapSignedWord(playerSidewaysSpeed - 4); }
         if (input.IsKeyPressed(InputKey::JumpKey)) { RequestPlayerJump(); }
         if (input.IsKeyPressed(InputKey::CrouchKey)) { RequestPlayerCrouch(); }
+        if (input.IsKeyPressed(InputKey::LookDownKey) && playerTargetLookHeight > 50)
+        {
+            playerTargetLookHeight = WrapSignedWord(playerTargetLookHeight - 10);
+        }
+        if (input.IsKeyPressed(InputKey::LookUpKey) && playerTargetLookHeight < 170)
+        {
+            playerTargetLookHeight = WrapSignedWord(playerTargetLookHeight + 10);
+        }
+        if (input.IsKeyPressed(InputKey::CenterLookKey)) { playerTargetLookHeight = 110; }
         playerForwardSpeed = WrapSignedWord(playerForwardSpeed - SignWord(playerForwardSpeed));
         playerSidewaysSpeed = WrapSignedWord(playerSidewaysSpeed - SignWord(playerSidewaysSpeed));
         playerTurnSpeed = WrapSignedWord(playerTurnSpeed - SignWord(playerTurnSpeed));
 
-        // TODO: Recover remaining special speed limits, mouse/look controls and swimming.
+        // TODO: Recover remaining special speed limits, mouse controls and swimming.
         // TODO: Recover steep-slope correction, bridge support and bobbing.
         for (int tick = 0; tick < frameTickCount; ++tick)
         {
@@ -427,6 +438,14 @@ namespace Desperabis
                 directionX * playerSidewaysSpeed) / 100;
             auto x = WrapSignedWord(player.posX + deltaX);
             auto z = WrapSignedWord(player.posZ + deltaZ);
+            const auto lookEyeY = WrapSignedWord(player.posY + player.collisionRadiusY + 2 + playerVerticalSpeed);
+            const auto aheadFloor = GetTerrainFloorHeight(
+                WrapSignedWord(x + directionX), lookEyeY, WrapSignedWord(z + directionZ));
+            const auto currentFloor = GetTerrainFloorHeight(x, lookEyeY, z);
+            const auto slopeDifference = WrapSignedWord(currentFloor - aheadFloor);
+            playerLookHeight = WrapSignedWord(playerLookHeight + GetStepToward(playerLookHeight,
+                WrapSignedWord(playerTargetLookHeight - slopeDifference), 5));
+            playerLookHeight = WrapSignedWord(static_cast<std::uint16_t>(playerLookHeight) & 0xfffeu);
 
             bool resolved = !objectCollisionsEnabled;
             if (objectCollisionsEnabled)
@@ -556,7 +575,24 @@ namespace Desperabis
         auto loadedLevel = std::make_unique<Level>();
         loadedLevel->LoadGeometry(payload.data(), payload.size());
         loadedLevel->BuildCollisionMap();
+        const auto info = LoadFile("LEVEL\\LEVELS.INF");
+        constexpr std::size_t recordSize = 124;
+        const auto recordOffset = static_cast<std::size_t>(levelNumber) * recordSize;
+        if (info.size() % recordSize != 0 || info.size() < recordOffset + recordSize)
+        {
+            throw std::invalid_argument("LEVEL\\LEVELS.INF: expected complete 124-byte records including the requested level.");
+        }
+        // 0840..086B initializes all four depth words; 1E48:1AF9 reads the paired value bytes.
+        for (std::size_t slot = 0; slot < loadedLevel->heightSurfaces.size(); ++slot)
+        {
+            const auto offset = recordOffset + 108 + 2 * slot;
+            loadedLevel->heightSurfaces[slot] = Level::HeightSurface{
+                static_cast<std::int16_t>(info[offset + 1] * 10), info[offset] };
+        }
+        const auto repeatHeight = static_cast<std::int16_t>(
+            info[recordOffset + 116] > 0 ? info[recordOffset + 117] * 5 : 0);
         data.level = std::move(loadedLevel);
+        data.floorRepeatHeight = repeatHeight;
     }
 
     void GameContext::LoadLevelObjects(std::int16_t levelNumber, LevelLoadData& data)

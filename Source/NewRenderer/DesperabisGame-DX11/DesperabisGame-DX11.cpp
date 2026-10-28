@@ -264,6 +264,9 @@ namespace
 		bool selectSword = false;
 		bool jump = false;
 		bool crouch = false;
+		bool lookUp = false;
+		bool lookDown = false;
+		bool centerLook = false;
 		std::array<bool, 6> selectOtherWeapons{};
 		bool selectScythe = false;
 		bool selectLentils = false;
@@ -284,6 +287,9 @@ namespace
 			case Desperabis::InputKey::SelectSwordKey: return selectSword;
 			case Desperabis::InputKey::JumpKey: return jump;
 			case Desperabis::InputKey::CrouchKey: return crouch;
+			case Desperabis::InputKey::LookUpKey: return lookUp;
+			case Desperabis::InputKey::LookDownKey: return lookDown;
+			case Desperabis::InputKey::CenterLookKey: return centerLook;
 			case Desperabis::InputKey::SelectCrossbowKey: return selectOtherWeapons[0];
 			case Desperabis::InputKey::SelectFireballKey: return selectOtherWeapons[1];
 			case Desperabis::InputKey::SelectStoneKey: return selectOtherWeapons[2];
@@ -612,7 +618,10 @@ namespace
 		const auto& dir = playerCam.direction;
 		if (dir[0] != 0 || dir[1] != 0 || dir[2] != 0)
 		{
-			Vector forward(-(float)dir[0], (float)dir[1], (float)dir[2], 0.f);
+			// Present the DOS horizon shift as pitch in the modern perspective camera.
+			const float horizontalLength = Vector((float)dir[0], 0.f, (float)dir[2], 0.f).GetLength();
+			Vector forward(-(float)dir[0],
+				(float)dir[1] + (110.f - playerCam.lookHeight) * horizontalLength / 100.f, (float)dir[2], 0.f);
 			forward.Normalize();
 			Vector worldUp(0.f, 1.f, 0.f, 0.f);
 			if (worldUp.GetCross(forward).GetLength() > 1e-4f) // looking straight up/down has no defined right vector
@@ -665,8 +674,8 @@ namespace
 		};
 		const std::string_view characterMappings[] =
 		{
-			"abcdefghijklmnopqrstuvwxyz\x84\x94\x81\xe1",
-			"ABCDEFGHIJKLMNOPQRSTUVWXYZ\x8e\x99\x9a?",
+			"abcdefghijklmnopqrstuvwxyz\x94\x81\x84\xe1",
+			"ABCDEFGHIJKLMNOPQRSTUVWXYZ\x99\x9a\x8e?",
 			"0123456789.:"
 		};
 		auto fontPalette = std::make_shared<Palette>();
@@ -751,6 +760,9 @@ namespace
 				input.strafeRight = IsKeyPressed('D');
 				input.turnLeft = IsKeyPressed(VK_LEFT);
 				input.turnRight = IsKeyPressed(VK_RIGHT);
+				input.lookUp = IsKeyPressed(VK_PRIOR);
+				input.lookDown = IsKeyPressed(VK_NEXT);
+				input.centerLook = IsKeyPressed(VK_HOME);
 				input.attack = IsKeyPressed(VK_CONTROL) || IsKeyPressed(VK_LBUTTON);
 				input.selectDagger = IsKeyPressed('1');
 				input.selectSword = IsKeyPressed('2');

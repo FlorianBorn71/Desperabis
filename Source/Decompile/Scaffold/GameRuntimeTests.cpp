@@ -109,6 +109,7 @@ namespace
                 return key == InputKey::JumpKey ? jump : crouch;
             }
             if (key == InputKey::AttackKey || key == InputKey::SelectDaggerKey || key == InputKey::SelectSwordKey ||
+                key == InputKey::LookUpKey || key == InputKey::LookDownKey || key == InputKey::CenterLookKey ||
                 (key >= InputKey::SelectCrossbowKey && key <= InputKey::SelectLentilsKey))
             {
                 return false;
@@ -1015,6 +1016,7 @@ namespace
         {
             ++fileRequests;
             if (filename == "LEVEL\\FELD11.256") { return readBytes(levelDirectory / "FELD11.256"); }
+            if (filename == "LEVEL\\LEVELS.INF") { return readBytes(levelDirectory / "LEVELS.INF"); }
             Check(filename == "LEVEL\\OBJPOS11.DAT", "GameCore must choose the requested level's assets.");
             return objectRecords;
         };
@@ -1103,6 +1105,7 @@ namespace
         host.files = [&](std::string_view filename)
         {
             if (filename == "LEVEL\\FELD11.256") { return geometry; }
+            if (filename == "LEVEL\\LEVELS.INF") { return std::vector<std::uint8_t>(12 * 124); }
             Check(filename == "LEVEL\\OBJPOS11.DAT", "Unexpected prompt-test file request.");
             return records;
         };
@@ -1302,6 +1305,7 @@ namespace
         adapter.files = [&](std::string_view filename) -> std::vector<std::uint8_t>
         {
             if (filename == "LEVEL\\FELD12.256") { return geometry; }
+            if (filename == "LEVEL\\LEVELS.INF") { return std::vector<std::uint8_t>(13 * 124); }
             if (invalid) { return std::vector<std::uint8_t>(55); }
             throw std::runtime_error(std::string(filename) + ": missing");
         };
@@ -1439,6 +1443,7 @@ namespace
         public:
             using GameContext::LoadLevelGeometry;
             std::vector<std::uint8_t> payload;
+            std::vector<std::uint8_t> info;
             std::string requested;
             bool missing = false;
         protected:
@@ -1446,13 +1451,15 @@ namespace
             {
                 requested = filename;
                 if (missing) { throw std::runtime_error("Missing FELD asset."); }
+                if (filename == "LEVEL\\LEVELS.INF") { return info; }
                 return payload;
             }
         } host;
         host.payload = read(levelDirectory / "FELD11.256");
+        host.info = read(levelDirectory / "LEVELS.INF");
         auto data = MakeLevel();
         host.LoadLevelGeometry(11, data);
-        Check(host.requested == "LEVEL\\FELD11.256" && data.level->collisionMap->widthMinusOne == 97 &&
+        Check(host.requested == "LEVEL\\LEVELS.INF" && data.level->collisionMap->widthMinusOne == 97 &&
             data.level->collisionMap->heightMinusOne == 110, "GameCore must load and build the real variable-size map.");
         {
             const auto& map = *data.level->collisionMap;
@@ -1514,6 +1521,144 @@ namespace
         Check(adapter.GetRuntimeState() == GameRuntimeState::LoadFailed &&
             adapter.GetLevelLoadError().find("FELD11.256") != std::string::npos,
             "Geometry errors must reach the derived context.");
+    }
+
+    void TestLevelSurfaceMetadata(const std::filesystem::path& levelDirectory)
+    {
+        const auto read = [&](std::string_view filename)
+        {
+            std::ifstream stream(levelDirectory / std::string(filename), std::ios::binary);
+            if (!stream) { throw std::runtime_error("Cannot open level surface fixture."); }
+            return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(stream), {});
+        };
+        class FileHost final : public GameContext
+        {
+        public:
+            using GameContext::LoadLevelGeometry;
+            std::vector<std::uint8_t> geometry;
+            std::vector<std::uint8_t> info;
+        protected:
+            std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+            {
+                if (filename == "LEVEL\\LEVELS.INF") { return info; }
+                if (filename.substr(0, 10) == "LEVEL\\FELD") { return geometry; }
+                throw std::runtime_error("Unexpected surface fixture request.");
+            }
+            void LoadLevel(const LevelLoadRequest&) override {}
+        } host;
+        host.geometry = read("FELD12.256");
+        const auto info = read("LEVELS.INF");
+        host.info = info;
+        LevelLoadData data;
+        Check(info.size() == 100 * 124, "Expected 100 original level-information records.");
+        for (std::int16_t number = 1; number < 100; ++number)
+        {
+            host.LoadLevelGeometry(number, data);
+            const auto offset = static_cast<std::size_t>(number) * 124;
+            for (std::size_t slot = 0; slot < 4; ++slot)
+            {
+                const auto& surface = data.level->heightSurfaces[slot];
+                Check(surface && surface->depth == info[offset + 109 + 2 * slot] * 10 &&
+                    surface->value == info[offset + 108 + 2 * slot],
+                    "Every original level must populate all four native surface depth/value pairs.");
+            }
+            Check(data.floorRepeatHeight == (info[offset + 116] ? info[offset + 117] * 5 : 0),
+                "Repeated-floor height must follow the native enable byte and five-unit multiplier.");
+        }
+        host.info[12 * 124 + 108] = 255;
+        host.info[12 * 124 + 109] = 255;
+        host.info[12 * 124 + 116] = 1;
+        host.info[12 * 124 + 117] = 255;
+        host.LoadLevelGeometry(12, data);
+        Check(data.level->heightSurfaces[0]->depth == 2550 &&
+            data.level->heightSurfaces[0]->value == 255 && data.floorRepeatHeight == 1275,
+            "Level metadata bytes must be unsigned, including the depth/repeat multiplications.");
+        const auto* installed = data.level.get();
+        for (const auto size : { std::size_t{0}, std::size_t{12 * 124}, std::size_t{13 * 124 - 1} })
+        {
+            host.info.resize(size);
+            ExpectError<std::invalid_argument>([&] { host.LoadLevelGeometry(12, data); });
+            Check(data.level.get() == installed && data.floorRepeatHeight == 1275,
+                "Invalid level information must fail without installing partial geometry or repeat state.");
+        }
+
+        host.info = info;
+        host.soundEnabled = false;
+        int submergedLevels = 0;
+        int shallowLevels = 0;
+        for (const auto number : {12, 17, 20, 22})
+        {
+            host.geometry = read("FELD" + std::to_string(number) + ".256");
+            host.LoadLevelGeometry(static_cast<std::int16_t>(number), data);
+            auto request = host.StartLevel(static_cast<std::int16_t>(number));
+            data.playerSpawn = PlayerCamera{{1500,45,2500}, {0,0,100}};
+            host.CompleteLevelLoad(request.id, std::move(data));
+            bool tested = false;
+            for (std::size_t row = 1; row + 1 < host.level->geometryHeight && !tested; ++row)
+            {
+                for (std::size_t column = 1; column + 1 < host.level->geometryWidth && !tested; ++column)
+                {
+                    const auto flag = host.level->surfaceFlags[row][column] & 31;
+                    if (flag < 1 || flag > 4) { continue; }
+                    const auto x = static_cast<std::int16_t>((column + 1) * 100 + 50);
+                    const auto z = static_cast<std::int16_t>((40 - row) * 100 + 50);
+                    const auto pixel = host.GetCollisionMapPixelAtWorldXZ(x, z);
+                    if ((pixel & 7) != 1 && (pixel & 7) != 3) { continue; }
+                    const auto floor = host.GetTerrainFloorHeight(x, 0, z);
+                    const bool submerged = floor + 45 + host.level->heightSurfaces[flag - 1]->depth < 0;
+                    if (number != 17 && !submerged) { continue; }
+                    std::int16_t correctionX = 0, correctionZ = 0;
+                    std::uint16_t center = 0;
+                    host.QueryCollisionMapNeighborhood(x, z, 5, correctionX, correctionZ, center, 0x18);
+                    if (center || correctionX || correctionZ) { continue; }
+                    auto& player = host.worldObjects[1];
+                    player.posX = x;
+                    player.posY = WrapSignedWord(floor + 20);
+                    player.posZ = z;
+                    Input input;
+                    host.Tick({0,1}, input);
+                    Check(host.playerUnderwater == submerged && player.generalPurpose3 == 1,
+                        "A real water tile must establish contact/submersion without throwing on missing metadata.");
+                    input.movement[static_cast<std::size_t>(InputKey::TurnRightKey)] = true;
+                    for (int tick = 0; tick < 8; ++tick)
+                    {
+                        const auto before = host.GetPlayerCamera();
+                        host.Tick({0,1}, input);
+                        const auto after = host.GetPlayerCamera();
+                        Check(after.direction != before.direction &&
+                            after.position[0] == before.position[0] && after.position[2] == before.position[2],
+                            "Underwater turning must update camera yaw without translating the player.");
+                    }
+                    input.movement[static_cast<std::size_t>(InputKey::ForwardKey)] = true;
+                    for (int tick = 0; tick < 3; ++tick)
+                    {
+                        const auto before = host.GetPlayerCamera();
+                        const auto result = host.Tick({0,1}, input);
+                        const auto after = host.GetPlayerCamera();
+                        if (result.playerMovement->blockedTicks != 0 ||
+                            (after.position[0] - before.position[0]) * after.direction[0] +
+                            (after.position[2] - before.position[2]) * after.direction[2] <= 0)
+                        {
+                            throw std::runtime_error("Underwater forward fixture blocked or misdirected in level " +
+                                std::to_string(number) + " at " + std::to_string(x) + "," + std::to_string(z) +
+                                ", tick " + std::to_string(tick) + ", blocked=" +
+                                std::to_string(result.playerMovement->blockedTicks) + ", delta=" +
+                                std::to_string(after.position[0] - before.position[0]) + "," +
+                                std::to_string(after.position[2] - before.position[2]));
+                        }
+                    }
+                    tested = true;
+                    if (submerged) { ++submergedLevels; }
+                    else { ++shallowLevels; }
+                }
+            }
+            if (!tested)
+            {
+                throw std::runtime_error("Expected an unobstructed submerged fixture in level " + std::to_string(number));
+            }
+        }
+        Check(submergedLevels == 3 && shallowLevels == 1,
+            "Expected turning/movement both above water and submerged across four original levels.");
     }
 
     void TestMapPlayerStart(const std::filesystem::path& levelDirectory)
@@ -1636,6 +1781,7 @@ namespace
         adapter.files = [&](std::string_view filename)
         {
             if (filename == "LEVEL\\FELD11.256") { return geometry; }
+            if (filename == "LEVEL\\LEVELS.INF") { return read(levelDirectory / "LEVELS.INF"); }
             Check(filename == "LEVEL\\OBJPOS11.DAT", "Unexpected player-start file request.");
             return objects;
         };
@@ -1873,6 +2019,7 @@ int main(int argc, char** argv)
         TestSimpleSwitchInteraction();
         TestLevelObjectLoading();
         TestWallCollisionLoading(argv[3]);
+        TestLevelSurfaceMetadata(argv[3]);
         TestMapPlayerStart(argv[3]);
         TestLevelStartOverride(argv[3]);
         TestObjectBoundary();

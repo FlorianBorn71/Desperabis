@@ -407,8 +407,8 @@ namespace // DX
 		};
 		const std::string_view characterMappings[] =
 		{
-			"abcdefghijklmnopqrstuvwxyz\xe4\xf6\xfc\xdf",
-			"ABCDEFGHIJKLMNOPQRSTUVWXYZ\xc4\xd6\xdc?",
+			"abcdefghijklmnopqrstuvwxyz\xf6\xfc\xe4\xdf",
+			"ABCDEFGHIJKLMNOPQRSTUVWXYZ\xd6\xdc\xc4?",
 			"0123456789.:"
 		};
 		auto fontPalette = std::make_shared<Palette>();

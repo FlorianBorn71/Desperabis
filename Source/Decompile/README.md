@@ -291,6 +291,11 @@ do not emit hooks; hosts must clean up their own resources when retiring a conte
 There is no end-of-tick lifecycle scan. Continue using `GetWorldObjects()` for
 ordinary per-frame changes such as position and animation.
 
+`LoadLevelGeometry` requires both the requested FELD file and `LEVEL\LEVELS.INF`.
+It installs the four native surface depth/value pairs and repeated-floor height
+alongside geometry and collision data, so water contact does not encounter
+missing metadata partway through a tick. Malformed level information fails loading.
+
 `Tick` now includes a **basic normal walking/posture controller**: forward/back,
 strafe, turn, normal acceleration/damping, collision-map correction, gravity
 and interpolated terrain support, jumping, crouching and low-room clearance. It uses
@@ -302,8 +307,14 @@ is 28, with the original gradual transitions and changing collision radius.
 `JumpKey` raises a crouched player before jumping; releasing `CrouchKey` does not
 automatically stand. Water contact forces crouching; full swimming is deferred.
 `GetPlayerCamera()` returns eye position, not object-center Y; do not add another
-host eye offset. Steep-slope correction, bridge support, full ceiling collision,
-pitch, swimming and other special contacts remain TODOs. Supply a valid starting
+host eye offset. `LookUpKey`, `LookDownKey` and `CenterLookKey` control the
+native horizon with terrain-ahead adjustment and per-frame smoothing.
+`PlayerCamera::lookHeight` exposes the applied horizon independently of direction;
+weapon launch elevation uses that same state. The `player-look` suite checks
+input timing/limits, all 65,536 applied horizon words, slopes, arrow launch and
+controller gates. See [native evidence](player-look-evidence.txt).
+Steep-slope position correction, bridge support, full ceiling collision,
+swimming and other special contacts remain TODOs. Supply a valid starting
 position, a horizontal view vector, and real map data for walls. See the
 [basic controller contract](BehaviorRecovery.md#basic-horizontal-player-controller).
 

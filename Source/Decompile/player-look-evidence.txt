@@ -1,0 +1,74 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 0000:C69F:49
+0000:C69F  A0 3B 32                 MOV AL,[0x323b]
+0000:C6A2  30 E4                    XOR AH,AH
+0000:C6A4  8B F8                    MOV DI,AX
+0000:C6A6  80 BD 32 31 00           CMP byte ptr [DI + 0x3132],0x0
+0000:C6AB  74 0C                    JZ 0x1000:c6b9 ; logical module target 0000:C6B9
+0000:C6AD  83 3E B6 D4 32           CMP word ptr [0xd4b6],0x32
+0000:C6B2  7E 05                    JLE 0x1000:c6b9 ; logical module target 0000:C6B9
+0000:C6B4  83 2E B6 D4 0A           SUB word ptr [0xd4b6],0xa
+0000:C6B9  A0 3A 32                 MOV AL,[0x323a]
+0000:C6BC  30 E4                    XOR AH,AH
+0000:C6BE  8B F8                    MOV DI,AX
+0000:C6C0  80 BD 32 31 00           CMP byte ptr [DI + 0x3132],0x0
+0000:C6C5  74 0D                    JZ 0x1000:c6d4 ; logical module target 0000:C6D4
+0000:C6C7  81 3E B6 D4 AA 00        CMP word ptr [0xd4b6],0xaa
+0000:C6CD  7D 05                    JGE 0x1000:c6d4 ; logical module target 0000:C6D4
+0000:C6CF  83 06 B6 D4 0A           ADD word ptr [0xd4b6],0xa
+0000:C6D4  A0 3C 32                 MOV AL,[0x323c]
+0000:C6D7  30 E4                    XOR AH,AH
+0000:C6D9  8B F8                    MOV DI,AX
+0000:C6DB  80 BD 32 31 00           CMP byte ptr [DI + 0x3132],0x0
+0000:C6E0  74 06                    JZ 0x1000:c6e8 ; logical module target 0000:C6E8
+0000:C6E2  C7 06 B6 D4 6E 00        MOV word ptr [0xd4b6],0x6e
+
+Range 0000:D7FC:2F
+0000:D7FC  A1 D2 D4                 MOV AX,[0xd4d2]
+0000:D7FF  03 06 84 82              ADD AX,word ptr [0x8284]
+0000:D803  50                       PUSH AX
+0000:D804  FF 36 D4 D4              PUSH word ptr [0xd4d4]
+0000:D808  A1 D6 D4                 MOV AX,[0xd4d6]
+0000:D80B  03 06 88 82              ADD AX,word ptr [0x8288]
+0000:D80F  50                       PUSH AX
+0000:D810  9A CF 18 48 2E           CALLF 0x2000:fd4f ; encoded analysis target 2E48:18CF, module 1E48:18CF
+0000:D815  50                       PUSH AX
+0000:D816  FF 36 D2 D4              PUSH word ptr [0xd4d2]
+0000:D81A  FF 36 D4 D4              PUSH word ptr [0xd4d4]
+0000:D81E  FF 36 D6 D4              PUSH word ptr [0xd4d6]
+0000:D822  9A CF 18 48 2E           CALLF 0x2000:fd4f ; encoded analysis target 2E48:18CF, module 1E48:18CF
+0000:D827  5A                       POP DX
+0000:D828  2B C2                    SUB AX,DX
+STOP: instruction crosses requested range end.
+
+Range 0000:DD58:3F
+0000:DD58  FF 36 A4 D4              PUSH word ptr [0xd4a4]
+0000:DD5C  A1 B6 D4                 MOV AX,[0xd4b6]
+0000:DD5F  2B 46 E8                 SUB AX,word ptr [BP + -0x18]
+0000:DD62  50                       PUSH AX
+0000:DD63  6A 05                    PUSH 0x5
+0000:DD65  9A 6C 0A 48 2E           CALLF 0x2000:eeec ; encoded analysis target 2E48:0A6C, module 1E48:0A6C
+0000:DD6A  01 06 A4 D4              ADD word ptr [0xd4a4],AX
+0000:DD6E  83 3E C4 D4 00           CMP word ptr [0xd4c4],0x0
+0000:DD73  7E 19                    JLE 0x1000:dd8e ; logical module target 0000:DD8E
+0000:DD75  A1 A8 D4                 MOV AX,[0xd4a8]
+0000:DD78  03 06 C4 D4              ADD AX,word ptr [0xd4c4]
+0000:DD7C  48                       DEC AX
+0000:DD7D  89 46 E6                 MOV word ptr [BP + -0x1a],AX
+0000:DD80  A1 A4 D4                 MOV AX,[0xd4a4]
+0000:DD83  3B 46 E6                 CMP AX,word ptr [BP + -0x1a]
+0000:DD86  7E 06                    JLE 0x1000:dd8e ; logical module target 0000:DD8E
+0000:DD88  8B 46 E6                 MOV AX,word ptr [BP + -0x1a]
+0000:DD8B  A3 A4 D4                 MOV [0xd4a4],AX
+0000:DD8E  A1 A4 D4                 MOV AX,[0xd4a4]
+0000:DD91  25 FE FF                 AND AX,0xfffe
+0000:DD94  A3 A4 D4                 MOV [0xd4a4],AX
+
+Range 0000:0DCE:10
+0000:0DCE  C7 06 B6 D4 6E 00        MOV word ptr [0xd4b6],0x6e
+0000:0DD4  C7 06 B2 D4 2D 00        MOV word ptr [0xd4b2],0x2d
+0000:0DDA  31 C0                    XOR AX,AX
+STOP: instruction crosses requested range end.

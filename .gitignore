@@ -11,6 +11,7 @@
 
 # Build output of Desperabis-Game-DX11
 Bin/Desperabis-Game-DX11.exe
+/Source/NewRenderer/bin/
 
 # Packing tool
 **/_temp/

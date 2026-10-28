@@ -12,12 +12,19 @@ The project links against `Desperabis-GameCore`. `GameAppContext` in
   level number and initial view direction. GameContext's `LoadLevelGeometry` reads `LEVEL\FELD<n>.256` and builds
   the static collision map from material bytes and embedded original 5x5 wall icons.
   `LoadLevelObjects` reads `LEVEL\OBJPOS<n>.DAT` and decodes the native object array (record `i` -> slot `i + 2`).
-  Both use the app's `LoadFile` override. Malformed files fail loading explicitly.
+  GameCore also reads the level's 124-byte `LEVEL\LEVELS.INF` record for all four
+  surface depth/value pairs and repeated-floor height. Water contact previously
+  failed mid-tick without this metadata, leaving camera rotation stale.
+  These loaders use the app's `LoadFile` override. Malformed files fail loading explicitly.
   The renderer scene does not create game objects itself.
 game ticks (33 Hz, as in the original game)
   back the object states. Changed slots update their `RenderableInstance` via `Level::ApplyRenderProperties`.
 * The camera comes from `GameContext::GetPlayerCamera()`: eye position via `Level::DespToPos`, with no extra offset,
-  forward = normalize(-dir.x, dir.y, dir.z); a zero direction keeps the previous orientation.
+  forward = normalize(-dir.x, dir.y + (110-lookHeight)*horizontalLength/100, dir.z);
+  a zero direction keeps the previous orientation. `lookHeight` is the core's native
+  screen horizon, shared with weapon aiming. Converting its displacement into
+  rotational perspective pitch is a modern host approximation; the original shifted
+  the screen horizon rather than rotating a 3D camera.
 * GameCore selects the exact `0xE1` marker in FELD's wall-texture plane and computes native eye Y as
   terrain height plus 45. It does not use the renderer's approximate start position. Its collision
   mask is 3, horizontal radius 15, and normal vertical radius 23, matching original save records. At normal
@@ -58,6 +65,7 @@ game ticks (33 Hz, as in the original game)
   The game loads `ANIMS\SCHRIFT0.AN2`, `SCHRIFT1.AN2`, and `SCHRIFT2.AN2` with the desktop
   sample's grayscale palette, with character mappings keyed by the original DOS bytes.
   Messages retain those bytes through storage and glyph lookup, including German umlauts;
+  the original letter banks end in o-umlaut, u-umlaut, a-umlaut order.
   no UTF-8 or Windows code-page conversion is applied.
   `GameAppContext::PromptUserMessage` owns the text and countdown and updates the text mesh directly,
   with no host adapter, forwarded callback or message polling. The core queries the app's active
@@ -95,6 +103,8 @@ Current assumptions/limitations:
   The weapon must be available and its current animation idle; selection uses native holster/draw timing.
 * `Space`: jump, or stand up first when crouched (normal player camera only)
 * `C`: crouch; release keeps the stance, as in the original. Use `Space` to stand.
+* `Page Up` / `Page Down`: look up/down; `Home`: center manual look (sample bindings).
+  Look is smoothed and also follows the terrain ahead, affecting arrow launch elevation.
 * `F`: toggle free camera (`WASD` move, `Shift` faster, mouse position relative to the window center steers)
 * `Tab`: load the next supported level in numeric order, skipping unused IDs.
   Reloads the renderer scene and gameplay state, reapplies the cheat loadout when enabled,

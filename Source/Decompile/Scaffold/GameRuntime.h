@@ -14,6 +14,8 @@ namespace Desperabis
         std::array<std::int16_t, 3> position;
         // Native view vector from player velocity words, not Euler angles; not normalized.
         std::array<std::int16_t, 3> direction;
+        // Native screen horizon (DS:D4A4), neutral 110; independent of the direction's Y word.
+        std::int16_t lookHeight = 110;
     };
 
     enum class InteractionStatus

@@ -743,11 +743,22 @@ This is a **partial normal walking/posture controller**, not the complete native
 It uses the existing [player-movement-evidence.txt](player-movement-evidence.txt)
 and reusable math/collision helpers:
 
-- Sample the six horizontal movement keys and jump/crouch once per advanced host tick with
+- Sample the six horizontal movement keys, jump/crouch and look once per advanced host tick with
   positive `frameTicks`, in native keyboard order. Add/subtract 4 to forward
   and sideways speeds, add/subtract 7 to turn speed, then reduce each speed
   toward zero by 1 (`C603..C679`, `C74E..C774`, keyboard mode zero).
   Jump/raise precedes crouch (`C679..C69F`); neither input is edge-triggered.
+- Normal keyboard look (`C69F..C6E8`) changes `playerTargetLookHeight`
+  (DS:`D4B6`): down subtracts 10 if above 50, up adds 10 if below 170,
+  then center requests 110. These are pre-change guards, not clamps; release
+  retains the target. Each frame substep samples terrain at the proposed
+  pre-wall-correction position and one full 100-scale direction ahead
+  (`D7FC..D82A`). The effective target is manual target plus ahead floor
+  minus current floor. Approach it with `GetStepToward(..., 5)`, then clear
+  the horizon's low bit (`DD58..DD94`). From an even horizon this gives
+  upward +4 and downward -6 until close enough to settle. Terrain adjustment
+  is not limited to the manual 50..170 range.
+  Evidence: [player-look-evidence.txt](player-look-evidence.txt).
 - Run one normal horizontal substep per **frame tick**, not per behavior tick,
   matching the normal loop's repeated `D060(6)` calls at `E39A..E3BC`.
   `Tick({0, 3}, input)` therefore moves the player three substeps while leaving
@@ -781,7 +792,8 @@ Explicit host policies, not recovered native initialization/fallbacks:
   from the supplied player's horizontal view vector. A zero X/Z direction
   starts at heading 0 (+Z). No record Euler field is assumed to be player yaw.
   Body height/request reset to 45/0, grounded/submerged flags to false, as at
-  native `0DD4..0DF2`. Complete restoration of posture from a save is not implemented.
+  native `0DD4..0DF2`. Both look horizons reset to 110. Complete restoration
+  of posture/look from a save is not implemented.
 - Each positive substep writes horizontal direction at the native 100 scale to
   player `velocityX/Z`, so `GetPlayerCamera` reflects yaw. The supplied
   `velocityY` view component remains untouched. Falling speed is a separate
@@ -790,6 +802,18 @@ Explicit host policies, not recovered native initialization/fallbacks:
   The host should start with a level forward vector (`velocityY == 0`);
   preserving arbitrary camera
   pitch across the native 100-scale rewrite is not implemented.
+  `PlayerCamera::lookHeight` separately exposes the applied native horizon;
+  it does not overwrite the supplied direction Y or physical vertical speed.
+  The DX11 host presents this screen displacement as a perspective pitch:
+  add `(110 - lookHeight) * horizontalDirectionLength / 100` to its camera
+  basis Y before normalization (that camera looks along negative forward).
+  This is an explicit modern presentation approximation, not a recovered
+  native Euler angle. Weapon factories retain their original horizon-based
+  arithmetic, including the crossbow's ballistic elevation offsets.
+- The DOS renderer's conditional upper viewport clamp (`DD6E..DD8B`,
+  DS:`D4A8 + D4C4 - 1`) is not applied: GameCore has no DOS viewport.
+  The original also bypasses this clamp when its viewport height is zero.
+  The horizon still receives the native even-word quantization.
 - Terrain support is sampled at the final map-corrected X/Z, including on
   horizontally blocked steps. This keeps the normal host controller grounded;
   it does not reproduce the original ordering around special contact modes.
@@ -812,10 +836,13 @@ TODOs are placed beside the partial implementation in
 1. Load the actual working camera position, applied/target headings, and speed
    state from native level/save initialization.
 2. Recover the remaining view-vector pipeline, steep-slope X/Z corrections
-   (`1E48:3621`), bridges/platforms, bobbing and pitch. Normal gravity,
+   (`1E48:3621`), bridges/platforms and bobbing. Normal gravity,
    posture, room-clearance gates and center-terrain support are implemented;
-   full ceiling collision and object-supported floors are not.
-3. Add remaining special speed states, mouse/look, swimming controls and the
+   full ceiling collision and object-supported floors are not. Some native
+   object-support branches suppress terrain look; the attached-object path
+   smooths toward manual look without slope. Those paths remain deferred,
+   not guessed into the normal terrain controller.
+3. Add remaining special speed states, mouse look, swimming controls and the
    alternate controller path.
 4. Recover DS:`2DDC` collision gating and native stuck recovery.
 5. Implement automatic player damage, teleporting and other contact modes in
@@ -863,6 +890,11 @@ Evidence: [posture helpers/controller](player-posture-evidence.txt),
   FELD surface byte; `eyeY+depth < 0` sets `playerUnderwater` (`DE87..DEBD`).
   Normal controller substeps recompute the flag. Hosts disabling the controller
   must maintain their own posture/environment state.
+  `LoadLevelGeometry` also loads all four surface pairs from `LEVELS.INF`;
+  omitting them previously threw mid-substep on water contact, leaving the
+  camera direction stale while heading/position had already changed.
+  `game-runtime` now checks turning and forward motion in/under water in original
+  levels 12, 17, 20 and 22, as well as metadata decoding and invalid-file handling.
 
 The native DS:`D4FF` special-vertical mode, swimming/buoyancy, oxygen,
 underwater presentation and environmental damage are **not ported here**.
@@ -1395,7 +1427,12 @@ snapshot polling API or per-frame text callback. The app loads the same three
 `SCHRIFT0/1/2.AN2` font animations as the desktop sample, keeps their assets alive
 while text meshes reference them, and displays the current positive-lifetime
 message in light orange (`RGB(255, 192, 128)`) at the viewport center. The font mapping
-uses the original DOS byte values directly, including German glyphs. Identical-text
+uses the original DOS byte values directly, including German glyphs. The final
+letter frames in both case banks are **o-umlaut, u-umlaut, a-umlaut**, not
+alphabetical a/o/u order. DX11 maps them to DOS bytes `94/81/84` and `99/9A/8E`;
+the desktop sample uses Windows bytes `F6/FC/E4` and `D6/DC/C4`.
+The locked-door string's original `81` byte was already correct.
+Identical-text
 refreshes reset the app-owned timer without rebuilding the mesh; no wall-clock fade extends expiry.
 Reloads clear the mesh, and resize updates its center without rebuilding text.
 Core integration tests trigger a locked-door message through a direct subclass,
@@ -2760,10 +2797,17 @@ The context borrows the level; its owner must keep it alive.
   for other flags. Missing required metadata throws; it is not silently
   treated as ordinary terrain.
 - Those surface depths and bytes are **not in the seven geometry streams**.
-  The renderer describes three water slots in `LevelInfo`, with depth
-  `height*10`. The executable accepts four slots; the fourth slot and the
-  full role of DS:`D4CC` still need confirmation. No level-info loader or
-  speculative fourth water slot has been added.
+  `LoadLevelGeometry` reads the requested zero-based 124-byte record from
+  `LEVEL\LEVELS.INF` as well. Four byte pairs at offsets 108..115 supply
+  `value` followed by unsigned `height`; depth is `height*10`
+  (`0000:0840..086B`). This confirms the fourth native slot even though the
+  renderer only presents three water slots. The full role of DS:`D4CC`
+  remains under investigation.
+  Offset 116 enables repeated floors; when nonzero, offset 117 times 5
+  supplies `floorRepeatHeight` (`0000:0670..068B`), otherwise it resets to zero.
+  Missing, truncated or incomplete records fail level loading, before the
+  new geometry is installed, rather than failing during movement.
+  Evidence: [level-surface-metadata-evidence.txt](level-surface-metadata-evidence.txt).
 - Terrain helper `1E48:18CF` reads four floor samples. In host coordinates,
   the upper-left sample is `[40-z/100][x/100-1]`; its neighbors are column+1
   and row+1. X/Z fractions are `(coordinate%100)*661`; inverse fractions

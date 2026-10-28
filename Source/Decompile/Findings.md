@@ -260,6 +260,14 @@ Verified stages inside `D060`:
   slightly ahead: a relative height below 96 cancels positive velocity;
   below 65 also moves the player-height value toward 28.
 - `D810/D822` sample terrain ahead/current for the slope difference.
+  The probe uses the full 100-scale direction, after movement but before
+  map correction. `DD58..DD94` approaches manual horizon (`DS:D4B6`) minus
+  current-floor-minus-ahead-floor by 5, conditionally caps to the DOS viewport
+  bottom, then clears the low bit. Normal keyboard input at `C69F..C6E8`
+  lowers/raises the manual horizon by 10 within pre-change guards 50/170;
+  center resets the request to 110. The applied horizon is `DS:D4A4`.
+  This normal terrain-look path is now implemented (without DOS viewport
+  clipping); [bounded look evidence](player-look-evidence.txt).
   `D844` calls `1E48:3621`, which returns current terrain height and X/Z
   corrections derived from a 3x3 neighborhood at 30-unit spacing. Height
   differences greater than 16 contribute signed horizontal corrections.
