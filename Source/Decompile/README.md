@@ -87,6 +87,12 @@ For the first explained case and shared collision-map pointer, see
   15 original skeleton records. See
   [skeleton recovery](BehaviorRecovery.md#skeleton-movement-combat-and-death)
   for player-weapon, remaining activation-driver and death-presentation boundaries.
+- `cockroach-dispatch-evidence.txt`, `cockroach-movement-evidence.txt`,
+  `cockroach-hit-evidence.txt`: shared cockroach/brown-spider phases, movement,
+  obstacle avoidance, death and speed-dependent player contact.
+- `Scaffold/CockroachTests.cpp`: seeded phase/RNG oracles, health gates,
+  terrain/wake-up/death/contact checks and all 70 original records. See
+  [cockroach recovery](BehaviorRecovery.md#cockroach-shared-cockroachbrown-spider-behavior).
 - `damage-activation-evidence.txt`, `damage-support-evidence.txt`,
   `damage-projectile-evidence.txt`, `damage-projectile-tail-evidence.txt`:
   complete shared damage/activation cascade and its direct dependencies.
@@ -257,6 +263,33 @@ results, and synchronize render instances from `GetWorldObjects()`.
 No modal UI override is required. See the
 [runtime integration contract](BehaviorRecovery.md#host-driven-runtime-integration)
 for lifetime, timing, pause, error, and object-copy details.
+
+`OnObjectCreated(int slot)` and `OnObjectDestroyed(int slot)` are default-empty
+virtual host hooks, delivered immediately on the game thread, including factories
+and interactions called outside `Tick`. Active means `health > 0`; slots 1..165
+include the player and allocator fallback, but not reserved slot 0, inventory or
+scratch records. Destruction observes the old record before deactivation or
+allocator clearing; creation observes the initialized record. Reusing an active
+slot emits destruction followed by creation, even within one update. Level
+completion destroys the old active slots before replacing geometry, then announces
+new active slots after installing the complete ready world. Failed/rejected loads
+do not replace the world. Countdown expiry still dispatches the native handler at
+zero health; a subsequent revival is a new creation.
+
+For external changes, use `ReplaceWorldObject(slot, initializedRecord)` (an empty
+record removes it) or `SetObjectHealth(record, health)` for active/inactive health
+transitions; when activating through the latter, initialize other fields first.
+Direct writes to public `worldObjects` cannot be intercepted and emit no hooks.
+Native allocators announce destruction before clearing but do not reserve or
+announce an empty slot: finish creation with `ReplaceWorldObject` or a supplied
+particle initializer. Reinitializing an already active particle preserves its
+lifetime unless its health becomes nonpositive. Hooks must not throw, mutate the
+world or reenter gameplay. Factory errors propagate and can retain native partial
+writes without announcing successful creation; repair or replace that world
+before resuming a failed update. Construction, destruction and moving a `GameContext`
+do not emit hooks; hosts must clean up their own resources when retiring a context.
+There is no end-of-tick lifecycle scan. Continue using `GetWorldObjects()` for
+ordinary per-frame changes such as position and animation.
 
 `Tick` now includes a **basic normal walking/posture controller**: forward/back,
 strafe, turn, normal acceleration/damping, collision-map correction, gravity

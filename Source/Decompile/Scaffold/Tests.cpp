@@ -185,7 +185,7 @@ namespace
                 entry.type == BehaviorType::DestroyableBarrier ||
                 entry.type == BehaviorType::DriftingParticle || entry.type == BehaviorType::SpawnInCrater ||
                 entry.type == BehaviorType::FloatingDebris || entry.type == BehaviorType::LevelStartOverride ||
-                entry.type == BehaviorType::RatAndSnake ||
+                entry.type == BehaviorType::RatAndSnake || entry.type == BehaviorType::Cockroach ||
                 entry.type == BehaviorType::Skeleton || entry.type == BehaviorType::WaterImpact ||
                 entry.type == BehaviorType::SinkingObject ||
                 entry.type == BehaviorType::FireParticle || entry.type == BehaviorType::BurningFireplace ||

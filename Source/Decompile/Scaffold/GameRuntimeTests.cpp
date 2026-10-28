@@ -123,6 +123,376 @@ namespace
         }
     };
 
+    struct ObjectEvent
+    {
+        bool created;
+        int slot;
+        RawGameObject object;
+        const Level* level;
+        GameRuntimeState state;
+    };
+
+    class LifecycleHost final : public GameContext
+    {
+    public:
+        std::vector<ObjectEvent> events;
+
+        void OnObjectCreated(int slot) override { Record(true, slot); }
+        void OnObjectDestroyed(int slot) override { Record(false, slot); }
+
+    protected:
+        void LoadLevel(const LevelLoadRequest&) override {}
+
+    private:
+        void Record(bool created, int slot)
+        {
+            events.push_back({ created, slot, GetWorldObjects().at(static_cast<std::size_t>(slot)),
+                GetLevel(), GetRuntimeState() });
+        }
+    };
+
+    bool SameObject(const RawGameObject& left, const RawGameObject& right)
+    {
+        return std::memcmp(&left, &right, sizeof(left)) == 0;
+    }
+
+    RawGameObject LifecycleObject(std::int16_t health = 1000)
+    {
+        RawGameObject object;
+        object.health = health;
+        object.posX = 150;
+        object.posZ = 4050;
+        object.modelId = 39;
+        return object;
+    }
+
+    void CheckObjectEvent(const LifecycleHost& host, std::size_t index, bool created,
+        int slot, const RawGameObject& object)
+    {
+        const auto& event = host.events.at(index);
+        Check(event.created == created && event.slot == slot && SameObject(event.object, object),
+            "Lifecycle hook must synchronously observe the correct slot and complete record.");
+    }
+
+    void TestWorldObjectLifecycle()
+    {
+        GameContext defaults;
+        defaults.OnObjectCreated(2);
+        defaults.OnObjectDestroyed(2);
+        LifecycleHost host;
+        const auto object = LifecycleObject();
+        host.ReplaceWorldObject(2, object);
+        CheckObjectEvent(host, 0, true, 2, object);
+        host.ReplaceWorldObject(2, object);
+        Check(host.events.size() == 3, "Same-slot replacement must destroy then create, even for identical bytes.");
+        CheckObjectEvent(host, 1, false, 2, object);
+        CheckObjectEvent(host, 2, true, 2, object);
+        host.SetObjectHealth(host.worldObjects[2], 500);
+        Check(host.events.size() == 3, "Positive health changes are not lifecycle changes.");
+        const auto dying = host.worldObjects[2];
+        host.SetObjectHealth(host.worldObjects[2], -1);
+        CheckObjectEvent(host, 3, false, 2, dying);
+        host.SetObjectHealth(host.worldObjects[2], 0);
+        host.ReplaceWorldObject(2, {});
+        Check(host.events.size() == 4, "An already inactive object must not be destroyed twice.");
+        host.SetObjectHealth(host.worldObjects[2], 10);
+        CheckObjectEvent(host, 4, true, 2, host.worldObjects[2]);
+        host.ReplaceWorldObject(2, {});
+        Check(host.events.size() == 6 && host.worldObjects[2].health == 0,
+            "Replacing with an empty record must remove without creating.");
+
+        auto scratch = object;
+        host.inventory[0] = object;
+        host.worldObjects[0] = object;
+        host.SetObjectHealth(scratch, 0);
+        host.SetObjectHealth(host.inventory[0], 0);
+        host.SetObjectHealth(host.worldObjects[0], 0);
+        host.InitializeDriftingParticle(scratch, 2, 150, 4050);
+        Check(host.events.size() == 6, "Scratch, inventory and reserved slot zero are not world lifecycles.");
+        ExpectError<std::out_of_range>([&] { host.ReplaceWorldObject(0, object); });
+        ExpectError<std::out_of_range>([&] { host.ReplaceWorldObject(166, object); });
+        ExpectError<std::out_of_range>([&] { host.ReplaceWorldObject(-1, object); });
+
+        host.worldObjects[2] = object;
+        Check(host.events.size() == 6, "Public raw writes deliberately bypass lifecycle notification.");
+        host.ReplaceWorldObject(2, host.worldObjects[2]);
+        CheckObjectEvent(host, 6, false, 2, object);
+        CheckObjectEvent(host, 7, true, 2, object);
+    }
+
+    void TestLevelObjectLifecycle()
+    {
+        LifecycleHost host;
+        auto data = MakeLevel();
+        data.objects[2] = LifecycleObject();
+        data.objects[165] = LifecycleObject(10);
+        auto request = host.StartLevel(11);
+        host.CompleteLevelLoad(request.id, std::move(data));
+        Check(host.events.size() == 3 && host.events[0].slot == 1 &&
+            host.events[1].slot == 2 && host.events[2].slot == 165,
+            "Initial load must announce player, ordinary and fallback active slots, not inactive slots.");
+        for (const auto& event : host.events)
+        {
+            Check(event.created && event.level == host.GetLevel() && event.state == GameRuntimeState::Ready,
+                "Loaded-object creation must observe installed geometry and ready state.");
+        }
+        const auto* oldLevel = host.GetLevel();
+        const auto oldObjects = host.worldObjects;
+        host.events.clear();
+        request = host.StartLevel(12);
+        ExpectError<std::invalid_argument>([&] { host.CompleteLevelLoad(request.id, {}); });
+        Check(host.events.empty(), "Rejected loads must not destroy the live world.");
+        auto replacement = MakeLevel();
+        replacement.objects[2] = LifecycleObject(20);
+        replacement.objects[3] = LifecycleObject(30);
+        const auto newObjects = replacement.objects;
+        host.CompleteLevelLoad(request.id, std::move(replacement));
+        Check(host.events.size() == 6, "Level replacement must destroy all old and create all new active slots.");
+        for (std::size_t index = 0; index < 3; ++index)
+        {
+            const int slot = index == 2 ? 165 : static_cast<int>(index + 1);
+            CheckObjectEvent(host, index, false, slot, oldObjects[static_cast<std::size_t>(slot)]);
+            Check(host.events[index].level == oldLevel, "Level destruction must precede geometry replacement.");
+            CheckObjectEvent(host, index + 3, true, static_cast<int>(index + 1), newObjects[index + 1]);
+        }
+        host.events.clear();
+        request = host.StartLevel(13);
+        host.FailLevelLoad(request.id, "expected");
+        Check(host.events.empty(), "Load failure must preserve world lifetimes.");
+    }
+
+    void TestImmediateObjectRemoval()
+    {
+        LifecycleHost host;
+        auto object = LifecycleObject(1);
+        object.behavior = BehaviorType::IdleAnimation;
+        object.itemValue = 3;
+        host.ReplaceWorldObject(2, object);
+        host.events.clear();
+        Check(UpdateObject(host.worldObjects[2], host).status == DispatchStatus::ExecutedCase &&
+            host.worldObjects[2].health == 0 && host.worldObjects[2].blendWeightOrSpriteOpacity == 3,
+            "Expiry must still dispatch the native handler at zero health.");
+        Check(host.events.size() == 1, "Countdown expiry must notify immediately, exactly once.");
+        CheckObjectEvent(host, 0, false, 2, object);
+        UpdateObject(host.worldObjects[2], host);
+        Check(host.events.size() == 1, "Later updates of expired objects must not repeat destruction.");
+
+        object = LifecycleObject();
+        object.behavior = BehaviorType::DisabledSentinel;
+        host.ReplaceWorldObject(2, object);
+        host.events.clear();
+        DispatchObjectCase(host.worldObjects[2], host);
+        CheckObjectEvent(host, 0, false, 2, object);
+        Check(host.events.size() == 1, "Direct gameplay dispatch must notify outside Tick.");
+
+        object.collisionType = CollisionType::FlyingArrow;
+        host.ReplaceWorldObject(2, object);
+        host.events.clear();
+        host.DamageObject(host.worldObjects[2], 1);
+        Check(host.events.size() == 1 && !host.events[0].created && host.events[0].object.health == 1000,
+            "Damage destruction must expose the live record before deactivation.");
+
+        object.collisionType = CollisionType::Gold;
+        object.itemValue = 7;
+        host.ReplaceWorldObject(2, object);
+        host.events.clear();
+        Check(HandlePlayerObjectInteraction(host.worldObjects[2], host).status == InteractionStatus::Applied &&
+            host.gold == 7, "World pickup must retain native inventory/resource behavior.");
+        CheckObjectEvent(host, 0, false, 2, object);
+        Check(host.events.size() == 1, "World pickup must emit only one world destruction.");
+
+        host.ReplaceWorldObject(2, object);
+        host.events.clear();
+        host.discardBlockedObjects = true;
+        host.HandleBlockedObject(host.worldObjects[2]);
+        CheckObjectEvent(host, 0, false, 2, object);
+
+        object = LifecycleObject(1);
+        object.behavior = BehaviorType::WeaponDamageCollider;
+        object.field_07 = 1;
+        object.collisionRadiusXZ = object.collisionRadiusY = 10;
+        host.ReplaceWorldObject(2, object);
+        auto target = object;
+        target.collisionType = CollisionType::PushingEnemy;
+        host.ReplaceWorldObject(3, target);
+        host.events.clear();
+        UpdateObject(host.worldObjects[2], host);
+        Check(host.events.size() == 2 && host.worldObjects[2].behavior == BehaviorType::DriftingParticle,
+            "A contact expiring then becoming an impact particle must destroy then create without duplicate removal.");
+        CheckObjectEvent(host, 0, false, 2, object);
+        CheckObjectEvent(host, 1, true, 2, host.worldObjects[2]);
+    }
+
+    void TestObjectFactoryLifecycle()
+    {
+        LifecycleHost host;
+        auto terrain = CreateDummyLevel();
+        host.level = &terrain;
+        host.collisionMap = terrain.collisionMap.get();
+        auto source = LifecycleObject();
+        source.collisionType = CollisionType::DamageObj;
+        source.collisionRadiusY = 10;
+        host.ReplaceWorldObject(2, source);
+        host.events.clear();
+        const auto slot = host.SpawnFireParticle(host.worldObjects[2]);
+        Check(slot == 3 && host.events.size() == 1, "Factories called outside Tick must announce creation.");
+        CheckObjectEvent(host, 0, true, 3, host.worldObjects[3]);
+        Check(host.events[0].object.behavior == BehaviorType::FireParticle &&
+            host.events[0].object.collisionRadiusY == 10, "Creation must see final factory fields.");
+
+        host.events.clear();
+        const auto oldParticle = host.worldObjects[3];
+        for (std::size_t index = 4; index <= 164; ++index) { host.worldObjects[index] = LifecycleObject(); }
+        Check(host.FindFreeOrLowestHealthObjectIndex() == 3, "Reclaiming allocation must preserve native selection.");
+        CheckObjectEvent(host, 0, false, 3, oldParticle);
+        Check(SameObject(host.worldObjects[3], RawGameObject{}), "Allocation must clear only after destruction.");
+        host.InitializeSmokeParticle(host.worldObjects[3], 150, -100, 4050, 5, 1, 6);
+        Check(host.events.size() == 2, "Reclaim followed by initialization must notify destroy then create.");
+        CheckObjectEvent(host, 1, true, 3, host.worldObjects[3]);
+        Check(host.events[1].object.posY == 0 && host.events[1].object.renderPlacementMode == 6,
+            "Smoke creation must follow floor correction and placement initialization.");
+        for (std::size_t index = 4; index <= 164; ++index) { host.worldObjects[index] = {}; }
+
+        host.events.clear();
+        source.collisionType = CollisionType::Skeleton;
+        host.SpawnSkeletonFragment(source, 6, 1, 2, 3);
+        Check(host.events.size() == 1, "Skeleton fragments must announce exactly one initialized world record.");
+        CheckObjectEvent(host, 0, true, 4, host.worldObjects[4]);
+        Check(host.events[0].object.collisionType == CollisionType::Weapon,
+            "Skeleton weapon fragment creation must follow its special-part initialization.");
+        host.events.clear();
+        host.SpawnWaterImpact(150, 4050);
+        Check(host.events.size() == 1, "Water allocation must announce the initialized splash.");
+        CheckObjectEvent(host, 0, true, 5, host.worldObjects[5]);
+
+        for (std::size_t index = 2; index < host.worldObjects.size(); ++index)
+        {
+            host.worldObjects[index] = LifecycleObject();
+        }
+        host.events.clear();
+        const auto fallback = host.worldObjects[165];
+        Check(host.FindFreeObjectIndex() == 165, "Exhausted ordinary allocation must preserve fallback slot 165.");
+        CheckObjectEvent(host, 0, false, 165, fallback);
+        host.InitializeDriftingParticle(host.worldObjects[165], 4, 150, 4050);
+        CheckObjectEvent(host, 1, true, 165, host.worldObjects[165]);
+        host.events.clear();
+        const auto impact = host.worldObjects[165];
+        Check(host.FindFreeOrLowestHealthObjectIndex() == 165,
+            "Reclaiming allocation must preserve native fallback when all ordinary health values are 1000.");
+        CheckObjectEvent(host, 0, false, 165, impact);
+
+        LifecycleHost crater;
+        crater.level = &terrain;
+        crater.collisionMap = terrain.collisionMap.get();
+        auto emitter = LifecycleObject(1);
+        emitter.behavior = BehaviorType::SpawnInCrater;
+        emitter.doorLockOrGroupBitmask = 1001;
+        crater.ReplaceWorldObject(2, emitter);
+        crater.events.clear();
+        ExpectError<std::out_of_range>([&] { UpdateObject(crater.worldObjects[2], crater); });
+        Check(crater.events.size() == 1, "Failed source-slot initialization must not announce an initialized replacement.");
+        CheckObjectEvent(crater, 0, false, 2, emitter);
+        Check(crater.worldObjects[2].behavior == BehaviorType::SmokeFading && crater.worldObjects[2].posX == 0,
+            "Lifecycle hooks must preserve native partial initialization after source-slot clearing.");
+
+        host.events.clear();
+        host.InitializeDriftingParticle(host.worldObjects[165], 3, 150, 4050);
+        host.events.clear();
+        host.InitializeSmokeParticle(host.worldObjects[165], 150, 0, 4050, 5, -1, 1);
+        Check(host.events.size() == 1 && !host.events[0].created && host.events[0].slot == 165 &&
+            host.events[0].object.health == 50 && host.worldObjects[165].health <= 0,
+            "An initializer producing nonpositive health must destroy before its health transition.");
+        host.events.clear();
+        host.InitializeSmokeParticle(host.worldObjects[165], 150, 0, 4050, 5, -1, 1);
+        Check(host.events.empty(), "Born-inactive initializers must not publish spurious creation or destruction.");
+    }
+
+    void TestDamageFactoryLifecycle()
+    {
+        for (const auto type : { CollisionType::ActivateSpiders, CollisionType::Type_22,
+            CollisionType::Skeleton, CollisionType::VaseToGrab })
+        {
+            LifecycleHost host;
+            auto terrain = CreateDummyLevel();
+            host.level = &terrain;
+            host.collisionMap = terrain.collisionMap.get();
+            host.worldObjects[1] = LifecycleObject();
+            auto source = LifecycleObject();
+            source.collisionType = type;
+            source.groupIndexOrLock = 1;
+            source.field_24 = 1;
+            source.field_28 = 9;
+            host.ReplaceWorldObject(2, source);
+            host.events.clear();
+            host.DamageObject(host.worldObjects[2], type == CollisionType::Type_22 ? 0 : 200);
+            const std::size_t creations = type == CollisionType::ActivateSpiders ? 20 :
+                type == CollisionType::Type_22 ? 9 : type == CollisionType::Skeleton ? 8 : 1;
+            const bool destroysSource = type == CollisionType::Type_22 || type == CollisionType::Skeleton;
+            Check(host.events.size() == creations + (destroysSource ? 1 : 0),
+                "Damage factories must publish all fragments before source destruction, without duplicate events.");
+            for (std::size_t index = 0; index < creations; ++index)
+            {
+                CheckObjectEvent(host, index, true, static_cast<int>(index + 3), host.worldObjects[index + 3]);
+            }
+            if (destroysSource)
+            {
+                Check(!host.events.back().created && host.events.back().slot == 2 &&
+                    host.events.back().object.health == 1000 && host.worldObjects[2].health == 0,
+                    "Damage-source destruction must see its old live record after fragment creation.");
+            }
+        }
+    }
+
+    void TestWeaponCreationLifecycle()
+    {
+        for (const auto weapon : { WeaponType::Dagger, WeaponType::Crossbow, WeaponType::Fireball,
+            WeaponType::Stone, WeaponType::Lentils })
+        {
+            LifecycleHost host;
+            auto terrain = CreateDummyLevel();
+            host.level = &terrain;
+            host.collisionMap = terrain.collisionMap.get();
+            host.worldObjects[1] = LifecycleObject();
+            host.worldObjects[1].velocityZ = 100;
+            host.selectedWeapon = host.requestedWeapon = weapon;
+            host.weaponHand = 1;
+            host.inventory[0] = LifecycleObject();
+            host.inventory[0].collisionType = CollisionType::Weapon;
+            host.inventory[0].itemValue = static_cast<std::int16_t>(weapon);
+            host.weaponAmounts[static_cast<std::size_t>(weapon)] = weapon == WeaponType::Lentils ? 8 : 10;
+            Check(host.AttackWithSelectedWeapon() == WeaponActionStatus::Applied,
+                "Weapon lifecycle fixture must produce its native projectile/contact.");
+            const std::size_t count = weapon == WeaponType::Lentils ? 3 : 1;
+            Check(host.events.size() == count, "Weapon factories must emit one event per projectile, no inventory destruction.");
+            for (std::size_t index = 0; index < count; ++index)
+            {
+                CheckObjectEvent(host, index, true, static_cast<int>(index + 2), host.worldObjects[index + 2]);
+            }
+        }
+
+        LifecycleHost host;
+        auto terrain = CreateDummyLevel();
+        host.level = &terrain;
+        host.collisionMap = terrain.collisionMap.get();
+        host.worldObjects[1] = LifecycleObject();
+        host.worldObjects[1].velocityZ = 100;
+        host.soundListenerX = 150;
+        host.soundListenerZ = 4050;
+        auto target = LifecycleObject();
+        target.posX = 250;
+        target.field_07 = 1;
+        target.collisionType = CollisionType::FlyingArrow;
+        host.ReplaceWorldObject(3, target);
+        host.selectedWeapon = host.requestedWeapon = WeaponType::Electricity;
+        host.weaponAmounts[7] = 100;
+        host.events.clear();
+        Check(host.AttackWithSelectedWeapon() == WeaponActionStatus::Applied && host.events.size() == 3,
+            "Electric beam creation, target damage destruction and impact creation must notify within one call.");
+        CheckObjectEvent(host, 0, true, 2, host.worldObjects[2]);
+        CheckObjectEvent(host, 1, false, 3, target);
+        CheckObjectEvent(host, 2, true, 3, host.worldObjects[3]);
+    }
+
     void TestLoading()
     {
         static_assert(!std::is_copy_constructible_v<GameContext>);
@@ -1487,6 +1857,12 @@ int main(int argc, char** argv)
     {
         Check(argc == 5, "Expected enum header paths, original level directory and native player save fixture.");
         TestLoading();
+        TestWorldObjectLifecycle();
+        TestLevelObjectLifecycle();
+        TestImmediateObjectRemoval();
+        TestObjectFactoryLifecycle();
+        TestDamageFactoryLifecycle();
+        TestWeaponCreationLifecycle();
         TestLevelPlayerInitialization();
         TestTick();
         TestPlayerCamera();

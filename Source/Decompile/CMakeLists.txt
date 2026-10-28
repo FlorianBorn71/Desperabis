@@ -69,6 +69,11 @@ if(BUILD_TESTING)
     target_link_libraries(rat-snake-tests PRIVATE behavior-recovery)
     add_test(NAME rat-snake-behavior COMMAND rat-snake-tests
         "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original/LEVEL")
+    add_executable(cockroach-tests Scaffold/CockroachTests.cpp)
+    target_link_libraries(cockroach-tests PRIVATE behavior-recovery)
+    add_test(NAME cockroach-behavior COMMAND cockroach-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original/LEVEL"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Game/Original/DESPERAB.EXE")
     add_executable(skeleton-tests Scaffold/SkeletonTests.cpp)
     target_link_libraries(skeleton-tests PRIVATE behavior-recovery)
     add_test(NAME skeleton-behavior COMMAND skeleton-tests
@@ -99,7 +104,7 @@ foreach(target behavior-recovery desperabis-recovery)
     endif()
 endforeach()
 if(BUILD_TESTING)
-    foreach(target behavior-recovery-tests application-flow-tests fireplace-tests particle-tests floating-debris-tests rat-snake-tests skeleton-tests damage-tests weapon-tests ranged-weapon-tests game-runtime-tests player-posture-tests)
+    foreach(target behavior-recovery-tests application-flow-tests fireplace-tests particle-tests floating-debris-tests rat-snake-tests cockroach-tests skeleton-tests damage-tests weapon-tests ranged-weapon-tests game-runtime-tests player-posture-tests)
         set_target_properties(${target} PROPERTIES FOLDER "Tests")
         if(MSVC)
             target_compile_options(${target} PRIVATE /W4 /WX)

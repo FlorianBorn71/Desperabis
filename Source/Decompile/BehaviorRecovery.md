@@ -1698,6 +1698,65 @@ direction tables, angle normalization, all 512 binary neighborhood patterns,
 Asset checks use explicit dummy terrain/map, not native level reconstruction.
 This is statically recovered and host-tested, not DOS-runtime validated.
 
+### Cockroach: shared cockroach/brown-spider behavior
+
+Behavior 31 dispatches `10AC:7764..7DA2` once per behavior tick from
+`0000:1C17`. The complete local routine is implemented in
+[BehaviorHandlers.cpp](Scaffold/BehaviorHandlers.cpp), with native
+[dispatch](cockroach-dispatch-evidence.txt),
+[movement](cockroach-movement-evidence.txt), and
+[player-contact](cockroach-hit-evidence.txt) evidence.
+
+Only health **exactly 1000** executes a substep. Each substep sets sound ID 3
+and first adds all three velocities to position, including in dormant and death
+phases. Signed-word wrapping and the original RNG order are preserved. The
+shared prefix still handles lifetimes below 1000; encoded health above 1000 is
+not guessed into an active state.
+
+`itemValue` is the phase:
+
+| Phase | Native action |
+|---|---|
+| -1 / 0 | Within distance strictly below 280 / 150, select walking phase 15 / waking phase 1 |
+| 1 | A 1/30 roll starts phase 2 |
+| 2 | Frames 3/4, blend -100, vertical velocity falls toward -5; land on terrain into phase 3, rolling toward 150 |
+| 3 | Restore collision 31, randomized decaying yaw wobble and blend; a 1/40 roll starts phase 4 |
+| 4 | Frames 1/2, blend -100, roll toward zero by 9; then select phase 5 |
+| 5 / 15 | Ground walking: random stopping/wandering, probabilistic player steering, obstacle retries, terrain pitch; depleted strength requests native damage/death handling |
+| 7 / 8 | Stop horizontal motion and select dying animation 2, retaining masks >=131; increment death blend toward 100 on 1/7 rolls |
+| 10 / 11 | A 1/900 roll reveals a buried object with random heading; rise one unit until reaching terrain, then select phase 15 |
+| 16 | Clear collision/mask, frames 4/3, stop velocities, roll toward 256 by 17 and finish the negative blend delay before disabling behavior |
+
+Other phase values deliberately perform only the common position/sound update.
+The native wrapper finishes all requested substeps even after behavior changes.
+Walking uses the immutable initialized speed word **3** at DS:`02D4`
+(executable file offset `319F4`, bytes `03 00`). Steering is limited to 14 angle
+units and uses the clamped sine table. Wall probes use mask `38h`, step 5,
+random +/-64 turns, the ordinary direction table on retries and the existing
+16-attempt blocked-object policy. Terrain pitch samples eight velocity steps
+ahead against the vector component -24. This local movement is not gated by
+`objectCollisionsEnabled`.
+
+Player contact is a separate native path at `0000:DA3C..DAB0`, now wired into
+`UpdatePlayerInteraction` without requiring an interaction-key press. With
+behavior dispatch enabled, absolute forward speed strictly above
+`doorLockOrGroupBitmask` damages the creature by 1. Otherwise a positive
+`behaviorParameter` stops its horizontal motion, applies
+`-29491 * behaviorParameter` to the player's signed 16.16 life meter, and sets
+the hit-effect timer to 8. This reuses `ApplyPlayerLifeDelta`, including damage
+suppression and depletion; it never decrements the player object's health.
+The hit-effect timer's presentation consumer and the rest of the general
+player-contact cascade remain separate recovery work.
+
+[CockroachTests.cpp](Scaffold/CockroachTests.cpp) covers 32,768 seeded full-record
+phase/RNG oracles, all signed health words, zero/max ticks, native wake-up
+thresholds, sloped terrain, obstacle exhaustion, death routes, all contact
+damage factors and gates, forward/backward speed thresholds, and all **70**
+original cockroach/brown-spider records. Original-record checks use explicit
+dummy terrain rather than claiming native-level playback. The speed constant
+is also checked against the executable. This is static recovery plus host
+tests, not a DOS-runtime comparison.
+
 ### Skeleton: movement, combat and death
 
 Behavior 30 dispatches `10AC:4DAB` once per behavior tick. The full local skeleton

@@ -10,6 +10,10 @@ namespace Desperabis
             return { InteractionStatus::NoEffect };
         }
         auto& object = context.worldObjects[context.playerCollisionSlot];
+        if (object.collisionType == CollisionType::Cockroach)
+        {
+            return context.HandleCockroachContact(object);
+        }
         if (object.collisionType == CollisionType::Door)
         {
             // Player contact keeps a door open even without an interaction-key press.

@@ -97,7 +97,8 @@ namespace Desperabis
         }
         if (context.objectCollisionsEnabled && object.health < 1000)
         {
-            object.health = WrapSignedWord(object.health + GetStepToward(object.health, 0, context.tickCount));
+            context.SetObjectHealth(object,
+                WrapSignedWord(object.health + GetStepToward(object.health, 0, context.tickCount)));
         }
         // The native loop does not recheck health after the countdown.
         return DispatchActiveObjectCase(object, context);

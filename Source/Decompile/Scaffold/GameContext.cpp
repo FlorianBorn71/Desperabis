@@ -151,6 +151,50 @@ namespace Desperabis
     GameContext::GameContext(GameContext&&) noexcept = default;
     GameContext& GameContext::operator=(GameContext&&) noexcept = default;
 
+    void GameContext::OnObjectCreated(int) {}
+    void GameContext::OnObjectDestroyed(int) {}
+
+    int GameContext::FindWorldObjectSlot(const RawGameObject& object) const
+    {
+        for (std::size_t slot = 1; slot < worldObjects.size(); ++slot)
+        {
+            if (&worldObjects[slot] == &object) { return static_cast<int>(slot); }
+        }
+        return -1;
+    }
+
+    void GameContext::NotifyObjectCreated(const RawGameObject& object)
+    {
+        const auto slot = FindWorldObjectSlot(object);
+        if (slot != -1 && object.health > 0) { OnObjectCreated(slot); }
+    }
+
+    void GameContext::SetObjectHealth(RawGameObject& object, std::int16_t health)
+    {
+        const bool active = object.health > 0;
+        if (active == (health > 0))
+        {
+            object.health = health;
+            return;
+        }
+        const auto slot = FindWorldObjectSlot(object);
+        if (slot != -1 && active && health <= 0) { OnObjectDestroyed(slot); }
+        object.health = health;
+        if (slot != -1 && !active && health > 0) { OnObjectCreated(slot); }
+    }
+
+    void GameContext::ReplaceWorldObject(int slot, RawGameObject object)
+    {
+        if (slot < 1 || slot >= static_cast<int>(worldObjects.size()))
+        {
+            throw std::out_of_range("World-object lifecycle slots must be in 1..165.");
+        }
+        auto& current = worldObjects[static_cast<std::size_t>(slot)];
+        if (current.health > 0) { OnObjectDestroyed(slot); }
+        current = object;
+        NotifyObjectCreated(current);
+    }
+
     RawGameObject DecodeGameObject(const std::uint8_t* bytes, std::size_t size)
     {
         if (bytes == nullptr || size != sizeof(RawGameObject))
@@ -229,6 +273,10 @@ namespace Desperabis
         LightingCache newLighting;
         newLighting.Reset(data.objects[1].posX, data.objects[1].posZ);
 
+        for (std::size_t slot = 1; slot < worldObjects.size(); ++slot)
+        {
+            SetObjectHealth(worldObjects[slot], 0);
+        }
         ownedLevel = std::move(data.level);
         level = ownedLevel.get();
         collisionMap = ownedLevel->collisionMap.get();
@@ -261,6 +309,10 @@ namespace Desperabis
         hasActiveGame = true;
         runtimeState = GameRuntimeState::Ready;
         menuPage = MenuPage::Gameplay;
+        for (std::size_t slot = 1; slot < worldObjects.size(); ++slot)
+        {
+            NotifyObjectCreated(worldObjects[slot]);
+        }
     }
 
     void GameContext::FailLevelLoad(std::uint64_t requestId, std::string_view error)
@@ -773,6 +825,22 @@ namespace Desperabis
         return playerHeading;
     }
 
+    InteractionResult GameContext::HandleCockroachContact(RawGameObject& object)
+    {
+        if (!behaviorDispatchEnabled) { return { InteractionStatus::NoEffect }; }
+        if (AbsoluteWord(playerForwardSpeed) > object.doorLockOrGroupBitmask)
+        {
+            DamageObject(object, 1);
+            return { InteractionStatus::Applied };
+        }
+        if (object.behaviorParameter == 0) { return { InteractionStatus::NoEffect }; }
+        object.velocityX = 0;
+        object.velocityZ = 0;
+        ApplyPlayerLifeDelta(-29491 * static_cast<std::int32_t>(object.behaviorParameter));
+        playerHitEffectTicks = 8;
+        return { InteractionStatus::Applied };
+    }
+
     void GameContext::ApplyPlayerLifeDelta(std::int32_t delta)
     {
         if (playerLifeDeltaSuppressed == 0)
@@ -899,6 +967,7 @@ namespace Desperabis
                 GetStepToward(linked.posZ, soundListenerZ, radius >> 2) + offsetZ);
             InitializeSmokeParticle(particle, x, y, z, linked.collisionRadiusXZ, 1, linked.renderPlacementMode);
         }
+        NotifyObjectCreated(particle);
     }
 
     void GameContext::SpawnActivationParticle(std::int16_t x, std::int16_t y, std::int16_t z,
@@ -930,6 +999,7 @@ namespace Desperabis
         particle.blendWeightOrSpriteOpacity = 20;
         const auto floor = WrapSignedWord(GetTerrainFloorHeight(x, y, z) + 8);
         if (particle.posY < floor) { particle.posY = floor; }
+        NotifyObjectCreated(particle);
     }
 
     void GameContext::DamageObject(RawGameObject& object, std::int16_t amount)
@@ -997,7 +1067,7 @@ namespace Desperabis
             if (WrapSignedWord(object.field_28) > 0)
             {
                 const auto slot = FindFreeOrLowestHealthObjectIndex();
-                worldObjects[slot] = object;
+                ReplaceWorldObject(slot, object);
                 object.collisionType = CollisionType::Key;
                 object.field_32 = 4;
                 object.field_07 = 3;
@@ -1051,7 +1121,7 @@ namespace Desperabis
                     if ((pixel & 0x38) == 0x38) { pixel = 0; }
                 }
             }
-            object.health = 0;
+            SetObjectHealth(object, 0);
             object.posX = WrapSignedWord(object.posX / 100);
             object.posZ = WrapSignedWord(41 - object.posZ / 100);
             level->wallTextures[cell.row][cell.column] = 0;
@@ -1145,7 +1215,7 @@ namespace Desperabis
                     object.itemValue = 7; object.winX = 0; object.winZ = 0;
                 }
                 if (object.itemValue == 15) { object.itemValue = 16; object.blendWeightOrSpriteOpacity = -100; }
-                if (object.displayType == DisplayType::Hidden) { object.health = 0; }
+                if (object.displayType == DisplayType::Hidden) { SetObjectHealth(object, 0); }
             }
             else { play(26, volume, 1); }
             return;
@@ -1192,14 +1262,14 @@ namespace Desperabis
             }
             return;
         case CollisionType::FlyingArrow:
-            if (object.health == 1000) { object.health = 0; }
+            if (object.health == 1000) { SetObjectHealth(object, 0); }
             return;
         case CollisionType::Type_22:
             object.posX = WrapSignedWord(object.posX - 2 * object.velocityX);
             object.posZ = WrapSignedWord(object.posZ - 2 * object.velocityZ);
             PlaySoundEffect(static_cast<SoundEffect>(37), volume, 467, 1);
             for (int i = 0; i < 9; ++i) { SpawnBreakupParticle(object, amount, 10, 10, 10); }
-            object.health = 0;
+            SetObjectHealth(object, 0);
             return;
         case CollisionType::DestroyOnCollide:
             object.field_07 = 0; object.collisionType = CollisionType::None;
@@ -1365,6 +1435,7 @@ namespace Desperabis
         fragment.posX = WrapSignedWord(source.posX + x);
         fragment.posY = WrapSignedWord(source.posY - y);
         fragment.posZ = WrapSignedWord(source.posZ + z);
+        NotifyObjectCreated(fragment);
     }
 
     void GameContext::DamageSkeleton(RawGameObject& object, std::int16_t amount)
@@ -1391,7 +1462,7 @@ namespace Desperabis
             SpawnSkeletonFragment(object, 260, WrapSignedWord(-x), -8, WrapSignedWord(-z));
             SpawnSkeletonFragment(object, 4, x, 14, z);
             SpawnSkeletonFragment(object, 260, WrapSignedWord(-x), 14, WrapSignedWord(-z));
-            object.health = 0;
+            SetObjectHealth(object, 0);
         }
         else if (amount > 1)
         {
@@ -1436,6 +1507,7 @@ namespace Desperabis
         {
             impact.displayType = DisplayType::VectorBrightness1;
         }
+        NotifyObjectCreated(impact);
     }
 
     std::uint16_t GameContext::SpawnFireParticle(const RawGameObject& source)
@@ -1473,12 +1545,14 @@ namespace Desperabis
         particle.collisionRadiusY = 10;
         particle.winX = static_cast<std::int16_t>(Random(512));
         particle.winY = static_cast<std::int16_t>(Random(512));
+        NotifyObjectCreated(particle);
         return slot;
     }
 
     void GameContext::InitializeDriftingParticle(RawGameObject& object, std::uint8_t frame,
         std::int16_t x, std::int16_t z)
     {
+        const bool active = object.health > 0;
         object.health = 50;
         object.modelId = 39;
         object.modelAnim = 3;
@@ -1496,11 +1570,13 @@ namespace Desperabis
         object.posZ = z;
         object.winX = static_cast<std::int16_t>(Random(512));
         object.winY = static_cast<std::int16_t>(Random(512));
+        if (!active) { NotifyObjectCreated(object); }
     }
 
     void GameContext::InitializeSmokeParticle(RawGameObject& object, std::int16_t x, std::int16_t y,
         std::int16_t z, std::int16_t radiusXZ, std::int16_t riseFactor, std::uint8_t placement)
     {
+        const bool active = object.health > 0;
         object.modelId = 1;
         object.modelAnim = 2;
         object.animFrame = 3;
@@ -1511,7 +1587,9 @@ namespace Desperabis
         object.collisionRadiusXZ = radiusXZ;
         object.collisionRadiusY = 5;
         object.velocityZ = 2;
-        object.health = WrapSignedWord(riseFactor * 50 + Random(50));
+        const auto health = WrapSignedWord(riseFactor * 50 + Random(50));
+        if (active && health <= 0) { SetObjectHealth(object, health); }
+        else { object.health = health; }
         const auto size = static_cast<std::uint8_t>(Random(
             static_cast<std::uint16_t>(object.collisionRadiusXZ)) + 10);
         object.spriteScale = size;
@@ -1522,6 +1600,7 @@ namespace Desperabis
         object.renderPlacementMode = placement;
         const auto floor = GetFloorHeight(object.posX, object.posY, object.posZ);
         if (object.posY < floor) { object.posY = floor; }
+        if (!active) { NotifyObjectCreated(object); }
     }
 
     void GameContext::RefreshWeaponInventory()
@@ -1646,6 +1725,7 @@ namespace Desperabis
             object.displayType = DisplayType::SpriteTransparent;
             object.renderPlacementMode = 64;
         }
+        NotifyObjectCreated(object);
     }
 
     WeaponActionStatus GameContext::AttackWithSelectedWeapon()
@@ -1825,8 +1905,10 @@ namespace Desperabis
                 if (weaponAmounts[20] <= 5)
                 {
                     thrown->soundEffectId = 101;
+                    NotifyObjectCreated(*thrown);
                     break;
                 }
+                NotifyObjectCreated(*thrown);
                 // Native recurses into A8F7; iterate to preserve large counters without stack growth.
                 weaponAmounts[20] = WrapSignedWord(weaponAmounts[20] - 1);
                 weaponReady = weaponAmounts[20] > 0;
@@ -1874,6 +1956,7 @@ namespace Desperabis
                 object.winY = GetVectorAngle(dx, dz);
                 object.winX = GetVectorAngle(WrapSignedWord(target.posY - object.posY),
                     WrapSignedWord(-static_cast<int>(std::lround(std::sqrt(static_cast<double>(squared))))));
+                NotifyObjectCreated(object);
                 DamageObject(target, WrapSignedWord(frameTickCount + 1));
                 auto& impact = worldObjects[FindFreeObjectIndex()];
                 impact.posX = target.posX; impact.posY = target.posY; impact.posZ = target.posZ;
@@ -1882,7 +1965,13 @@ namespace Desperabis
                 impact.spriteScale = static_cast<std::uint8_t>(Random(30) + 10);
                 impact.health = WrapSignedWord(frameTickCount + 1);
                 impact.behavior = BehaviorType::LightSource;
+                NotifyObjectCreated(impact);
             }
+        }
+        if (selectedWeapon != WeaponType::Dagger && selectedWeapon != WeaponType::Lentils &&
+            selectedWeapon != WeaponType::Electricity)
+        {
+            NotifyObjectCreated(object);
         }
         // Sword/unarmed input still clears a reclaiming allocation; their contact is delayed.
         RefreshWeaponInventory();
@@ -2145,7 +2234,7 @@ namespace Desperabis
     {
         std::uint16_t slot = 2;
         while (slot < 165 && worldObjects[slot].health != 0) { ++slot; }
-        worldObjects[slot] = {};
+        ReplaceWorldObject(slot, {});
         return slot;
     }
 
@@ -2165,7 +2254,7 @@ namespace Desperabis
             if (health == 0) { break; }
         }
         if (slot > 164) { slot = lowestSlot; }
-        worldObjects[slot] = {};
+        ReplaceWorldObject(slot, {});
         return slot;
     }
 
@@ -2225,7 +2314,7 @@ namespace Desperabis
     {
         if (discardBlockedObjects)
         {
-            object.health = 0;
+            SetObjectHealth(object, 0);
             return;
         }
         const auto found = std::find_if(worldObjects.begin(), worldObjects.end(),

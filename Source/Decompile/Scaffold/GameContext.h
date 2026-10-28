@@ -230,6 +230,14 @@ namespace Desperabis
         bool IsPaused() const;
         GameTickResult Tick(GameTickTiming timing, InputHandler& input);
         const std::array<RawGameObject, 166>& GetWorldObjects() const;
+        // Immediate game-thread hooks for active (health > 0) world slots 1..165.
+        // Destruction sees the old record; creation sees the initialized replacement.
+        // Hooks must not throw or mutate the world/reenter gameplay.
+        virtual void OnObjectCreated(int slot);
+        virtual void OnObjectDestroyed(int slot);
+        // Use these for external lifecycle changes; raw worldObjects writes bypass notifications.
+        void ReplaceWorldObject(int slot, RawGameObject object);
+        void SetObjectHealth(RawGameObject& object, std::int16_t health);
         const Level* GetLevel() const;
         const LightingCache& GetLightingCache() const;
         // Eye-position snapshot, including while paused/loading; check loaded-level availability separately.
@@ -315,6 +323,8 @@ namespace Desperabis
         // Native 10AC:CF23/CF4B; raising from crouch precedes jumping.
         void RequestPlayerJump();
         void RequestPlayerCrouch();
+        // Native 0000:DA3C: selected cockroach contact uses forward speed, not an interaction key.
+        InteractionResult HandleCockroachContact(RawGameObject& object);
         void ApplyPlayerLifeDelta(std::int32_t delta);
         // Native 10AC:10F5: zero activates, positive values damage, -1 selects special destruction.
         void DamageObject(RawGameObject& object, std::int16_t amount);
@@ -413,6 +423,8 @@ namespace Desperabis
         virtual void InitializeNewGame(std::int16_t chapter);
 
     private:
+        int FindWorldObjectSlot(const RawGameObject& object) const;
+        void NotifyObjectCreated(const RawGameObject& object);
         void UpdateWeaponSelection();
         void CommitWeaponSelection();
         void InitializeWeaponCollider(std::uint16_t slot, std::int16_t reach, std::int16_t yOffset,

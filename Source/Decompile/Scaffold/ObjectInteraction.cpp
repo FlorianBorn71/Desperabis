@@ -61,7 +61,7 @@ namespace Desperabis
                     state.weaponAmounts[weaponIndex] = 360;
                 }
             }
-            object.health = 0;
+            state.SetObjectHealth(object, 0);
             return { InteractionStatus::Applied, slot };
         }
     }
@@ -83,12 +83,12 @@ namespace Desperabis
             {
                 state.arrowPoison = object.itemValue;
             }
-            object.health = 0;
+            state.SetObjectHealth(object, 0);
             return { InteractionStatus::Applied };
 
         case CollisionType::PickableMap:
             state.hasMap = true;
-            object.health = 0;
+            state.SetObjectHealth(object, 0);
             return { InteractionStatus::Applied };
 
         case CollisionType::Medicine:
@@ -98,7 +98,7 @@ namespace Desperabis
                 if (stored.health == 1000 && stored.collisionType == CollisionType::Medicine)
                 {
                     stored.itemValue = WrapSignedWord(stored.itemValue + object.itemValue);
-                    object.health = 0;
+                    state.SetObjectHealth(object, 0);
                     return { InteractionStatus::Applied, static_cast<std::uint16_t>(i + 1) };
                 }
             }
@@ -106,7 +106,7 @@ namespace Desperabis
 
         case CollisionType::Gold:
             state.gold = WrapSignedWord(state.gold + object.itemValue);
-            object.health = 0;
+            state.SetObjectHealth(object, 0);
             return { InteractionStatus::Applied };
 
         case CollisionType::Ammo:
@@ -119,7 +119,7 @@ namespace Desperabis
                 }
                 state.weaponAmounts[index] =
                     WrapSignedWord(state.weaponAmounts[index] + object.groupIndexOrLock);
-                object.health = 0;
+                state.SetObjectHealth(object, 0);
                 return { InteractionStatus::Applied };
             }
             break;
@@ -143,7 +143,7 @@ namespace Desperabis
                 {
                     stored.field_24 = static_cast<std::uint16_t>(stored.field_24 + item.field_24);
                     state.weaponAmounts[static_cast<std::size_t>(weapon)] = WrapSignedWord(stored.field_24);
-                    object.health = 0;
+                    state.SetObjectHealth(object, 0);
                 }
                 else
                 {

@@ -1,0 +1,74 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 0000:DA3C:CB
+0000:DA3C  3C 1F                    CMP AL,0x1f
+0000:DA3E  75 73                    JNZ 0x1000:dab3 ; logical module target 0000:DAB3
+0000:DA40  80 3E CD 04 00           CMP byte ptr [0x4cd],0x0
+0000:DA45  74 69                    JZ 0x1000:dab0 ; logical module target 0000:DAB0
+0000:DA47  A1 D8 D4                 MOV AX,[0xd4d8]
+0000:DA4A  99                       CWD
+0000:DA4B  31 D0                    XOR AX,DX
+0000:DA4D  29 D0                    SUB AX,DX
+0000:DA4F  C4 BE BC FE              LES DI,[BP + 0xfebc]
+0000:DA53  26 3B 45 2E              CMP AX,word ptr ES:[DI + 0x2e]
+0000:DA57  7E 0D                    JLE 0x1000:da66 ; logical module target 0000:DA66
+0000:DA59  FF 36 60 DC              PUSH word ptr [0xdc60]
+0000:DA5D  6A 01                    PUSH 0x1
+0000:DA5F  9A F5 10 AC 20           CALLF 0x2000:1bb5 ; encoded analysis target 20AC:10F5, module 10AC:10F5
+0000:DA64  EB 4A                    JMP 0x1000:dab0 ; logical module target 0000:DAB0
+0000:DA66  C4 BE BC FE              LES DI,[BP + 0xfebc]
+0000:DA6A  26 80 7D 34 00           CMP byte ptr ES:[DI + 0x34],0x0
+0000:DA6F  76 3F                    JBE 0x1000:dab0 ; logical module target 0000:DAB0
+0000:DA71  C4 BE BC FE              LES DI,[BP + 0xfebc]
+0000:DA75  31 C0                    XOR AX,AX
+0000:DA77  26 89 45 12              MOV word ptr ES:[DI + 0x12],AX
+0000:DA7B  C4 BE BC FE              LES DI,[BP + 0xfebc]
+0000:DA7F  31 C0                    XOR AX,AX
+0000:DA81  26 89 45 16              MOV word ptr ES:[DI + 0x16],AX
+0000:DA85  BF BA 2D                 MOV DI,0x2dba
+0000:DA88  1E                       PUSH DS
+0000:DA89  57                       PUSH DI
+0000:DA8A  C4 BE BC FE              LES DI,[BP + 0xfebc]
+0000:DA8E  26 8A 45 34              MOV AL,byte ptr ES:[DI + 0x34]
+0000:DA92  30 E4                    XOR AH,AH
+0000:DA94  31 D2                    XOR DX,DX
+0000:DA96  8B 0E 00 03              MOV CX,word ptr [0x300]
+0000:DA9A  8B 1E 02 03              MOV BX,word ptr [0x302]
+0000:DA9E  9A 1C 0E E4 3C           CALLF 0x3000:dc5c ; encoded analysis target 3CE4:0E1C, module 2CE4:0E1C
+0000:DAA3  52                       PUSH DX
+0000:DAA4  50                       PUSH AX
+0000:DAA5  9A 79 D5 48 2E           CALLF 0x3000:b9f9 ; encoded analysis target 2E48:D579, module 1E48:D579
+0000:DAAA  C7 06 14 D5 08 00        MOV word ptr [0xd514],0x8
+0000:DAB0  E9 2A 02                 JMP 0x1000:dcdd ; logical module target 0000:DCDD
+0000:DAB3  3C 42                    CMP AL,0x42
+0000:DAB5  75 4F                    JNZ 0x1000:db06 ; logical module target 0000:DB06
+0000:DAB7  80 3E CD 04 00           CMP byte ptr [0x4cd],0x0
+0000:DABC  74 45                    JZ 0x1000:db03 ; logical module target 0000:DB03
+0000:DABE  A1 D8 D4                 MOV AX,[0xd4d8]
+0000:DAC1  99                       CWD
+0000:DAC2  31 D0                    XOR AX,DX
+0000:DAC4  29 D0                    SUB AX,DX
+0000:DAC6  3D 01 00                 CMP AX,0x1
+0000:DAC9  7E 0D                    JLE 0x1000:dad8 ; logical module target 0000:DAD8
+0000:DACB  FF 36 60 DC              PUSH word ptr [0xdc60]
+0000:DACF  6A 01                    PUSH 0x1
+0000:DAD1  9A F5 10 AC 20           CALLF 0x2000:1bb5 ; encoded analysis target 20AC:10F5, module 10AC:10F5
+0000:DAD6  EB 2B                    JMP 0x1000:db03 ; logical module target 0000:DB03
+0000:DAD8  BF BA 2D                 MOV DI,0x2dba
+0000:DADB  1E                       PUSH DS
+0000:DADC  57                       PUSH DI
+0000:DADD  C4 BE BC FE              LES DI,[BP + 0xfebc]
+0000:DAE1  26 8A 45 34              MOV AL,byte ptr ES:[DI + 0x34]
+0000:DAE5  30 E4                    XOR AH,AH
+0000:DAE7  31 D2                    XOR DX,DX
+0000:DAE9  8B 0E 00 03              MOV CX,word ptr [0x300]
+0000:DAED  8B 1E 02 03              MOV BX,word ptr [0x302]
+0000:DAF1  9A 1C 0E E4 3C           CALLF 0x3000:dc5c ; encoded analysis target 3CE4:0E1C, module 2CE4:0E1C
+0000:DAF6  52                       PUSH DX
+0000:DAF7  50                       PUSH AX
+0000:DAF8  9A 79 D5 48 2E           CALLF 0x3000:b9f9 ; encoded analysis target 2E48:D579, module 1E48:D579
+0000:DAFD  C7 06 14 D5 08 00        MOV word ptr [0xd514],0x8
+0000:DB03  E9 D7 01                 JMP 0x1000:dcdd ; logical module target 0000:DCDD
+STOP: instruction crosses requested range end.

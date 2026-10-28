@@ -38,9 +38,9 @@ namespace Desperabis
                     context.SpawnWaterImpact(object.posX, object.posZ);
                     if (context.floorSurfaceValue != 16)
                     {
-                        object.health = 5;
                         object.velocityY = 0;
                         object.behavior = BehaviorType::None;
+                        context.SetObjectHealth(object, 5);
                     }
                     else
                     {
@@ -117,7 +117,7 @@ namespace Desperabis
                         std::clamp<int>(WrapSignedWord(target.field_24 + 1), 0, 39));
                     target.animFrame = static_cast<std::uint8_t>(target.field_24 / 10 + 1);
                     target.displayType = DisplayType::VectorNormal;
-                    object.health = 0;
+                    context.SetObjectHealth(object, 0);
                     break;
                 }
             }
@@ -167,7 +167,7 @@ namespace Desperabis
         const auto slot = context.FindCollidingObject(object);
         if (slot > 1)
         {
-            object.health = 0;
+            context.SetObjectHealth(object, 0);
             auto& target = context.worldObjects[slot];
             std::uint8_t frame = 0;
             switch (target.collisionType)
@@ -354,7 +354,7 @@ namespace Desperabis
                 const auto advanced = WrapSignedWord(object.doorLockOrGroupBitmask + 1);
                 // EB28 holds all 2*5 frames of SCHUSS1.AN2, not just one animation row.
                 object.doorLockOrGroupBitmask = static_cast<std::int16_t>((advanced + 19) % 10 + 1);
-                if (object.doorLockOrGroupBitmask < advanced) { object.health = 0; }
+                if (object.doorLockOrGroupBitmask < advanced) { context.SetObjectHealth(object, 0); }
             }
             else { ++object.field_26; }
             const auto slot = context.FindCollidingObject(object);
@@ -556,7 +556,7 @@ namespace Desperabis
     DispatchResult Function_Flies(RawGameObject& object, GameContext& context)
     {
         // Burned flies disappear but still finish this update's animation and sound request.
-        if (object.displayType == DisplayType::VectorBrightness2) { object.health = 0; }
+        if (object.displayType == DisplayType::VectorBrightness2) { context.SetObjectHealth(object, 0); }
 
         const auto rate = static_cast<std::int32_t>(object.itemValue) + context.Random(5);
         object.blendWeightOrSpriteOpacity = WrapSignedWord(
@@ -600,7 +600,7 @@ namespace Desperabis
                 object.velocityY = WrapSignedWord(object.velocityY - 1);
             }
             object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity - 5);
-            if (object.blendWeightOrSpriteOpacity < 0) { object.health = 0; }
+            if (object.blendWeightOrSpriteOpacity < 0) { context.SetObjectHealth(object, 0); }
             object.itemValue = WrapSignedWord(static_cast<std::uint16_t>(object.itemValue) ^ 1u);
             const auto blend = static_cast<int>(object.blendWeightOrSpriteOpacity);
             const auto shade = 37 - (blend >= 0 ? blend / 8 : -((-blend + 7) / 8));
@@ -902,9 +902,177 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::Skeleton, 0x1BE9 };
     }
 
-    DispatchResult Function_Cockroach(RawGameObject&, GameContext&)
+    DispatchResult Function_Cockroach(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Cockroach, 0x1C17 };
+        constexpr std::int16_t speed = 3; // Original initialized word DS:02D4.
+        for (int tick = 0; tick < context.tickCount; ++tick)
+        {
+            if (object.health != 1000) { continue; }
+            object.soundEffectId = 3;
+            object.posX = WrapSignedWord(object.posX + object.velocityX);
+            object.posZ = WrapSignedWord(object.posZ + object.velocityZ);
+            object.posY = WrapSignedWord(object.posY + object.velocityY);
+            switch (object.itemValue)
+            {
+            case -1:
+                if (context.GetSoundDistanceAt(object.posX, object.posZ) < 280) { object.itemValue = 15; }
+                break;
+            case 0:
+                if (context.GetSoundDistanceAt(object.posX, object.posZ) < 150) { object.itemValue = 1; }
+                break;
+            case 1:
+                if (context.Random(30) == 0) { object.itemValue = 2; }
+                break;
+            case 2:
+            {
+                object.animFrame = 3;
+                object.modelFrame2 = 4;
+                object.blendWeightOrSpriteOpacity = -100;
+                if (object.doorLockOrGroupBitmask == 0) { object.doorLockOrGroupBitmask = 1; }
+                if (object.velocityY > -5) { object.velocityY = WrapSignedWord(object.velocityY - 1); }
+                const auto floor = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
+                if (object.posY < floor)
+                {
+                    object.posY = floor;
+                    object.velocityY = 0;
+                    object.itemValue = 3;
+                }
+                object.winZ = WrapSignedWord(object.winZ + GetStepToward(object.winZ, 150, 5));
+                break;
+            }
+            case 3:
+                object.collisionType = CollisionType::Cockroach;
+                if (object.field_26 == 0 && context.Random(20) == 0 &&
+                    object.blendWeightOrSpriteOpacity == -100)
+                {
+                    object.field_26 = static_cast<std::uint16_t>(context.RandomSigned(15));
+                }
+                else
+                {
+                    object.field_26 = static_cast<std::uint16_t>(WrapSignedWord(
+                        object.field_26 - SignWord(WrapSignedWord(object.field_26))));
+                }
+                object.winY = WrapSignedWord(object.winY + object.field_26);
+                if (context.Random(40) == 0) { object.itemValue = 4; }
+                if (context.Random(15) == 0) { object.blendWeightOrSpriteOpacity = -100; }
+                if (context.Random(15) == 0)
+                {
+                    object.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(context.Random(100));
+                }
+                break;
+            case 4:
+                object.blendWeightOrSpriteOpacity = -100;
+                object.animFrame = 1;
+                object.modelFrame2 = 2;
+                object.winZ = WrapSignedWord(object.winZ + GetStepToward(object.winZ, 0, 9));
+                if (object.winZ == 0) { object.itemValue = 5; }
+                break;
+            case 5:
+            case 15:
+            {
+                if (object.groupIndexOrLock < 1) { context.DamageObject(object, 1); }
+                if (context.Random(20) == 0)
+                {
+                    object.blendWeightOrSpriteOpacity = 0;
+                    object.velocityX = 0;
+                    object.velocityZ = 0;
+                }
+                object.posY = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
+                object.winZ = 0;
+                if (context.Random(15) == 0)
+                {
+                    object.winY = static_cast<std::int16_t>((object.winY + context.RandomSigned(20)) & 511);
+                    GetClampedDirectionDisplacement(object.velocityX, object.velocityZ, object.winY, speed);
+                    object.blendWeightOrSpriteOpacity = -100;
+                }
+                if (WrapSignedWord(object.field_24) > 0 && context.Random(object.field_24) == 0)
+                {
+                    auto target = GetVectorAngle(WrapSignedWord(context.soundListenerX - object.posX),
+                        WrapSignedWord(context.soundListenerZ - object.posZ));
+                    NormalizeAnglePair(object.winY, target);
+                    object.winY = WrapSignedWord(object.winY + GetStepToward(object.winY, target, 14));
+                    GetClampedDirectionDisplacement(object.velocityX, object.velocityZ, object.winY, speed);
+                }
+                const auto turn = WrapSignedWord(context.RandomSigned(1) * 64);
+                std::int16_t correctionX = 0;
+                std::int16_t correctionZ = 0;
+                std::uint16_t center = 0;
+                int attempts = 0;
+                do
+                {
+                    ++attempts;
+                    correctionX = 0;
+                    correctionZ = 0;
+                    context.QueryCollisionMapNeighborhood(WrapSignedWord(object.posX + object.velocityX),
+                        WrapSignedWord(object.posZ + object.velocityZ), 5, correctionX, correctionZ, center, 0x38);
+                    if (correctionX != 0 || correctionZ != 0)
+                    {
+                        object.winY = WrapSignedWord(object.winY + turn);
+                        GetDirectionDisplacement(object.velocityX, object.velocityZ, object.winY, speed);
+                    }
+                } while ((correctionX != 0 || correctionZ != 0) && attempts <= 15);
+                if (attempts > 15) { context.HandleBlockedObject(object); }
+                if (object.velocityX != 0 || object.velocityZ != 0)
+                {
+                    const auto floor = context.GetTerrainFloorHeight(
+                        WrapSignedWord(object.posX + 8 * object.velocityX), object.posY,
+                        WrapSignedWord(object.posZ + 8 * object.velocityZ));
+                    object.winX = GetVectorAngle(WrapSignedWord(object.posY - floor), -8 * speed);
+                }
+                break;
+            }
+            case 7:
+                if (object.field_07 < 131) { object.field_07 = 0; }
+                object.velocityX = 0;
+                object.velocityZ = 0;
+                object.blendWeightOrSpriteOpacity = 0;
+                object.itemValue = 8;
+                object.animFrame = 1;
+                object.modelFrame2 = 2;
+                object.modelAnim = 2;
+                break;
+            case 8:
+                if (object.blendWeightOrSpriteOpacity < 100 && context.Random(7) == 0)
+                {
+                    object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity + 1);
+                }
+                break;
+            case 10:
+                if (context.Random(900) == 0)
+                {
+                    object.displayType = DisplayType::VectorNormal;
+                    object.winY = static_cast<std::int16_t>(context.Random(512));
+                    object.itemValue = 11;
+                    object.field_07 = 3;
+                }
+                break;
+            case 11:
+                if (context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ) > object.posY)
+                {
+                    object.posY = WrapSignedWord(object.posY + 1);
+                }
+                else { object.itemValue = 15; }
+                break;
+            case 16:
+                object.collisionType = CollisionType::None;
+                object.field_07 = 0;
+                object.animFrame = 4;
+                object.modelFrame2 = 3;
+                object.velocityX = 0;
+                object.velocityY = 0;
+                object.velocityZ = 0;
+                object.winZ = WrapSignedWord(object.winZ + GetStepToward(object.winZ, 256, 17));
+                if (object.blendWeightOrSpriteOpacity < 0)
+                {
+                    object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity + 1);
+                }
+                else if (object.winZ == 256) { object.behavior = BehaviorType::None; }
+                break;
+            default:
+                break;
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::Cockroach, 0x1C17 };
     }
 
     DispatchResult Function_WaterImpact(RawGameObject& object, GameContext& context)
@@ -918,7 +1086,7 @@ namespace Desperabis
             ++object.animFrame;
             ++object.modelFrame2;
             object.itemValue = 3;
-            if (object.modelFrame2 == 4) { object.health = 0; }
+            if (object.modelFrame2 == 4) { context.SetObjectHealth(object, 0); }
         }
         return { DispatchStatus::ExecutedCase, BehaviorType::WaterImpact, 0x1C45 };
     }
@@ -1116,7 +1284,7 @@ namespace Desperabis
                     context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
                         context.GetSoundVolumeAt(object.posX, object.posZ), object, 1);
                 }
-                target.collisionType = CollisionType::Switch; target.animFrame = 2; object.health = 0;
+                target.collisionType = CollisionType::Switch; target.animFrame = 2; context.SetObjectHealth(object, 0);
             }
             else if (target.collisionType == CollisionType::BurnableOilPuddle && object.doorLockOrGroupBitmask == 21)
             {
@@ -1577,7 +1745,7 @@ namespace Desperabis
             player.posX = object.posX;
             player.posY = object.posY;
             player.posZ = object.posZ;
-            object.health = 0;
+            context.SetObjectHealth(object, 0);
         }
         return { DispatchStatus::ExecutedCase, BehaviorType::LevelStartOverride, 0x37DD };
     }
@@ -1957,9 +2125,9 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::Behavior_300, 0x5108 };
     }
 
-    DispatchResult Function_DisabledSentinel(RawGameObject& object, GameContext&)
+    DispatchResult Function_DisabledSentinel(RawGameObject& object, GameContext& context)
     {
-        object.health = 0;
+        context.SetObjectHealth(object, 0);
         return { DispatchStatus::ExecutedCase, BehaviorType::DisabledSentinel, 0x1156 };
     }
 
