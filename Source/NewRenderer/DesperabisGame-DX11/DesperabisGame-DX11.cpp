@@ -210,7 +210,7 @@ namespace
 					if (templates[id].health == 0) { throw std::runtime_error("Missing original cheat weapon template."); }
 					*slot = templates[id];
 				}
-				if (weapon.type == WeaponType::Fireball) { slot->field_24 = static_cast<std::uint16_t>(weapon.amount); }
+				if (weapon.type == WeaponType::Fireball) { slot->generalPurpose1 = static_cast<std::uint16_t>(weapon.amount); }
 				amounts[id] = weapon.amount;
 			}
 			inventory = items;

@@ -80,7 +80,7 @@ namespace
         {
             object.blendWeightOrSpriteOpacity = 0;
             object.itemValue = static_cast<std::int16_t>(4 + Next(seed, 2));
-            object.field_26 = 0;
+            object.generalPurpose2 = 0;
             object.animFrame = 1;
             object.modelFrame2 = 2;
         }
@@ -100,7 +100,7 @@ namespace
         object.modelAnim = static_cast<std::uint8_t>(((object.winY + 85) & 511) / 171 + 1);
         if (object.itemValue > 0) { object.modelAnim = static_cast<std::uint8_t>(object.itemValue); }
         object.doorLockOrGroupBitmask = 0;
-        object.field_26 = static_cast<std::uint16_t>(object.field_26 + Next(seed, 5));
+        object.generalPurpose2 = static_cast<std::uint16_t>(object.generalPurpose2 + Next(seed, 5));
         if (object.itemValue == 0)
         {
             object.blendWeightOrSpriteOpacity = Word(object.blendWeightOrSpriteOpacity + 10 + Next(seed, 8));
@@ -109,10 +109,10 @@ namespace
         {
             if (object.animFrame == 4)
             {
-                const int acceleration = Word(object.field_26);
-                object.field_26 = static_cast<std::uint16_t>(acceleration + std::clamp(1 - acceleration, -3, 3));
+                const int acceleration = Word(object.generalPurpose2);
+                object.generalPurpose2 = static_cast<std::uint16_t>(acceleration + std::clamp(1 - acceleration, -3, 3));
             }
-            object.blendWeightOrSpriteOpacity = Word(object.blendWeightOrSpriteOpacity + Word(object.field_26));
+            object.blendWeightOrSpriteOpacity = Word(object.blendWeightOrSpriteOpacity + Word(object.generalPurpose2));
             target = Word(GetVectorAngle(Word(1500 + distance - object.posX), Word(2000 - object.posZ)) +
                 Word(phase - 350) / 3);
             current = steer(target);
@@ -125,7 +125,7 @@ namespace
             object.blendWeightOrSpriteOpacity = Word(object.blendWeightOrSpriteOpacity - advances * 100);
             object.animFrame = static_cast<std::uint8_t>((object.animFrame + advances - 1) % 4 + 1);
             object.modelFrame2 = static_cast<std::uint8_t>(object.animFrame % 4 + 1);
-            if (object.itemValue == 0 || object.animFrame != 4) { object.field_26 = 3; }
+            if (object.itemValue == 0 || object.animFrame != 4) { object.generalPurpose2 = 3; }
             if (object.itemValue > 0)
             {
                 if (object.animFrame == 4 && distance < 72) { life -= 29491 * object.behaviorParameter; }
@@ -153,11 +153,11 @@ namespace
             expected.animFrame = static_cast<std::uint8_t>(sample % 4 + 1);
             expected.modelFrame2 = 35;
             expected.blendWeightOrSpriteOpacity = Word(sample * 17);
-            expected.field_26 = static_cast<std::uint16_t>(sample % 200);
+            expected.generalPurpose2 = static_cast<std::uint16_t>(sample % 200);
             expected.doorLockOrGroupBitmask = sample % 11 == 0 ? 1 : 0;
             expected.behaviorParameter = static_cast<std::uint8_t>(sample % 256);
             expected.renderPlacementMode = 0xa5;
-            expected.field_28 = 0xbeef;
+            expected.generalPurpose3 = 0xbeef;
             expected.groupIndexOrLock = 60;
             expected.spriteScale = 41;
             f.Object() = expected;
@@ -209,7 +209,7 @@ namespace
         f.Object().posX = 1500;
         f.Object().itemValue = 4;
         f.Object().animFrame = 2;
-        f.Object().field_26 = 1;
+        f.Object().generalPurpose2 = 1;
         f.Object().blendWeightOrSpriteOpacity = 100;
         Function_Skeleton(f.Object(), f.context);
         Check(audio.calls.size() == 1 && audio.calls[0].first == 19,
@@ -342,7 +342,7 @@ namespace
         f.Object().animFrame = static_cast<std::uint8_t>(frame);
         f.Object().modelFrame2 = static_cast<std::uint8_t>(frame + 1);
         f.Object().blendWeightOrSpriteOpacity = 100;
-        f.Object().field_26 = 1;
+        f.Object().generalPurpose2 = 1;
     }
 
     void TestCombat()
@@ -432,14 +432,14 @@ namespace
             {
                 Check(part.modelId == 39 && part.modelAnim == 2 && part.animFrame == 2 &&
                     part.collisionType == CollisionType::Weapon && part.itemValue == 2 &&
-                    part.collisionRadiusXZ == 15 && part.field_32 == 40 &&
+                    part.collisionRadiusXZ == 15 && part.pickupType == PickupType::Type_40 &&
                     part.spriteScale == 41 && part.soundEffectId == 39,
                     "Part six must be the recoverable sword, not another bone.");
             }
             else
             {
                 Check(part.modelId == original.modelId && part.modelAnim == (parts[i] & 255) &&
-                    part.winY == parts[i] && part.field_24 == 8 && part.animFrame == 5 &&
+                    part.winY == parts[i] && part.generalPurpose1 == 8 && part.animFrame == 5 &&
                     part.modelFrame2 == (parts[i] == 4 || parts[i] == 260 ? 35 : 0),
                     "Body-part identity/mirrored angle/default bytes differ.");
             }
@@ -515,7 +515,7 @@ namespace
                 skeleton.posZ = 2000;
                 skeleton.itemValue = 4;
                 skeleton.animFrame = 3;
-                skeleton.field_26 = 1;
+                skeleton.generalPurpose2 = 1;
                 skeleton.blendWeightOrSpriteOpacity = 100;
                 skeleton.behaviorParameter = 20;
                 CompleteLevelLoad(request.id, std::move(data));

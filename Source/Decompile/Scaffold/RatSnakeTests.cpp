@@ -69,7 +69,7 @@ namespace
                     object.posZ = Word(object.posZ + object.velocityZ);
                 }
                 else { object.winY = Word((object.winY + 16) & 511); }
-                if (Word(object.field_24) > 0 && Next(seed, object.field_24) == 0)
+                if (Word(object.generalPurpose1) > 0 && Next(seed, object.generalPurpose1) == 0)
                 {
                     auto target = GetVectorAngle(Word(listenerX - object.posX), Word(listenerZ - object.posZ));
                     int current = (static_cast<std::uint16_t>(object.winY) % 512) + 512;
@@ -80,11 +80,11 @@ namespace
                 }
                 if (Next(seed, 20) == 0) { object.velocityX = 0; object.velocityZ = 0; }
                 object.posY = 0;
-                if (Next(seed, object.field_28) == 0)
+                if (Next(seed, object.generalPurpose3) == 0)
                 {
                     object.winY = Word((object.winY + Signed(seed, 20)) & 511);
                     Direction(object, true);
-                    object.field_28 = 15;
+                    object.generalPurpose3 = 15;
                 }
                 if (object.velocityX != 0 || object.velocityZ != 0)
                 {
@@ -116,7 +116,7 @@ namespace
         object.posY = 17;
         object.itemValue = 3;
         object.velocityX = 3;
-        object.field_28 = 0;
+        object.generalPurpose3 = 0;
         return object;
     }
 
@@ -176,14 +176,14 @@ namespace
         {
             auto object = Fixture();
             object.health = health[sample % health.size()];
-            object.field_24 = steer[sample % steer.size()];
-            object.field_28 = wander[(sample / steer.size()) % wander.size()];
+            object.generalPurpose1 = steer[sample % steer.size()];
+            object.generalPurpose3 = wander[(sample / steer.size()) % wander.size()];
             object.winY = Word(sample);
             object.blendWeightOrSpriteOpacity = Word(sample * 7);
             object.modelAnim = static_cast<std::uint8_t>(sample % 3);
             object.velocityY = Word(sample);
             object.renderPlacementMode = 0xa5;
-            object.field_26 = 0xdead;
+            object.generalPurpose2 = 0xdead;
             object.behaviorParameter = 1;
             object.spriteScale = 3;
             context.tickCount = static_cast<std::int16_t>(sample % 5);

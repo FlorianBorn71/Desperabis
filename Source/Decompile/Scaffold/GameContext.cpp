@@ -139,7 +139,7 @@ namespace Desperabis
 
         bool ObjectsOverlap(const RawGameObject& source, const RawGameObject& candidate)
         {
-            return (source.field_07 & candidate.field_07) != 0 &&
+            return (source.collisionMask & candidate.collisionMask) != 0 &&
                 AxisOverlaps(source.posX, candidate.posX, source.collisionRadiusXZ, candidate.collisionRadiusXZ) &&
                 AxisOverlaps(source.posY, candidate.posY, source.collisionRadiusY, candidate.collisionRadiusY) &&
                 AxisOverlaps(source.posZ, candidate.posZ, source.collisionRadiusXZ, candidate.collisionRadiusXZ);
@@ -247,7 +247,7 @@ namespace Desperabis
         RawGameObject player;
         player.health = 1000;
         // Save-derived normal shape, not yet a traced EXE initialization routine; see BehaviorRecovery.md.
-        player.field_07 = 3;
+        player.collisionMask = 3;
         player.collisionRadiusXZ = 15;
         player.collisionRadiusY = 23;
         player.posX = spawn.position[0];
@@ -349,7 +349,7 @@ namespace Desperabis
 
     void GameContext::RequestPlayerJump()
     {
-        if (worldObjects[1].field_28 != 0) { return; }
+        if (worldObjects[1].generalPurpose3 != 0) { return; }
         if (playerBodyHeight == 45 && playerGrounded) { playerVerticalSpeed = 7; }
         else { playerPostureDelta = 6; }
     }
@@ -469,16 +469,16 @@ namespace Desperabis
             }
             // DE45..DED4: the map byte controls contact; FELD surfaceFlags supplies depth.
             const auto surface = field_D500 ? GetCollisionMapPixelAtWorldXZ(player.posX, player.posZ) : 0;
-            if (surface != 1 && player.field_28 == 1)
+            if (surface != 1 && player.generalPurpose3 == 1)
             {
-                player.field_28 = 0;
+                player.generalPurpose3 = 0;
                 RequestPlayerJump();
             }
             playerUnderwater = false;
             if (((surface & 7) == 1 || (surface & 7) == 3) && WrapSignedWord(eyeY - supportY) < 5)
             {
                 RequestPlayerCrouch();
-                player.field_28 = 1;
+                player.generalPurpose3 = 1;
                 const auto position = GetHeightPosition(player.posX, player.posZ);
                 const auto depth = GetHeightSurfaceDepth(level->surfaceFlags[position.row][position.column]);
                 playerUnderwater = WrapSignedWord(eyeY + depth) < 0;
@@ -914,7 +914,7 @@ namespace Desperabis
     {
         auto& particle = worldObjects[FindFreeObjectIndex()];
         if (source.collisionType != CollisionType::Type_22) { return; }
-        const auto linkedSlot = source.field_24;
+        const auto linkedSlot = source.generalPurpose1;
         particle.health = static_cast<std::int16_t>(Random(50) + 50);
         particle.modelId = 1;
         particle.modelAnim = 5;
@@ -925,7 +925,7 @@ namespace Desperabis
         particle.spriteScale = 24;
         particle.groupIndexOrLock = 5;
         particle.itemValue = 75;
-        particle.field_24 = 1;
+        particle.generalPurpose1 = 1;
         if (selector == 0)
         {
             particle.posX = WrapSignedWord(source.posX + RandomSigned(static_cast<std::uint16_t>(radiusX)));
@@ -975,7 +975,7 @@ namespace Desperabis
     {
         auto& particle = worldObjects[FindFreeOrLowestHealthObjectIndex()];
         particle.health = 100;
-        particle.field_07 = 1;
+        particle.collisionMask = 1;
         particle.spriteScale = 35;
         particle.behavior = BehaviorType::FlyingArrow;
         particle.collisionType = CollisionType::FlyingArrow;
@@ -1061,27 +1061,27 @@ namespace Desperabis
             StopAllSoundEffects();
             play(object.soundEffectId, volume, 2);
             object.collisionType = CollisionType::None;
-            object.field_07 = 0;
+            object.collisionMask = 0;
             object.behavior = BehaviorType::None;
             if (object.modelFrame2 > 0) { object.animFrame = object.modelFrame2; }
-            if (WrapSignedWord(object.field_28) > 0)
+            if (WrapSignedWord(object.generalPurpose3) > 0)
             {
                 const auto slot = FindFreeOrLowestHealthObjectIndex();
                 ReplaceWorldObject(slot, object);
                 object.collisionType = CollisionType::Key;
-                object.field_32 = 4;
-                object.field_07 = 3;
+                object.pickupType = PickupType::Type_4;
+                object.collisionMask = 3;
                 object.displayType = DisplayType::VectorUnlit;
                 object.renderPlacementMode = 5;
                 object.modelId = 39;
                 object.modelAnim = 1;
                 object.animFrame = 1;
-                object.itemValue = WrapSignedWord(object.field_28);
+                object.itemValue = WrapSignedWord(object.generalPurpose3);
             }
             return;
         case CollisionType::Weapon:
         case CollisionType::Ammo:
-            if (amount == -1) { object.field_07 = 0; object.health = 10; }
+            if (amount == -1) { object.collisionMask = 0; object.health = 10; }
             else { object.groupIndexOrLock = originalStrength; }
             return;
         case CollisionType::Type_138:
@@ -1094,11 +1094,11 @@ namespace Desperabis
             {
                 if (object.blendWeightOrSpriteOpacity < 100)
                 {
-                    object.field_26 = 3;
+                    object.generalPurpose2 = 3;
                     if (object.modelFrame2 == 0) { object.displayType = DisplayType::Hidden; }
                     play(object.soundEffectId, volume, 1);
                 }
-                object.itemValue = WrapSignedWord(object.field_24);
+                object.itemValue = WrapSignedWord(object.generalPurpose1);
             }
             return;
         case CollisionType::WallDestruction:
@@ -1141,8 +1141,8 @@ namespace Desperabis
             if (object.groupIndexOrLock < 1)
             {
                 object.animFrame = 1; object.modelFrame2 = 2; object.modelAnim = 3;
-                object.collisionType = CollisionType::None; object.field_07 = 0;
-                object.field_24 = 1; object.field_26 = 0;
+                object.collisionType = CollisionType::None; object.collisionMask = 0;
+                object.generalPurpose1 = 1; object.generalPurpose2 = 0;
                 object.blendWeightOrSpriteOpacity = 0; object.itemValue = 0;
                 object.renderPlacementMode = 3;
                 play(12, volume, 2);
@@ -1160,9 +1160,9 @@ namespace Desperabis
             if (object.groupIndexOrLock < 1)
             {
                 object.animFrame = 5; object.modelFrame2 = 4;
-                object.collisionType = CollisionType::None; object.field_07 = 0;
+                object.collisionType = CollisionType::None; object.collisionMask = 0;
                 object.velocityY = 10; object.posY = WrapSignedWord(object.posY + object.velocityY);
-                object.field_24 = 1; object.blendWeightOrSpriteOpacity = -100;
+                object.generalPurpose1 = 1; object.blendWeightOrSpriteOpacity = -100;
                 StopAllSoundEffects();
                 play(sounds[object.soundEffectId][0], volume, 2);
             }
@@ -1172,16 +1172,16 @@ namespace Desperabis
         case CollisionType::Harvestman:
             if (object.groupIndexOrLock < 1)
             {
-                object.modelFrame2 = 15; object.collisionType = CollisionType::None; object.field_07 = 0;
-                object.field_24 = 1; object.blendWeightOrSpriteOpacity = 0; object.field_26 = 0;
+                object.modelFrame2 = 15; object.collisionType = CollisionType::None; object.collisionMask = 0;
+                object.generalPurpose1 = 1; object.blendWeightOrSpriteOpacity = 0; object.generalPurpose2 = 0;
             }
             return;
         case CollisionType::Devil:
             if (object.groupIndexOrLock < 1)
             {
                 object.modelFrame2 = object.animFrame; object.modelAnim = 1; object.animFrame = 4;
-                object.collisionType = CollisionType::None; object.field_07 = 0;
-                object.field_24 = 1; object.blendWeightOrSpriteOpacity = 100; object.field_26 = 0;
+                object.collisionType = CollisionType::None; object.collisionMask = 0;
+                object.generalPurpose1 = 1; object.blendWeightOrSpriteOpacity = 100; object.generalPurpose2 = 0;
                 play(12, volume, 2);
             }
             else if (amount > 1) { play(11, volume, 1); }
@@ -1191,7 +1191,7 @@ namespace Desperabis
             {
                 object.doorLockOrGroupBitmask = 0; object.behavior = BehaviorType::Behavior_61;
                 object.blendWeightOrSpriteOpacity = 0; object.animFrame = 1; object.modelFrame2 = 2;
-                object.modelAnim = 2; object.field_26 = 0; object.itemValue = 4; object.field_24 = 250;
+                object.modelAnim = 2; object.generalPurpose2 = 0; object.itemValue = 4; object.generalPurpose1 = 250;
             }
             else
             {
@@ -1211,7 +1211,7 @@ namespace Desperabis
                 if (object.itemValue < 7)
                 {
                     object.collisionType = CollisionType::None;
-                    if (object.field_07 != 131) { object.field_07 = 0; }
+                    if (object.collisionMask != 131) { object.collisionMask = 0; }
                     object.itemValue = 7; object.winX = 0; object.winZ = 0;
                 }
                 if (object.itemValue == 15) { object.itemValue = 16; object.blendWeightOrSpriteOpacity = -100; }
@@ -1230,7 +1230,7 @@ namespace Desperabis
         case CollisionType::Crab:
             if (object.groupIndexOrLock <= 0)
             {
-                object.field_07 = 0; object.behavior = BehaviorType::None;
+                object.collisionMask = 0; object.behavior = BehaviorType::None;
                 object.modelAnim = 2; object.animFrame = 1; object.modelFrame2 = 0;
                 play(26, volume, 1);
             }
@@ -1239,7 +1239,7 @@ namespace Desperabis
             if (object.itemValue > 0 && object.blendWeightOrSpriteOpacity == 0)
             {
                 if (object.health == 1000) { ActivateObjectGroup(object.itemValue); }
-                object.groupIndexOrLock = 1; object.field_26 = 10;
+                object.groupIndexOrLock = 1; object.generalPurpose2 = 10;
                 play(object.soundEffectId, volume, 1);
             }
             return;
@@ -1256,7 +1256,7 @@ namespace Desperabis
                 if (object.modelAnim == 1) { play(17, GetSoundVolume(0), 1); }
                 else if (object.modelAnim == 2) { play(20, GetSoundVolume(200), 1); }
                 object.modelFrame2 = object.animFrame; object.animFrame = 3;
-                object.field_07 = 0; object.collisionType = CollisionType::None; object.health = 1500;
+                object.collisionMask = 0; object.collisionType = CollisionType::None; object.health = 1500;
                 object.velocityY = 8; object.posY = WrapSignedWord(object.posY + object.velocityY);
                 object.blendWeightOrSpriteOpacity = -100;
             }
@@ -1272,15 +1272,15 @@ namespace Desperabis
             SetObjectHealth(object, 0);
             return;
         case CollisionType::DestroyOnCollide:
-            object.field_07 = 0; object.collisionType = CollisionType::None;
+            object.collisionMask = 0; object.collisionType = CollisionType::None;
             object.animFrame = static_cast<std::uint8_t>(object.animFrame + 1);
             return;
         case CollisionType::DestroyableBarrier:
             if (object.soundEffectId == 0) { play(52, GetSoundVolume(0), 1); }
-            object.field_24 = static_cast<std::uint16_t>(object.field_24 + object.behaviorParameter * amount);
-            if (static_cast<std::int16_t>(object.field_24 >> 8) >= object.doorLockOrGroupBitmask)
+            object.generalPurpose1 = static_cast<std::uint16_t>(object.generalPurpose1 + object.behaviorParameter * amount);
+            if (static_cast<std::int16_t>(object.generalPurpose1 >> 8) >= object.doorLockOrGroupBitmask)
             {
-                object.field_07 = 0; object.field_24 = 32000;
+                object.collisionMask = 0; object.generalPurpose1 = 32000;
             }
             return;
         case CollisionType::DiggableGround:
@@ -1297,8 +1297,8 @@ namespace Desperabis
             {
                 play(50, volume, 2);
                 object.itemValue = 100; object.modelAnim = 1; object.animFrame = 3; object.modelFrame2 = 4;
-                object.blendWeightOrSpriteOpacity = 0; object.field_26 = 0;
-                object.field_07 = 0; object.collisionType = CollisionType::None;
+                object.blendWeightOrSpriteOpacity = 0; object.generalPurpose2 = 0;
+                object.collisionMask = 0; object.collisionType = CollisionType::None;
             }
             else if (object.itemValue == 1) { object.itemValue = -2; }
             return;
@@ -1311,7 +1311,7 @@ namespace Desperabis
             }
             else
             {
-                object.field_24 = 10;
+                object.generalPurpose1 = 10;
                 if (amount > 1) { play(object.soundEffectId, volume, 1); }
             }
             return;
@@ -1332,12 +1332,12 @@ namespace Desperabis
                     {
                         const auto slot = static_cast<std::size_t>(object.doorLockOrGroupBitmask);
                         if (slot >= worldObjects.size()) { throw std::out_of_range("Attached damage target is outside 0..165."); }
-                        worldObjects[slot].field_28 = static_cast<std::uint16_t>(worldObjects[slot].field_28 - object.field_28);
+                        worldObjects[slot].generalPurpose3 = static_cast<std::uint16_t>(worldObjects[slot].generalPurpose3 - object.generalPurpose3);
                     }
                 }
                 else { object.modelFrame2 = 2; }
                 play(16, volume, 1);
-                object.field_07 = 0; object.collisionType = CollisionType::None; object.health = 2000;
+                object.collisionMask = 0; object.collisionType = CollisionType::None; object.health = 2000;
                 object.blendWeightOrSpriteOpacity = 0; object.behavior = BehaviorType::AttachableDamageObject;
             }
             return;
@@ -1366,7 +1366,7 @@ namespace Desperabis
                 object.behavior = BehaviorType::WalkableDrawBridge;
                 std::swap(object.animFrame, object.modelFrame2);
                 object.blendWeightOrSpriteOpacity = 100; object.velocityZ = 3;
-                object.displayType = static_cast<DisplayType>(80); object.field_07 = 0;
+                object.displayType = static_cast<DisplayType>(80); object.collisionMask = 0;
                 play(20, GetSoundVolume(0), 1);
                 for (int i = -1; i <= 3; ++i)
                 {
@@ -1407,7 +1407,7 @@ namespace Desperabis
         fragment.soundEffectId = 6;
         fragment.behavior = BehaviorType::BouncingObject;
         fragment.itemValue = 85;
-        fragment.field_24 = 8;
+        fragment.generalPurpose1 = 8;
         fragment.winX = 128;
         fragment.velocityX = RandomSigned(2);
         fragment.velocityZ = RandomSigned(2);
@@ -1421,15 +1421,15 @@ namespace Desperabis
             fragment.animFrame = 2;
             fragment.doorLockOrGroupBitmask = 6;
             fragment.spriteScale = 41;
-            fragment.field_07 = 1;
+            fragment.collisionMask = 1;
             fragment.winX = 0;
             fragment.itemValue = 2;
             fragment.collisionType = CollisionType::Weapon;
             fragment.displayType = DisplayType::VectorNormal;
-            fragment.field_24 = 0;
+            fragment.generalPurpose1 = 0;
             fragment.collisionRadiusXZ = 15;
             fragment.collisionRadiusY = 10;
-            fragment.field_32 = 40;
+            fragment.pickupType = PickupType::Type_40;
             fragment.soundEffectId = 39;
         }
         fragment.posX = WrapSignedWord(source.posX + x);
@@ -1531,7 +1531,7 @@ namespace Desperabis
         particle.renderPlacementMode = 130;
         particle.velocityY = static_cast<std::int16_t>(Random(500) + 600);
         particle.behavior = BehaviorType::FireParticle;
-        particle.field_24 = Random(4);
+        particle.generalPurpose1 = Random(4);
         particle.health = static_cast<std::int16_t>(Random(60) + 50);
         particle.displayType = DisplayType::VectorUnlit;
         const auto acceleration = RandomSigned(30) + particle.velocityY / particle.health;
@@ -1700,7 +1700,7 @@ namespace Desperabis
         object.health = lifetime;
         object.collisionRadiusXZ = radiusXZ;
         object.collisionRadiusY = radiusY;
-        object.field_07 = 254;
+        object.collisionMask = 254;
         object.behaviorParameter = damage;
         object.behavior = BehaviorType::WeaponDamageCollider;
         const auto displacement = [reach](std::int16_t direction)
@@ -1786,7 +1786,7 @@ namespace Desperabis
             object.itemValue = 3;
             object.collisionRadiusXZ = object.collisionRadiusY = 1;
             object.behavior = BehaviorType::CrossbowBolt;
-            object.field_07 = 126;
+            object.collisionMask = 126;
             object.renderPlacementMode = 1;
             object.modelId = 31; object.animFrame = 2; object.modelAnim = 1;
             object.winY = WrapSignedWord(512 - GetPlayerHeading());
@@ -1804,20 +1804,20 @@ namespace Desperabis
                     WrapSignedWord(object.posZ + ArithmeticShiftRight(WrapSignedWord(step * object.velocityZ), 1))) & 8) != 0)
                 {
                     object.velocityX = object.velocityZ = 0;
-                    object.field_24 = 1;
+                    object.generalPurpose1 = 1;
                 }
             }
         }
         else if (selectedWeapon == WeaponType::Fireball)
         {
-            inventory[weaponHand - 1].field_24 = static_cast<std::uint16_t>(weaponAmounts[4]);
+            inventory[weaponHand - 1].generalPurpose1 = static_cast<std::uint16_t>(weaponAmounts[4]);
             object.displayType = DisplayType::SpriteTransparent;
             object.blendWeightOrSpriteOpacity = 10;
-            object.field_26 = 100;
+            object.generalPurpose2 = 100;
             object.collisionRadiusXZ = object.collisionRadiusY = 8;
             object.collisionType = CollisionType::Type_22;
             object.behavior = BehaviorType::FireballProjectile;
-            object.field_07 = 126; object.renderPlacementMode = 1;
+            object.collisionMask = 126; object.renderPlacementMode = 1;
             object.modelId = 6; object.animFrame = 1; object.modelAnim = 3;
             object.health = 38; object.spriteScale = 45; object.behaviorParameter = 50;
             object.velocityX = static_cast<std::int16_t>(player.velocityX / 4);
@@ -1855,7 +1855,7 @@ namespace Desperabis
                     object.collisionRadiusXZ = 10;
                     object.behavior = BehaviorType::BouncingObject;
                     object.itemValue = 60; object.groupIndexOrLock = 300;
-                    object.field_32 = 0; object.field_24 = 6; object.field_07 = 126;
+                    object.pickupType = PickupType::None; object.generalPurpose1 = 6; object.collisionMask = 126;
                     object.soundEffectId = 41;
                     object.velocityX = static_cast<std::int16_t>(player.velocityX / 6);
                     object.velocityZ = static_cast<std::int16_t>(player.velocityZ / 6);
@@ -1872,7 +1872,7 @@ namespace Desperabis
                     object.winY = WrapSignedWord(-playerTargetHeading);
                     object.velocityY = -10;
                     object.winX = object.winZ = object.blendWeightOrSpriteOpacity = 0;
-                    object.field_24 = 0;
+                    object.generalPurpose1 = 0;
                 }
             }
         }
@@ -1883,15 +1883,15 @@ namespace Desperabis
             {
                 *thrown = inventory[weaponHand - 1];
                 thrown->blendWeightOrSpriteOpacity = 10;
-                thrown->field_26 = 100;
+                thrown->generalPurpose2 = 100;
                 thrown->collisionRadiusXZ = 11;
                 thrown->collisionRadiusY = 6;
                 thrown->behavior = BehaviorType::BouncingObject;
                 thrown->itemValue = 50;
-                thrown->field_24 = 7;
+                thrown->generalPurpose1 = 7;
                 thrown->groupIndexOrLock = 0;
                 thrown->renderPlacementMode = 6;
-                thrown->field_32 = 0;
+                thrown->pickupType = PickupType::None;
                 thrown->animFrame = 2;
                 thrown->health = 200;
                 const auto angle = WrapSignedWord(GetPlayerHeading() + RandomSigned(20));
@@ -1924,7 +1924,7 @@ namespace Desperabis
             for (std::uint16_t candidate = 2; candidate <= 165; ++candidate)
             {
                 const auto& target = worldObjects[candidate];
-                if (target.health <= 0 || target.field_07 == 0 || target.collisionType <= CollisionType::WallDestruction) { continue; }
+                if (target.health <= 0 || target.collisionMask == 0 || target.collisionType <= CollisionType::WallDestruction) { continue; }
                 const auto score = std::abs(static_cast<int>(WrapSignedWord(GetSoundDistanceAt(target.posX, target.posZ) - 100)));
                 if (score < best) { best = score; targetSlot = candidate; }
             }
@@ -2120,7 +2120,7 @@ namespace Desperabis
             }
             auto& held = inventory[weaponHand - 1];
             const auto index = static_cast<std::size_t>(selectedWeapon);
-            if (held.itemValue == 4) { weaponAmounts[index] = WrapSignedWord(held.field_24); }
+            if (held.itemValue == 4) { weaponAmounts[index] = WrapSignedWord(held.generalPurpose1); }
             weaponReady = weaponAmounts[index] > 0 || held.itemValue != static_cast<std::int16_t>(selectedWeapon);
             if (!weaponReady) { held.health = 0; RefreshWeaponInventory(); }
             if (weaponAnimationSpeed == -1) { weaponAnimationSpeed = 220; }
@@ -2506,7 +2506,7 @@ namespace Desperabis
         {
             ++slot;
             const auto& candidate = worldObjects[slot];
-            if (candidate.health > 999 && candidate.field_32 != 0 &&
+            if (candidate.health > 999 && candidate.pickupType != PickupType::None &&
                 ObjectsOverlap(worldObjects[1], candidate))
             {
                 return slot;

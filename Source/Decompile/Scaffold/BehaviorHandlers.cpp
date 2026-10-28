@@ -11,9 +11,9 @@ namespace Desperabis
 {
     DispatchResult Function_BouncingObject(RawGameObject& object, GameContext& context)
     {
-        if ((object.modelId < 30 && object.field_24 != 1 && object.field_24 != 6 && object.field_24 != 7) ||
-            (object.field_24 != 0 && object.field_24 != 1 &&
-                object.field_24 != 6 && object.field_24 != 7 && object.field_24 != 8))
+        if ((object.modelId < 30 && object.generalPurpose1 != 1 && object.generalPurpose1 != 6 && object.generalPurpose1 != 7) ||
+            (object.generalPurpose1 != 0 && object.generalPurpose1 != 1 &&
+                object.generalPurpose1 != 6 && object.generalPurpose1 != 7 && object.generalPurpose1 != 8))
         {
             return { DispatchStatus::UnimplementedHandler, BehaviorType::BouncingObject, 0x1167 };
         }
@@ -29,7 +29,7 @@ namespace Desperabis
             if (object.posY < floor)
             {
                 object.posY = floor;
-                ++object.field_26;
+                ++object.generalPurpose2;
                 const auto magnitude = WrapSignedWord(std::abs(static_cast<int>(object.velocityY)));
                 object.velocityY = ArithmeticShiftRight(WrapSignedWord(magnitude * object.itemValue), 7);
                 const auto material = context.GetCollisionMapPixelAtWorldXZ(object.posX, object.posZ) & 7;
@@ -44,7 +44,7 @@ namespace Desperabis
                     }
                     else
                     {
-                        object.field_32 = 3;
+                        object.pickupType = PickupType::Type_3;
                         object.itemValue = 5;
                         object.collisionRadiusXZ = 22;
                         object.behavior = BehaviorType::SinkingObject;
@@ -65,11 +65,11 @@ namespace Desperabis
             const auto ceiling = WrapSignedWord(context.GetRoomHeight(object.posX, object.posZ) + floor);
             if (object.posY > ceiling)
             {
-                ++object.field_26;
+                ++object.generalPurpose2;
                 object.posY = WrapSignedWord(ceiling - 1);
                 object.velocityY = 0;
             }
-            if (object.field_24 == 1)
+            if (object.generalPurpose1 == 1)
             {
                 object.spriteScale = static_cast<std::uint8_t>(
                     context.Random(static_cast<std::uint16_t>(object.health) >> 3) + 6);
@@ -81,13 +81,13 @@ namespace Desperabis
                         static_cast<std::int16_t>(context.Random(20)));
                 }
             }
-            else if (object.field_24 == 6)
+            else if (object.generalPurpose1 == 6)
             {
-                if (WrapSignedWord(object.field_26) > 0)
+                if (WrapSignedWord(object.generalPurpose2) > 0)
                 {
                     object.velocityX = ArithmeticShiftRight(object.velocityX, 1);
                     object.velocityZ = ArithmeticShiftRight(object.velocityZ, 1);
-                    object.field_26 = 0;
+                    object.generalPurpose2 = 0;
                 }
                 const auto speed = WrapSignedWord(std::abs(static_cast<int>(object.velocityX)) +
                     std::abs(static_cast<int>(object.velocityZ)));
@@ -103,33 +103,33 @@ namespace Desperabis
                     if (object.velocityY > 0) { object.velocityY = 0; }
                 }
             }
-            else if (object.field_24 == 7)
+            else if (object.generalPurpose1 == 7)
             {
-                object.field_07 = 128;
+                object.collisionMask = 128;
                 const auto slot = context.FindCollidingObject(object);
-                object.field_07 = 0;
+                object.collisionMask = 0;
                 if (slot != 0)
                 {
                     auto& target = context.worldObjects[slot];
                     context.PlaySoundEffect(static_cast<SoundEffect>(101), volume, target, 1);
                     object.posY = target.posY;
-                    target.field_24 = static_cast<std::uint16_t>(
-                        std::clamp<int>(WrapSignedWord(target.field_24 + 1), 0, 39));
-                    target.animFrame = static_cast<std::uint8_t>(target.field_24 / 10 + 1);
+                    target.generalPurpose1 = static_cast<std::uint16_t>(
+                        std::clamp<int>(WrapSignedWord(target.generalPurpose1 + 1), 0, 39));
+                    target.animFrame = static_cast<std::uint8_t>(target.generalPurpose1 / 10 + 1);
                     target.displayType = DisplayType::VectorNormal;
                     context.SetObjectHealth(object, 0);
                     break;
                 }
             }
-            else if (object.field_24 == 8)
+            else if (object.generalPurpose1 == 8)
             {
                 object.winX = WrapSignedWord(object.winX + GetStepToward(
-                    object.winX, 0, WrapSignedWord(object.field_26 * 8)));
+                    object.winX, 0, WrapSignedWord(object.generalPurpose2 * 8)));
                 const auto magnitude = WrapSignedWord(std::abs(static_cast<int>(object.velocityY)));
                 object.winY = WrapSignedWord(object.winY +
                     context.RandomSigned(static_cast<std::uint16_t>(WrapSignedWord(magnitude * 6 + 1))));
                 object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity +
-                    GetStepToward(object.blendWeightOrSpriteOpacity, 100, WrapSignedWord(object.field_26 * 2)));
+                    GetStepToward(object.blendWeightOrSpriteOpacity, 100, WrapSignedWord(object.generalPurpose2 * 2)));
             }
             if ((context.GetCollisionMapPixelAtWorldXZ(
                 WrapSignedWord(object.posX + object.velocityX), object.posZ) & 8) == 8)
@@ -139,7 +139,7 @@ namespace Desperabis
                 {
                     context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId), volume, object, 1);
                 }
-                ++object.field_26;
+                ++object.generalPurpose2;
                 object.velocityX = WrapSignedWord(-object.velocityX);
             }
             if ((context.GetCollisionMapPixelAtWorldXZ(
@@ -149,7 +149,7 @@ namespace Desperabis
                 {
                     context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId), volume, object, 1);
                 }
-                ++object.field_26;
+                ++object.generalPurpose2;
                 object.velocityZ = WrapSignedWord(-object.velocityZ);
             }
             if (context.objectCollisionsEnabled)
@@ -201,7 +201,7 @@ namespace Desperabis
                 object.posY = WrapSignedWord(object.posY + object.velocityY);
                 object.posZ = WrapSignedWord(object.posZ + object.velocityZ);
                 object.winZ = 30;
-                object.winY = static_cast<std::int16_t>(WrapSignedWord(object.winY + object.field_24) & 511);
+                object.winY = static_cast<std::int16_t>(WrapSignedWord(object.winY + object.generalPurpose1) & 511);
                 object.winX = WrapSignedWord(object.winX - 1);
                 object.velocityY = static_cast<std::int16_t>(object.winX / 4);
                 const auto floor = context.GetFloorHeight(object.posX, object.posY, object.posZ);
@@ -209,7 +209,7 @@ namespace Desperabis
                     context.GetRoomHeight(object.posX, object.posZ));
                 if (object.posY > ceiling)
                 {
-                    object.field_24 = static_cast<std::uint16_t>(context.RandomSigned(25));
+                    object.generalPurpose1 = static_cast<std::uint16_t>(context.RandomSigned(25));
                     object.velocityX = object.velocityY = object.velocityZ = 0;
                     object.posY = ceiling; object.winX = -10;
                 }
@@ -224,7 +224,7 @@ namespace Desperabis
                         object.velocityX = object.velocityZ = 0; object.animFrame = 3;
                     }
                     const auto material = context.GetCollisionMapPixelAtWorldXZ(object.posX, object.posZ) & 7;
-                    if (material == 1 && object.field_26 == 0) { context.SpawnWaterImpact(object.posX, object.posZ); }
+                    if (material == 1 && object.generalPurpose2 == 0) { context.SpawnWaterImpact(object.posX, object.posZ); }
                     else if (material == 3)
                     {
                         object.behavior = BehaviorType::None;
@@ -236,7 +236,7 @@ namespace Desperabis
                         if (object.modelId > 30) { object.displayType = static_cast<DisplayType>(70); }
                         continue;
                     }
-                    object.field_26 = static_cast<std::uint16_t>((object.field_26 + 1) & 3);
+                    object.generalPurpose2 = static_cast<std::uint16_t>((object.generalPurpose2 + 1) & 3);
                 }
                 if ((context.GetCollisionMapPixelAtWorldXZ(WrapSignedWord(object.posX + object.velocityX), object.posZ) & 8) != 0)
                 {
@@ -244,7 +244,7 @@ namespace Desperabis
                     object.posX = WrapSignedWord(object.posX - object.velocityX);
                     object.velocityX = WrapSignedWord(-2 * SignWord(object.velocityX));
                     object.velocityZ = WrapSignedWord(object.velocityZ - SignWord(object.velocityZ));
-                    object.field_24 = static_cast<std::uint16_t>(context.RandomSigned(25));
+                    object.generalPurpose1 = static_cast<std::uint16_t>(context.RandomSigned(25));
                 }
                 if ((context.GetCollisionMapPixelAtWorldXZ(object.posX, WrapSignedWord(object.posZ + object.velocityZ)) & 8) != 0)
                 {
@@ -252,16 +252,16 @@ namespace Desperabis
                     object.posZ = WrapSignedWord(object.posZ - object.velocityZ);
                     object.velocityZ = WrapSignedWord(-2 * SignWord(object.velocityZ));
                     object.velocityX = WrapSignedWord(object.velocityX - SignWord(object.velocityX));
-                    object.field_24 = static_cast<std::uint16_t>(context.RandomSigned(25));
+                    object.generalPurpose1 = static_cast<std::uint16_t>(context.RandomSigned(25));
                 }
-                const auto slot = object.field_24 == 0 ? context.FindCollidingObject(object) : std::uint16_t{ 0 };
+                const auto slot = object.generalPurpose1 == 0 ? context.FindCollidingObject(object) : std::uint16_t{ 0 };
                 if (slot > 1)
                 {
-                    object.field_24 = static_cast<std::uint16_t>(context.RandomSigned(10));
+                    object.generalPurpose1 = static_cast<std::uint16_t>(context.RandomSigned(10));
                     auto& target = context.worldObjects[slot];
                     if (target.collisionType == CollisionType::Switch && target.blendWeightOrSpriteOpacity == 0)
                     {
-                        target.field_26 = target.field_24;
+                        target.generalPurpose2 = target.generalPurpose1;
                         if (target.itemValue >= 1 && target.health == 1000)
                         {
                             context.ActivateObjectGroup(target.itemValue);
@@ -275,8 +275,8 @@ namespace Desperabis
                     else if (target.collisionType != CollisionType::Switch && target.collisionType != CollisionType::Teleporter &&
                         target.collisionType != CollisionType::Door && target.collisionType != CollisionType::LevelEnd)
                     {
-                        object.field_24 = slot; object.health = 2000; object.animFrame = 0;
-                        object.field_28 = context.arrowPoison;
+                        object.generalPurpose1 = slot; object.health = 2000; object.animFrame = 0;
+                        object.generalPurpose3 = context.arrowPoison;
                     }
                     object.winX = std::min<std::int16_t>(object.winX, -6);
                     context.DamageObject(target, 49);
@@ -284,27 +284,27 @@ namespace Desperabis
                 if (object.velocityX == 0 && object.velocityY == 0 && object.velocityZ == 0 && object.posY == floor)
                 {
                     object.collisionRadiusXZ = 14; object.collisionRadiusY = 8;
-                    object.field_24 = 1; object.field_32 = 63; object.behavior = BehaviorType::None;
-                    object.field_07 = 2; object.behaviorParameter = 1;
+                    object.generalPurpose1 = 1; object.pickupType = PickupType::Type_63; object.behavior = BehaviorType::None;
+                    object.collisionMask = 2; object.behaviorParameter = 1;
                     const auto material = context.GetCollisionMapPixelAtWorldXZ(object.posX, object.posZ) & 7;
                     if (material == 1 || material == 3) { object.winX = 256; object.behavior = BehaviorType::FloatingDebris; }
                 }
             }
             else if (object.health == 2000)
             {
-                if (object.field_24 == 0 || object.field_24 >= context.worldObjects.size())
+                if (object.generalPurpose1 == 0 || object.generalPurpose1 >= context.worldObjects.size())
                 {
                     throw std::out_of_range("Attached bolt target must be an object slot in 1..165.");
                 }
-                auto& target = context.worldObjects[object.field_24];
+                auto& target = context.worldObjects[object.generalPurpose1];
                 object.posX = target.posX; object.posY = target.posY; object.posZ = target.posZ;
-                if (object.field_28 > context.Random(100)) { context.DamageObject(target, 1); }
+                if (object.generalPurpose3 > context.Random(100)) { context.DamageObject(target, 1); }
                 if (target.behavior == BehaviorType::None || target.collisionType == CollisionType::None || target.groupIndexOrLock < 1)
                 {
                     const auto floor = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
                     if (object.posY < floor) { object.posY = WrapSignedWord(floor + 10); }
                     object.health = 1000; object.animFrame = 2; object.winX = -3;
-                    object.velocityX = object.velocityY = object.velocityZ = 0; object.field_24 = 1;
+                    object.velocityX = object.velocityY = object.velocityZ = 0; object.generalPurpose1 = 1;
                 }
             }
         }
@@ -348,15 +348,15 @@ namespace Desperabis
                     }
                 }
             }
-            if (WrapSignedWord(object.field_26) > 0)
+            if (WrapSignedWord(object.generalPurpose2) > 0)
             {
-                object.field_26 = 0;
+                object.generalPurpose2 = 0;
                 const auto advanced = WrapSignedWord(object.doorLockOrGroupBitmask + 1);
                 // EB28 holds all 2*5 frames of SCHUSS1.AN2, not just one animation row.
                 object.doorLockOrGroupBitmask = static_cast<std::int16_t>((advanced + 19) % 10 + 1);
                 if (object.doorLockOrGroupBitmask < advanced) { context.SetObjectHealth(object, 0); }
             }
-            else { ++object.field_26; }
+            else { ++object.generalPurpose2; }
             const auto slot = context.FindCollidingObject(object);
             if (slot > 1)
             {
@@ -388,7 +388,7 @@ namespace Desperabis
                     default: break;
                     }
                 }
-                object.field_24 = slot;
+                object.generalPurpose1 = slot;
                 context.DamageObject(object, 1);
             }
             const auto floor = context.GetFloorHeight(object.posX, object.posY, object.posZ);
@@ -475,7 +475,7 @@ namespace Desperabis
                 {
                     object.winY = static_cast<std::int16_t>((object.winY + 16) & 511);
                 }
-                if (WrapSignedWord(object.field_24) > 0 && context.Random(object.field_24) == 0)
+                if (WrapSignedWord(object.generalPurpose1) > 0 && context.Random(object.generalPurpose1) == 0)
                 {
                     auto target = GetVectorAngle(WrapSignedWord(context.soundListenerX - object.posX),
                         WrapSignedWord(context.soundListenerZ - object.posZ));
@@ -485,11 +485,11 @@ namespace Desperabis
                 }
                 if (context.Random(20) == 0) { object.velocityX = 0; object.velocityZ = 0; }
                 object.posY = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
-                if (context.Random(object.field_28) == 0)
+                if (context.Random(object.generalPurpose3) == 0)
                 {
                     object.winY = static_cast<std::int16_t>((object.winY + context.RandomSigned(20)) & 511);
                     GetClampedDirectionDisplacement(object.velocityX, object.velocityZ, object.winY, object.itemValue);
-                    object.field_28 = 15;
+                    object.generalPurpose3 = 15;
                 }
                 if (object.velocityX != 0 || object.velocityZ != 0)
                 {
@@ -616,7 +616,7 @@ namespace Desperabis
 
     DispatchResult Function_FireParticle(RawGameObject& object, GameContext& context)
     {
-        // itemValue holds fractional Y; field_24 holds angular velocity for these particles.
+        // itemValue holds fractional Y; generalPurpose1 holds angular velocity for these particles.
         AddFixedPoint8(object.posY, object.itemValue,
             WrapSignedWord(static_cast<std::int32_t>(object.velocityY) * context.tickCount));
         const auto fadeStep = WrapSignedWord(context.tickCount * context.Random(3));
@@ -625,7 +625,7 @@ namespace Desperabis
         object.velocityY = WrapSignedWord(object.velocityY +
             static_cast<std::int32_t>(object.doorLockOrGroupBitmask) * context.tickCount);
         object.winY = WrapSignedWord(object.winY +
-            static_cast<std::int32_t>(object.field_24) * context.tickCount);
+            static_cast<std::int32_t>(object.generalPurpose1) * context.tickCount);
         const auto quarterHealth = object.health >= 0 ? object.health / 4 :
             -((-static_cast<int>(object.health) + 3) / 4);
         object.displayType = static_cast<DisplayType>(std::clamp(37 - quarterHealth, 30, 36));
@@ -662,7 +662,7 @@ namespace Desperabis
 
     DispatchResult Function_PulsatingLight(RawGameObject& object, GameContext& context)
     {
-        object.field_26 = static_cast<std::uint16_t>((object.field_26 +
+        object.generalPurpose2 = static_cast<std::uint16_t>((object.generalPurpose2 +
             static_cast<std::int32_t>(object.velocityZ) * context.tickCount) & 511);
         if (context.Random(15) == 0)
         {
@@ -671,11 +671,11 @@ namespace Desperabis
         object.velocityZ = WrapSignedWord(object.velocityZ +
             GetStepToward(object.velocityZ, object.velocityX, context.tickCount));
 
-        const auto sine = Sine(static_cast<std::int16_t>(object.field_26));
+        const auto sine = Sine(static_cast<std::int16_t>(object.generalPurpose2));
         // Bits 16..31 preserve the native downward rounding for negative fixed-point products.
         const auto pulse = WrapSignedWord(static_cast<std::int32_t>(
             static_cast<std::uint32_t>(750 * sine) >> 16));
-        object.field_28 = static_cast<std::uint16_t>(800 + pulse);
+        object.generalPurpose3 = static_cast<std::uint16_t>(800 + pulse);
         const auto lightPulse = WrapSignedWord(static_cast<std::int32_t>(
             static_cast<std::uint32_t>(25 * sine) >> 16));
         context.lightingCache.AddAtWorldXZ(object.posX, object.posZ,
@@ -715,13 +715,13 @@ namespace Desperabis
 
     DispatchResult Function_DestroyableBarrier(RawGameObject& object, GameContext& context)
     {
-        object.field_26 = static_cast<std::uint16_t>(object.field_26 + context.tickCount * 100);
-        if (object.itemValue >= WrapSignedWord(object.field_24))
+        object.generalPurpose2 = static_cast<std::uint16_t>(object.generalPurpose2 + context.tickCount * 100);
+        if (object.itemValue >= WrapSignedWord(object.generalPurpose1))
         {
-            object.itemValue = WrapSignedWord(object.field_24);
-            object.field_26 = 0;
+            object.itemValue = WrapSignedWord(object.generalPurpose1);
+            object.generalPurpose2 = 0;
         }
-        object.itemValue = WrapSignedWord(object.itemValue + object.field_26 * context.tickCount);
+        object.itemValue = WrapSignedWord(object.itemValue + object.generalPurpose2 * context.tickCount);
         object.blendWeightOrSpriteOpacity = static_cast<std::uint16_t>(object.itemValue) >> 8;
         const bool destroyed = object.blendWeightOrSpriteOpacity >= 100;
         if (destroyed)
@@ -770,7 +770,7 @@ namespace Desperabis
                 {
                     object.blendWeightOrSpriteOpacity = 0;
                     object.itemValue = static_cast<std::int16_t>(context.Random(2) + 4);
-                    object.field_26 = 0;
+                    object.generalPurpose2 = 0;
                     object.animFrame = 1;
                     object.modelFrame2 = 2;
                 }
@@ -786,7 +786,7 @@ namespace Desperabis
                     ((object.winY + context.GetPlayerHeading() + 85) & 511) / 171 + 1);
                 if (object.itemValue > 0) { object.modelAnim = static_cast<std::uint8_t>(object.itemValue); }
                 object.doorLockOrGroupBitmask = 0;
-                object.field_26 = static_cast<std::uint16_t>(object.field_26 + context.Random(5));
+                object.generalPurpose2 = static_cast<std::uint16_t>(object.generalPurpose2 + context.Random(5));
                 if (object.itemValue == 0)
                 {
                     object.blendWeightOrSpriteOpacity = WrapSignedWord(
@@ -796,11 +796,11 @@ namespace Desperabis
                 {
                     if (object.animFrame == 4)
                     {
-                        object.field_26 = static_cast<std::uint16_t>(object.field_26 +
-                            GetStepToward(WrapSignedWord(object.field_26), 1, 3));
+                        object.generalPurpose2 = static_cast<std::uint16_t>(object.generalPurpose2 +
+                            GetStepToward(WrapSignedWord(object.generalPurpose2), 1, 3));
                     }
                     object.blendWeightOrSpriteOpacity = WrapSignedWord(
-                        object.blendWeightOrSpriteOpacity + WrapSignedWord(object.field_26));
+                        object.blendWeightOrSpriteOpacity + WrapSignedWord(object.generalPurpose2));
                     target = GetVectorAngle(WrapSignedWord(context.soundListenerX - object.posX),
                         WrapSignedWord(context.soundListenerZ - object.posZ));
                     target = WrapSignedWord(target + WrapSignedWord(phase - 350) / 3);
@@ -861,7 +861,7 @@ namespace Desperabis
                     object.velocityX = canMove ? static_cast<std::int16_t>(x * 2) : 0;
                     object.velocityZ = canMove ? static_cast<std::int16_t>(z * 2) : 0;
                 }
-                if (advanced && (object.itemValue == 0 || object.animFrame != 4)) { object.field_26 = 3; }
+                if (advanced && (object.itemValue == 0 || object.animFrame != 4)) { object.generalPurpose2 = 3; }
                 if (advanced && object.itemValue == 0 && (object.animFrame & 1) != 0)
                 {
                     context.PlaySoundEffect(static_cast<SoundEffect>(106),
@@ -942,17 +942,17 @@ namespace Desperabis
             }
             case 3:
                 object.collisionType = CollisionType::Cockroach;
-                if (object.field_26 == 0 && context.Random(20) == 0 &&
+                if (object.generalPurpose2 == 0 && context.Random(20) == 0 &&
                     object.blendWeightOrSpriteOpacity == -100)
                 {
-                    object.field_26 = static_cast<std::uint16_t>(context.RandomSigned(15));
+                    object.generalPurpose2 = static_cast<std::uint16_t>(context.RandomSigned(15));
                 }
                 else
                 {
-                    object.field_26 = static_cast<std::uint16_t>(WrapSignedWord(
-                        object.field_26 - SignWord(WrapSignedWord(object.field_26))));
+                    object.generalPurpose2 = static_cast<std::uint16_t>(WrapSignedWord(
+                        object.generalPurpose2 - SignWord(WrapSignedWord(object.generalPurpose2))));
                 }
-                object.winY = WrapSignedWord(object.winY + object.field_26);
+                object.winY = WrapSignedWord(object.winY + object.generalPurpose2);
                 if (context.Random(40) == 0) { object.itemValue = 4; }
                 if (context.Random(15) == 0) { object.blendWeightOrSpriteOpacity = -100; }
                 if (context.Random(15) == 0)
@@ -985,7 +985,7 @@ namespace Desperabis
                     GetClampedDirectionDisplacement(object.velocityX, object.velocityZ, object.winY, speed);
                     object.blendWeightOrSpriteOpacity = -100;
                 }
-                if (WrapSignedWord(object.field_24) > 0 && context.Random(object.field_24) == 0)
+                if (WrapSignedWord(object.generalPurpose1) > 0 && context.Random(object.generalPurpose1) == 0)
                 {
                     auto target = GetVectorAngle(WrapSignedWord(context.soundListenerX - object.posX),
                         WrapSignedWord(context.soundListenerZ - object.posZ));
@@ -1022,7 +1022,7 @@ namespace Desperabis
                 break;
             }
             case 7:
-                if (object.field_07 < 131) { object.field_07 = 0; }
+                if (object.collisionMask < 131) { object.collisionMask = 0; }
                 object.velocityX = 0;
                 object.velocityZ = 0;
                 object.blendWeightOrSpriteOpacity = 0;
@@ -1043,7 +1043,7 @@ namespace Desperabis
                     object.displayType = DisplayType::VectorNormal;
                     object.winY = static_cast<std::int16_t>(context.Random(512));
                     object.itemValue = 11;
-                    object.field_07 = 3;
+                    object.collisionMask = 3;
                 }
                 break;
             case 11:
@@ -1055,7 +1055,7 @@ namespace Desperabis
                 break;
             case 16:
                 object.collisionType = CollisionType::None;
-                object.field_07 = 0;
+                object.collisionMask = 0;
                 object.animFrame = 4;
                 object.modelFrame2 = 3;
                 object.velocityX = 0;
@@ -1173,26 +1173,26 @@ namespace Desperabis
 
     DispatchResult Function_Switch1(RawGameObject& object, GameContext& state)
     {
-        if (object.field_24 == 0)
+        if (object.generalPurpose1 == 0)
         {
-            object.field_24 = 10;
+            object.generalPurpose1 = 10;
         }
         auto& phase = object.blendWeightOrSpriteOpacity;
         phase = WrapSignedWord(phase +
-            static_cast<std::int32_t>(WrapSignedWord(object.field_26)) * state.tickCount);
+            static_cast<std::int32_t>(WrapSignedWord(object.generalPurpose2)) * state.tickCount);
         if (phase < 0)
         {
-            object.field_26 = 0;
+            object.generalPurpose2 = 0;
             phase = 0;
         }
         if (phase > 100)
         {
-            object.field_26 = static_cast<std::uint16_t>(-static_cast<std::int32_t>(object.field_24));
+            object.generalPurpose2 = static_cast<std::uint16_t>(-static_cast<std::int32_t>(object.generalPurpose1));
             phase = 100;
         }
         if (phase == 100 && object.behaviorParameter != 0)
         {
-            object.field_26 = 0;
+            object.generalPurpose2 = 0;
         }
         return { DispatchStatus::ExecutedCase, BehaviorType::Switch1, 0x1FDD };
     }
@@ -1207,15 +1207,15 @@ namespace Desperabis
         object.collisionType = CollisionType::GroupedSwitch;
         auto& phase = object.blendWeightOrSpriteOpacity;
         phase = WrapSignedWord(phase +
-            static_cast<std::int32_t>(WrapSignedWord(object.field_26)) * state.tickCount);
+            static_cast<std::int32_t>(WrapSignedWord(object.generalPurpose2)) * state.tickCount);
         if (phase < 0)
         {
-            object.field_26 = 0;
+            object.generalPurpose2 = 0;
             phase = 0;
         }
         if (phase > 100)
         {
-            object.field_26 = 0;
+            object.generalPurpose2 = 0;
             phase = 100;
         }
         auto& groupMask = state.switchGroupMasks[object.groupIndexOrLock];
@@ -1228,13 +1228,13 @@ namespace Desperabis
         {
             groupMask |= mask;
         }
-        if (phase == 100 && WrapSignedWord(object.field_24) > 0 && object.itemValue > 0)
+        if (phase == 100 && WrapSignedWord(object.generalPurpose1) > 0 && object.itemValue > 0)
         {
-            object.field_24 = static_cast<std::uint16_t>(object.field_24 - state.tickCount);
-            if (WrapSignedWord(object.field_24) < 1)
+            object.generalPurpose1 = static_cast<std::uint16_t>(object.generalPurpose1 - state.tickCount);
+            if (WrapSignedWord(object.generalPurpose1) < 1)
             {
-                object.field_24 = 0;
-                object.field_26 = static_cast<std::uint16_t>(-10);
+                object.generalPurpose1 = 0;
+                object.generalPurpose2 = static_cast<std::uint16_t>(-10);
                 groupMask |= mask;
             }
         }
@@ -1410,24 +1410,24 @@ namespace Desperabis
             object.velocityY = WrapSignedWord(object.velocityY - 1);
             const auto floor = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
             if (object.posY < floor) { object.posY = floor; object.velocityY = 0; }
-            if (object.field_24 == 0)
+            if (object.generalPurpose1 == 0)
             {
                 const auto slot = context.FindCollidingObject(object);
                 if (slot > 1)
                 {
-                    object.velocityY = 5; object.field_24 = 1;
+                    object.velocityY = 5; object.generalPurpose1 = 1;
                     context.DamageObject(context.worldObjects[slot], object.behaviorParameter);
                     context.PlaySoundEffect(static_cast<SoundEffect>(27), volume, object, 1);
                     context.worldObjects[slot].velocityY = 0;
                 }
             }
-            else if (WrapSignedWord(object.field_24) > 0)
+            else if (WrapSignedWord(object.generalPurpose1) > 0)
             {
-                object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity + object.field_24);
-                ++object.field_24;
+                object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity + object.generalPurpose1);
+                ++object.generalPurpose1;
                 if (object.blendWeightOrSpriteOpacity > 100)
                 {
-                    object.blendWeightOrSpriteOpacity = 100; object.field_24 = 65535;
+                    object.blendWeightOrSpriteOpacity = 100; object.generalPurpose1 = 65535;
                 }
             }
         }
@@ -1531,7 +1531,7 @@ namespace Desperabis
         object.posY = WrapSignedWord(object.posY + static_cast<std::int32_t>(object.velocityY) * ticks);
         object.displayType = DisplayType::SpriteTransparent;
         object.blendWeightOrSpriteOpacity = 4;
-        if (WrapSignedWord(object.field_24) < 1)
+        if (WrapSignedWord(object.generalPurpose1) < 1)
         {
             const auto scale = object.spriteScale;
             if (scale > object.doorLockOrGroupBitmask)
@@ -1546,7 +1546,7 @@ namespace Desperabis
         }
         else
         {
-            object.field_24 = static_cast<std::uint16_t>(object.field_24 - ticks);
+            object.generalPurpose1 = static_cast<std::uint16_t>(object.generalPurpose1 - ticks);
         }
         if (object.posY < floor)
         {
@@ -1556,16 +1556,16 @@ namespace Desperabis
                     context.GetSoundVolumeAt(object.posX, object.posZ, 3), object, 1);
             }
             object.winX = 0;
-            object.field_26 = static_cast<std::uint16_t>(object.field_26 - 1u);
+            object.generalPurpose2 = static_cast<std::uint16_t>(object.generalPurpose2 - 1u);
             object.posY = WrapSignedWord(floor - 1);
             object.velocityY = 0;
             object.animFrame = 2;
-            if (WrapSignedWord(object.field_26) < 1)
+            if (WrapSignedWord(object.generalPurpose2) < 1)
             {
                 object.animFrame = 1;
-                object.field_26 = 4;
+                object.generalPurpose2 = 4;
                 object.posY = WrapSignedWord(floor + context.GetRoomHeight(object.posX, object.posZ));
-                object.field_24 = static_cast<std::uint16_t>(object.itemValue);
+                object.generalPurpose1 = static_cast<std::uint16_t>(object.itemValue);
                 object.spriteScale = 0;
                 object.winX = 1;
             }
@@ -1648,26 +1648,26 @@ namespace Desperabis
         const auto oldWinX = object.winX;
         if (context.FindCollidingObject(object) != 0 || context.OverlapsPlayer(object))
         {
-            object.field_28 = static_cast<std::uint16_t>(100 + context.Random(300));
+            object.generalPurpose3 = static_cast<std::uint16_t>(100 + context.Random(300));
             object.velocityY = WrapSignedWord(std::abs(static_cast<int>(object.velocityY)));
         }
         const auto chance = object.behaviorParameter;
-        if (chance > 0 && context.Random(chance) == 0) { object.field_28 = 0; }
+        if (chance > 0 && context.Random(chance) == 0) { object.generalPurpose3 = 0; }
 
         for (int tick = 0; tick < context.tickCount; ++tick)
         {
-            if (WrapSignedWord(object.field_28) > 0)
+            if (WrapSignedWord(object.generalPurpose3) > 0)
             {
-                object.field_28 = static_cast<std::uint16_t>(object.field_28 - context.Random(2));
+                object.generalPurpose3 = static_cast<std::uint16_t>(object.generalPurpose3 - context.Random(2));
                 if (context.Random(10) == 0)
                 {
-                    object.field_24 = static_cast<std::uint16_t>(
-                        (object.field_24 + context.RandomSigned(20)) & 511);
+                    object.generalPurpose1 = static_cast<std::uint16_t>(
+                        (object.generalPurpose1 + context.RandomSigned(20)) & 511);
                 }
                 object.winX = static_cast<std::int16_t>(
-                    (object.winX + context.Random(static_cast<std::uint16_t>((object.field_28 >> 4) + 1))) & 511);
+                    (object.winX + context.Random(static_cast<std::uint16_t>((object.generalPurpose3 >> 4) + 1))) & 511);
                 object.winY = static_cast<std::int16_t>(
-                    (object.winY + context.Random(static_cast<std::uint16_t>((object.field_28 >> 5) + 1))) & 511);
+                    (object.winY + context.Random(static_cast<std::uint16_t>((object.generalPurpose3 >> 5) + 1))) & 511);
                 if (context.Random(50) == 0) { object.velocityY = static_cast<std::int16_t>(context.Random(30) - 12); }
                 const auto threshold = context.Random(10);
                 if (WrapSignedWord(std::abs(static_cast<int>(object.velocityY))) > threshold)
@@ -1679,7 +1679,7 @@ namespace Desperabis
             {
                 object.winX = WrapSignedWord(object.winX + GetStepToward(object.winX, 256, 1));
                 if (context.Random(3) == 0) { object.posY = WrapSignedWord(object.posY - 1); }
-                if (context.Random(300) == 0) { object.field_28 = context.Random(100); }
+                if (context.Random(300) == 0) { object.generalPurpose3 = context.Random(100); }
             }
         }
 
@@ -1702,17 +1702,17 @@ namespace Desperabis
 
         std::int16_t dx = 0;
         std::int16_t dz = 0;
-        GetDirectionDisplacement(dx, dz, WrapSignedWord(object.field_24), WrapSignedWord(object.field_28));
+        GetDirectionDisplacement(dx, dz, WrapSignedWord(object.generalPurpose1), WrapSignedWord(object.generalPurpose3));
         const auto probeX = WrapSignedWord(object.posX + 3 * SignWord(dx));
         if ((context.GetCollisionMapPixelAtWorldXZ(probeX, object.posZ) & 39) != 1)
         {
-            object.field_24 ^= 256;
+            object.generalPurpose1 ^= 256;
             dx = WrapSignedWord(-static_cast<std::int32_t>(dx));
         }
         const auto probeZ = WrapSignedWord(object.posZ + 3 * SignWord(dz));
         if ((context.GetCollisionMapPixelAtWorldXZ(object.posX, probeZ) & 39) != 1)
         {
-            object.field_24 ^= 256;
+            object.generalPurpose1 ^= 256;
             dz = WrapSignedWord(-static_cast<std::int32_t>(dz));
         }
         AddFixedPoint8(object.posX, object.velocityX, dx);
@@ -2120,7 +2120,7 @@ namespace Desperabis
 
     DispatchResult Function_Behavior_300(RawGameObject& object, GameContext&)
     {
-        object.field_32 = 3; object.behavior = BehaviorType::None;
+        object.pickupType = PickupType::Type_3; object.behavior = BehaviorType::None;
         object.itemValue = 5; object.collisionRadiusXZ = 22;
         return { DispatchStatus::ExecutedCase, BehaviorType::Behavior_300, 0x5108 };
     }

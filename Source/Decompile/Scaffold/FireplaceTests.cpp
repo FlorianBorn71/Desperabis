@@ -53,7 +53,7 @@ namespace
         particle.renderPlacementMode = 130;
         particle.velocityY = static_cast<std::int16_t>(Next(seed, 500) + 600);
         particle.behavior = BehaviorType::FireParticle;
-        particle.field_24 = static_cast<std::uint16_t>(Next(seed, 4));
+        particle.generalPurpose1 = static_cast<std::uint16_t>(Next(seed, 4));
         particle.health = static_cast<std::int16_t>(Next(seed, 60) + 50);
         particle.displayType = DisplayType::VectorUnlit;
         int noise = static_cast<int>(Next(seed, 61)) - 30;
@@ -83,7 +83,7 @@ namespace
         object.blendWeightOrSpriteOpacity = Word(object.blendWeightOrSpriteOpacity + delta);
         object.velocityY = Word(object.velocityY +
             static_cast<std::int64_t>(object.doorLockOrGroupBitmask) * ticks);
-        object.winY = Word(object.winY + static_cast<std::int64_t>(object.field_24) * ticks);
+        object.winY = Word(object.winY + static_cast<std::int64_t>(object.generalPurpose1) * ticks);
         object.displayType = static_cast<DisplayType>(std::clamp(37 - ShiftDown(object.health, 4), 30, 36));
         return object;
     }
@@ -248,7 +248,7 @@ namespace
                 object.itemValue = Word(value * 3);
                 object.blendWeightOrSpriteOpacity = Word(value * 17);
                 object.doorLockOrGroupBitmask = Word(value * 5);
-                object.field_24 = static_cast<std::uint16_t>(value);
+                object.generalPurpose1 = static_cast<std::uint16_t>(value);
                 object.winY = Word(value * 7);
                 context.randomSeed = value;
                 auto seed = context.randomSeed;

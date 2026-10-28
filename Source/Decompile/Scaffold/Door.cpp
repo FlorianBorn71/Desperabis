@@ -43,7 +43,7 @@ namespace Desperabis
 
         const bool activatesTargets = object.itemValue > 0 && object.health == 1000;
         // 10AC:2094 starts the animation even when the target index/health gate fails.
-        object.field_26 = object.field_24;
+        object.generalPurpose2 = object.generalPurpose1;
         if (activatesTargets)
         {
             context.ActivateObjectGroup(object.itemValue);
@@ -60,7 +60,7 @@ namespace Desperabis
             throw std::invalid_argument("Door interaction requires a door collision type.");
         }
         if (object.health <= 0) { return { InteractionStatus::InactiveObject }; }
-        if (object.health != 1000 || object.field_26 != 0) { return { InteractionStatus::NoEffect }; }
+        if (object.health != 1000 || object.generalPurpose2 != 0) { return { InteractionStatus::NoEffect }; }
         const auto lock = object.doorLockOrGroupBitmask;
         if (lock < 0)
         {
@@ -108,32 +108,32 @@ namespace Desperabis
         object.collisionRadiusXZ = object.health == 1000 ? 54 : 10;
         if (context.switchGroupMasks[object.groupIndexOrLock] == 0) { ActivateDoor(object, context); }
 
-        if (WrapSignedWord(object.field_24) > 0)
+        if (WrapSignedWord(object.generalPurpose1) > 0)
         {
             if (object.itemValue > 0) { object.itemValue = WrapSignedWord(object.itemValue - context.tickCount); }
             if (object.behaviorParameter != 0 && object.blendWeightOrSpriteOpacity > 0)
             {
                 // Contact recorded before this update reverses closing and refreshes the delay.
-                object.itemValue = WrapSignedWord(object.field_24);
-                object.field_26 = 3;
+                object.itemValue = WrapSignedWord(object.generalPurpose1);
+                object.generalPurpose2 = 3;
             }
             if (object.itemValue < 1 && object.blendWeightOrSpriteOpacity == 100)
             {
                 PlayDoorSound(object, context, static_cast<SoundEffect>(object.soundEffectId), volume, 1);
-                object.field_26 = static_cast<std::uint16_t>(-3);
+                object.generalPurpose2 = static_cast<std::uint16_t>(-3);
             }
         }
         object.blendWeightOrSpriteOpacity = WrapSignedWord(
-            object.blendWeightOrSpriteOpacity + object.field_26 * static_cast<std::int32_t>(context.tickCount));
+            object.blendWeightOrSpriteOpacity + object.generalPurpose2 * static_cast<std::int32_t>(context.tickCount));
         if (object.blendWeightOrSpriteOpacity > 100)
         {
             object.blendWeightOrSpriteOpacity = 100;
-            if (object.field_24 == 0)
+            if (object.generalPurpose1 == 0)
             {
                 // One-shot doors disable on overshoot, not when they land exactly at fully open.
                 object.behavior = BehaviorType::None;
                 object.collisionRadiusXZ = 0;
-                object.field_07 = 0;
+                object.collisionMask = 0;
             }
         }
         if (object.blendWeightOrSpriteOpacity < 0)
@@ -143,7 +143,7 @@ namespace Desperabis
         }
         if (object.blendWeightOrSpriteOpacity == 0 || object.blendWeightOrSpriteOpacity == 100)
         {
-            object.field_26 = 0;
+            object.generalPurpose2 = 0;
         }
         const auto collisionValue = object.blendWeightOrSpriteOpacity == 100 ?
             static_cast<std::uint16_t>(object.velocityY) : CollisionMapValue_BlockingWall;

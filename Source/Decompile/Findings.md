@@ -306,7 +306,7 @@ misnamed `playerDeathState`; the -1 written on life depletion is another use
 of the same posture word, not evidence for a dedicated death enum.
 
 `10AC:CF23` jumps with velocity 7 only when standing and grounded; otherwise
-it requests raising (+6), unless player `field_28` blocks it.
+it requests raising (+6), unless player `generalPurpose3` blocks it.
 `10AC:CF4B` requests lowering (-6) and cancels ascent. The controller applies
 step-3 height interpolation, guarded 28/45 clamps, and derives radius Y from
 half the body height plus one. Jump raises from crouch; releasing crouch does
@@ -315,7 +315,7 @@ below 65 forces step-8 crouching.
 
 `DE45..DEBD` confirms water-forced crouching: collision-map low-three-bit
 categories 1/3, near terrain support, request lowering and set player
-`field_28=1`. Actual submersion is separately `eyeY + surfaceDepth < 0`,
+`generalPurpose3=1`. Actual submersion is separately `eyeY + surfaceDepth < 0`,
 using FELD surface metadata. Thus water contact can force crouch before the
 head is underwater. Leaving the native water latch requests raising again.
 These paths are implemented and covered by `player-posture` tests; the
@@ -932,7 +932,7 @@ The selector at `1E48:0B03` maps live object records to label indices:
   **not** the attack/weapon ID in `itemValue`.
 - Placement mode 20 instead uses `100 + spriteScale` when that byte is
   not 64.
-- Buy-item collision type 17 overrides the above with `field_24`, selecting
+- Buy-item collision type 17 overrides the above with `generalPurpose1`, selecting
   the shop text directly. Its price is taken from word `0x2E`.
 
 The first character is metadata, not visible punctuation. At `0BE2`, a
@@ -947,7 +947,7 @@ Observed consumers:
 | Call site | Flag | Use |
 |---|---|---|
 | `0000:79F1` | 1 | Inventory-slot name, then inventory text drawing |
-| `0000:F90E` | 0 | World-object contact message, additionally gated by `field_32 > 0` |
+| `0000:F90E` | 0 | World-object contact message, additionally gated by `pickupType != PickupType::None` |
 | `10AC:D08B` | 1 | Buy-item message; replaces the first `=` with its numeric price |
 
 This identifies previously unnamed held-item records without guessing from

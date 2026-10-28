@@ -281,6 +281,17 @@ namespace Desperabis
         BookWithCode = 252,
     };
 
+    // Nonzero enables pickup/contact priority; individual positive meanings are not recovered.
+    enum class PickupType : std::uint8_t
+    {
+        None = 0,
+        Type_1 = 1,
+        Type_3 = 3,
+        Type_4 = 4,
+        Type_40 = 40,
+        Type_63 = 63,
+    };
+
     enum class DisplayType : std::uint8_t
     {
 

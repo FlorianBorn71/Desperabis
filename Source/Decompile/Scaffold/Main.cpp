@@ -280,8 +280,8 @@ namespace
             object.collisionType = CollisionType::Door;
             object.posX = 150;
             object.posZ = 4050;
-            object.field_24 = 60;
-            object.field_26 = interact ? 0 : 3;
+            object.generalPurpose1 = 60;
+            object.generalPurpose2 = interact ? 0 : 3;
             object.itemValue = interact ? 0 : 60;
         }
         if (!haveObjectFile && object.behavior == BehaviorType::WaterDrop && !interact && !havePlayer &&
@@ -316,7 +316,7 @@ namespace
             object.posZ = 4050;
             object.modelAnim = 1;
             object.itemValue = 3;
-            object.field_28 = 0;
+            object.generalPurpose3 = 0;
             object.velocityX = 3;
         }
         if (!haveObjectFile && object.behavior == BehaviorType::FloatingDebris)
@@ -324,8 +324,8 @@ namespace
             object.health = 1000;
             object.posX = 150;
             object.posZ = 4050;
-            object.field_24 = 128;
-            object.field_28 = 300;
+            object.generalPurpose1 = 128;
+            object.generalPurpose3 = 300;
             level.heightSurfaces[0] = Level::HeightSurface{ 0, 0 };
             std::cout << "Using demo water-surface depth 0; real levels require surface metadata.\n";
         }
@@ -441,7 +441,7 @@ namespace
             }
             if (object.behavior == BehaviorType::FloatingDebris)
             {
-                std::cout << "Debris heading: " << object.field_24 << ", drift state: " << object.field_28
+                std::cout << "Debris heading: " << object.generalPurpose1 << ", drift state: " << object.generalPurpose3
                     << ", X/Z fractions: " << object.velocityX << '/' << object.velocityZ << '\n';
             }
             if (object.behavior == BehaviorType::DriftingParticle)
@@ -470,9 +470,9 @@ namespace
             }
             if (object.behavior == BehaviorType::PulsatingLight)
             {
-                std::cout << "Pulse phase: " << object.field_26 << ", speed/target: "
+                std::cout << "Pulse phase: " << object.generalPurpose2 << ", speed/target: "
                     << object.velocityZ << '/' << object.velocityX
-                    << ", pulse field_28: " << object.field_28 << '\n';
+                    << ", pulse generalPurpose3: " << object.generalPurpose3 << '\n';
             }
             if (object.behavior == BehaviorType::LightSource || object.behavior == BehaviorType::PulsatingLight)
             {
@@ -493,7 +493,7 @@ namespace
             if (object.behavior == BehaviorType::Switch1 || object.behavior == BehaviorType::SwitchGrouped)
             {
                 std::cout << "Switch phase: " << object.blendWeightOrSpriteOpacity << ", rate word: "
-                    << object.field_26 << ", timer/return-speed word: " << object.field_24 << '\n';
+                    << object.generalPurpose2 << ", timer/return-speed word: " << object.generalPurpose1 << '\n';
                 if (object.behavior == BehaviorType::SwitchGrouped &&
                     result.status == DispatchStatus::ExecutedCase)
                 {
@@ -506,14 +506,14 @@ namespace
             if (object.behavior == BehaviorType::Door)
             {
                 std::cout << "Door opening: " << object.blendWeightOrSpriteOpacity
-                    << ", motion rate: " << WrapSignedWord(object.field_26)
+                    << ", motion rate: " << WrapSignedWord(object.generalPurpose2)
                     << ", closing timer: " << object.itemValue << '\n';
             }
             if (object.behavior == BehaviorType::WaterDrop)
             {
                 std::cout << "Drop velocity Y: " << object.velocityY << ", sprite scale: "
-                    << static_cast<unsigned int>(object.spriteScale) << ", wait timer: " << object.field_24
-                    << ", splash updates remaining: " << object.field_26
+                    << static_cast<unsigned int>(object.spriteScale) << ", wait timer: " << object.generalPurpose1
+                    << ", splash updates remaining: " << object.generalPurpose2
                     << ", animation frame: " << static_cast<unsigned int>(object.animFrame)
                     << "\nWaterDrop sound is routed through AudioHandler; "
                     << (context.audioHandler ? "console logging only, no audio device.\n" :

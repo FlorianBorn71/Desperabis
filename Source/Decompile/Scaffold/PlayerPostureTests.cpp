@@ -90,10 +90,10 @@ namespace
         Check(Eye(host) == 99 && host.playerBodyHeight == 45,
             "Airborne jump input must not create another jump impulse.");
         host.Load();
-        host.worldObjects[1].field_28 = 2;
+        host.worldObjects[1].generalPurpose3 = 2;
         host.playerGrounded = true;
         host.RequestPlayerJump();
-        Check(host.playerPostureDelta == 0, "Any nonzero player field_28 must block the raise/jump helper.");
+        Check(host.playerPostureDelta == 0, "Any nonzero player generalPurpose3 must block the raise/jump helper.");
     }
 
     void TestCrouchAndStand()
@@ -216,7 +216,7 @@ namespace
             std::fill(std::begin(host.collisionMap->data), std::end(host.collisionMap->data),
                 static_cast<std::uint8_t>(surface));
             Step(host, input);
-            Check(host.worldObjects[1].field_28 == 1 && host.playerPostureDelta == -6 &&
+            Check(host.worldObjects[1].generalPurpose3 == 1 && host.playerPostureDelta == -6 &&
                 !host.playerUnderwater && host.playerBodyHeight == 45,
                 "Water contact must force crouch before necessarily becoming submerged.");
             input.jump = true;
@@ -226,7 +226,7 @@ namespace
             input.jump = false;
             std::fill(std::begin(host.collisionMap->data), std::end(host.collisionMap->data), std::uint8_t{0});
             Step(host, input);
-            Check(host.worldObjects[1].field_28 == 0 && host.playerPostureDelta == 6,
+            Check(host.worldObjects[1].generalPurpose3 == 0 && host.playerPostureDelta == 6,
                 "Leaving water must clear the native latch and request standing.");
             Step(host, input, 6);
             Check(host.playerBodyHeight == 45 && !host.playerUnderwater, "Water exit must restore standing.");
@@ -239,14 +239,14 @@ namespace
         const auto floor = host.GetTerrainFloorHeight(1500, 0, 2500);
         host.worldObjects[1].posY = static_cast<std::int16_t>(floor + 20);
         Step(host, input);
-        Check(host.playerUnderwater && host.floorSurfaceValue == 9 && host.worldObjects[1].field_28 == 1,
+        Check(host.playerUnderwater && host.floorSurfaceValue == 9 && host.worldObjects[1].generalPurpose3 == 1,
             "Submersion must use eye plus FELD surface depth, including the native metadata side effect.");
         input.forward = true;
         Step(host, input);
         Check(host.worldObjects[1].posZ == 2503, "Underwater speed 3 must override crouched speed 2.");
         host.worldObjects[1].posY = static_cast<std::int16_t>(host.worldObjects[1].posY + 100);
         Step(host, input);
-        Check(!host.playerUnderwater && host.worldObjects[1].field_28 == 1,
+        Check(!host.playerUnderwater && host.worldObjects[1].generalPurpose3 == 1,
             "Losing water support must clear submersion without inventing a latch-release transition.");
     }
 

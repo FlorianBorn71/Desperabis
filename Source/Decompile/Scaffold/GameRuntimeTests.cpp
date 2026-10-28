@@ -40,7 +40,7 @@ namespace
         LevelLoadData data;
         data.level = std::make_unique<Level>(CreateDummyLevel());
         data.objects[1].health = 1000;
-        data.objects[1].field_07 = 1;
+        data.objects[1].collisionMask = 1;
         data.objects[1].collisionRadiusXZ = 10;
         data.objects[1].collisionRadiusY = 10;
         return data;
@@ -309,7 +309,7 @@ namespace
 
         object = LifecycleObject(1);
         object.behavior = BehaviorType::WeaponDamageCollider;
-        object.field_07 = 1;
+        object.collisionMask = 1;
         object.collisionRadiusXZ = object.collisionRadiusY = 10;
         host.ReplaceWorldObject(2, object);
         auto target = object;
@@ -420,8 +420,8 @@ namespace
             auto source = LifecycleObject();
             source.collisionType = type;
             source.groupIndexOrLock = 1;
-            source.field_24 = 1;
-            source.field_28 = 9;
+            source.generalPurpose1 = 1;
+            source.generalPurpose3 = 9;
             host.ReplaceWorldObject(2, source);
             host.events.clear();
             host.DamageObject(host.worldObjects[2], type == CollisionType::Type_22 ? 0 : 200);
@@ -480,7 +480,7 @@ namespace
         host.soundListenerZ = 4050;
         auto target = LifecycleObject();
         target.posX = 250;
-        target.field_07 = 1;
+        target.collisionMask = 1;
         target.collisionType = CollisionType::FlyingArrow;
         host.ReplaceWorldObject(3, target);
         host.selectedWeapon = host.requestedWeapon = WeaponType::Electricity;
@@ -584,7 +584,7 @@ namespace
         const auto request = host.StartLevel(10);
         host.CompleteLevelLoad(request.id, std::move(data));
         const auto& player = host.GetWorldObjects()[1];
-        Check(player.health == 1000 && player.field_07 == 3 &&
+        Check(player.health == 1000 && player.collisionMask == 3 &&
             player.collisionRadiusXZ == 15 && player.collisionRadiusY == 23 &&
             player.posX == 1500 && player.posY == 20 && player.posZ == 2500 &&
             player.velocityX == -100 && player.velocityY == 0 && player.velocityZ == 0 &&
@@ -598,7 +598,7 @@ namespace
         Check(host.GetWorldObjects()[1].posY == 32743 && host.GetPlayerCamera().position[1] == -32768,
             "Fresh-level eye/center conversion must wrap native signed words.");
         data = MakeLevel();
-        data.objects[1].field_07 = 0x80;
+        data.objects[1].collisionMask = 0x80;
         data.objects[1].collisionRadiusXZ = 7;
         data.objects[1].collisionRadiusY = 15;
         data.objects[1].health = 345;
@@ -1002,7 +1002,7 @@ namespace
         const auto saved = readBytes(savePath);
         Check(saved.size() >= 299, "Original save fixture must contain the player record at byte 245.");
         const auto nativePlayer = DecodeGameObject(saved.data() + 245, 54);
-        Check(nativePlayer.field_07 == 3 && nativePlayer.collisionRadiusXZ == 15 &&
+        Check(nativePlayer.collisionMask == 3 && nativePlayer.collisionRadiusXZ == 15 &&
             nativePlayer.collisionRadiusY == 23, "Original standing player collision shape changed.");
         const auto object = [&](std::size_t record)
         {
@@ -1036,7 +1036,7 @@ namespace
                     "GameCore must load every original OBJPOS record byte-for-byte before simulation.");
             }
             const auto player = worldObject(1);
-            Check(player.field_07 == nativePlayer.field_07 &&
+            Check(player.collisionMask == nativePlayer.collisionMask &&
                 player.collisionRadiusXZ == nativePlayer.collisionRadiusXZ &&
                 player.collisionRadiusY == nativePlayer.collisionRadiusY &&
                 host.GetPlayerCamera().position == host.playerSpawn->position,
@@ -1058,7 +1058,7 @@ namespace
         const auto door = object(0);
         loadAt(door);
         const auto doorTick = host.Tick({ 1,1 }, enter);
-        Check(doorTick.status == GameTickStatus::Advanced && worldObject(2).field_26 == 3 &&
+        Check(doorTick.status == GameTickStatus::Advanced && worldObject(2).generalPurpose2 == 3 &&
             doorTick.interaction && doorTick.interaction->status == InteractionStatus::Applied,
             "Real unlocked-door interaction must activate the native door.");
         const auto trigger = object(9);
@@ -1067,11 +1067,11 @@ namespace
         Check(host.Tick({ 1,1 }, input).status == GameTickStatus::Advanced,
             "Initial ordinary-switch behavior tick failed.");
         const auto linkedDoor = worldObject(6);
-        Check(linkedDoor.health == 1001 && linkedDoor.field_26 == 0,
+        Check(linkedDoor.health == 1001 && linkedDoor.generalPurpose2 == 0,
             "Expected level-11 door encoded with switch index 1.");
         const auto switchTick = host.Tick({ 1,1 }, enter);
         Check(switchTick.status == GameTickStatus::Advanced && worldObject(11).blendWeightOrSpriteOpacity == 10 &&
-            worldObject(6).field_26 == 3 && worldObject(6).blendWeightOrSpriteOpacity == 3 &&
+            worldObject(6).generalPurpose2 == 3 && worldObject(6).blendWeightOrSpriteOpacity == 3 &&
             switchTick.interaction && switchTick.interaction->status == InteractionStatus::Applied,
             "Enter must pull the original level-11 switch and animate its linked door in the same tick.");
         for (int tick = 0; tick < 40; ++tick)
@@ -1090,7 +1090,7 @@ namespace
         geometry[2] = 39;
         RawGameObject door;
         door.health = 1000;
-        door.field_07 = 3;
+        door.collisionMask = 3;
         door.collisionType = CollisionType::Door;
         door.doorLockOrGroupBitmask = -1;
         door.posX = 1500;
@@ -1146,8 +1146,8 @@ namespace
         lever.collisionType = CollisionType::Switch;
         lever.behavior = BehaviorType::Switch1;
         lever.itemValue = 1;
-        lever.field_24 = 10;
-        lever.field_32 = 1;
+        lever.generalPurpose1 = 10;
+        lever.pickupType = PickupType::Type_1;
         const auto resting = lever;
         for (const int slot : { 2, 140, 141, 164 })
         {
@@ -1155,17 +1155,17 @@ namespace
             target.health = 1001;
             target.collisionType = CollisionType::Door;
             target.modelFrame2 = 1;
-            target.field_24 = 30;
+            target.generalPurpose1 = 30;
             target.doorLockOrGroupBitmask = -1;
         }
         const auto before = context.worldObjects;
         Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::Applied &&
-            lever.field_26 == 10 && lever.health == 1000 && context.inventory[0].health == 0,
+            lever.generalPurpose2 == 10 && lever.health == 1000 && context.inventory[0].health == 0,
             "Ordinary switch interaction must start its rate, not pick up a flagged lever.");
         for (const int slot : { 2, 140 })
         {
             const auto& target = context.worldObjects[static_cast<std::size_t>(slot)];
-            Check(target.field_26 == 3 && target.itemValue == 30 && target.health == 1001 &&
+            Check(target.generalPurpose2 == 3 && target.itemValue == 30 && target.health == 1001 &&
                 target.doorLockOrGroupBitmask == -1,
                 "Switch-index matching must open all matching doors without consuming their health link or lock.");
         }
@@ -1186,9 +1186,9 @@ namespace
         {
             lever = resting;
             lever.health = static_cast<std::int16_t>(health);
-            context.worldObjects[2].field_26 = 0;
+            context.worldObjects[2].generalPurpose2 = 0;
             Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::Applied &&
-                lever.field_26 == 10 && context.worldObjects[2].field_26 == 0,
+                lever.generalPurpose2 == 10 && context.worldObjects[2].generalPurpose2 == 0,
                 "A non-1000 live switch must animate but not activate indexed targets.");
         }
         for (const auto index : { -1, 0 })
@@ -1196,21 +1196,21 @@ namespace
             lever = resting;
             lever.itemValue = static_cast<std::int16_t>(index);
             Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::Applied &&
-                lever.field_26 == 10, "A nonpositive switch index must still start the local animation.");
+                lever.generalPurpose2 == 10, "A nonpositive switch index must still start the local animation.");
         }
         lever = resting;
         context.worldObjects[2].collisionType = CollisionType::Ghost;
         Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::Applied &&
-            lever.field_26 == 10 && context.worldObjects[2].health == 1000 &&
-            context.worldObjects[140].field_26 == 3,
+            lever.generalPurpose2 == 10 && context.worldObjects[2].health == 1000 &&
+            context.worldObjects[140].generalPurpose2 == 3,
             "Indexed activation must dispatch mixed non-door/door targets through the shared native helper.");
         context.worldObjects[2].collisionType = CollisionType::Door;
         context.worldObjects[2].health = 1001;
         context.worldObjects[2].doorLockOrGroupBitmask = 1;
-        context.worldObjects[2].field_26 = 0;
+        context.worldObjects[2].generalPurpose2 = 0;
         lever = resting;
         Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::Applied &&
-            context.worldObjects[2].field_26 == 0,
+            context.worldObjects[2].generalPurpose2 == 0,
             "Switch activation must preserve positive key locks.");
 
         lever = resting;
@@ -1218,27 +1218,27 @@ namespace
         context.worldObjects[2].health = -31769;
         context.worldObjects[2].doorLockOrGroupBitmask = 0;
         Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::Applied &&
-            context.worldObjects[2].field_26 == 3,
+            context.worldObjects[2].generalPurpose2 == 3,
             "Switch health links must use wrapped word addition, without an extra target-health gate.");
         lever = resting;
         lever.behaviorParameter = 1;
         context.tickCount = 1;
         HandlePlayerObjectInteraction(lever, context);
         for (int tick = 0; tick < 20; ++tick) { Function_Switch1(lever, context); }
-        Check(lever.blendWeightOrSpriteOpacity == 100 && lever.field_26 == 0,
+        Check(lever.blendWeightOrSpriteOpacity == 100 && lever.generalPurpose2 == 0,
             "A latched ordinary switch must remain pulled and stop animating.");
         Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::NoEffect,
             "A fully pulled latched switch must ignore further interaction.");
         lever = resting;
         lever.itemValue = 3;
-        lever.field_26 = 123;
+        lever.generalPurpose2 = 123;
         lever.soundEffectId = 2;
         context.soundEffectsLoaded = true;
         context.soundEffects[1].sampleCount = 1;
         context.soundEffects[1].samples[0] = 1;
         const auto seed = context.randomSeed;
         Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::Applied &&
-            lever.field_26 == 10 && context.randomSeed == seed * 134775813u + 1u,
+            lever.generalPurpose2 == 10 && context.randomSeed == seed * 134775813u + 1u,
             "At phase zero, native activation overwrites the rate and requests sound even when no target matches.");
         lever.health = 0;
         Check(HandlePlayerObjectInteraction(lever, context).status == InteractionStatus::InactiveObject,
@@ -1659,7 +1659,7 @@ namespace
         GameContext context;
         auto& player = context.worldObjects[1];
         player.health = 0; // Native overlap deliberately does not test player health.
-        player.field_07 = 3;
+        player.collisionMask = 3;
         player.collisionRadiusXZ = 15;
         player.collisionRadiusY = 23;
         player.posX = 1000;
@@ -1671,7 +1671,7 @@ namespace
         auto& object = context.worldObjects[2];
         object.behavior = BehaviorType::LevelStartOverride;
         object.health = 1000;
-        object.field_07 = 1;
+        object.collisionMask = 1;
         object.posX = 1007;
         object.posY = 31;
         object.posZ = 2491;
@@ -1698,7 +1698,7 @@ namespace
         context.objectCollisionsEnabled = false;
         checkNoEffect();
         context.objectCollisionsEnabled = true;
-        object.field_07 = 4;
+        object.collisionMask = 4;
         checkNoEffect();
         for (int axis = 0; axis < 3; ++axis)
         {

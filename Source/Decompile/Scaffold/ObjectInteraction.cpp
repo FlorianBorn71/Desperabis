@@ -19,7 +19,7 @@ namespace Desperabis
         InteractionResult StoreInventoryObject(
             const RawGameObject& item, RawGameObject& object, GameContext& state)
         {
-            if (object.field_32 == 0)
+            if (object.pickupType == PickupType::None)
             {
                 return { InteractionStatus::NoEffect };
             }
@@ -53,7 +53,7 @@ namespace Desperabis
                 const auto weapon = static_cast<WeaponType>(stored.itemValue);
                 if (weapon == WeaponType::Fireball)
                 {
-                    state.weaponAmounts[weaponIndex] = WrapSignedWord(stored.field_24);
+                    state.weaponAmounts[weaponIndex] = WrapSignedWord(stored.generalPurpose1);
                 }
                 else if (weapon == WeaponType::Dagger || weapon == WeaponType::Sword ||
                     (weapon >= WeaponType::Stone && weapon <= WeaponType::Showel))
@@ -110,7 +110,7 @@ namespace Desperabis
             return { InteractionStatus::Applied };
 
         case CollisionType::Ammo:
-            if (object.field_32 != 0)
+            if (object.pickupType != PickupType::None)
             {
                 const auto index = WeaponAmountIndex(object.itemValue, state);
                 if (object.groupIndexOrLock == 0)
@@ -141,15 +141,15 @@ namespace Desperabis
                 }
                 if (object.itemValue == static_cast<std::int16_t>(WeaponType::Fireball))
                 {
-                    stored.field_24 = static_cast<std::uint16_t>(stored.field_24 + item.field_24);
-                    state.weaponAmounts[static_cast<std::size_t>(weapon)] = WrapSignedWord(stored.field_24);
+                    stored.generalPurpose1 = static_cast<std::uint16_t>(stored.generalPurpose1 + item.generalPurpose1);
+                    state.weaponAmounts[static_cast<std::size_t>(weapon)] = WrapSignedWord(stored.generalPurpose1);
                     state.SetObjectHealth(object, 0);
                 }
                 else
                 {
                     object.collisionType = CollisionType::None;
-                    object.field_07 = 0;
-                    object.field_32 = 0;
+                    object.collisionMask = 0;
+                    object.pickupType = PickupType::None;
                     state.playerCollisionSlot = 0;
                 }
                 return { InteractionStatus::Applied, static_cast<std::uint16_t>(i + 1) };
@@ -160,17 +160,17 @@ namespace Desperabis
             return HandleSwitchInteraction(object, state);
 
         case CollisionType::GroupedSwitch:
-            if (object.field_26 == 0)
+            if (object.generalPurpose2 == 0)
             {
                 if (object.blendWeightOrSpriteOpacity == 100)
                 {
-                    object.field_26 = static_cast<std::uint16_t>(-10);
+                    object.generalPurpose2 = static_cast<std::uint16_t>(-10);
                 }
                 if (object.blendWeightOrSpriteOpacity == 0)
                 {
-                    object.field_26 = 10;
+                    object.generalPurpose2 = 10;
                 }
-                object.field_24 = static_cast<std::uint16_t>(object.itemValue);
+                object.generalPurpose1 = static_cast<std::uint16_t>(object.itemValue);
                 if (object.soundEffectId == 0)
                 {
                     object.soundEffectId = 2;
@@ -180,7 +180,7 @@ namespace Desperabis
             break;
 
         case CollisionType::PuzzleGameTile:
-            object.field_28 = 1;
+            object.generalPurpose3 = 1;
             activated = true;
             break;
 
@@ -190,7 +190,7 @@ namespace Desperabis
             break;
 
         case CollisionType::GrandfatherClockItem:
-            object.velocityX = WrapSignedWord(object.velocityX + WrapSignedWord(object.field_24));
+            object.velocityX = WrapSignedWord(object.velocityX + WrapSignedWord(object.generalPurpose1));
             return { InteractionStatus::Applied };
 
         case CollisionType::Door:

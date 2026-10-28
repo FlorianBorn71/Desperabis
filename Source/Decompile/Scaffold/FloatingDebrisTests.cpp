@@ -71,22 +71,22 @@ namespace
         const int originalPitch = object.winX;
         if (collision)
         {
-            object.field_28 = static_cast<std::uint16_t>(Next(seed, 300) + 100);
+            object.generalPurpose3 = static_cast<std::uint16_t>(Next(seed, 300) + 100);
             object.velocityY = Word(std::abs(static_cast<int>(object.velocityY)));
         }
         const auto chance = object.behaviorParameter;
-        if (chance != 0 && Next(seed, chance) == 0) { object.field_28 = 0; }
+        if (chance != 0 && Next(seed, chance) == 0) { object.generalPurpose3 = 0; }
         for (int tick = 0; tick < ticks; ++tick)
         {
-            if (Word(object.field_28) > 0)
+            if (Word(object.generalPurpose3) > 0)
             {
-                object.field_28 = static_cast<std::uint16_t>(object.field_28 - Next(seed, 2));
+                object.generalPurpose3 = static_cast<std::uint16_t>(object.generalPurpose3 - Next(seed, 2));
                 if (Next(seed, 10) == 0)
                 {
-                    object.field_24 = static_cast<std::uint16_t>((object.field_24 + Signed(seed, 20)) & 511);
+                    object.generalPurpose1 = static_cast<std::uint16_t>((object.generalPurpose1 + Signed(seed, 20)) & 511);
                 }
-                object.winX = Word((object.winX + Next(seed, object.field_28 / 16 + 1)) & 511);
-                object.winY = Word((object.winY + Next(seed, object.field_28 / 32 + 1)) & 511);
+                object.winX = Word((object.winX + Next(seed, object.generalPurpose3 / 16 + 1)) & 511);
+                object.winY = Word((object.winY + Next(seed, object.generalPurpose3 / 32 + 1)) & 511);
                 if (Next(seed, 50) == 0) { object.velocityY = Word(static_cast<int>(Next(seed, 30)) - 12); }
                 const int threshold = static_cast<int>(Next(seed, 10));
                 if (Word(std::abs(static_cast<int>(object.velocityY))) > threshold)
@@ -98,7 +98,7 @@ namespace
             {
                 object.winX = Word(object.winX + Step(object.winX, 256, 1));
                 if (Next(seed, 3) == 0) { object.posY = Word(object.posY - 1); }
-                if (Next(seed, 300) == 0) { object.field_28 = static_cast<std::uint16_t>(Next(seed, 100)); }
+                if (Next(seed, 300) == 0) { object.generalPurpose3 = static_cast<std::uint16_t>(Next(seed, 100)); }
             }
         }
         if (Next(seed, 3) == 0) { object.posY = Word(object.posY - 1); }
@@ -110,12 +110,12 @@ namespace
             const int target = 256 + Signed(seed, 8);
             object.winX = Word(originalPitch + Step(originalPitch, target, Word(6 * ticks)));
         }
-        const auto heading = object.field_24 % 512;
-        const int speed = Word(object.field_28);
+        const auto heading = object.generalPurpose1 % 512;
+        const int speed = Word(object.generalPurpose3);
         int dx = Word(HighWord(static_cast<std::int64_t>(SineTable[heading]) * speed));
         int dz = Word(-HighWord(static_cast<std::int64_t>(SineTable[(heading + 128) % 512]) * speed));
-        if (!xOpen) { object.field_24 ^= 256; dx = Word(-dx); }
-        if (!zOpen) { object.field_24 ^= 256; dz = Word(-dz); }
+        if (!xOpen) { object.generalPurpose1 ^= 256; dx = Word(-dx); }
+        if (!zOpen) { object.generalPurpose1 ^= 256; dz = Word(-dz); }
         Accumulate(object.posX, object.velocityX, dx);
         Accumulate(object.posZ, object.velocityZ, dz);
         return object;
@@ -160,12 +160,12 @@ namespace
             object.posX = 150;
             object.posY = Word(sample % 90 - 10);
             object.posZ = 4050;
-            object.field_07 = 1;
+            object.collisionMask = 1;
             object.collisionRadiusXZ = 2;
             object.collisionRadiusY = 3;
             object.collisionType = static_cast<CollisionType>(sample % 2 == 0 ? 20 : 117);
-            object.field_28 = states[sample % states.size()];
-            object.field_24 = static_cast<std::uint16_t>(sample);
+            object.generalPurpose3 = states[sample % states.size()];
+            object.generalPurpose1 = static_cast<std::uint16_t>(sample);
             object.winX = Word(sample * 7);
             object.winY = Word(sample * 13);
             object.velocityY = Word(velocities[sample % velocities.size()]);
@@ -197,8 +197,8 @@ namespace
         object.posX = 150;
         object.posY = 30;
         object.posZ = 4050;
-        object.field_24 = 64;
-        object.field_28 = 256;
+        object.generalPurpose1 = 64;
+        object.generalPurpose3 = 256;
         object.velocityX = 255;
         object.velocityZ = 255;
         return object;
@@ -216,7 +216,7 @@ namespace
         for (int state = 0; state < 65536; ++state)
         {
             auto object = Fixture();
-            object.field_28 = static_cast<std::uint16_t>(state);
+            object.generalPurpose3 = static_cast<std::uint16_t>(state);
             context.randomSeed = static_cast<std::uint32_t>(state);
             auto seed = context.randomSeed;
             const auto expected = Reference(object, seed, 1, false, 0, 50, true, true);
@@ -339,7 +339,7 @@ namespace
         Function_FloatingDebris(object, context);
         Check(Equal(object, expected), "Collision type 20 must omit terrain radius.");
         RawGameObject source = Fixture();
-        source.field_07 = 1;
+        source.collisionMask = 1;
         source.collisionRadiusXZ = 5;
         source.collisionRadiusY = 7;
         context.worldObjects[1] = source;
@@ -348,7 +348,7 @@ namespace
         context.worldObjects[1].posX += 10;
         Check(!context.OverlapsPlayer(source), "Touching edges are not overlapping.");
         context.worldObjects[1] = source;
-        context.worldObjects[1].field_07 = 2;
+        context.worldObjects[1].collisionMask = 2;
         Check(!context.OverlapsPlayer(source), "Disjoint collision masks must not overlap.");
     }
 

@@ -98,7 +98,7 @@ namespace
         RawGameObject expected;
         expected.behavior = BehaviorType::WeaponDamageCollider;
         expected.health = 10;
-        expected.field_07 = 254;
+        expected.collisionMask = 254;
         expected.behaviorParameter = 8;
         expected.collisionRadiusXZ = 18;
         expected.collisionRadiusY = 8;
@@ -182,7 +182,7 @@ namespace
                 RawGameObject expected;
                 expected.behavior = BehaviorType::WeaponDamageCollider;
                 expected.health = 10;
-                expected.field_07 = 254;
+                expected.collisionMask = 254;
                 expected.behaviorParameter = 20;
                 expected.collisionRadiusXZ = 22;
                 expected.collisionRadiusY = 12;
@@ -359,7 +359,7 @@ namespace
         pickup.health = 1000;
         pickup.collisionType = CollisionType::Weapon;
         pickup.itemValue = 1;
-        pickup.field_32 = 1;
+        pickup.pickupType = PickupType::Type_1;
         Check(HandlePlayerObjectInteraction(pickup, host).inventorySlot == 1 &&
             host.inventory[0].itemValue == 1 && host.weaponInventorySlots[1] == 1,
             "An actual dagger pickup must use the first hand and register the weapon.");
@@ -373,7 +373,7 @@ namespace
         auto& enemy = host.worldObjects[4];
         enemy.health = 1000;
         enemy.collisionType = CollisionType::Skeleton;
-        enemy.field_07 = 2;
+        enemy.collisionMask = 2;
         enemy.collisionRadiusXZ = 15;
         enemy.collisionRadiusY = 20;
         enemy.posX = 1040;

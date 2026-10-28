@@ -339,7 +339,7 @@ once per frame before object updates. The console does this automatically:
 `--behavior LightSource --ticks 100` runs a dummy light and reports its
 contribution. See [gameplay lighting](BehaviorRecovery.md#gameplay-lighting-cache)
 for frame setup and the still-unidentified DS:DC34 accumulator.
-PulsatingLight varies its pulse speed, updates `field_28`, and adds a clamped-sine
+PulsatingLight varies its pulse speed, updates `generalPurpose3`, and adds a clamped-sine
 contribution of 5..55 to one lighting corner. Use
 `--behavior PulsatingLight --ticks 3` for its state and contribution.
 See [PulsatingLight](BehaviorRecovery.md#pulsatinglight-randomized-pulse-speed-and-one-corner-lighting).

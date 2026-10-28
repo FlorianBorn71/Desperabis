@@ -28,7 +28,7 @@ namespace Desperabis
         std::uint8_t renderPlacementMode = 0;
         std::uint8_t soundEffectId = 0;
         CollisionType collisionType = CollisionType::None;
-        std::uint8_t field_07 = 0;
+        std::uint8_t collisionMask = 0;
         BehaviorType behavior = BehaviorType::None;
         std::int16_t health = 0;
         std::int16_t posX = 0;
@@ -43,15 +43,17 @@ namespace Desperabis
         std::int16_t winY = 0;
         std::int16_t winZ = 0;
         std::int16_t itemValue = 0;
-        std::uint16_t field_24 = 0;
-        std::uint16_t field_26 = 0;
-        std::uint16_t field_28 = 0;
+        // Behavior-specific words: counters, rates, subtypes, links, or other parameters.
+        std::uint16_t generalPurpose1 = 0;
+        std::uint16_t generalPurpose2 = 0;
+        std::uint16_t generalPurpose3 = 0;
         std::int16_t blendWeightOrSpriteOpacity = 0;
         std::int16_t groupIndexOrLock = 0;
         // Door lock/group mask; fireplaces use emission intensity, fire particles use vertical acceleration.
         std::int16_t doorLockOrGroupBitmask = 0;
         std::int16_t renderSortKey = 0; // Original render-list scratch, overwritten after active-object dispatch.
-        std::uint8_t field_32 = 0;
+        // Provisional: nonzero enables pickup/contact priority; individual values remain unresolved.
+        PickupType pickupType = PickupType::None;
         DisplayType displayType = DisplayType::SpriteNormal;
         // Contact damage factor, door occupancy, switch latch, or other behavior-specific parameter.
         std::uint8_t behaviorParameter = 0;
@@ -67,7 +69,7 @@ namespace Desperabis
     static_assert(offsetof(RawGameObject, renderPlacementMode) == 4);
     static_assert(offsetof(RawGameObject, soundEffectId) == 5);
     static_assert(offsetof(RawGameObject, collisionType) == 6);
-    static_assert(offsetof(RawGameObject, field_07) == 7);
+    static_assert(offsetof(RawGameObject, collisionMask) == 7);
     static_assert(offsetof(RawGameObject, behavior) == 8);
     static_assert(offsetof(RawGameObject, health) == 10);
     static_assert(offsetof(RawGameObject, posX) == 12);
@@ -82,14 +84,14 @@ namespace Desperabis
     static_assert(offsetof(RawGameObject, winY) == 30);
     static_assert(offsetof(RawGameObject, winZ) == 32);
     static_assert(offsetof(RawGameObject, itemValue) == 34);
-    static_assert(offsetof(RawGameObject, field_24) == 36);
-    static_assert(offsetof(RawGameObject, field_26) == 38);
-    static_assert(offsetof(RawGameObject, field_28) == 40);
+    static_assert(offsetof(RawGameObject, generalPurpose1) == 36);
+    static_assert(offsetof(RawGameObject, generalPurpose2) == 38);
+    static_assert(offsetof(RawGameObject, generalPurpose3) == 40);
     static_assert(offsetof(RawGameObject, blendWeightOrSpriteOpacity) == 42);
     static_assert(offsetof(RawGameObject, groupIndexOrLock) == 44);
     static_assert(offsetof(RawGameObject, doorLockOrGroupBitmask) == 46);
     static_assert(offsetof(RawGameObject, renderSortKey) == 48);
-    static_assert(offsetof(RawGameObject, field_32) == 50);
+    static_assert(offsetof(RawGameObject, pickupType) == 50);
     static_assert(offsetof(RawGameObject, displayType) == 51);
     static_assert(offsetof(RawGameObject, behaviorParameter) == 52);
     static_assert(offsetof(RawGameObject, spriteScale) == 53);

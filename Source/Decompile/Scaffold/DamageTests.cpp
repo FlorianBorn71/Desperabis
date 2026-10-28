@@ -56,23 +56,23 @@ namespace
             Target().posX = 1500;
             Target().posY = 25;
             Target().posZ = 2000;
-            Target().field_07 = 3;
+            Target().collisionMask = 3;
             Target().animFrame = 2;
             Target().modelFrame2 = 3;
             Target().modelAnim = 1;
             Target().modelId = 38;
             Target().collisionRadiusXZ = 20;
             Target().collisionRadiusY = 10;
-            Target().field_32 = 99;
+            Target().pickupType = static_cast<PickupType>(99);
             Target().spriteScale = 17;
             Target().renderSortKey = -1234;
             Target().renderPlacementMode = 7;
             Target().winX = 31;
             Target().winY = 37;
             Target().winZ = 41;
-            Target().field_24 = 29;
-            Target().field_26 = 31;
-            Target().field_28 = 0;
+            Target().generalPurpose1 = 29;
+            Target().generalPurpose2 = 31;
+            Target().generalPurpose3 = 0;
             Target().itemValue = 2;
             Target().behaviorParameter = 3;
             Target().blendWeightOrSpriteOpacity = 7;
@@ -83,7 +83,7 @@ namespace
             Contact() = {};
             Contact().health = 10;
             Contact().behavior = BehaviorType::WeaponDamageCollider;
-            Contact().field_07 = 254;
+            Contact().collisionMask = 254;
             Contact().behaviorParameter = damage;
             Contact().posX = 1499;
             Contact().posY = 25;
@@ -242,13 +242,13 @@ namespace
             f.context.DamageObject(f.Target(), amount);
             Check(Equal(expected, f.Target()), "Rope damage must add to Y without decrementing nonpositive strength.");
             f.Set(CollisionType::DestroyableBarrier, 1);
-            f.Target().field_24 = static_cast<std::uint16_t>(value * 13);
+            f.Target().generalPurpose1 = static_cast<std::uint16_t>(value * 13);
             f.Target().doorLockOrGroupBitmask = 42;
             expected = f.Target();
             expected.groupIndexOrLock = Word(1 - amount);
             const auto accumulator = (value * 13 + 3 * static_cast<unsigned int>(value)) & 65535;
-            expected.field_24 = static_cast<std::uint16_t>(accumulator);
-            if ((accumulator >> 8) >= 42) { expected.field_07 = 0; expected.field_24 = 32000; }
+            expected.generalPurpose1 = static_cast<std::uint16_t>(accumulator);
+            if ((accumulator >> 8) >= 42) { expected.collisionMask = 0; expected.generalPurpose1 = 32000; }
             f.context.DamageObject(f.Target(), amount);
             Check(Equal(expected, f.Target()), "Barrier accumulation must wrap low-word multiplication and compare the unsigned high byte.");
         }
@@ -258,7 +258,7 @@ namespace
             {
                 f.Set(type);
                 auto expected = f.Target();
-                if (amount == -1) { expected.groupIndexOrLock = 11; expected.field_07 = 0; expected.health = 10; }
+                if (amount == -1) { expected.groupIndexOrLock = 11; expected.collisionMask = 0; expected.health = 10; }
                 f.context.DamageObject(f.Target(), static_cast<std::int16_t>(amount));
                 Check(Equal(expected, f.Target()), "Only amount -1 destroys weapon/ammo; other amounts restore strength.");
             }
@@ -306,33 +306,33 @@ namespace
             CollisionType::DestroyOnCollide })
         {
             f.Set(type);
-            f.Target().field_28 = 7;
+            f.Target().generalPurpose3 = 7;
             f.Target().doorLockOrGroupBitmask = 30;
-            f.context.worldObjects[30].field_28 = 100;
+            f.context.worldObjects[30].generalPurpose3 = 100;
             auto expected = f.Target();
             expected.groupIndexOrLock = -10;
             switch (type)
             {
             case CollisionType::PushingEnemy:
                 expected.animFrame = 1; expected.modelFrame2 = 2; expected.modelAnim = 3;
-                expected.collisionType = CollisionType::None; expected.field_07 = 0;
-                expected.field_24 = 1; expected.field_26 = 0;
+                expected.collisionType = CollisionType::None; expected.collisionMask = 0;
+                expected.generalPurpose1 = 1; expected.generalPurpose2 = 0;
                 expected.blendWeightOrSpriteOpacity = 0; expected.itemValue = 0; expected.renderPlacementMode = 3;
                 break;
             case CollisionType::SpiderLarge:
                 expected.animFrame = 5; expected.modelFrame2 = 4;
-                expected.collisionType = CollisionType::None; expected.field_07 = 0;
-                expected.velocityY = 10; expected.posY = 35; expected.field_24 = 1;
+                expected.collisionType = CollisionType::None; expected.collisionMask = 0;
+                expected.velocityY = 10; expected.posY = 35; expected.generalPurpose1 = 1;
                 expected.blendWeightOrSpriteOpacity = -100;
                 break;
             case CollisionType::Harvestman:
-                expected.modelFrame2 = 15; expected.collisionType = CollisionType::None; expected.field_07 = 0;
-                expected.field_24 = 1; expected.field_26 = 0; expected.blendWeightOrSpriteOpacity = 0;
+                expected.modelFrame2 = 15; expected.collisionType = CollisionType::None; expected.collisionMask = 0;
+                expected.generalPurpose1 = 1; expected.generalPurpose2 = 0; expected.blendWeightOrSpriteOpacity = 0;
                 break;
             case CollisionType::Devil:
                 expected.modelFrame2 = 2; expected.modelAnim = 1; expected.animFrame = 4;
-                expected.collisionType = CollisionType::None; expected.field_07 = 0;
-                expected.field_24 = 1; expected.blendWeightOrSpriteOpacity = 100; expected.field_26 = 0;
+                expected.collisionType = CollisionType::None; expected.collisionMask = 0;
+                expected.generalPurpose1 = 1; expected.blendWeightOrSpriteOpacity = 100; expected.generalPurpose2 = 0;
                 break;
             case CollisionType::BatIndoor:
                 expected.velocityY = 2; expected.collisionType = CollisionType::None;
@@ -340,21 +340,21 @@ namespace
                 break;
             case CollisionType::RatAndSnake:
                 expected.modelFrame2 = 2; expected.animFrame = 3;
-                expected.collisionType = CollisionType::None; expected.field_07 = 0; expected.health = 1500;
+                expected.collisionType = CollisionType::None; expected.collisionMask = 0; expected.health = 1500;
                 expected.velocityY = 8; expected.posY = 33; expected.blendWeightOrSpriteOpacity = -100;
                 break;
             case CollisionType::Cockroach:
-                expected.collisionType = CollisionType::None; expected.field_07 = 0;
+                expected.collisionType = CollisionType::None; expected.collisionMask = 0;
                 expected.itemValue = 7; expected.winX = 0; expected.winZ = 0;
                 break;
             case CollisionType::Crab:
-                expected.field_07 = 0; expected.behavior = BehaviorType::None;
+                expected.collisionMask = 0; expected.behavior = BehaviorType::None;
                 expected.modelAnim = 2; expected.animFrame = 1; expected.modelFrame2 = 0;
                 break;
             case CollisionType::Dog:
                 expected.itemValue = 100; expected.modelAnim = 1; expected.animFrame = 3; expected.modelFrame2 = 4;
-                expected.blendWeightOrSpriteOpacity = 0; expected.field_26 = 0;
-                expected.collisionType = CollisionType::None; expected.field_07 = 0;
+                expected.blendWeightOrSpriteOpacity = 0; expected.generalPurpose2 = 0;
+                expected.collisionType = CollisionType::None; expected.collisionMask = 0;
                 break;
             case CollisionType::AnacondaHead:
                 expected.behavior = BehaviorType::Behavior_87; expected.health = 2000;
@@ -366,28 +366,28 @@ namespace
             case CollisionType::AttachableDamageObject:
             case CollisionType::KrakenHead:
                 expected.modelFrame2 = type == CollisionType::AttachableDamageObject ? 5 : 2;
-                expected.collisionType = CollisionType::None; expected.field_07 = 0; expected.health = 2000;
+                expected.collisionType = CollisionType::None; expected.collisionMask = 0; expected.health = 2000;
                 expected.blendWeightOrSpriteOpacity = 0; expected.behavior = BehaviorType::AttachableDamageObject;
                 break;
             case CollisionType::FlyingArrow: expected.health = 0; break;
             case CollisionType::DestroyOnCollide:
-                expected.field_07 = 0; expected.collisionType = CollisionType::None; expected.animFrame = 3;
+                expected.collisionMask = 0; expected.collisionType = CollisionType::None; expected.animFrame = 3;
                 break;
             default: throw std::logic_error("Missing native death fixture.");
             }
             f.context.DamageObject(f.Target(), 20);
             Check(Equal(expected, f.Target()), "Native death transition changed an unexpected object byte.");
-            Check(f.context.worldObjects[30].field_28 == (type == CollisionType::AttachableDamageObject ? 93 : 100),
-                "An attached part must subtract its weight from the linked parent's field_28.");
+            Check(f.context.worldObjects[30].generalPurpose3 == (type == CollisionType::AttachableDamageObject ? 93 : 100),
+                "An attached part must subtract its weight from the linked parent's generalPurpose3.");
         }
         for (const auto value : { 7,14,15,16 })
         {
             f.Set(CollisionType::Cockroach);
             f.Target().itemValue = static_cast<std::int16_t>(value);
-            f.Target().field_07 = 131;
+            f.Target().collisionMask = 131;
             f.Target().displayType = DisplayType::Hidden;
             f.context.DamageObject(f.Target(), 20);
-            Check(f.Target().itemValue == (value == 15 ? 16 : value) && f.Target().field_07 == 131 &&
+            Check(f.Target().itemValue == (value == 15 ? 16 : value) && f.Target().collisionMask == 131 &&
                 f.Target().health == 0 && f.Target().blendWeightOrSpriteOpacity == (value == 15 ? -100 : 7),
                 "Cockroach high phases, special collision mask and hidden death gate differ.");
         }
@@ -397,12 +397,12 @@ namespace
         Check(f.Target().itemValue == -2, "A living attacking dog must recoil without entering death.");
         f.Set(CollisionType::AnacondaHead, 60);
         f.context.DamageObject(f.Target(), 20);
-        Check(f.Target().field_24 == 10, "A living anaconda head must install its hit reaction.");
+        Check(f.Target().generalPurpose1 == 10, "A living anaconda head must install its hit reaction.");
         f.Set(CollisionType::Dragon, 10);
         f.context.DamageObject(f.Target(), 20);
         Check(f.Target().behavior == BehaviorType::Behavior_61 && f.Target().health == 1000 &&
             f.Target().modelAnim == 2 && f.Target().animFrame == 1 && f.Target().modelFrame2 == 2 &&
-            f.Target().field_24 == 250 && f.Target().field_26 == 0 && f.Target().itemValue == 4 &&
+            f.Target().generalPurpose1 == 250 && f.Target().generalPurpose2 == 0 && f.Target().itemValue == 4 &&
             f.Target().blendWeightOrSpriteOpacity == 0 && f.Target().doorLockOrGroupBitmask == 0,
             "Dragon death must install behavior 61 only once.");
         f.context.DamageObject(f.Target(), 20);
@@ -493,15 +493,15 @@ namespace
             target.groupIndexOrLock = 60;
         }
         f.context.DamageObject(button, 20);
-        Check(button.field_26 == 10 && button.groupIndexOrLock == 1 &&
+        Check(button.generalPurpose2 == 10 && button.groupIndexOrLock == 1 &&
             f.context.worldObjects[2].health == 1000 && f.context.worldObjects[140].health == 1000 &&
             f.context.worldObjects[141].health == 1010,
             "Damage-triggered switches must activate all native target types, only in slots 2..140.");
         f.context.worldObjects[2].health = 1010;
-        button.field_26 = 0;
-        button.field_24 = 6;
+        button.generalPurpose2 = 0;
+        button.generalPurpose1 = 6;
         Check(HandleSwitchInteraction(button, f.context).status == InteractionStatus::Applied &&
-            button.field_26 == 6 && f.context.worldObjects[2].health == 1000,
+            button.generalPurpose2 == 6 && f.context.worldObjects[2].health == 1000,
             "Explicit switch interaction must use the same general activation dispatcher.");
     }
 
@@ -542,7 +542,7 @@ namespace
                 "Spider death must stop all four native channels before playing the DS:0482 sound.");
         }
         f.Set(CollisionType::VaseToGrab);
-        f.Target().field_28 = 7;
+        f.Target().generalPurpose3 = 7;
         f.Target().soundEffectId = 5;
         auto expected = f.Target();
         f.context.DamageObject(f.Target(), 199);
@@ -550,8 +550,8 @@ namespace
         f.context.DamageObject(f.Target(), 200);
         Check(audio.stops == 3 && audio.samples.back() == 5 && f.Target().collisionType == CollisionType::Key &&
             f.Target().modelId == 39 && f.Target().modelAnim == 1 && f.Target().animFrame == 1 &&
-            f.Target().modelFrame2 == 3 && f.Target().itemValue == 7 && f.Target().field_07 == 3 &&
-            f.Target().field_32 == 4 && f.Target().displayType == DisplayType::VectorUnlit &&
+            f.Target().modelFrame2 == 3 && f.Target().itemValue == 7 && f.Target().collisionMask == 3 &&
+            f.Target().pickupType == PickupType::Type_4 && f.Target().displayType == DisplayType::VectorUnlit &&
             f.Target().renderPlacementMode == 5,
             "A broken vase must retain its copied broken shell and initialize the original record as a key.");
         Check(f.context.worldObjects[2].collisionType == CollisionType::None &&
@@ -607,7 +607,7 @@ namespace
         Check(f.context.randomSeed == seed, "Five smoke particles must preserve the native six-draw allocation/initialization order.");
         Check(f.Target().behavior == BehaviorType::WalkableDrawBridge && f.Target().animFrame == 3 &&
             f.Target().modelFrame2 == 2 && f.Target().blendWeightOrSpriteOpacity == 100 &&
-            f.Target().velocityZ == 3 && static_cast<int>(f.Target().displayType) == 80 && f.Target().field_07 == 0,
+            f.Target().velocityZ == 3 && static_cast<int>(f.Target().displayType) == 80 && f.Target().collisionMask == 0,
             "The special damage-object transition must preserve the native behavior value 49 and frame swap.");
         int smoke = 0;
         for (const auto& object : f.context.worldObjects)
@@ -629,7 +629,7 @@ namespace
             if (object.behavior == BehaviorType::BouncingObject && object.health > 0)
             {
                 ++fragments;
-                Check(object.modelId == 1 && object.modelAnim == 5 && object.field_24 == 1 &&
+                Check(object.modelId == 1 && object.modelAnim == 5 && object.generalPurpose1 == 1 &&
                     object.health >= 50 && object.health <= 99 && object.velocityY >= 2 && object.velocityY <= 7,
                     "Collision 22 zero-selector fragments must use native sprite-fragment fields.");
             }
@@ -638,7 +638,7 @@ namespace
             "Collision 22 must back up two velocities and emit exactly nine breakup fragments.");
         f.context.worldObjects = {};
         f.Set(CollisionType::Type_22);
-        f.Target().field_24 = 30;
+        f.Target().generalPurpose1 = 30;
         auto& linked = f.context.worldObjects[30];
         linked.health = 1000; linked.posX = 1500; linked.posY = 25; linked.posZ = 2000;
         linked.collisionRadiusXZ = 20; linked.collisionRadiusY = 10; linked.renderPlacementMode = 5;
@@ -677,7 +677,7 @@ namespace
         for (auto& object : f.context.worldObjects) { object = {}; object.health = 1000; }
         f.Set(CollisionType::VaseToGrab);
         f.Target().health = 0;
-        f.Target().field_28 = 7;
+        f.Target().generalPurpose3 = 7;
         f.context.DamageObject(f.Target(), 200);
         Check(f.Target().collisionType == CollisionType::Key && f.Target().health == 0 &&
             f.Target().itemValue == 0 && f.Target().posX == 0,

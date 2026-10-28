@@ -103,6 +103,19 @@ namespace
             Check(ObjectBytes(split) == expectedBytes,
                 "Sprite scale writes must change only byte 53, preserving the behavior parameter.");
         }
+        for (unsigned int value = 0; value < 256; ++value)
+        {
+            split.pickupType = static_cast<PickupType>(value);
+            expectedBytes[50] = static_cast<std::uint8_t>(value);
+            Check(ObjectBytes(split) == expectedBytes,
+                "Pickup type must occupy only its original byte, including unnamed values.");
+            const auto decoded = DecodeGameObject(expectedBytes.data(), expectedBytes.size());
+            Check(static_cast<std::uint8_t>(decoded.pickupType) == value,
+                "Decoding must preserve every pickup type byte without normalization.");
+            std::array<std::uint8_t, sizeof(RawGameObject)> encoded{};
+            EncodeGameObject(decoded, encoded.data(), encoded.size());
+            Check(encoded == expectedBytes, "Named and unnamed pickup types must round-trip exactly.");
+        }
 
         RawGameObject copy = object;
         Check(ObjectBytes(copy) == bytes, "Struct copies must preserve all 54 raw bytes.");
@@ -519,7 +532,7 @@ namespace
             object.health = 1000;
             object.posX = positions[sample % positions.size()];
             object.posZ = 0;
-            object.field_26 = static_cast<std::uint16_t>(sample);
+            object.generalPurpose2 = static_cast<std::uint16_t>(sample);
             object.velocityZ = ReferenceSignedWord(sample * 13u);
             object.velocityX = ReferenceSignedWord(sample * 17u);
             state.tickCount = ticks[sample % ticks.size()];
@@ -528,9 +541,9 @@ namespace
             state.lightingCache.contributions[10][10] = 32760;
             auto expectedCache = state.lightingCache.contributions;
             auto expected = object;
-            const auto phase = static_cast<std::int64_t>(object.field_26) +
+            const auto phase = static_cast<std::int64_t>(object.generalPurpose2) +
                 static_cast<std::int64_t>(object.velocityZ) * state.tickCount;
-            expected.field_26 = static_cast<std::uint16_t>((phase % 512 + 512) % 512);
+            expected.generalPurpose2 = static_cast<std::uint16_t>((phase % 512 + 512) % 512);
             auto seed = state.randomSeed;
             if (nextRandom(seed, 15) == 0)
             {
@@ -539,10 +552,10 @@ namespace
             }
             expected.velocityZ = ReferenceSignedWord(expected.velocityZ +
                 ReferenceStep(expected.velocityZ, expected.velocityX, state.tickCount));
-            const auto sine = ClampedSineTable[expected.field_26];
-            expected.field_28 = static_cast<std::uint16_t>(800 + fixedProduct(750, sine));
+            const auto sine = ClampedSineTable[expected.generalPurpose2];
+            expected.generalPurpose3 = static_cast<std::uint16_t>(800 + fixedProduct(750, sine));
             const auto amount = 30 - fixedProduct(25, sine);
-            Check(expected.field_28 >= 50 && expected.field_28 <= 1550 && amount >= 5 && amount <= 55,
+            Check(expected.generalPurpose3 >= 50 && expected.generalPurpose3 <= 1550 && amount >= 5 && amount <= 55,
                 "PulsatingLight pulse bounds differ from native amplitudes.");
             const auto column = (object.posX + 50) / 100 + 10;
             if (column >= 0 && column <= 20)
@@ -568,18 +581,18 @@ namespace
             object = {};
             object.behavior = BehaviorType::PulsatingLight;
             object.health = 1000;
-            object.field_26 = static_cast<std::uint16_t>(phase);
+            object.generalPurpose2 = static_cast<std::uint16_t>(phase);
             state.lightingCache.Reset(0, 0);
             const auto sine = ClampedSineTable[static_cast<std::size_t>(phase)];
             UpdateObjects(state);
-            Check(object.field_26 == phase && object.field_28 == 800 + fixedProduct(750, sine) &&
+            Check(object.generalPurpose2 == phase && object.generalPurpose3 == 800 + fixedProduct(750, sine) &&
                 state.lightingCache.contributions[10][10] == 30 - fixedProduct(25, sine),
                 "Zero-tick world updates must still refresh both pulsating outputs using the clamped sine table.");
         }
         auto& second = state.worldObjects[3];
         second = state.worldObjects[2];
-        second.field_26 = 128;
-        state.worldObjects[2].field_26 = 384;
+        second.generalPurpose2 = 128;
+        state.worldObjects[2].generalPurpose2 = 384;
         state.lightingCache.Reset(0, 0);
         auto seed = state.randomSeed;
         for (int source = 0; source < 2; ++source)
@@ -694,7 +707,7 @@ namespace
         initial.renderPlacementMode = 0xcd;
         initial.renderSortKey = -123;
         initial.soundEffectId = 5;
-        initial.field_24 = 0x1234;
+        initial.generalPurpose1 = 0x1234;
         initial.behaviorParameter = 0xbe;
         initial.spriteScale = 0xba;
         GameContext state;
@@ -851,8 +864,8 @@ namespace
         door.posX = 150;
         door.posZ = 4050;
         door.collisionRadiusY = 10;
-        door.field_07 = 1;
-        door.field_24 = 10;
+        door.collisionMask = 1;
+        door.generalPurpose1 = 10;
         door.modelFrame2 = 1;
         door.behaviorParameter = 0;
         door.spriteScale = 0xab;
@@ -948,7 +961,7 @@ namespace
         auto door = MakeTestDoor();
         const auto original = ObjectBytes(door);
         Check(HandlePlayerObjectInteraction(door, state).status == InteractionStatus::Applied &&
-            door.field_26 == 3 && door.itemValue == 10 && door.displayType == DisplayType::SpriteNormal,
+            door.generalPurpose2 == 3 && door.itemValue == 10 && door.displayType == DisplayType::SpriteNormal,
             "Unlocked door interaction must start opening and refresh the closing delay.");
         for (std::size_t slot = 0; slot < state.inventory.size(); ++slot)
         {
@@ -967,7 +980,7 @@ namespace
             state.inventory[slot].itemValue = 7;
             const auto before = state.inventory;
             Check(HandlePlayerObjectInteraction(door, state).status == InteractionStatus::Applied &&
-                door.doorLockOrGroupBitmask == 0 && door.field_26 == 3 &&
+                door.doorLockOrGroupBitmask == 0 && door.generalPurpose2 == 3 &&
                 door.itemValue == 10 && door.displayType == DisplayType::Hidden,
                 "A matching key in any hand/backpack slot must unlock and activate the door.");
             for (std::size_t index = 0; index < before.size(); ++index)
@@ -1040,11 +1053,11 @@ namespace
             door = MakeTestDoor();
             door.health = static_cast<std::int16_t>(health);
             Check(HandlePlayerObjectInteraction(door, state).status == InteractionStatus::NoEffect &&
-                door.field_26 == 0, "Manual door activation must require health exactly 1000.");
+                door.generalPurpose2 == 0, "Manual door activation must require health exactly 1000.");
         }
         door = MakeTestDoor();
         door.health = 999;
-        door.field_32 = 1;
+        door.pickupType = PickupType::Type_1;
         state = {};
         const auto pickable = ObjectBytes(door);
         const auto pickup = HandlePlayerObjectInteraction(door, state);
@@ -1052,7 +1065,7 @@ namespace
             door.health == 0 && ObjectBytes(state.inventory[0]) == pickable,
             "Nonstandard door health must retain the original generic pickup tail when flagged pickable.");
         door = MakeTestDoor();
-        door.field_26 = 65533;
+        door.generalPurpose2 = 65533;
         state.PromptUserMessage("", 0);
         const auto moving = ObjectBytes(door);
         Check(HandlePlayerObjectInteraction(door, state).status == InteractionStatus::NoEffect &&
@@ -1062,7 +1075,7 @@ namespace
         Check(ObjectBytes(door) == original, "Door fixtures must start from independent state.");
         door.blendWeightOrSpriteOpacity = 100;
         HandlePlayerObjectInteraction(door, state);
-        Check(door.field_26 == 0 && door.itemValue == 10,
+        Check(door.generalPurpose2 == 0 && door.itemValue == 10,
             "An already open unlocked door must refresh its delay without restarting movement.");
     }
 
@@ -1076,8 +1089,8 @@ namespace
         {
             auto door = MakeTestDoor();
             door.blendWeightOrSpriteOpacity = phase;
-            door.field_26 = rate;
-            door.field_24 = delay;
+            door.generalPurpose2 = rate;
+            door.generalPurpose1 = delay;
             door.itemValue = timer;
             door.behaviorParameter = static_cast<std::uint8_t>(occupancy);
             door.spriteScale = 0xab;
@@ -1099,13 +1112,13 @@ namespace
                 {
                     expected.behavior = BehaviorType::None;
                     expected.collisionRadiusXZ = 0;
-                    expected.field_07 = 0;
+                    expected.collisionMask = 0;
                 }
             }
             phase = std::max<std::int16_t>(phase, 0);
             if (phase == 0 || phase == 100) { rate = 0; }
             expected.itemValue = timer;
-            expected.field_26 = rate;
+            expected.generalPurpose2 = rate;
             expected.blendWeightOrSpriteOpacity = phase;
             expected.behaviorParameter = 0;
             expected.spriteScale = 0xab;
@@ -1153,7 +1166,7 @@ namespace
         state.switchGroupMasks[4] = 0;
         door.doorLockOrGroupBitmask = -7;
         Function_Door(door, state);
-        Check(door.health == 1001 && door.collisionRadiusXZ == 10 && door.field_26 == 3 &&
+        Check(door.health == 1001 && door.collisionRadiusXZ == 10 && door.generalPurpose2 == 3 &&
             door.blendWeightOrSpriteOpacity == 3 && door.itemValue == 9 &&
             door.displayType == DisplayType::Hidden,
             "Group activation must allow negative locks and damaged doors without resetting their health.");
@@ -1161,27 +1174,27 @@ namespace
         door.groupIndexOrLock = 4;
         door.doorLockOrGroupBitmask = 7;
         Function_Door(door, state);
-        Check(door.field_26 == 0 && door.blendWeightOrSpriteOpacity == 0,
+        Check(door.generalPurpose2 == 0 && door.blendWeightOrSpriteOpacity == 0,
             "Positive key locks must prevent group activation.");
         state.switchGroupMasks[4] = 0xff;
         door = MakeTestDoor();
         door.blendWeightOrSpriteOpacity = 97;
-        door.field_24 = 0;
-        door.field_26 = 3;
+        door.generalPurpose1 = 0;
+        door.generalPurpose2 = 3;
         Function_Door(door, state);
         Check(door.behavior == BehaviorType::Door && door.blendWeightOrSpriteOpacity == 100 &&
-            door.collisionRadiusXZ == 54 && door.field_07 == 1,
+            door.collisionRadiusXZ == 54 && door.collisionMask == 1,
             "Landing exactly on 100 must not disable a one-shot door.");
         door.blendWeightOrSpriteOpacity = 99;
-        door.field_26 = 3;
+        door.generalPurpose2 = 3;
         Function_Door(door, state);
         Check(door.behavior == BehaviorType::None && door.blendWeightOrSpriteOpacity == 100 &&
-            door.collisionRadiusXZ == 0 && door.field_07 == 0,
+            door.collisionRadiusXZ == 0 && door.collisionMask == 0,
             "Overshooting 100 must disable a one-shot door and its object collision.");
 
         door = MakeTestDoor();
         door.blendWeightOrSpriteOpacity = 50;
-        door.field_26 = 65533;
+        door.generalPurpose2 = 65533;
         auto& blocker = state.worldObjects[3];
         blocker = door;
         blocker.collisionRadiusXZ = blocker.collisionRadiusY = 1;
@@ -1189,7 +1202,7 @@ namespace
         Check(door.blendWeightOrSpriteOpacity == 47 && door.behaviorParameter == 3 && door.spriteScale == 0xab,
             "The final overlap scan must store the blocker slot without changing the marker high byte.");
         Function_Door(door, state);
-        Check(door.blendWeightOrSpriteOpacity == 50 && door.field_26 == 3 && door.itemValue == 10,
+        Check(door.blendWeightOrSpriteOpacity == 50 && door.generalPurpose2 == 3 && door.itemValue == 10,
             "An occupied closing door must reverse and refresh its automatic-close timer.");
         blocker.health = 0;
         auto& player = state.worldObjects[1];
@@ -1197,7 +1210,7 @@ namespace
         player.collisionRadiusXZ = player.collisionRadiusY = 1;
         door.behaviorParameter = 0;
         door.spriteScale = 0xab;
-        door.field_26 = 0;
+        door.generalPurpose2 = 0;
         door.itemValue = 7;
         struct ContactInput final : InputHandler
         {
@@ -1210,10 +1223,10 @@ namespace
             }
         } input;
         Check(UpdatePlayerInteraction(state, input).status == InteractionStatus::NoEffect &&
-            door.behaviorParameter == 1 && door.spriteScale == 0xab && door.field_26 == 0 && input.calls == 1,
+            door.behaviorParameter == 1 && door.spriteScale == 0xab && door.generalPurpose2 == 0 && input.calls == 1,
             "Player contact without input must mark occupancy without activating the door.");
         Function_Door(door, state);
-        Check(door.field_26 == 3 && door.itemValue == 10 &&
+        Check(door.generalPurpose2 == 3 && door.itemValue == 10 &&
             door.behaviorParameter == 0 && door.spriteScale == 0xab,
             "The player marker must reopen the door, then clear because the object scan excludes the player.");
         for (const std::int16_t group : { std::int16_t{ -1 }, std::int16_t{ 5 } })
@@ -1267,13 +1280,13 @@ namespace
         HandlePlayerObjectInteraction(door, state);
         Check(audio.starts == 1 && audio.lastSample == 11 && audio.lastVolume == 255 &&
             state.soundChannelSources[3] == 2, "Opening must use the configured sound and actual world slot.");
-        door.field_26 = 0;
+        door.generalPurpose2 = 0;
         HandlePlayerObjectInteraction(door, state);
         Check(audio.starts == 1, "Opening sound must enforce its one-instance-per-source limit.");
         audio.playing.fill(false);
         door.blendWeightOrSpriteOpacity = 100;
         door.itemValue = 0;
-        door.field_26 = 0;
+        door.generalPurpose2 = 0;
         Function_Door(door, state);
         Check(audio.starts == 2 && audio.lastSample == 11 && door.blendWeightOrSpriteOpacity == 97,
             "Automatic closing must request the configured sound before movement.");
@@ -1296,7 +1309,7 @@ namespace
         Check(audio.starts == 4 && state.randomSeed == seed,
             "Configured sound zero must be silent without entering variant selection.");
         door.blendWeightOrSpriteOpacity = 3;
-        door.field_26 = 65533;
+        door.generalPurpose2 = 65533;
         Function_Door(door, state);
         Check(audio.starts == 4 && door.blendWeightOrSpriteOpacity == 0 && state.randomSeed == seed,
             "Landing exactly on closed must stop without playing the overshoot-only closing sound.");
@@ -1529,16 +1542,16 @@ namespace
         {
             state = {};
             player.health = 1000;
-            player.field_07 = 3;
+            player.collisionMask = 3;
             player.collisionRadiusXZ = 10;
             player.collisionRadiusY = 20;
             target = player;
-            target.field_07 = 2;
+            target.collisionMask = 2;
             target.collisionRadiusXZ = 5;
             target.collisionRadiusY = 7;
             target.collisionType = CollisionType::Gold;
             target.itemValue = 10;
-            target.field_32 = 1;
+            target.pickupType = PickupType::Type_1;
         };
         reset();
         Check(state.FindCollidingObject(1) == 2 && state.FindPlayerCollision() == 2,
@@ -1548,10 +1561,10 @@ namespace
         target.health = -1;
         Check(state.FindCollidingObject(1) == 0, "Negative-health candidates must be ignored.");
         target.health = 1;
-        target.field_07 = 4;
+        target.collisionMask = 4;
         Check(state.FindCollidingObject(1) == 0, "Collision masks must share a bit.");
-        target.field_07 = 2;
-        target.field_32 = 0;
+        target.collisionMask = 2;
+        target.pickupType = PickupType::None;
         player.health = 0;
         Check(state.FindCollidingObject(1) == 2,
             "The original generic query does not gate on source health or candidate pickup flag.");
@@ -1617,7 +1630,7 @@ namespace
         state.worldObjects[164] = state.worldObjects[165];
         Check(state.FindCollidingObject(1) == 164 && state.FindPlayerCollision() == 165,
             "The player wrapper must preserve its post-test slot-165 boundary read.");
-        state.worldObjects[165].field_32 = 0;
+        state.worldObjects[165].pickupType = PickupType::None;
         Check(state.FindPlayerCollision() == 164, "An ineligible boundary candidate must not replace slot 164.");
         Check(state.FindCollidingObject(164) == 0, "Last-slot generic queries must exclude themselves.");
         Check(state.FindCollidingObject(165) == 164, "A valid source in slot 165 must use the original candidate range.");
@@ -1635,12 +1648,12 @@ namespace
             Check(state.FindPlayerCollision() == 2, "Preferred candidates require signed health above 999.");
         }
         state.worldObjects[3].health = 1000;
-        state.worldObjects[3].field_32 = 0;
+        state.worldObjects[3].pickupType = PickupType::None;
         Check(state.FindPlayerCollision() == 2, "Preferred candidates require a nonzero pickup flag.");
-        state.worldObjects[3].field_32 = 1;
-        state.worldObjects[3].field_07 = 4;
+        state.worldObjects[3].pickupType = PickupType::Type_1;
+        state.worldObjects[3].collisionMask = 4;
         Check(state.FindPlayerCollision() == 2, "Preferred candidates must still pass mask filtering.");
-        state.worldObjects[3].field_07 = 2;
+        state.worldObjects[3].collisionMask = 2;
         state.worldObjects[3].posX = 15;
         Check(state.FindPlayerCollision() == 2, "Preferred candidates must still strictly overlap.");
         state.worldObjects[3].posX = 14;
@@ -1702,7 +1715,7 @@ namespace
         target.posZ = 0;
         target.collisionType = CollisionType::Door;
         Check(UpdatePlayerInteraction(state, input).status == InteractionStatus::Applied &&
-            target.health == 1000 && target.field_26 == 3 && target.behaviorParameter == 1,
+            target.health == 1000 && target.generalPurpose2 == 3 && target.behaviorParameter == 1,
             "Door contact must mark occupancy and interaction must activate an unlocked door.");
 
         reset();
@@ -1736,7 +1749,7 @@ namespace
             object.collisionType = type;
             object.itemValue = value;
             object.health = 1000;
-            object.field_32 = 1;
+            object.pickupType = PickupType::Type_1;
             object.modelId = 17;
             object.posX = -123;
             return object;
@@ -1784,7 +1797,7 @@ namespace
 
             state.inventory[0] = pickup(CollisionType::Medicine, 23456);
             auto medicine = pickup(CollisionType::Medicine, value);
-            medicine.field_32 = 0;
+            medicine.pickupType = PickupType::None;
             const auto result = HandlePlayerObjectInteraction(medicine, state);
             Check(result.status == InteractionStatus::Applied && result.inventorySlot == 1 &&
                 state.inventory[0].itemValue == ReferenceSignedWord(23456LL + value) && medicine.health == 0,
@@ -1793,7 +1806,7 @@ namespace
 
         state = {};
         auto map = pickup(CollisionType::PickableMap);
-        map.field_32 = 0;
+        map.pickupType = PickupType::None;
         Check(HandlePlayerObjectInteraction(map, state).status == InteractionStatus::Applied &&
             state.hasMap && map.health == 0, "Map interaction must set ownership without consuming a slot.");
         auto medicine = pickup(CollisionType::Medicine, 25);
@@ -1892,7 +1905,7 @@ namespace
             state = {};
             state.weaponAmounts[type] = 123;
             auto weapon = pickup(CollisionType::Weapon, type);
-            weapon.field_24 = 0x8002;
+            weapon.generalPurpose1 = 0x8002;
             result = HandlePlayerObjectInteraction(weapon, state);
             const auto expectedAmount = type == static_cast<std::int16_t>(WeaponType::Fireball) ? -32766 :
                 type == static_cast<std::int16_t>(WeaponType::None) ||
@@ -1902,8 +1915,8 @@ namespace
                 "Weapon collection must set its original slot and type-specific amount.");
 
             auto duplicate = pickup(CollisionType::Weapon, type);
-            duplicate.field_24 = 0xffff;
-            duplicate.field_07 = 0xff;
+            duplicate.generalPurpose1 = 0xffff;
+            duplicate.collisionMask = 0xff;
             result = HandlePlayerObjectInteraction(duplicate, state);
             if (type == static_cast<std::int16_t>(WeaponType::Stone) ||
                 type == static_cast<std::int16_t>(WeaponType::TrapOrPole))
@@ -1913,7 +1926,7 @@ namespace
             }
             else if (type == static_cast<std::int16_t>(WeaponType::Fireball))
             {
-                Check(result.inventorySlot == 1 && state.inventory[0].field_24 == 0x8001 &&
+                Check(result.inventorySlot == 1 && state.inventory[0].generalPurpose1 == 0x8001 &&
                     state.weaponAmounts[type] == -32767 && duplicate.health == 0,
                     "Duplicate fireball weapons must merge their field-24 charges.");
             }
@@ -1921,7 +1934,7 @@ namespace
             {
                 Check(result.inventorySlot == 1 && duplicate.health == 1000 &&
                     duplicate.collisionType == CollisionType::None &&
-                    duplicate.field_07 == 0 && duplicate.field_32 == 0 &&
+                    duplicate.collisionMask == 0 && duplicate.pickupType == PickupType::None &&
                     state.inventory[1].health == 0,
                     "Other duplicate weapons become non-colliding world objects, not new inventory items.");
             }
@@ -1946,7 +1959,7 @@ namespace
         grouped.groupIndexOrLock = 2;
         grouped.doorLockOrGroupBitmask = 3;
         Check(HandlePlayerObjectInteraction(grouped, state).status == InteractionStatus::Applied &&
-            grouped.field_26 == 10 && grouped.field_24 == 5 && grouped.renderPlacementMode == 0x5a &&
+            grouped.generalPurpose2 == 10 && grouped.generalPurpose1 == 5 && grouped.renderPlacementMode == 0x5a &&
             grouped.soundEffectId == 2 &&
             state.switchGroupMasks[2] == 0xff,
             "Grouped interaction must arm the timer, start activation, and defer mask writes.");
@@ -1954,46 +1967,46 @@ namespace
         Check(HandlePlayerObjectInteraction(grouped, state).status == InteractionStatus::NoEffect &&
             sameObject(grouped, movingSwitch), "Moving switches must ignore reactivation.");
         for (int i = 0; i < 10; ++i) { DispatchObjectCase(grouped, state); }
-        Check(grouped.blendWeightOrSpriteOpacity == 100 && grouped.field_24 == 4 &&
+        Check(grouped.blendWeightOrSpriteOpacity == 100 && grouped.generalPurpose1 == 4 &&
             state.switchGroupMasks[2] == 0xfc, "Grouped timer must start only at full activation.");
         for (int i = 0; i < 4; ++i) { DispatchObjectCase(grouped, state); }
-        Check(grouped.field_24 == 0 && grouped.field_26 == 65526 &&
+        Check(grouped.generalPurpose1 == 0 && grouped.generalPurpose2 == 65526 &&
             state.switchGroupMasks[2] == 0xff, "Interaction and behavior must produce timed mask restoration.");
         for (int i = 0; i < 11; ++i) { DispatchObjectCase(grouped, state); }
-        Check(grouped.blendWeightOrSpriteOpacity == 0 && grouped.field_26 == 0,
+        Check(grouped.blendWeightOrSpriteOpacity == 0 && grouped.generalPurpose2 == 0,
             "Grouped return animation must stop at the inactive endpoint.");
         grouped.blendWeightOrSpriteOpacity = 100;
         grouped.renderPlacementMode = 0x11;
         grouped.soundEffectId = 0x7f;
         state.switchGroupMasks[2] = 0xfc;
         Check(HandlePlayerObjectInteraction(grouped, state).status == InteractionStatus::Applied &&
-            grouped.field_26 == 65526 && grouped.field_24 == 5 && grouped.renderPlacementMode == 0x11 &&
+            grouped.generalPurpose2 == 65526 && grouped.generalPurpose1 == 5 && grouped.renderPlacementMode == 0x11 &&
             grouped.soundEffectId == 0x7f &&
             state.switchGroupMasks[2] == 0xfc, "Manual grouped return must not restore the mask immediately.");
 
         state = {};
         grouped = pickup(CollisionType::GroupedSwitch, 5);
-        grouped.field_24 = 99;
+        grouped.generalPurpose1 = 99;
         const auto switchPreview = grouped;
         result = HandlePlayerObjectInteraction(grouped, state);
         Check(result.inventorySlot == 1 && sameObject(state.inventory[0], switchPreview) &&
-            grouped.health == 0 && grouped.field_26 == 10 && grouped.field_24 == 5,
+            grouped.health == 0 && grouped.generalPurpose2 == 10 && grouped.generalPurpose1 == 5,
             "Generic switch pickup must copy the pre-interaction snapshot, not the newly mutated world object.");
         for (auto& stored : state.inventory) { stored = pickup(CollisionType::Key); }
         grouped = switchPreview;
         result = HandlePlayerObjectInteraction(grouped, state);
         Check(result.status == InteractionStatus::InventoryFull && grouped.health == 1000 &&
-            grouped.field_26 == 10 && grouped.field_24 == 5 &&
+            grouped.generalPurpose2 == 10 && grouped.generalPurpose1 == 5 &&
             state.inventory[0].collisionType == CollisionType::Key,
             "Original local activation must survive a subsequent generic inventory-full result.");
 
         state = {};
         key = pickup(CollisionType::Key);
-        key.field_32 = 0;
+        key.pickupType = PickupType::None;
         Check(HandlePlayerObjectInteraction(key, state).status == InteractionStatus::NoEffect &&
             key.health == 1000, "Unpickable generic objects must remain in the world.");
         auto ammo = pickup(CollisionType::Ammo, -1);
-        ammo.field_32 = 0;
+        ammo.pickupType = PickupType::None;
         Check(HandlePlayerObjectInteraction(ammo, state).status == InteractionStatus::NoEffect,
             "Unpickable ammo must not access its unused amount index.");
         key.health = -1;
@@ -2017,12 +2030,12 @@ namespace
             CollisionType::GrandfatherClockItem })
         {
             auto local = pickup(type);
-            local.field_32 = 0;
+            local.pickupType = PickupType::None;
             local.velocityX = 32767;
-            local.field_24 = 1;
+            local.generalPurpose1 = 1;
             Check(HandlePlayerObjectInteraction(local, state).status == InteractionStatus::Applied,
                 "Known object-local interactions must execute.");
-            Check(type != CollisionType::PuzzleGameTile || local.field_28 == 1,
+            Check(type != CollisionType::PuzzleGameTile || local.generalPurpose3 == 1,
                 "Puzzle tile interaction must set field 28.");
             Check(type != CollisionType::PuzzleSpool || local.velocityX == 1,
                 "Puzzle spool interaction must set velocity X.");
@@ -2179,16 +2192,16 @@ namespace
             std::array<std::uint8_t, 5> expectedGroups;
             std::copy(std::begin(state.switchGroupMasks), std::end(state.switchGroupMasks), expectedGroups.begin());
             const bool grouped = object.behavior == BehaviorType::SwitchGrouped;
-            if (!grouped && expected.field_24 == 0) { expected.field_24 = 10; }
+            if (!grouped && expected.generalPurpose1 == 0) { expected.generalPurpose1 = 10; }
             const auto sum = static_cast<std::int64_t>(static_cast<std::uint16_t>(object.blendWeightOrSpriteOpacity)) +
-                static_cast<std::int64_t>(object.field_26) * static_cast<std::uint16_t>(ticks);
+                static_cast<std::int64_t>(object.generalPurpose2) * static_cast<std::uint16_t>(ticks);
             auto phase = ReferenceSignedWord(sum);
-            if (phase < 0) { phase = 0; expected.field_26 = 0; }
+            if (phase < 0) { phase = 0; expected.generalPurpose2 = 0; }
             if (phase > 100)
             {
                 phase = 100;
-                expected.field_26 = grouped ? 0 :
-                    static_cast<std::uint16_t>(ReferenceSignedWord(-static_cast<std::int64_t>(expected.field_24)));
+                expected.generalPurpose2 = grouped ? 0 :
+                    static_cast<std::uint16_t>(ReferenceSignedWord(-static_cast<std::int64_t>(expected.generalPurpose1)));
             }
             expected.blendWeightOrSpriteOpacity = phase;
             if (grouped)
@@ -2198,20 +2211,20 @@ namespace
                 auto& group = expectedGroups[object.groupIndexOrLock];
                 if (phase == 100) { group = static_cast<std::uint8_t>(group & (255 - mask)); }
                 if (phase == 0) { group = static_cast<std::uint8_t>(group | mask); }
-                if (phase == 100 && ReferenceSignedWord(expected.field_24) > 0 && object.itemValue > 0)
+                if (phase == 100 && ReferenceSignedWord(expected.generalPurpose1) > 0 && object.itemValue > 0)
                 {
-                    const auto countdown = ReferenceSignedWord(static_cast<std::int64_t>(expected.field_24) - ticks);
-                    expected.field_24 = countdown < 1 ? 0 : static_cast<std::uint16_t>(countdown);
+                    const auto countdown = ReferenceSignedWord(static_cast<std::int64_t>(expected.generalPurpose1) - ticks);
+                    expected.generalPurpose1 = countdown < 1 ? 0 : static_cast<std::uint16_t>(countdown);
                     if (countdown < 1)
                     {
-                        expected.field_26 = 0xfff6;
+                        expected.generalPurpose2 = 0xfff6;
                         group = static_cast<std::uint8_t>(group | mask);
                     }
                 }
             }
             else if (phase == 100 && object.behaviorParameter != 0)
             {
-                expected.field_26 = 0;
+                expected.generalPurpose2 = 0;
             }
             const auto result = DispatchObjectCase(object, state);
             Check(result.status == DispatchStatus::ExecutedCase && result.behavior == expected.behavior &&
@@ -2241,17 +2254,17 @@ namespace
                 {
                     object.behaviorParameter = bits % 3 == 0 ? 1 : 0;
                     object.spriteScale = bits % 3 == 1 ? 1 : 0;
-                    object.field_24 = 10;
-                    object.field_26 = static_cast<std::uint16_t>(bits);
+                    object.generalPurpose1 = 10;
+                    object.generalPurpose2 = static_cast<std::uint16_t>(bits);
                     object.blendWeightOrSpriteOpacity = 95;
                     checkUpdate(object, static_cast<std::int16_t>(ticks));
-                    object.field_26 = 10;
+                    object.generalPurpose2 = 10;
                     object.blendWeightOrSpriteOpacity = ReferenceSignedWord(bits);
                     checkUpdate(object, static_cast<std::int16_t>(ticks));
                     object.behaviorParameter = 0;
                     object.spriteScale = 0;
-                    object.field_24 = static_cast<std::uint16_t>(bits);
-                    object.field_26 = behavior == BehaviorType::SwitchGrouped ? 0 : 1;
+                    object.generalPurpose1 = static_cast<std::uint16_t>(bits);
+                    object.generalPurpose2 = behavior == BehaviorType::SwitchGrouped ? 0 : 1;
                     object.blendWeightOrSpriteOpacity = 100;
                     checkUpdate(object, static_cast<std::int16_t>(ticks));
                 }
@@ -2259,8 +2272,8 @@ namespace
             for (const auto enable : { -32768, -1, 0, 1, 32767 })
             {
                 object.itemValue = static_cast<std::int16_t>(enable);
-                object.field_24 = 3;
-                object.field_26 = 0;
+                object.generalPurpose1 = 3;
+                object.generalPurpose2 = 0;
                 object.blendWeightOrSpriteOpacity = 100;
                 checkUpdate(object, 3);
             }
@@ -2275,21 +2288,21 @@ namespace
         first.groupIndexOrLock = 2;
         first.doorLockOrGroupBitmask = 1;
         first.itemValue = 1;
-        first.field_24 = 3;
-        first.field_26 = 10;
+        first.generalPurpose1 = 3;
+        first.generalPurpose2 = 10;
         first.blendWeightOrSpriteOpacity = 90;
         auto second = first;
         second.doorLockOrGroupBitmask = 2;
         second.itemValue = 0;
         DispatchObjectCase(first, shared);
         DispatchObjectCase(second, shared);
-        Check(shared.switchGroupMasks[2] == 0 && first.field_24 == 2,
+        Check(shared.switchGroupMasks[2] == 0 && first.generalPurpose1 == 2,
             "Two grouped switches must combine to clear their shared group.");
         DispatchObjectCase(first, shared);
-        Check(first.field_24 == 1 && shared.switchGroupMasks[2] == 0,
+        Check(first.generalPurpose1 == 1 && shared.switchGroupMasks[2] == 0,
             "An active switch must count elapsed ticks while holding its bits clear.");
         DispatchObjectCase(first, shared);
-        Check(first.field_24 == 0 && first.field_26 == 0xfff6 &&
+        Check(first.generalPurpose1 == 0 && first.generalPurpose2 == 0xfff6 &&
             first.blendWeightOrSpriteOpacity == 100 && shared.switchGroupMasks[2] == 1,
             "Timer expiry must restore bits immediately, before the return animation.");
         DispatchObjectCase(first, shared);
@@ -2819,7 +2832,7 @@ namespace
         drop.posZ = 4050;
         drop.posY = 100;
         drop.velocityY = -2;
-        drop.field_26 = 4;
+        drop.generalPurpose2 = 4;
         drop.behaviorParameter = 0xab;
         drop.spriteScale = 2;
         drop.doorLockOrGroupBitmask = 2;
@@ -2842,22 +2855,22 @@ namespace
         Check(drop.posY == 955 && drop.velocityY == -16, "WaterDrop terminal velocity or integration order differs.");
         drop.posY = 100;
         drop.velocityY = -30;
-        drop.field_24 = 1;
+        drop.generalPurpose1 = 1;
         state.tickCount = 3;
         DispatchObjectCase(drop, state);
-        Check(drop.posY == 10 && drop.velocityY == -30 && drop.field_24 == 65534 &&
+        Check(drop.posY == 10 && drop.velocityY == -30 && drop.generalPurpose1 == 65534 &&
             drop.behaviorParameter == 0xab && drop.spriteScale == 5,
             "WaterDrop waiting must wrap and suppress both growth and velocity clamp.");
 
         drop.posY = 100;
         drop.velocityY = 0;
-        drop.field_24 = 0xffff;
+        drop.generalPurpose1 = 0xffff;
         drop.behaviorParameter = 0xab;
         drop.spriteScale = 0xff;
         drop.doorLockOrGroupBitmask = 255;
         state.tickCount = 258;
         DispatchObjectCase(drop, state);
-        Check(drop.behaviorParameter == 0xab && drop.spriteScale == 1 && drop.field_24 == 0xffff,
+        Check(drop.behaviorParameter == 0xab && drop.spriteScale == 1 && drop.generalPurpose1 == 0xffff,
             "WaterDrop sprite scale must wrap using the low tick byte and signed timer test.");
         drop.behaviorParameter = 0;
         drop.spriteScale = 0;
@@ -2871,11 +2884,11 @@ namespace
 
         drop.posY = 1;
         drop.velocityY = -1;
-        drop.field_24 = 100;
-        drop.field_26 = 4;
+        drop.generalPurpose1 = 100;
+        drop.generalPurpose2 = 4;
         drop.animFrame = 9;
         DispatchObjectCase(drop, state);
-        Check(drop.posY == 0 && drop.field_26 == 4 && drop.animFrame == 9,
+        Check(drop.posY == 0 && drop.generalPurpose2 == 4 && drop.animFrame == 9,
             "WaterDrop equality with floor must not count as impact.");
         drop.behaviorParameter = 0xab;
         drop.spriteScale = 0x17;
@@ -2888,27 +2901,27 @@ namespace
             if (update < 4)
             {
                 Check(drop.posY == -1 && drop.velocityY == 0 && drop.animFrame == 2 &&
-                    drop.field_26 == 4 - update && drop.winX == 0,
+                    drop.generalPurpose2 == 4 - update && drop.winX == 0,
                     "WaterDrop splash must last four updates, not four ticks.");
             }
         }
-        Check(drop.posY == 96 && drop.velocityY == 0 && drop.animFrame == 1 && drop.field_26 == 4 &&
-            drop.field_24 == 20 && drop.behaviorParameter == 0xab && drop.spriteScale == 0 &&
+        Check(drop.posY == 96 && drop.velocityY == 0 && drop.animFrame == 1 && drop.generalPurpose2 == 4 &&
+            drop.generalPurpose1 == 20 && drop.behaviorParameter == 0xab && drop.spriteScale == 0 &&
             drop.winX == 1 && drop.health == 1000,
             "WaterDrop ceiling respawn did not restore timer, frame, size, and splash latch.");
         drop.posY = -1;
-        drop.field_26 = 0;
+        drop.generalPurpose2 = 0;
         level.ceilingObjects[0][0] = 0;
         state.tickCount = 0;
         DispatchObjectCase(drop, state);
-        Check(drop.posY == 20000 && drop.field_26 == 4 && drop.field_24 == 20,
+        Check(drop.posY == 20000 && drop.generalPurpose2 == 4 && drop.generalPurpose1 == 20,
             "WaterDrop zero-tick impact must still decrement its splash counter and use no-ceiling height.");
 
         level = CreateDummyLevel();
         drop.posY = 96;
         drop.velocityY = 0;
-        drop.field_24 = 20;
-        drop.field_26 = 4;
+        drop.generalPurpose1 = 20;
+        drop.generalPurpose2 = 4;
         drop.behaviorParameter = 0xab;
         drop.spriteScale = 0;
         drop.doorLockOrGroupBitmask = 2;
@@ -2927,7 +2940,7 @@ namespace
             splashed = splashed || drop.animFrame == 2;
         } while (cycleUpdates < 200 && !(splashed && drop.animFrame == 1));
         Check(grew && fell && splashed && cycleUpdates == 41 && drop.posY == 96 &&
-            drop.field_24 == 20 && drop.field_26 == 4 && drop.behaviorParameter == 0xab && drop.spriteScale == 0,
+            drop.generalPurpose1 == 20 && drop.generalPurpose2 == 4 && drop.behaviorParameter == 0xab && drop.spriteScale == 0,
             "WaterDrop did not complete the exact wait/grow/fall/four-update-splash/ceiling-reset cycle.");
 
         for (std::size_t i = 0; i < 4; ++i)
@@ -2938,11 +2951,11 @@ namespace
         level.surfaceFlags[0][0] = 28;
         drop.posY = -89;
         drop.velocityY = -20;
-        drop.field_24 = 100;
-        drop.field_26 = 4;
+        drop.generalPurpose1 = 100;
+        drop.generalPurpose2 = 4;
         state.tickCount = 1;
         DispatchObjectCase(drop, state);
-        Check(drop.posY == -97 && drop.animFrame == 2 && drop.field_26 == 3,
+        Check(drop.posY == -97 && drop.animFrame == 2 && drop.generalPurpose2 == 3,
             "WaterDrop floor lookup must use the position before motion, including stacked-floor selection.");
 
         const auto before = ObjectBytes(drop);
@@ -3235,7 +3248,7 @@ namespace
         drop.posX = 150;
         drop.posZ = 4050;
         drop.posY = -1;
-        drop.field_26 = 4;
+        drop.generalPurpose2 = 4;
         drop.winX = 1;
         state.soundListenerX = drop.posX;
         state.soundListenerZ = drop.posZ;

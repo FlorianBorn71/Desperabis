@@ -147,7 +147,7 @@ behavior uses every field this way.
 | `04` | byte | `renderPlacementMode`: common placement/culling selector; individual mode meanings remain provisional |
 | `05` | byte | `soundEffectId`: configured sound-effect ID, not a sample reference or volume |
 | `06` | byte | Collision type |
-| `07` | byte | Collision eligibility mask: an overlap candidate needs at least one bit in common with the source |
+| `07` | byte | `collisionMask`: an overlap candidate needs at least one bit in common with the source |
 | `08..09` | word | Original dispatch discriminator; renderer accessor reads only byte `08` |
 | `0A` | signed word | Health; can also encode a door's switch lock |
 | `0C`, `0E`, `10` | signed words | Position X, Y, Z |
@@ -155,15 +155,21 @@ behavior uses every field this way.
 | `18`, `1A` | signed words | Collision radii XZ and Y |
 | `1C`, `1E`, `20` | signed words | Euler/sprite-dependent values; yaw low bit also controls sprite flipping |
 | `22` | word / bytes | Behavior-dependent parameter; item amount, key/switch index, weapon type, etc. |
-| `24..29` | 6 bytes | Behavior-dependent; no universal common meaning yet |
+| `24`, `26`, `28` | word each | `generalPurpose1`, `generalPurpose2`, `generalPurpose3`: behavior-specific counters, rates, subtypes, links or other parameters; no universal common meaning |
 | `2A` | signed word | Animation blend/transparency parameter |
 | `2C` | word / bytes | Group index or behavior-dependent parameter |
 | `2E` | word | Key lock / group bitmask / behavior-dependent parameter |
 | `30..31` | signed word | `renderSortKey`: overwritten by original render-list postprocessing and used for signed descending sort |
-| `32` | byte | `field_32`: nonzero enables generic inventory pickup and participates in player collision selection |
+| `32` | byte | `pickupType`: byte-sized `PickupType` enum; values other than `None` enable generic inventory pickup and participate in player collision selection; individual positive meanings remain unresolved |
 | `33` | byte | Display type |
 | `34` | byte | `behaviorParameter`: contact-damage factor, door occupancy, switch latch, or other behavior-specific value |
 | `35` | byte | `spriteScale`: independently initialized and grown by sprite behaviors |
+
+`PickupType::None` is zero. Positive constants used by recovered code currently
+have numeric placeholders (`Type_1`, `Type_3`, `Type_4`, `Type_40`, `Type_63`);
+these are not claims about their eventual semantic names. Add or refine entries
+as evidence becomes available. Other raw byte values remain valid and are
+preserved during decoding/encoding rather than rejected or mapped to `None`.
 
 These final two bytes have independent native byte accesses: contact damage
 reads `34h` at `0000:DB56`, smoke creation writes `35h` at `10AC:04EA`,
@@ -696,13 +702,13 @@ existing `GetStepToward` and clamped `Sine` dependencies.
 
 The native order matters:
 
-1. Advance phase `field_26` using the **old** `velocityZ`:
-   `(field_26 + velocityZ * ticks) & 511`.
+1. Advance phase `generalPurpose2` using the **old** `velocityZ`:
+   `(generalPurpose2 + velocityZ * ticks) & 511`.
 2. Draw `Random(15)` once per call. On zero, set `velocityX` to
    `8 + Random(10)`, the target pulse speed.
 3. Move `velocityZ` toward `velocityX` using `GetStepToward` with `ticks`,
    preserving signed-word subtraction, absolute-value, and addition wrapping.
-4. Read the **clamped** 16.16 sine table at the new phase. Set `field_28` to
+4. Read the **clamped** 16.16 sine table at the new phase. Set `generalPurpose3` to
    `800 + floor(750 * sine / 65536)`, in **50..1550**. The downstream meaning
    of this object field is not established by this case.
 5. Add `30 - floor(25 * sine / 65536)`, in **5..55**, to the single local
@@ -830,7 +836,7 @@ Evidence: [posture helpers/controller](player-posture-evidence.txt),
   (correcting the earlier `playerDeathState` interpretation). Life depletion
   still writes -1 to this word; keyboard death gating now checks the actual
   fixed-point player-life meter, not a posture request.
-- `RequestPlayerJump` (`10AC:CF23`) does nothing when player `field_28` is
+- `RequestPlayerJump` (`10AC:CF23`) does nothing when player `generalPurpose3` is
   nonzero. Otherwise, body height exactly 45 plus `playerGrounded` (DS:`05D4`)
   sets physical vertical speed to 7. All other cases request raising with +6.
   A crouched player stands first; another input sample can jump once standing.
@@ -848,7 +854,7 @@ Evidence: [posture helpers/controller](player-posture-evidence.txt),
   Vertical radius is `(height SAR 1)+1`: 23 standing, 15 crouched. Camera and
   collision center remain related by `objectY = eyeY-radiusY-2`.
 - The **collision-map byte**, not FELD `surfaceFlags`, selects water contact.
-  If it is not exactly 1 and player `field_28 == 1`, clear that latch and
+  If it is not exactly 1 and player `generalPurpose3 == 1`, clear that latch and
   invoke jump/raise (`DE45..DE5B`). For low-three-bit category 1 or 3 with
   `eyeY-supportY < 5`, request crouch and set that latch to 1 (`DE61..DE86`).
   The full-byte exit comparison is intentionally preserved, including category 3.
@@ -944,7 +950,7 @@ from the main update's previously observed 2..164 bound.
 **Ordinary switch interaction (`0EF0:0F04`, `10AC:2094`):** implemented by
 `HandleSwitchInteraction` in [Door.cpp](Scaffold/Door.cpp), alongside the shared
 general `GameContext::ActivateObjectGroup` helper it reuses. Only phase **zero** accepts a pull.
-The switch copies return speed `field_24` into animation rate `field_26` even
+The switch copies return speed `generalPurpose1` into animation rate `generalPurpose2` even
 when its index is nonpositive or its positive health is not exactly 1000.
 No independent rate-zero guard is added. Only positive index plus health 1000
 dispatches targets and requests the switch's configured sound (instance limit 1).
@@ -972,8 +978,8 @@ It uses these additional object fields:
 | Byte offset | Named member | Observed grouped-switch role |
 | --- | --- | --- |
 | 34 | `itemValue` | Configured return delay, copied to offset 36 on interaction; must be signed-positive to enable countdown |
-| 36 | `field_24` | Signed countdown, decremented by ticks while fully active |
-| 38 | `field_26` | Signed animation rate |
+| 36 | `generalPurpose1` | Signed countdown, decremented by ticks while fully active |
+| 38 | `generalPurpose2` | Signed animation rate |
 | 42 | `blendWeightOrSpriteOpacity` | Signed animation phase |
 | 44 | `groupIndexOrLock` | Index into the shared group-mask byte array |
 | 46 | `doorLockOrGroupBitmask` | Bit mask; only the low byte persists in shared storage |
@@ -1302,8 +1308,8 @@ Door-specific uses of shared object fields:
 | Member | Ordinary-door meaning |
 | --- | --- |
 | `blendWeightOrSpriteOpacity` | Opening progress, normally 0..100 |
-| `field_26` | Signed motion rate; opening +3, closing -3, stopped 0 |
-| `field_24` | Configured automatic-close delay; signed positive enables it |
+| `generalPurpose2` | Signed motion rate; opening +3, closing -3, stopped 0 |
+| `generalPurpose1` | Configured automatic-close delay; signed positive enables it |
 | `itemValue` | Remaining close-delay ticks |
 | `behaviorParameter` | Previous contact/overlap slot; `spriteScale` is preserved |
 | `velocityY` | Saved collision-map value restored when fully open, not movement |
@@ -1567,7 +1573,7 @@ Initialization leaves all unspecified bytes zero:
 | Blend/opacity word | 100 |
 | Vertical velocity | `600 + Random(500)` |
 | Behavior | `FireParticle` (21) |
-| Angular velocity (`field_24`) | `Random(4)` |
+| Angular velocity (`generalPurpose1`) | `Random(4)` |
 | Lifetime (`health`) | `50 + Random(60)` |
 | Initial display mode | 5 (`VectorUnlit`), not a sprite mode |
 | Vertical acceleration (offset 46) | `clamp(-((RandomSigned(30) + velocityY/health) SAR 1), -30, 1)` |
@@ -1586,7 +1592,7 @@ Each particle update:
 2. Moves the blend/opacity word toward zero by low-word
    `ticks * Random(3)`, using the recovered signed-step helper.
 3. Adds low-word `acceleration * ticks` to vertical velocity.
-4. Adds low-word `field_24 * ticks` to `winY`, without masking to 511.
+4. Adds low-word `generalPurpose1 * ticks` to `winY`, without masking to 511.
 5. Sets display mode to `clamp(37 - (health SAR 2), 30, 36)`.
 
 There is no horizontal motion and no health decrement inside this handler.
@@ -1629,13 +1635,13 @@ The native health gates are exact, not general alive/dead tests:
   map pixel's low three bits are **not** 1, add whole-unit X/Z velocities.
   Otherwise turn `winY` by 16 modulo 512. The predicate is deliberately not
   inverted to a guessed "walkable" interpretation.
-- A signed-positive `field_24` gives a `1/field_24` steering chance toward
+- A signed-positive `generalPurpose1` gives a `1/generalPurpose1` steering chance toward
   DS:`D4D2/D4D6` (the same position globals exposed as sound listener X/Z).
   Convert the wrapped difference to an angle, normalize the angle pair,
   turn by at most 13, and recalculate velocity with the clamped sine table.
   With probability 1/20 clear both horizontal velocities.
-- Set Y to the terrain-only floor. `Random(field_28)==0` perturbs heading by
-  `RandomSigned(20)`, calculates clamped-table velocity and sets `field_28=15`.
+- Set Y to the terrain-only floor. `Random(generalPurpose3)==0` perturbs heading by
+  `RandomSigned(20)`, calculates clamped-table velocity and sets `generalPurpose3=15`.
   Initial zero is intentional: **native Random(0) advances the seed and returns
   zero**, so it guarantees this first direction selection. This corrects the
   scaffold's earlier explicit rejection of zero bounds, including smoke radius 0.
@@ -1898,13 +1904,13 @@ instruction evidence in
 It allocates nothing and requests no sound:
 
 1. Save the original `winX`. Object overlap, or player overlap if no object
-   overlapped, sets `field_28 = 100 + Random(300)` and replaces vertical
+   overlapped, sets `generalPurpose3 = 100 + Random(300)` and replaces vertical
    velocity with its wrapped absolute value. Player overlap ignores player
    health, shares the byte-7 mask, and uses strict signed-word axis bounds.
-2. If `behaviorParameter` is nonzero, `Random(behaviorParameter) == 0` clears `field_28`.
+2. If `behaviorParameter` is nonzero, `Random(behaviorParameter) == 0` clears `generalPurpose3`.
    The separate `spriteScale` byte is not used for this probability.
-3. Execute exactly `tickCount` iterations. Signed-positive `field_28` loses
-   `Random(2)`; there is a 1/10 chance to perturb heading `field_24` by
+3. Execute exactly `tickCount` iterations. Signed-positive `generalPurpose3` loses
+   `Random(2)`; there is a 1/10 chance to perturb heading `generalPurpose1` by
    `RandomSigned(20)`, modulo 512. `winX` and `winY` advance by random amounts
    bounded by the post-decrement state shifted by four/five, plus one.
    A 1/50 chance chooses vertical velocity `Random(30)-12`; Y moves by its
@@ -1920,7 +1926,7 @@ It allocates nothing and requests no sound:
    `floorSurfaceValue`. If this upper clamp fires, replace `winX` with the
    original saved angle plus a step toward `256 + RandomSigned(8)`, bounded
    by the wrapped `6*ticks`; do not use the loop-modified angle here.
-5. Calculate X/Z displacement from heading and signed `field_28`, using the
+5. Calculate X/Z displacement from heading and signed `generalPurpose3`, using the
    ordinary 65536-scale sine table, not the clamped table used by `Sine()`.
    Native `1E48:2E0A` keeps the signed product's high word for X and negates
    the cosine product's high word for Z.
@@ -2052,7 +2058,7 @@ for headless recovery. Configured sound zero remains silent.
 `group+1000` and call `DamageObject(target,0)` in slot order **2..140**.
 Ordinary switch interaction and ordinary door activation now reuse these
 shared paths. Damage-activated switch rate 10 is distinct from explicit
-interaction's `field_24` rate; both native entry points are preserved.
+interaction's `generalPurpose1` rate; both native entry points are preserved.
 
 **Direct dependencies:** `ApplyObjectKnockback` retains low-word products,
 Manhattan normalization, a 30-unit amount cap and the original correction-only
@@ -2295,13 +2301,13 @@ author's approval. Behavior 1 is now `BouncingObject`, also with the author's
 approval: it is a shared physical controller, not solely a thrown-stone or
 fireball behavior. Implemented submodes are 0/8 (fragments), 1 (bouncing flames),
 6 (stones) and 7 (Lentils); other submodes still report unsupported. Numeric behavior 300 calls
-`10AC:29F5`: clear behavior, restore item ID 5, set `field_32=3` and radius 22.
+`10AC:29F5`: clear behavior, restore item ID 5, set `pickupType=PickupType::Type_3` and radius 22.
 
 **Crossbow:** each substep integrates the old velocities, decreases `winX` and
 derives next `velocityY=winX/4` using signed truncation. Wall/floor/ceiling
 reactions, water ripples, lava smoke/destruction, recoverable resting bolts and
 floating transitions are ported. A normal target receives 49 damage, then carries
-the attached bolt (`health=2000`, target slot in `field_24`). Attached poison
+the attached bolt (`health=2000`, target slot in `generalPurpose1`). Attached poison
 uses the captured `arrowPoison` chance and shared RNG; target deactivation releases
 the bolt. Collision type 4 is a switch, not a door: its dedicated impact helper
 copies its timer and activates its group before the ordinary damage call.
@@ -2793,14 +2799,14 @@ original array initializer (floor 255, room 50, ceiling 0).
 1. Query effective floor using the **old** position.
 2. Add `velocityY*ticks` to Y with word wrapping. Set transparent-sprite
    display and opacity 4.
-3. If signed word `field_24` is positive, subtract ticks from that wait
+3. If signed word `generalPurpose1` is positive, subtract ticks from that wait
    timer. Otherwise grow `spriteScale` until it exceeds signed word
    `doorLockOrGroupBitmask`; then subtract ticks from vertical velocity.
    Clamp velocity to -16 only in this non-waiting branch. `behaviorParameter`
    is preserved; growth and subtraction wrap exactly as in the executable.
-4. Only `posY < floor` is impact. Clear `winX`, decrement `field_26` once
+4. Only `posY < floor` is impact. Clear `winX`, decrement `generalPurpose2` once
    **per update**, place Y at floor-1, stop velocity, and select frame 2.
-5. Once signed `field_26 < 1`, select frame 1, restore that counter to 4,
+5. Once signed `generalPurpose2 < 1`, select frame 1, restore that counter to 4,
    move to effective floor plus relative room height, set the wait timer
    from `itemValue`, clear `spriteScale`, and set `winX=1`.
 

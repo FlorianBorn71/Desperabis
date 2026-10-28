@@ -67,8 +67,8 @@ namespace
         object.velocityY = -1;
         object.itemValue = Word(phase);
         object.groupIndexOrLock = 40;
-        object.field_24 = 15;
-        object.field_07 = 3;
+        object.generalPurpose1 = 15;
+        object.collisionMask = 3;
         object.displayType = DisplayType::VectorNormal;
         object.winZ = 150;
         object.blendWeightOrSpriteOpacity = -100;
@@ -112,16 +112,16 @@ namespace
                 break;
             case 3:
                 object.collisionType = CollisionType::Cockroach;
-                if (object.field_26 == 0 && Next(seed, 20) == 0 && object.blendWeightOrSpriteOpacity == -100)
+                if (object.generalPurpose2 == 0 && Next(seed, 20) == 0 && object.blendWeightOrSpriteOpacity == -100)
                 {
-                    object.field_26 = static_cast<std::uint16_t>(Signed(seed, 15));
+                    object.generalPurpose2 = static_cast<std::uint16_t>(Signed(seed, 15));
                 }
                 else
                 {
-                    const int value = Word(object.field_26);
-                    object.field_26 = static_cast<std::uint16_t>(value - ((value > 0) - (value < 0)));
+                    const int value = Word(object.generalPurpose2);
+                    object.generalPurpose2 = static_cast<std::uint16_t>(value - ((value > 0) - (value < 0)));
                 }
-                object.winY = Word(object.winY + object.field_26);
+                object.winY = Word(object.winY + object.generalPurpose2);
                 if (Next(seed, 40) == 0) { object.itemValue = 4; }
                 if (Next(seed, 15) == 0) { object.blendWeightOrSpriteOpacity = -100; }
                 if (Next(seed, 15) == 0) { object.blendWeightOrSpriteOpacity = Word(Next(seed, 100)); }
@@ -149,7 +149,7 @@ namespace
                     Direction(object);
                     object.blendWeightOrSpriteOpacity = -100;
                 }
-                if (Word(object.field_24) > 0 && Next(seed, object.field_24) == 0)
+                if (Word(object.generalPurpose1) > 0 && Next(seed, object.generalPurpose1) == 0)
                 {
                     const int target = GetVectorAngle(Word(1500 - object.posX), Word(2000 - object.posZ));
                     int current = (static_cast<std::uint16_t>(object.winY) % 512) + 512;
@@ -161,7 +161,7 @@ namespace
                 if (object.velocityX != 0 || object.velocityZ != 0) { object.winX = 0; }
                 break;
             case 7:
-                if (object.field_07 < 131) { object.field_07 = 0; }
+                if (object.collisionMask < 131) { object.collisionMask = 0; }
                 object.velocityX = 0;
                 object.velocityZ = 0;
                 object.blendWeightOrSpriteOpacity = 0;
@@ -182,7 +182,7 @@ namespace
                     object.displayType = DisplayType::VectorNormal;
                     object.winY = Word(Next(seed, 512));
                     object.itemValue = 11;
-                    object.field_07 = 3;
+                    object.collisionMask = 3;
                 }
                 break;
             case 11:
@@ -191,7 +191,7 @@ namespace
                 break;
             case 16:
                 object.collisionType = CollisionType::None;
-                object.field_07 = 0;
+                object.collisionMask = 0;
                 object.animFrame = 4;
                 object.modelFrame2 = 3;
                 object.velocityX = 0;
@@ -220,10 +220,10 @@ namespace
         {
             auto object = Fixture(sample % 22 - 2);
             object.winY = Word(sample * 13);
-            object.field_26 = static_cast<std::uint16_t>(sample % 31 - 15);
-            object.field_24 = static_cast<std::uint16_t>(sample % 7 == 0 ? 0x8000 : sample % 17);
+            object.generalPurpose2 = static_cast<std::uint16_t>(sample % 31 - 15);
+            object.generalPurpose1 = static_cast<std::uint16_t>(sample % 7 == 0 ? 0x8000 : sample % 17);
             object.winZ = Word(sample * 79);
-            object.field_07 = static_cast<std::uint8_t>(sample);
+            object.collisionMask = static_cast<std::uint8_t>(sample);
             object.blendWeightOrSpriteOpacity = Word(sample % 401 - 200);
             context.tickCount = static_cast<std::int16_t>(sample % 9);
             context.objectCollisionsEnabled = (sample & 1) != 0;

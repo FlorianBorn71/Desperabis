@@ -54,7 +54,7 @@ namespace
             held = {};
             held.health = 1000; held.collisionType = CollisionType::Weapon;
             held.itemValue = static_cast<std::int16_t>(weapon);
-            held.field_24 = static_cast<std::uint16_t>(amount);
+            held.generalPurpose1 = static_cast<std::uint16_t>(amount);
             context.weaponAmounts[static_cast<std::size_t>(weapon)] = amount;
             context.RefreshWeaponInventory();
         }
@@ -64,7 +64,7 @@ namespace
             auto& enemy = context.worldObjects[slot];
             enemy = {};
             enemy.health = 1000; enemy.collisionType = CollisionType::Skeleton;
-            enemy.behavior = BehaviorType::Skeleton; enemy.field_07 = 2;
+            enemy.behavior = BehaviorType::Skeleton; enemy.collisionMask = 2;
             enemy.groupIndexOrLock = 200;
             enemy.posX = x; enemy.posY = y; enemy.posZ = 1000;
             enemy.collisionRadiusXZ = 12; enemy.collisionRadiusY = 20;
@@ -106,25 +106,25 @@ namespace
         hit.context.AttackWithSelectedWeapon();
         auto& attached = hit.context.worldObjects[2];
         DispatchObjectCase(attached, hit.context);
-        Check(attached.health == 2000 && attached.field_24 == 20 && attached.animFrame == 0 &&
-            attached.field_28 == 100 && enemy.groupIndexOrLock == 151, "Bolt must deal 49 and attach to its target.");
+        Check(attached.health == 2000 && attached.generalPurpose1 == 20 && attached.animFrame == 0 &&
+            attached.generalPurpose3 == 100 && enemy.groupIndexOrLock == 151, "Bolt must deal 49 and attach to its target.");
         enemy.posX = 1100;
         DispatchObjectCase(attached, hit.context);
         Check(attached.posX == 1100 && enemy.groupIndexOrLock == 150, "Attached poison follows the target and deals damage.");
         enemy.behavior = BehaviorType::None;
         DispatchObjectCase(attached, hit.context);
-        Check(attached.health == 1000 && attached.animFrame == 2 && attached.field_24 == 1 &&
+        Check(attached.health == 1000 && attached.animFrame == 2 && attached.generalPurpose1 == 1 &&
             attached.velocityX == 0 && attached.winX == -3, "A bolt detaches when its target stops being active.");
         attached.posY = -1; attached.velocityY = 0;
         DispatchObjectCase(attached, hit.context);
-        Check(attached.behavior == BehaviorType::None && attached.field_32 == 63 &&
-            attached.collisionRadiusXZ == 14 && attached.field_07 == 2, "A settled bolt becomes recoverable ammunition.");
+        Check(attached.behavior == BehaviorType::None && attached.pickupType == PickupType::Type_63 &&
+            attached.collisionRadiusXZ == 14 && attached.collisionMask == 2, "A settled bolt becomes recoverable ammunition.");
 
         Fixture wall;
         wall.Equip(WeaponType::Crossbow);
         wall.context.SetCollisionMapPixelAtWorldXZ(1012, 1000, 8);
         wall.context.AttackWithSelectedWeapon();
-        Check(wall.context.worldObjects[2].velocityX == 0 && wall.context.worldObjects[2].field_24 == 1,
+        Check(wall.context.worldObjects[2].velocityX == 0 && wall.context.worldObjects[2].generalPurpose1 == 1,
             "Crossbow muzzle probes must stop bolts fired directly into a wall.");
     }
 
@@ -136,9 +136,9 @@ namespace
         Check(c.AttackWithSelectedWeapon() == WeaponActionStatus::Applied, "Fireball input must create a charge.");
         auto& ball = c.worldObjects[2];
         Check(ball.behavior == BehaviorType::FireballProjectile && ball.health == 38 &&
-            ball.collisionType == CollisionType::Type_22 && ball.field_26 == 100 &&
+            ball.collisionType == CollisionType::Type_22 && ball.generalPurpose2 == 100 &&
             ball.spriteScale == 45 && ball.behaviorParameter == 50 && ball.velocityX == 25 &&
-            c.inventory[1].field_24 == 1, "Fireball factory must persist the held item's remaining charge.");
+            c.inventory[1].generalPurpose1 == 1, "Fireball factory must persist the held item's remaining charge.");
         c.tickCount = 12;
         c.worldObjects[1].velocityX = -99;
         DispatchObjectCase(ball, c);
@@ -207,7 +207,7 @@ namespace
         for (size_t slot = 3; slot <= 11; ++slot)
         {
             const auto& particle = c.worldObjects[slot];
-            Check(particle.behavior == BehaviorType::BouncingObject && particle.field_24 == 1 &&
+            Check(particle.behavior == BehaviorType::BouncingObject && particle.generalPurpose1 == 1 &&
                 particle.modelId == 1 && particle.modelAnim == 5 && particle.animFrame >= 1 &&
                 particle.animFrame <= 2 && particle.health >= 50 && particle.health <= 99 &&
                 particle.groupIndexOrLock == 5 && particle.itemValue == 75 &&
@@ -248,7 +248,7 @@ namespace
         auto& o = oracle.context;
         RawGameObject initial;
         initial.behavior = BehaviorType::BouncingObject;
-        initial.field_24 = 1;
+        initial.generalPurpose1 = 1;
         initial.modelId = 1;
         initial.modelAnim = 5;
         initial.animFrame = 1;
@@ -348,43 +348,43 @@ namespace
         c.inventory[6].behaviorParameter = 17;
         c.AttackWithSelectedWeapon();
         auto& stone = c.worldObjects[2];
-        Check(stone.behavior == BehaviorType::BouncingObject && stone.field_24 == 6 &&
+        Check(stone.behavior == BehaviorType::BouncingObject && stone.generalPurpose1 == 6 &&
             stone.itemValue == 60 && stone.groupIndexOrLock == 300 && stone.velocityX == 16 &&
             stone.velocityY == 6 && stone.posY == 130 && stone.posZ == 984 &&
             stone.behaviorParameter == 14 && c.inventory[1].behaviorParameter == 17 &&
             c.inventory[6].health == 0, "Stone throws copy the record and refill the vacated hand from the first spare.");
         stone.posY = -1; stone.velocityY = -6;
         DispatchObjectCase(stone, c);
-        Check(stone.posY == 10 && stone.velocityY == 2 && stone.velocityX == 7 && stone.field_26 == 0,
+        Check(stone.posY == 10 && stone.velocityY == 2 && stone.velocityX == 7 && stone.generalPurpose2 == 0,
             "Stone floor bounce must use encoded sprite height, fixed-point restitution and signed half-speed damping.");
         stone.posY = -1; stone.velocityY = -1; stone.velocityX = stone.velocityZ = 0;
         DispatchObjectCase(stone, c);
         Check(stone.behavior == BehaviorType::Behavior_300, "A stone's final bounce selects the resting initializer.");
         DispatchObjectCase(stone, c);
         Check(stone.behavior == BehaviorType::None && stone.itemValue == 5 &&
-            stone.field_32 == 3 && stone.collisionRadiusXZ == 22, "Resting stone restores its pickup identity.");
+            stone.pickupType == PickupType::Type_3 && stone.collisionRadiusXZ == 22, "Resting stone restores its pickup identity.");
 
         Fixture trap;
         trap.Equip(WeaponType::TrapOrPole);
         auto& tc = trap.context;
         tc.inventory[1].behavior = BehaviorType::BearTrapAmmo;
         tc.inventory[1].behaviorParameter = 30;
-        tc.inventory[1].field_07 = 126;
+        tc.inventory[1].collisionMask = 126;
         tc.inventory[1].collisionRadiusXZ = tc.inventory[1].collisionRadiusY = 20;
         tc.AttackWithSelectedWeapon();
         auto& placed = tc.worldObjects[2];
         Check(placed.behavior == BehaviorType::BearTrapAmmo && tc.inventory[1].health == 0 &&
-            placed.velocityY == -10 && placed.field_24 == 0, "Placement copies the held trap without replacing its behavior.");
+            placed.velocityY == -10 && placed.generalPurpose1 == 0, "Placement copies the held trap without replacing its behavior.");
         auto& victim = trap.Enemy(20, 1000, 110);
         victim.velocityY = 8;
         DispatchObjectCase(placed, tc);
-        Check(victim.groupIndexOrLock == 170 && victim.velocityY == 0 && placed.field_24 == 1,
+        Check(victim.groupIndexOrLock == 170 && victim.velocityY == 0 && placed.generalPurpose1 == 1,
             "A trap damages its first victim, stops its vertical motion and closes only once.");
         tc.tickCount = 20;
         DispatchObjectCase(placed, tc);
-        Check(placed.blendWeightOrSpriteOpacity == 100 && placed.field_24 == 65535 &&
+        Check(placed.blendWeightOrSpriteOpacity == 100 && placed.generalPurpose1 == 65535 &&
             placed.behavior == BehaviorType::BearTrapAmmo && victim.groupIndexOrLock == 170,
-            "Closed traps keep their behavior, clamp the blend and disarm via signed field_24=-1.");
+            "Closed traps keep their behavior, clamp the blend and disarm via signed generalPurpose1=-1.");
 
         Fixture water;
         water.Equip(WeaponType::TrapOrPole);
@@ -399,7 +399,7 @@ namespace
         pole.Equip(WeaponType::TrapOrPole);
         auto& pc = pole.context;
         pc.inventory[1].behavior = BehaviorType::MetalPole;
-        pc.inventory[1].field_07 = 126;
+        pc.inventory[1].collisionMask = 126;
         pc.inventory[1].collisionRadiusXZ = pc.inventory[1].collisionRadiusY = 20;
         auto& socket = pole.Enemy(20, 1000, 0);
         socket.collisionType = CollisionType::SwitchForMetalPole;
@@ -562,7 +562,7 @@ namespace
         auto& bolt = ceiling.context.worldObjects[2];
         bolt.posY = 20100;
         DispatchObjectCase(bolt, ceiling.context);
-        Check(bolt.posY == 20000 && bolt.velocityX == 0 && bolt.winX == -10 && bolt.field_24 != 0,
+        Check(bolt.posY == 20000 && bolt.velocityX == 0 && bolt.winX == -10 && bolt.generalPurpose1 != 0,
             "Bolt ceiling impact stops translation and installs a randomized angular fall.");
 
         Fixture water;
@@ -591,7 +591,7 @@ namespace
         auto& marker = t.worldObjects[2];
         marker.posY = 1;
         auto& bridge = t.worldObjects[20];
-        bridge.health = 1000; bridge.field_07 = 128;
+        bridge.health = 1000; bridge.collisionMask = 128;
         bridge.posX = marker.posX; bridge.posZ = marker.posZ;
         bridge.collisionRadiusXZ = 30; bridge.collisionRadiusY = 4;
         DispatchObjectCase(marker, t);
@@ -688,7 +688,7 @@ namespace
             c.weaponAmounts[24] == 99 && c.weaponAmounts[8] == 100,
             "Scythe must use the exact shared low shovel contact, including the native counter alias.");
         DispatchObjectCase(contact, c);
-        Check(hedge.field_24 == 32000 && hedge.field_07 == 0 &&
+        Check(hedge.generalPurpose1 == 32000 && hedge.collisionMask == 0 &&
             contact.behavior == BehaviorType::DriftingParticle && contact.animFrame == 3,
             "A scythe hit must cut the original hedge and create its native impact fragment.");
         for (int tick = 0; tick < 22; ++tick) { DispatchObjectCase(hedge, c); }
@@ -780,8 +780,8 @@ namespace
                 object.behavior = BehaviorType::DestroyableBarrier;
                 object.health = 1000;
                 object.posX = object.posZ = 1000;
-                object.itemValue = 1234; object.field_26 = 65530;
-                object.field_24 = static_cast<std::uint16_t>(goal);
+                object.itemValue = 1234; object.generalPurpose2 = 65530;
+                object.generalPurpose1 = static_cast<std::uint16_t>(goal);
                 c.tickCount = static_cast<std::int16_t>(ticks);
                 auto acceleration = static_cast<std::uint16_t>(65530 + ticks * 100);
                 auto position = std::int16_t{ 1234 };
@@ -790,7 +790,7 @@ namespace
                 position = WrapSignedWord(position + acceleration * ticks);
                 const auto blend = std::min<int>(static_cast<std::uint16_t>(position) / 256, 100);
                 DispatchObjectCase(object, c);
-                Check(object.field_26 == acceleration && object.itemValue == position &&
+                Check(object.generalPurpose2 == acceleration && object.itemValue == position &&
                     object.blendWeightOrSpriteOpacity == blend &&
                     object.behavior == (blend == 100 ? BehaviorType::None : BehaviorType::DestroyableBarrier),
                     "Barrier acceleration, signed comparison and unsigned high-byte blending must wrap natively.");
@@ -825,11 +825,11 @@ namespace
             const auto angle = static_cast<std::int16_t>(signedRandom(20));
             const auto speed = random(5) + 4;
             auto expected = held;
-            expected.blendWeightOrSpriteOpacity = 10; expected.field_26 = 100;
+            expected.blendWeightOrSpriteOpacity = 10; expected.generalPurpose2 = 100;
             expected.collisionRadiusXZ = 11; expected.collisionRadiusY = 6;
             expected.behavior = BehaviorType::BouncingObject; expected.itemValue = 50;
-            expected.field_24 = 7; expected.groupIndexOrLock = 0;
-            expected.renderPlacementMode = 6; expected.field_32 = 0;
+            expected.generalPurpose1 = 7; expected.groupIndexOrLock = 0;
+            expected.renderPlacementMode = 6; expected.pickupType = PickupType::None;
             expected.animFrame = 2; expected.health = 200;
             expected.velocityX = WrapSignedWord(static_cast<std::int32_t>(
                 static_cast<std::uint32_t>(Sine(angle) * speed) >> 16));
@@ -853,7 +853,7 @@ namespace
         auto& marker = c.worldObjects[2];
         auto& bridge = c.worldObjects[20];
         bridge = ReadOriginalObject(directory, "OBJPOS34.DAT", 2);
-        Check(bridge.collisionType == CollisionType::WalkablePlanks && bridge.field_07 == 131 &&
+        Check(bridge.collisionType == CollisionType::WalkablePlanks && bridge.collisionMask == 131 &&
             bridge.displayType == DisplayType::Hidden, "Use a real initially invisible bridge piece.");
         const auto prototype = marker;
         c.tickCount = 5;
@@ -861,13 +861,13 @@ namespace
         {
             marker = prototype;
             marker.posX = bridge.posX; marker.posZ = bridge.posZ; marker.posY = 1;
-            bridge.field_24 = static_cast<std::uint16_t>(hits);
+            bridge.generalPurpose1 = static_cast<std::uint16_t>(hits);
             bridge.displayType = DisplayType::Hidden;
             DispatchObjectCase(marker, c);
             const auto count = std::clamp<int>(WrapSignedWord(hits + 1), 0, 39);
-            Check(marker.health == 0 && marker.field_07 == 0 && marker.posY == bridge.posY &&
+            Check(marker.health == 0 && marker.collisionMask == 0 && marker.posY == bridge.posY &&
                 marker.posX == bridge.posX && marker.posZ == bridge.posZ &&
-                bridge.field_24 == count && bridge.animFrame == count / 10 + 1 &&
+                bridge.generalPurpose1 == count && bridge.animFrame == count / 10 + 1 &&
                 bridge.displayType == DisplayType::VectorNormal && bridge.health == 1000,
                 "A Lentils hit must reveal one piece, cap coverage at 39 and stop immediately without damaging it.");
         }
@@ -878,7 +878,7 @@ namespace
         c.tickCount = 1;
         bridge.displayType = DisplayType::Hidden;
         DispatchObjectCase(marker, c);
-        Check(marker.health == 200 && marker.field_07 == 0 && bridge.displayType == DisplayType::Hidden,
+        Check(marker.health == 200 && marker.collisionMask == 0 && bridge.displayType == DisplayType::Hidden,
             "A marker below the bridge must not reveal it through a blanket proximity effect.");
 
         Fixture depleted;
