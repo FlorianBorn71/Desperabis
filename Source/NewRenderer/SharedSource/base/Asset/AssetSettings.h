@@ -16,6 +16,7 @@ public:
 	};
 
 	AssetQuality assetQuality = AssetQuality::Original;
+	float soundFadeInMilliseconds = 5.f;
 
 	static AssetSettings& Instance();
 };

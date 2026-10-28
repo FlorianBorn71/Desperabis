@@ -57,6 +57,9 @@
     <ClInclude Include="..\SharedSource\base\Asset\Model.h">
       <Filter>Desperabis\Asset</Filter>
     </ClInclude>
+    <ClInclude Include="..\SharedSource\base\Asset\SoundSample.h">
+      <Filter>Desperabis\Asset</Filter>
+    </ClInclude>
     <ClInclude Include="..\SharedSource\base\Asset\ModelAnim.h">
       <Filter>Desperabis\Asset</Filter>
     </ClInclude>

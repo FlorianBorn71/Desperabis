@@ -47,8 +47,8 @@
 	  <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
 	  <LanguageStandard>stdcpp17</LanguageStandard>
 	  <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\SharedSource\base;$(ProjectDir)..\SharedSource;$(ProjectDir)..\..\Decompile\Scaffold;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-	  <PreprocessorDefinitions Condition="'$(Configuration)'=='Debug'">_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-	  <PreprocessorDefinitions Condition="'$(Configuration)'=='Release'">NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(Configuration)'=='Debug'">_DEBUG;_WINDOWS;D_BUILTIN_SAMPLES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <PreprocessorDefinitions Condition="'$(Configuration)'=='Release'">NDEBUG;_WINDOWS;D_BUILTIN_SAMPLES;%(PreprocessorDefinitions)</PreprocessorDefinitions>
 	  <FunctionLevelLinking Condition="'$(Configuration)'=='Release'">true</FunctionLevelLinking>
 	  <IntrinsicFunctions Condition="'$(Configuration)'=='Release'">true</IntrinsicFunctions>
 	</ClCompile>
@@ -59,6 +59,12 @@
 	  <OptimizeReferences Condition="'$(Configuration)'=='Release'">true</OptimizeReferences>
 	</Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(DesperabisAsyncAssets)'=='true'">
+	<ClCompile>
+	  <PreprocessorDefinitions>D_ASYNC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+	  <AdditionalOptions>/await %(AdditionalOptions)</AdditionalOptions>
+	</ClCompile>
+  </ItemDefinitionGroup>
   <ItemGroup>
 	<ClInclude Include="..\SharedSource\DX11\NativeTextureDX11.h" />
 	<ClInclude Include="..\SharedSource\DX11\RenderContextDX11.h" />
@@ -68,6 +74,7 @@
 	<ClInclude Include="..\SharedSource\Sample\FreeCamera.h" />
 	<ClInclude Include="..\SharedSource\Sample\LevelScene.h" />
 	<ClInclude Include="pch.h" />
+	<ClInclude Include="AudioPlayer.h" />
   </ItemGroup>
   <ItemGroup>
 	<ClCompile Include="..\SharedSource\DX11\BuiltInShaders_Release.cpp" />
@@ -80,10 +87,12 @@
 	<ClCompile Include="..\SharedSource\IO\builtin\BuiltInLEVEL.cpp" />
 	<ClCompile Include="..\SharedSource\IO\builtin\BuiltInVEKT.cpp" />
 	<ClCompile Include="..\SharedSource\IO\builtin\BuiltInMapIcons.cpp" />
+	<ClCompile Include="..\SharedSource\IO\builtin\BuiltInSAMP.cpp" />
 	<ClCompile Include="..\SharedSource\IO\FileManagerBuiltIn.cpp" />
 	<ClCompile Include="..\SharedSource\Sample\FreeCamera.cpp" />
 	<ClCompile Include="..\SharedSource\Sample\LevelScene.cpp" />
 	<ClCompile Include="DesperabisGame-DX11.cpp" />
+	<ClCompile Include="AudioPlayer.cpp" />
 	<ClCompile Include="pch.cpp">
 	  <PrecompiledHeader>Create</PrecompiledHeader>
 	</ClCompile>

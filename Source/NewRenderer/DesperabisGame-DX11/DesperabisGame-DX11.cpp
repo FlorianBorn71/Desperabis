@@ -5,6 +5,7 @@
 #include "pch.h"
 #include <GameContext.h>
 #include <GameMath.h>
+#include "AudioPlayer.h"
 
 #include <DesperabisCommon.h>
 #include <Asset/AssetManager.h>
@@ -66,6 +67,7 @@ namespace
 	std::shared_ptr<Camera> g_camera;
 	class GameAppContext;
 	std::unique_ptr<GameAppContext> g_gameCore;
+	std::unique_ptr<AudioPlayer> g_audioPlayer;
 	std::array<std::shared_ptr<TextureAnim>, 3> g_fontAnimations;
 	std::unique_ptr<Font> g_promptFont;
 	bool g_initialized = false;
@@ -482,11 +484,7 @@ namespace
 	{
 		FileManager& fileManager = FileManager::Instance();
 		const std::wstring path = fileManager.FilenameToNative(filename);
-#if defined(D_ASYNC)
-		return fileManager.ReadDataFuture(path).get();
-#else
-		return fileManager.ReadDataFuture(path);
-#endif
+		return FORCE_GET(fileManager.ReadDataFuture(path));
 	}
 
 	int16_t ToNativeWord(float value)
@@ -648,6 +646,7 @@ namespace
 
 	void LoadGameLevel(int levelIndex)
 	{
+		g_gameCore->StopAllSoundEffects();
 		g_tickAccumulator = 0.0;
 
 		try
@@ -741,16 +740,16 @@ namespace
 		}
 	}
 
-	void InitDesperabis()
+	FUTURE(void) InitDesperabis()
 	{
 		RenderingSettings::SetRelativeGeometryScaling(1.f);
 		g_fileManager.Initialize();
 		g_renderSettings.gridVisibility = false;
 
 		// the renderer must exist before assets can be loaded
-		FORCE_WAIT(g_renderer.Initialize(g_d3dDevice.Get(), g_d3dContext.Get(),
-			g_renderTargetView.Get(), g_depthStencilView.Get(), g_viewport));
-		FORCE_WAIT(AssetManager::Instance().Initialize());
+		CO_AWAIT g_renderer.Initialize(g_d3dDevice.Get(), g_d3dContext.Get(),
+			g_renderTargetView.Get(), g_depthStencilView.Get(), g_viewport);
+		CO_AWAIT AssetManager::Instance().Initialize();
 
 		g_promptFont = std::make_unique<Font>();
 		g_promptFont->SetSpaceWidth(6.f);
@@ -768,22 +767,24 @@ namespace
 		fontPalette->BuildGrayscale();
 		for (size_t i = 0; i < g_fontAnimations.size(); ++i)
 		{
-#if defined(D_ASYNC)
-			g_fontAnimations[i] = AssetManager::Instance().LoadAsset<TextureAnim>(fontFiles[i], fontPalette).get();
-#else
-			g_fontAnimations[i] = AssetManager::Instance().LoadAsset<TextureAnim>(fontFiles[i], fontPalette);
-#endif
+			g_fontAnimations[i] = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(fontFiles[i], fontPalette);
 			g_promptFont->AddGlyphs(g_fontAnimations[i].get(), characterMappings[i]);
 		}
 
 		g_gameCore = std::make_unique<GameAppContext>();
-#if defined(D_ASYNC)
-		g_fireballFrames = AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\SCHUSS1.AN2").get();
-		g_hudAnimations = AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\AMA_ANI.AN2").get();
-#else
-		g_fireballFrames = AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\SCHUSS1.AN2");
-		g_hudAnimations = AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\AMA_ANI.AN2");
-#endif
+		g_fireballFrames = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\SCHUSS1.AN2");
+		g_hudAnimations = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\AMA_ANI.AN2");
+		std::vector<std::shared_ptr<const SoundSample>> samples;
+		for (int sample = 1; sample <= 129; ++sample)
+		{
+			samples.push_back(CO_AWAIT AssetManager::Instance().LoadAsset<SoundSample>(
+				L"SAMP\\SOUND" + std::to_wstring(sample) + L".SMP"));
+		}
+		const auto soundTable = CO_AWAIT FileManager::Instance().ReadDataFuture(
+			FileManager::Instance().FilenameToNative(L"SAMP\\S_TAB.PRB"));
+		g_gameCore->LoadSoundEffects(soundTable.data(), soundTable.size());
+		g_audioPlayer = std::make_unique<AudioPlayer>(std::move(samples));
+		g_gameCore->audioHandler = g_audioPlayer.get();
 		if (!g_fireballFrames || g_fireballFrames->m_frames.size() != 10)
 		{
 			throw std::runtime_error("Expected the original ten-frame SCHUSS1 fireball animation.");
@@ -809,6 +810,9 @@ namespace
 	void DeinitDesperabis()
 	{
 		g_initialized = false;
+		g_gameCore->StopAllSoundEffects();
+		g_gameCore->audioHandler = nullptr;
+		g_audioPlayer.reset();
 		g_gameCore->ClearPrompt();
 		g_gameCore->ClearHealthBar();
 		ClearGameObjects();
@@ -1024,7 +1028,15 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR,
 		MessageBoxW(g_hWnd, L"Failed to create a D3D11 device.", g_windowTitle, MB_ICONERROR);
 		return 1;
 	}
-	InitDesperabis();
+	try
+	{
+		FORCE_WAIT(InitDesperabis());
+	}
+	catch (const std::exception& error)
+	{
+		MessageBoxA(g_hWnd, error.what(), "Desperabis initialization failed", MB_ICONERROR);
+		return 1;
+	}
 
 	MSG msg = {};
 	while (msg.message != WM_QUIT)

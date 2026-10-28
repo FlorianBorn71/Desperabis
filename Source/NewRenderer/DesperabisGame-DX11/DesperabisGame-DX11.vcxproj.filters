@@ -29,6 +29,7 @@
 	<ClInclude Include="..\SharedSource\Sample\FreeCamera.h"><Filter>Shared\Sample</Filter></ClInclude>
 	<ClInclude Include="..\SharedSource\Sample\LevelScene.h"><Filter>Shared\Sample</Filter></ClInclude>
 	<ClInclude Include="pch.h"><Filter>Source</Filter></ClInclude>
+	<ClInclude Include="AudioPlayer.h"><Filter>Source</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
 	<ClCompile Include="..\SharedSource\DX11\BuiltInShaders_Release.cpp"><Filter>Shared\DX11</Filter></ClCompile>
@@ -41,10 +42,12 @@
 	<ClCompile Include="..\SharedSource\IO\builtin\BuiltInLEVEL.cpp"><Filter>Shared\IO\builtin</Filter></ClCompile>
 	<ClCompile Include="..\SharedSource\IO\builtin\BuiltInVEKT.cpp"><Filter>Shared\IO\builtin</Filter></ClCompile>
 	<ClCompile Include="..\SharedSource\IO\builtin\BuiltInMapIcons.cpp"><Filter>Shared\IO\builtin</Filter></ClCompile>
+	<ClCompile Include="..\SharedSource\IO\builtin\BuiltInSAMP.cpp"><Filter>Shared\IO\builtin</Filter></ClCompile>
 	<ClCompile Include="..\SharedSource\IO\FileManagerBuiltIn.cpp"><Filter>Shared\IO</Filter></ClCompile>
 	<ClCompile Include="..\SharedSource\Sample\FreeCamera.cpp"><Filter>Shared\Sample</Filter></ClCompile>
 	<ClCompile Include="..\SharedSource\Sample\LevelScene.cpp"><Filter>Shared\Sample</Filter></ClCompile>
 	<ClCompile Include="DesperabisGame-DX11.cpp"><Filter>Source</Filter></ClCompile>
+	<ClCompile Include="AudioPlayer.cpp"><Filter>Source</Filter></ClCompile>
 	<ClCompile Include="pch.cpp"><Filter>Source</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>

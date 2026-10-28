@@ -5,6 +5,76 @@ Minimal standalone DX11 window without menus. On startup it loads level 11 and r
 Both standalone project and solution builds write to the repository's `Bin` folder:
 Release uses `Bin`, and Debug uses `Bin\Debug`.
 
+## Audio and asset loading
+
+The host installs an XAudio2-backed `AudioPlayer` through GameCore's existing
+`AudioHandler` interface. GameCore alone resolves `S_TAB.PRB`, draws random
+sample variants, computes volume and admits sounds to the four native channels.
+The backend receives a **one-based sample index**, zero-based channel and
+volume 0..255; it does not interpret sound-effect IDs or use an RNG.
+The supplied volume is a fixed linear gain (`volume / 255`) for the entire sample;
+moving the listener does not change an already-playing sample's volume.
+
+All 129 `SAMP\SOUND<n>.SMP` files are `SoundSample` resources loaded and cached
+through `AssetManager`. Match the browser's original loader: **the entire file**
+is unsigned 8-bit, mono PCM at **11025 Hz**. No bytes are interpreted as a header
+or removed, even if leading bytes resemble a frequency or length. XAudio2 handles
+resampling to the output device. Playback is centered mono; music WAV files and
+additional spatialization are not implemented.
+
+At load time, a separate playback buffer receives a short linear fade-in around
+unsigned PCM silence (128), reducing clicks from abrupt sample starts. The raw
+buffer and embedded files remain byte-exact; no leading bytes are removed.
+`AssetSettings::Instance().soundFadeInMilliseconds` configures the duration
+globally (default **5 ms**, **0** disables it). Set it before loading sound assets;
+already-cached resources retain their prepared buffers. The fade is clamped to
+the sample length and does not add a playback delay. Negative/nonfinite durations
+are rejected. Water-drop variants 5 and 38 both have strong six-byte onset
+transients; tests verify the default fade reduces these to at most 12 PCM units
+from silence, versus up to 128 in the originals.
+
+`BuiltInSAMP.cpp` embeds those samples and `SAMP\S_TAB.PRB`, so no external sample
+directory is needed. To regenerate from the repository root, build
+`GenerateBuiltInCpps`, then run:
+
+```powershell
+.\Source\NewRenderer\GenerateBuiltInCpps\x64\Debug\GenerateBuiltInCpps.exe --samples `
+  Data\SourceAssets\Original\SAMP `
+  Source\NewRenderer\SharedSource\IO\builtin\BuiltInSAMP.cpp
+```
+
+The backend retains shared sample resources until its voices are destroyed.
+Level changes and shutdown stop all sounds and clear core channel ownership.
+Because XAudio2 stop/flush is asynchronous, `StopAllSamples` destroys the source
+voices synchronously; subsequent playback recreates only the channels it needs.
+The output voice/engine remain alive. Initialization/API errors are explicit;
+audio initialization failures are shown in the startup error dialog.
+
+Asset loading uses `CO_AWAIT`, which is empty in synchronous builds. The synchronous
+core file-loading override uses `FORCE_GET`; `FORCE_WAIT` consumes void results at
+startup and existing synchronous host boundaries. Both helpers use `.get()` in
+async builds so exceptions are not discarded. No per-call `D_ASYNC` branches are
+needed. To build this game or its audio tests in async mode, pass
+`/p:DesperabisAsyncAssets=true` to MSBuild; the game and BaseLibrary use the same
+`D_ASYNC` definition and existing MSVC C++17 `/await` support.
+
+Audio integration tests (require a working Windows audio output device):
+
+```powershell
+msbuild Source\NewRenderer\DesperabisGame-DX11\AudioTests.vcxproj /p:Configuration=Debug /p:Platform=x64
+.\Source\NewRenderer\DesperabisGame-DX11\x64\Debug\AudioTests\AudioTests.exe Data\SourceAssets\Original\SAMP
+```
+
+Repeat with `/p:DesperabisAsyncAssets=true` to exercise async loading. Tests compare
+every built-in PCM byte with the original, verify asset caching and invalid-input
+errors, exercise all four XAudio2 channels, natural completion, immediate stop/reuse,
+resource ownership after cache teardown, core RNG/channel dispatch and await-result/
+exception propagation. A volume-meter test checks actual mixed-output gain at
+0, 64, 128 and 255 throughout playback and after channel reuse, using a quiet test
+tone. Other direct playback checks are muted; the core-dispatch check uses volume 1/255.
+
+## Gameplay integration
+
 The project links against `Desperabis-GameCore`. `GameAppContext` in
 `DesperabisGame-DX11.cpp` derives directly from `Desperabis::GameContext`:
 

@@ -171,9 +171,15 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(DesperabisAsyncAssets)'=='true'">
+    <ClCompile>
+      <PreprocessorDefinitions>D_ASYNC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="..\SharedSource\base\Asset\AnimationSequence.h" />
     <ClInclude Include="..\SharedSource\base\Asset\AssetBase.h" />
+    <ClInclude Include="..\SharedSource\base\Asset\SoundSample.h" />
     <ClInclude Include="..\SharedSource\base\Asset\AssetManager.h" />
     <ClInclude Include="..\SharedSource\base\Asset\DebugGeometry.h" />
     <ClInclude Include="..\SharedSource\base\Asset\GridCellArray.h" />

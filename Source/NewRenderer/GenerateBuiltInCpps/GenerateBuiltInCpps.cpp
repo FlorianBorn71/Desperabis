@@ -5,8 +5,24 @@
 #include <iostream>
 #include <IO/BuiltInCppGenerator.h>
 
-int main()
+int main(int argc, char** argv)
 {
+    if (argc == 4 && std::string_view(argv[1]) == "--samples")
+    {
+        const std::filesystem::path source = argv[2];
+        std::vector<std::filesystem::path> files;
+        std::vector<std::string> names;
+        files.push_back(source / "S_TAB.PRB");
+        names.push_back("SAMP\\S_TAB.PRB");
+        for (int sample = 1; sample <= 129; ++sample)
+        {
+            const auto name = "SOUND" + std::to_string(sample) + ".SMP";
+            files.push_back(source / name);
+            names.push_back("SAMP\\" + name);
+        }
+        BuiltInCppFileGenerator::GenerateCpp(argv[3], "RegisterFiles_BuiltInSAMP", files, names);
+        return 0;
+    }
     std::filesystem::path cwd = std::filesystem::current_path();
 
     //////////////////////////////////////////////////////////////////////

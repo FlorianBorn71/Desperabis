@@ -26,6 +26,9 @@ void FileManagerBuiltIn::Initialize()
 	RegisterFiles_BuiltInGRAFIK();
 	RegisterFiles_BuiltInLEVEL();
 	RegisterFiles_BuiltInVEKT();
+#if defined(D_BUILTIN_SAMPLES)
+	RegisterFiles_BuiltInSAMP();
+#endif
 	RegisterFiles_BuiltInMapIcons();
 }
 
@@ -56,7 +59,7 @@ FUTURE(std::vector<unsigned char>) FileManagerBuiltIn::ReadDataFuture(std::wstri
 			fread(&data[i], 1, 1, fIn);
 		}
 		fclose(fIn);
-		return data;
+		CO_RETURN data;
 	}
 
     CO_RETURN std::vector<unsigned char>();

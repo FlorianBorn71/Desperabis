@@ -20,12 +20,14 @@
     #define CO_AWAIT co_await
     #define CO_RETURN co_return
     #define FUTURE(_T) std::future<_T>
-    #define FORCE_WAIT(_expr) (_expr).wait()
+    #define FORCE_WAIT(_expr) (_expr).get()
+    #define FORCE_GET(_expr) (_expr).get()
 #else
     #define CO_AWAIT
     #define CO_RETURN return
     #define FUTURE(_T) _T
     #define FORCE_WAIT(_expr) _expr
+    #define FORCE_GET(_expr) _expr
 #endif
 
 

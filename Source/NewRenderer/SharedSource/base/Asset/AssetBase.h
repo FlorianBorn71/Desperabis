@@ -11,6 +11,7 @@ public:
     }
 
     const Palette* GetPalette() const { return m_palette.get(); }
+    size_t GetRemainingSize() const { return m_rawBuffer.size() - static_cast<size_t>(m_currentPos); }
 
     int Read(char* dest, int count);
 
@@ -83,5 +84,4 @@ protected:
     std::wstring m_debugName;
 #endif
 };
-
 
