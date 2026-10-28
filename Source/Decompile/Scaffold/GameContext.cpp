@@ -920,6 +920,25 @@ namespace Desperabis
         }
     }
 
+    InteractionResult GameContext::HandleActivationTriggerContact(RawGameObject& object)
+    {
+        if (!behaviorDispatchEnabled) { return { InteractionStatus::NoEffect }; }
+        const auto health = WrapSignedWord(object.itemValue + 1000);
+        if (object.collisionType == CollisionType::DeadBullHead)
+        {
+            object.collisionType = CollisionType::None;
+        }
+        else { SetObjectHealth(object, 0); }
+        for (std::size_t slot = 2; slot <= 140; ++slot)
+        {
+            auto& target = worldObjects[slot];
+            if (target.health != health) { continue; }
+            DamageObject(target, 0);
+            SetObjectHealth(target, 1000);
+        }
+        return { InteractionStatus::Applied };
+    }
+
     void GameContext::ApplyObjectKnockback(RawGameObject& object, std::int16_t amount)
     {
         if (object.health != 1000) { return; }

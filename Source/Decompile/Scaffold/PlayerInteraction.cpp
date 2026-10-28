@@ -10,6 +10,11 @@ namespace Desperabis
             return { InteractionStatus::NoEffect };
         }
         auto& object = context.worldObjects[context.playerCollisionSlot];
+        if (object.collisionType == CollisionType::TriggerActivation ||
+            object.collisionType == CollisionType::DeadBullHead)
+        {
+            return context.HandleActivationTriggerContact(object);
+        }
         if (object.collisionType == CollisionType::Cockroach)
         {
             return context.HandleCockroachContact(object);

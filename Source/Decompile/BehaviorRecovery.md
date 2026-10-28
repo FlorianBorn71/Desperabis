@@ -234,14 +234,14 @@ case BehaviorType::BatIndoor:
     return Function_BatIndoor(object, context);
 ```
 
-Pillar, LightSource, PulsatingLight, Door, Flies, RatAndSnake, FloatingDebris, behavior 18, FireParticle, BurningFireplace,
+Pillar, LightSource, PulsatingLight, Door, Flies, RatAndSnake, BatIndoor, Mummie, MummieGuard, FloatingDebris, behavior 18, FireParticle, BurningFireplace,
 IdleAnimation, SmokeFading, SpawnInCrater, Switch1, SwitchGrouped, WaterDrop, LevelStartOverride,
 and DisabledSentinel return `ExecutedCase`. The other
 handlers return `UnimplementedHandler` without moving objects or writing
 globals. Every handler returns its enum identity, for example:
 
 ```cpp
-return { DispatchStatus::UnimplementedHandler, BehaviorType::BatIndoor, 0x161D };
+return { DispatchStatus::UnimplementedHandler, BehaviorType::BatOutdoor, 0x16A3 };
 ```
 
 ### Coverage and word-sized behavior values
@@ -264,33 +264,146 @@ the generator preserves this ordering and the renderer's inline comments.
 Renderer enum values remain useful 1:1 identifiers for their named values,
 but its byte accessor does not represent all runtime discriminator values.
 
-## BatIndoor: first bounded recovery target
+## BatIndoor: indoor flight, roosting and death
 
-Pillar has since been selected as the first behavior investigation. Its writer
-and shared collision-map pointer are explained in [Pillar.md](Pillar.md).
-Its handler and point writer are now implemented and host-tested; the following
-BatIndoor lead is retained for later investigation.
+Selector `14`, comparison `0000:1618`, body `0000:161D`, and helper
+`10AC:3391..37E3` are implemented. See [native instructions](bat-indoor-evidence.txt)
+and [distance, wall-query and RNG helpers](bat-indoor-support-evidence.txt).
+The wrapper calls the helper once per behavior tick, supplying `itemValue` as
+horizontal speed, `generalPurpose1` as the animation increment, a floor-relative
+height cap of 10000, and a flag that is true only on the first substep.
+The original records contain 50 indoor bats, normally with speed 4 and animation
+increment 47. `generalPurpose2` is the target heading; `doorLockOrGroupBitmask`
+stores the fractional Y remainder used by `AddFixedPoint8`.
 
-Verified selector: `14`, comparison at `0000:1618`, body at `0000:161D`.
-The branch wrapper is equivalent to the following pseudocode:
+* **Flying (`health == 1000`):** restore collision type 14 and turn a hidden
+  display into `VectorNormal`. Move X/Z by the previous velocity and integrate
+  Y as signed 8.8 motion. Pitch approaches zero at 23 angle units per tick.
+  At random intervals choose vertical drift, or, for nonzero `behaviorParameter`,
+  sometimes approach player eye Y plus half body height. Target heading wanders
+  randomly; visual yaw follows it by at most 18 units per tick.
+* **Walls:** calculate clamped-sine horizontal velocity, then require five clear
+  map samples at 3, 6, 9, 12 and 15 times that velocity, testing mask `0x38`.
+  Turn the target heading by a randomly chosen -20 or +20 until clear. The
+  original has no retry bound; the port exhausts the 128 reachable headings,
+  then uses the existing explicit `HandleBlockedObject` diagnostic/discard policy
+  instead of hanging on a fully enclosed or malformed placement.
+* **Floor/ceiling:** below floor+15, set upward fixed-point velocity to 150 times
+  the shortfall. Ceiling Y is room height plus the terrain floor, not the flat
+  surface shortcut. Above ceiling-20, a bat farther than 350 units roosts at
+  ceiling Y; otherwise it descends with velocity -400.
+* **Roosting (`health == 3000`):** blend toward frame 3 by 9 per tick, with the
+  native possible overshoot past 100, and pitch toward 128. Distance strictly
+  below 300 wakes it, restoring health/state 1000 and blend target frame 2.
+* **Dying (`health == 2000`):** the existing lethal-damage route clears collision,
+  starts vertical velocity at 2 and blend at -100. Gravity and pitch toward 256
+  continue until it lands and the blend reaches zero. The behavior then becomes
+  `None`, retaining the corpse and its state word rather than deleting it.
 
-```text
-for step = 1 to tickCount:
-    call unresolved module 10AC:3391(
-        originalObjectSlot,
-        rawWord(object + 22h),
-        rawWord(object + 24h),
-        10000,
-        step == 1)
-continue at shared object postprocessing 0000:5110
-```
+Flying animation advances by the signed-word increment modulo 200 **only on
+the first movement substep**, not once per tick. Distance is recomputed before
+each substep. The configured sound is probabilistic with range
+`2 * (distance + 1)` and doubled-distance volume attenuation; sample selection
+uses the existing sound dispatcher and shared RNG.
 
-This describes the original instructions, **not** an implemented C++ handler.
-The parameter meanings and helper's movement/collision/global effects remain
-unrecovered. Do not guess names such as speed/radius for the two object words.
+The renderer's existing object-state bridge consumes the resulting position,
+angles and frame blend without a separate renderer behavior. `bat-indoor-behavior`
+checks 4096 full-record/RNG reference cases, original collision maps for all
+50 asset records, wall lookahead, stuck diagnostics/lifecycle hooks, wake/sleep
+thresholds, weapon death, audio, runtime tick clocks and player eye-height tracking.
+BatOutdoor remains separate and unrecovered (`0000:16A3`, helper `10AC:5BE7`).
 
-BatOutdoor has a separate wrapper at `0000:16A3` calling `10AC:5BE7`.
-These are not assumed to be the same movement routine.
+## Mummie and MummieGuard
+
+Ordinary mummy selector `35`, body `0000:1CE2`, calls the common mummy/gorilla
+helper `10AC:5FE0..6564` once per behavior tick, but only when signed `health`
+is below 1001. Its parameters are speed 3, animation increment 8, terrain-relative
+height 30, fading death enabled and random pausing enabled. See
+[native helper and wrappers](mummy-evidence.txt). Gorilla is not implemented here.
+
+* **Alive (`generalPurpose1 == 0`):** restore hidden models and collision mask
+  254; snap Y to the interpolated terrain floor plus 30. Toggle `spriteScale`
+  between 0 and 1 as a movement gate, not a vector-model scale. Actual movement
+  additionally requires `field_D500`; close-range attacks suppress translation.
+  Preserve the native random pause, pursuit and wandering draws even when a
+  distance/negative-heading condition independently selects the same branch.
+* **Contact:** strictly below Manhattan listener distance 70, apply
+  `-29491 * behaviorParameter` to signed 16.16 player life through the shared
+  suppression/clamping/depletion and health-callback API. Always set hit ticks
+  to 8, including zero/suppressed damage. Pursuit is forced below distance 150.
+* **Walls:** query a 3x3 collision neighborhood at position plus velocity,
+  mask `0x38`, correction step 3. Turn by -64 or +64 and apply twice the
+  correction. Retry through at most 11 queries, stopping when corrections clear
+  or the **masked** center is positive. Use the existing diagnostic/discard
+  policy after exhausting the attempts, then preserve native postprocessing.
+  Initial velocities use the clamped sine table; collision turns use the ordinary
+  table. Normalize both yaw words and steer the actual yaw by at most 9.
+* **Animation:** advance by 8 when horizontal velocity is nonzero, but restore
+  the old blend on an even, physically stalled, nonattacking substep. Frame
+  crossings are strictly above 100. Encoded targets above 10 use frame `% 5`
+  and one-based animation bank `/ 5 - 1`. The target bank latch becomes 16 below
+  distance 180, otherwise 11, **after** constructing the next target.
+* **Collapse (`generalPurpose1 == 1`):** existing collision-type-35 damage
+  handling clears collision and selects animation 3. Blend accelerates by an
+  incrementing `itemValue`; the intermediate pose pauses for 20 ticks. The final
+  pose becomes frame 3 with no target frame, health 250 and phase 2.
+* **Disappearance (`generalPurpose1 == 2`):** the shared once-per-frame lifetime
+  countdown removes the corpse. Per behavior tick, select display mode
+  `max(35 - health / 6, 30)`, consume a random radial displacement, and emit
+  floor-level smoke every fourth substep once the mode exceeds 30. Smoke uses
+  the existing initializer and creation hooks. If the allocator reuses this
+  just-expired source itself, stop instead of reading its cleared coordinates
+  or resurrecting it; this is an intentional terminal-lifetime safety correction.
+
+There are nine ordinary original records: eight in level 12 and one in level 20.
+Three level-12 records have health 1001; the level-20 record has health 1002.
+All four remain paused until activation. Ordinary switch/group activation alone
+does not wake collision type 35, but automatic activation volumes use a different
+helper that explicitly forces state 1000 after zero-damage dispatch.
+
+**Automatic activation (`0000:DA21..DA39`, helper `10AC:3D30..3DAA`):**
+player contact with collision type 7 (`TriggerActivation`) or 12 (`DeadBullHead`)
+calls `HandleActivationTriggerContact` when `behaviorDispatchEnabled` is true,
+without requiring an interaction key or positive behavior-tick count. See
+[contact dispatch](player-collision-evidence.txt) and
+[native activation helper](mummy-trigger-evidence.txt).
+The helper caches wrapped `itemValue + 1000`, then consumes an ordinary trigger
+through `SetObjectHealth(source, 0)`. Type 12 instead remains alive and changes
+its collision type to `None`, making activation one-shot without removing the
+visible head. For matching-health targets in inclusive slots **2..140**, call
+`DamageObject(target, 0)` first, then unconditionally
+`SetObjectHealth(target, 1000)`. Preserve that order and the difference from
+`ActivateObjectGroup`; otherwise ordinary mummies remain frozen.
+
+Level 12's hidden slot **22**, at `(2050, -75, 3050)`, has `itemValue == 1`.
+It wakes the three health-1001 mummies in slots **13, 19 and 21**. Level 20
+also has a hidden group-2 activation volume in slot 92 for its health-1002
+mummy. Do not remove the native mummy gate or wake enemies at level load.
+
+The two final-level guards use selector `79`, body `0000:27CC`, **once per frame**.
+While `itemValue` is positive, enabled player overlap subtracts the behavior-tick
+count. A later frame starting below 1 clears collision, requests the configured
+sound at full volume, and approaches blend 100 by wrapped `ticks * 17`. On
+completion, select the target frame and set behavior `None`. Zero-tick opening
+frames still request sound.
+
+The renderer bridge decodes ordinary mummies' packed target bank/frame and uses
+that bank for both initial creation and live model blending. Other behaviors
+retain their existing target-frame interpretation. Native display-mode
+progression 30..35 is preserved; the renderer's existing generic treatment of
+30..37 does not yet reproduce the original disappearance shading.
+
+`mummy-behavior` covers 4096 full-record/RNG/player-life reference cases,
+all nine ordinary objects and both guards on real level geometry/collision maps,
+damage/depletion/suppression and HUD callbacks, staged death, smoke lifecycle,
+batched terminal expiration, raw-material masking, dormant gates, guard timing,
+signed-word arithmetic, zero-tick opening sound and host runtime tick clocks.
+Activation tests additionally cover disabled contact/dispatch, strict overlap,
+one-shot trigger removal, persistent bull-head activation, exact group/slot
+bounds, damage-before-wake ordering, wrapped group arithmetic and lifecycle
+callbacks. The actual level-12 object table verifies slot 22 waking all three
+original dormant mummies; a host-driven zero-tick frame verifies automatic
+activation before the subsequent movement frame.
 
 ## Globals and dependencies
 
@@ -307,11 +420,10 @@ follows case-local branches/loops but **does not enter callees**, and stops
 before shared postprocessing at `5110`. Register-indexed memory and segment-
 overridden memory are not claimed as absolute DS globals.
 
-Thus BatIndoor's direct-global list is empty even though its movement helper
-may use many globals. Follow `10AC:3391` next, identify reads/writes, give a
-global a tentative address-based identity, then use the author's context and
-runtime evidence to assign a meaningful name. Shared globals must be modeled
-once, not independently inside each handler.
+Thus BatIndoor's direct-global list is empty even though its now-recovered
+movement helper uses listener coordinates, player eye/body height, terrain,
+collision-map memory, sound dispatch and the shared RNG. Shared globals are
+modeled once, not independently inside each handler.
 
 The scaffold models the existing DS:`04CD` behavior-enable gate as an explicit
 context input. It does not reconstruct all preconditions/global state.
@@ -1156,7 +1268,9 @@ All eight bounded ranges in [the instruction evidence](player-collision-evidence
 decode completely, including both overlap functions and the complete
 `0EF0:09F8` dispatcher through its return at `1178`. Both geometry queries
 and the collision-to-input-to-interaction path are now implemented. The
-automatic player-contact cascade remains unimplemented.
+automatic player-contact cascade is only partially implemented: door keep-open,
+cockroach contact and activation volumes are recovered; other responses remain
+unimplemented.
 
 ### Per-update player interaction
 
@@ -3049,6 +3163,8 @@ cmake --build .\Source\Decompile\build --config Debug
 ctest --test-dir .\Source\Decompile\build -C Debug --output-on-failure
 
 .\Source\Decompile\build\Debug\desperabis-recovery.exe --behavior BatIndoor --ticks 3
+.\Source\Decompile\build\Debug\desperabis-recovery.exe --behavior Mummie --ticks 3
+.\Source\Decompile\build\Debug\desperabis-recovery.exe --behavior MummieGuard --ticks 3
 .\Source\Decompile\build\Debug\desperabis-recovery.exe --behavior IdleAnimation --ticks 4
 .\Source\Decompile\build\Debug\desperabis-recovery.exe --behavior SmokeFading --ticks 2
 .\Source\Decompile\build\Debug\desperabis-recovery.exe --behavior WaterDrop --ticks 2

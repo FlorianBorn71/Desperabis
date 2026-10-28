@@ -170,11 +170,13 @@ namespace
             object.posX = -100;
             if (entry.type == BehaviorType::WaterDrop || entry.type == BehaviorType::FloatingDebris ||
                 entry.type == BehaviorType::SinkingObject || entry.type == BehaviorType::MetalPole ||
-                entry.type == BehaviorType::BearTrapAmmo)
+                entry.type == BehaviorType::BearTrapAmmo || entry.type == BehaviorType::Mummie ||
+                entry.type == BehaviorType::MummieGuard)
             {
                 object.posX = 150;
                 object.posZ = 4050;
             }
+            if (entry.type == BehaviorType::MummieGuard) { object.soundEffectId = 15; }
             const auto before = ObjectBytes(object);
             GameContext context;
             context.tickCount = 3;
@@ -199,6 +201,8 @@ namespace
                 entry.type == BehaviorType::DriftingParticle || entry.type == BehaviorType::SpawnInCrater ||
                 entry.type == BehaviorType::FloatingDebris || entry.type == BehaviorType::LevelStartOverride ||
                 entry.type == BehaviorType::RatAndSnake || entry.type == BehaviorType::Cockroach ||
+                entry.type == BehaviorType::BatIndoor || entry.type == BehaviorType::Mummie ||
+                entry.type == BehaviorType::MummieGuard ||
                 entry.type == BehaviorType::Skeleton || entry.type == BehaviorType::WaterImpact ||
                 entry.type == BehaviorType::SinkingObject ||
                 entry.type == BehaviorType::FireParticle || entry.type == BehaviorType::BurningFireplace ||
@@ -1445,7 +1449,7 @@ namespace
             {
                 return result.status == DispatchStatus::NoSpecificCase;
             }), "The loop must expose a dispatch result for every ordinary slot.");
-        state.worldObjects[2].behavior = BehaviorType::BatIndoor;
+        state.worldObjects[2].behavior = BehaviorType::BatOutdoor;
         Check(UpdateObjects(state)[0].status == DispatchStatus::UnimplementedHandler,
             "The loop must not hide unrecovered behavior statuses.");
         state.tickCount = -1;
@@ -3347,6 +3351,7 @@ namespace
             object.posX = 150;
             object.posZ = 4050;
             object.behavior = static_cast<BehaviorType>(behavior);
+            if (object.behavior == BehaviorType::MummieGuard) { object.soundEffectId = 15; }
             level.heightSurfaces[0] = Level::HeightSurface{ 0, 0 };
             const auto result = DispatchObjectCase(object, context);
             Check(result.moduleOffset == originalEntry(behavior) && result.behavior == static_cast<BehaviorType>(behavior),

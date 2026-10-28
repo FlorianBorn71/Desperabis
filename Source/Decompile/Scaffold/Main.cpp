@@ -47,6 +47,7 @@ namespace
                 << " (logging only; no audio device)\n";
             playing.at(channel) = true;
         }
+        void StopAllSamples() override { playing.fill(false); }
     };
 
     void PrintUsage()
@@ -123,6 +124,8 @@ namespace
                         entry.type == BehaviorType::FloatingDebris ||
                         entry.type == BehaviorType::LevelStartOverride ||
                         entry.type == BehaviorType::RatAndSnake || entry.type == BehaviorType::Cockroach ||
+                        entry.type == BehaviorType::BatIndoor || entry.type == BehaviorType::Mummie ||
+                        entry.type == BehaviorType::MummieGuard ||
                         entry.type == BehaviorType::Skeleton || entry.type == BehaviorType::WaterImpact ||
                         entry.type == BehaviorType::SinkingObject ||
                         entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ?
@@ -318,6 +321,42 @@ namespace
             object.itemValue = 3;
             object.generalPurpose3 = 0;
             object.velocityX = 3;
+        }
+        if (!haveObjectFile && object.behavior == BehaviorType::BatIndoor)
+        {
+            object.health = 1000;
+            object.modelId = 34;
+            object.modelAnim = 2;
+            object.animFrame = 1;
+            object.modelFrame2 = 2;
+            object.soundEffectId = 61;
+            object.displayType = DisplayType::VectorNormal;
+            object.posX = 1500;
+            object.posY = 50;
+            object.posZ = 2000;
+            object.itemValue = 4;
+            object.generalPurpose1 = 47;
+        }
+        if (!haveObjectFile && (object.behavior == BehaviorType::Mummie || object.behavior == BehaviorType::MummieGuard))
+        {
+            object.health = 1000;
+            object.modelId = object.behavior == BehaviorType::Mummie ? 35 : 37;
+            object.modelAnim = object.behavior == BehaviorType::Mummie ? 1 : 4;
+            object.animFrame = 1;
+            object.modelFrame2 = object.behavior == BehaviorType::Mummie ? 11 : 2;
+            object.collisionType = object.behavior == BehaviorType::Mummie ? CollisionType::PushingEnemy : CollisionType::None;
+            object.collisionMask = object.behavior == BehaviorType::Mummie ? 254 : 1;
+            object.displayType = DisplayType::VectorNormal;
+            object.posX = 1500;
+            object.posY = 30;
+            object.posZ = 2000;
+            object.collisionRadiusXZ = 20;
+            object.collisionRadiusY = 30;
+            object.groupIndexOrLock = 50;
+            object.behaviorParameter = object.behavior == BehaviorType::Mummie ? 2 : 0;
+            object.soundEffectId = 15;
+            object.itemValue = object.behavior == BehaviorType::MummieGuard ? 110 : 0;
+            object.generalPurpose2 = object.behavior == BehaviorType::Mummie ? 65535 : 0;
         }
         if (!haveObjectFile && object.behavior == BehaviorType::FloatingDebris)
         {

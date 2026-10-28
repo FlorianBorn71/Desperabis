@@ -38,6 +38,16 @@ game ticks (33 Hz, as in the original game)
   Low rooms cancel ascent and force crouching. Water contact also forces crouching; submersion
   is detected separately. Swimming/buoyancy, oxygen and other underwater effects remain deferred.
 * Awake skeletons use recovered pursuit, wall avoidance, attacks and fixed-point player-life damage.
+  Indoor bats use recovered flight, wall lookahead, ceiling roosting/waking,
+  wing animation, positional sound and weapon-hit falling/corpse states.
+  Ordinary mummies use recovered pursuit, alternating movement, contact damage,
+  packed walk/attack animation-bank blending, staged collapse and smoke/despawn.
+  Final-level mummy guards count down player overlap, then open and clear collision.
+  Originally paused mummies retain their native health/state >1000 gate until
+  an activation volume wakes them. Level 12's invisible trigger now activates
+  its three group-1 mummies automatically on player overlap.
+  Disappearance display modes 30..35 are forwarded, but their original shading
+  is not yet reproduced by the renderer's generic 30..37 handling.
   Skeleton death creates moving body parts and a pickable sword. `WeaponDamageCollider` (2)
   now resolves hits through the complete shared damage/activation dispatcher, reusing the contact
   as `DriftingParticle` (18) for native impact categories. Ordinary switches activate non-door

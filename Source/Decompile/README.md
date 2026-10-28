@@ -345,9 +345,19 @@ disabled for game-controlled objects when the renderer bridge is added.
 
 ### Recovery status
 
-The current investigation is [Pillar](Pillar.md), its collision-map writer,
-and the corresponding reader/player-blocking rules. `BatIndoor`'s helper at
-module-relative `10AC:3391` remains a later target.
+The [Pillar](Pillar.md) collision-map writer and corresponding reader/player-blocking
+rules are implemented. `BatIndoor`'s helper at module-relative `10AC:3391` is now
+recovered too: flying, wall avoidance, ceiling roosting/waking, sound and falling
+after a lethal hit. The `bat-indoor-behavior` tests include all 50 original bat
+records on their real collision maps; see [behavior details](BehaviorRecovery.md#batindoor-indoor-flight-roosting-and-death).
+Ordinary `Mummie` and final-level `MummieGuard` are implemented too, including
+alternating-tick movement, attacks, encoded animation banks, staged death/smoke
+and guard opening. Tests exercise all nine original mummies and both guards.
+The four records with health/state above 1000 retain their native paused gate.
+Automatic activation volumes now wake matching groups: level 12's invisible
+slot-22 trigger wakes its three paused mummies without an interaction key. See
+[mummy behavior](BehaviorRecovery.md#mummie-and-mummieguard) for exact semantics
+and the remaining renderer disappearance-shading limitation.
 Pillar's case and point writer, plus the object-local IdleAnimation and
 SmokeFading cases, Flies, two switch behaviors, WaterDrop, LightSource, PulsatingLight, ordinary
 doors, RatAndSnake, FloatingDebris, LevelStartOverride, behavior 18, and the fireplace/crater particle paths are implemented

@@ -1066,7 +1066,7 @@ bool Level::CreateObjectRenderInstance(Scene& scene, std::shared_ptr<LevelGameOb
 
 		int animNr2 = prop.GetModelAnim2();
 		int frameNr2 = prop.GetModelFrame2();
-        Model* model2 = anim3d->GetModelSafe(animNr, frameNr2);
+        Model* model2 = anim3d->GetModelSafe(animNr2, frameNr2);
         if (model2 != nullptr)
         {
             inst->m_blendWeight = prop.GetAnimBlendWeight();
@@ -1168,7 +1168,7 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
 
 		int animNr2 = prop.GetModelAnim2();
 		int frameNr2 = prop.GetModelFrame2();
-        Model* model2 = anim3d->GetModelSafe(animNr, frameNr2);
+        Model* model2 = anim3d->GetModelSafe(animNr2, frameNr2);
         if (model2 != nullptr)
         {
             inst->m_blendWeight = prop.GetAnimBlendWeight();

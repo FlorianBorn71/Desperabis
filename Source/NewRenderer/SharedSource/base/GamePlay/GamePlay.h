@@ -350,9 +350,25 @@ namespace GamePlay
 
         inline int GetModelId() const { return (int)m_go.m_rawBytes[0]; }
         inline int GetModelAnim() const { return (int)m_go.m_rawBytes[1] - 1; }
- 		inline int GetModelAnim2() const { return (int)m_go.m_rawBytes[1] - 1; } // same as anim
+        inline int GetModelAnim2() const
+        {
+            const int frame = m_go.m_rawBytes[2];
+            if (m_go.m_rawShorts[4] == static_cast<short>(BehaviorType::Mummie) && frame > 10)
+            {
+                return frame / 5 - 2;
+            }
+            return GetModelAnim();
+        }
         inline int GetModelFrame() const { return (int)m_go.m_rawBytes[3] - 1; }
-		inline int GetModelFrame2() const { return (int)m_go.m_rawBytes[2] - 1; }
+        inline int GetModelFrame2() const
+        {
+            const int frame = m_go.m_rawBytes[2];
+            if (m_go.m_rawShorts[4] == static_cast<short>(BehaviorType::Mummie) && frame > 10)
+            {
+                return frame % 5 - 1;
+            }
+            return frame - 1;
+        }
         float GetAnimBlendWeight() const;
 		float GetSpriteTransparency() const;
 

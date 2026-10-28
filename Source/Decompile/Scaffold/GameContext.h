@@ -334,6 +334,8 @@ namespace Desperabis
         void RequestPlayerCrouch();
         // Native 0000:DA3C: selected cockroach contact uses forward speed, not an interaction key.
         InteractionResult HandleCockroachContact(RawGameObject& object);
+        // Native 10AC:3D30: automatic one-shot contact, not ordinary switch activation.
+        InteractionResult HandleActivationTriggerContact(RawGameObject& object);
         // Authoritative player-life update, including suppression, clamping, death and notification.
         void ApplyPlayerLifeDelta(std::int32_t delta);
         // Native 10AC:10F5: zero activates, positive values damage, -1 selects special destruction.
