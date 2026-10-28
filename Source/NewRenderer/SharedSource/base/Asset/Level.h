@@ -18,7 +18,7 @@ public:
     FUTURE(void) LoadFromSaveGame(std::wstring_view filename, const std::vector<LevelInfo>& infos);
 
     FUTURE(void) PopulateScene(Scene& scene, bool createGameObjects, bool addMapIcons);
-	void ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& rawGO) const;
+	void ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& rawGO, Texture* spriteOverride = nullptr) const;
     RenderableInstancePtr CreatePlayerObject();
 	float GetHeightAtPos(const Vector& pos) const 
     {
@@ -52,6 +52,7 @@ public:
 
     const std::vector<RawGameObject>& GetRawGameObjects() const { return m_rawGameObject; }
     const GridCellArray& GetCellArray() const { return m_cellArray; };
+    const LevelInfo& GetLevelInfo() const { return m_levelInfo; }
 
 protected:
     bool CreateObjectRenderInstance(Scene& scene, std::shared_ptr<class LevelGameObject> go, RawGameObject& rawGO) const;

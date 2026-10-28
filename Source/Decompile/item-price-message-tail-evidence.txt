@@ -1,0 +1,32 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 10AC:D0DF:004B
+10AC:D0DF  9A D2 0A 48 2E           CALLF 0x2000:ef52 ; encoded analysis target 2E48:0AD2, module 1E48:0AD2
+10AC:D0E4  8D BE F8 FE              LEA DI,[BP + 0xfef8]
+10AC:D0E8  16                       PUSH SS
+10AC:D0E9  57                       PUSH DI
+10AC:D0EA  68 FF 00                 PUSH 0xff
+10AC:D0ED  FF 76 F8                 PUSH word ptr [BP + -0x8]
+10AC:D0F0  9A 29 10 E4 3C           CALLF 0x3000:de69 ; encoded analysis target 3CE4:1029, module 2CE4:1029
+10AC:D0F5  8D BE F8 FE              LEA DI,[BP + 0xfef8]
+10AC:D0F9  16                       PUSH SS
+10AC:D0FA  57                       PUSH DI
+10AC:D0FB  8A 86 F8 FE              MOV AL,byte ptr [BP + 0xfef8]
+10AC:D0FF  30 E4                    XOR AH,AH
+10AC:D101  6B C0 FD                 IMUL AX,AX,-0x3
+10AC:D104  50                       PUSH AX
+10AC:D105  9A 59 24 48 2E           CALLF 0x3000:08d9 ; encoded analysis target 2E48:2459, module 1E48:2459
+10AC:D10A  C4 BE F0 FE              LES DI,[BP + 0xfef0]
+10AC:D10E  26 8A 45 05              MOV AL,byte ptr ES:[DI + 0x5]
+10AC:D112  30 E4                    XOR AH,AH
+10AC:D114  50                       PUSH AX
+10AC:D115  6A 00                    PUSH 0x0
+10AC:D117  9A 01 D0 48 2E           CALLF 0x3000:b481 ; encoded analysis target 2E48:D001, module 1E48:D001
+10AC:D11C  50                       PUSH AX
+10AC:D11D  68 02 02                 PUSH 0x202
+10AC:D120  6A 01                    PUSH 0x1
+10AC:D122  9A 5C D1 48 2E           CALLF 0x3000:b5dc ; encoded analysis target 2E48:D15C, module 1E48:D15C
+10AC:D127  EB 05                    JMP 0x2000:dbee ; logical module target 10AC:D12E
+STOP: instruction crosses requested range end.

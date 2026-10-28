@@ -14,6 +14,7 @@ namespace Desperabis
     std::int32_t Cosine(std::int16_t angle);
 
     std::int16_t WrapSignedWord(std::int32_t value);
+    std::int16_t ArithmeticShiftRight(std::int16_t value, unsigned int bits);
 
     // Original 1E48:2E0A: ordinary (unclamped) sine table, signed high-word products.
     void GetDirectionDisplacement(std::int16_t& x, std::int16_t& z,

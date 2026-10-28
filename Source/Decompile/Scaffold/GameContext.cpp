@@ -3,6 +3,7 @@
 #include "GameMath.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <limits>
 #include <iterator>
@@ -478,6 +479,14 @@ namespace Desperabis
         weapon.animation = UpdateWeaponAnimation(frameTickCount);
         if (input.IsKeyPressed(InputKey::SelectDaggerKey)) { SelectWeapon(WeaponType::Dagger); }
         if (input.IsKeyPressed(InputKey::SelectSwordKey)) { SelectWeapon(WeaponType::Sword); }
+        if (input.IsKeyPressed(InputKey::SelectCrossbowKey)) { SelectWeapon(WeaponType::Crossbow); }
+        if (input.IsKeyPressed(InputKey::SelectFireballKey)) { SelectWeapon(WeaponType::Fireball); }
+        if (input.IsKeyPressed(InputKey::SelectStoneKey)) { SelectWeapon(WeaponType::Stone); }
+        if (input.IsKeyPressed(InputKey::SelectPlaceableKey)) { SelectWeapon(WeaponType::TrapOrPole); }
+        if (input.IsKeyPressed(InputKey::SelectElectricityKey)) { SelectWeapon(WeaponType::Electricity); }
+        if (input.IsKeyPressed(InputKey::SelectShovelKey)) { SelectWeapon(WeaponType::Showel); }
+        if (input.IsKeyPressed(InputKey::SelectScytheKey)) { SelectWeapon(WeaponType::Scythe); }
+        if (input.IsKeyPressed(InputKey::SelectLentilsKey)) { SelectWeapon(WeaponType::Lentils); }
         if (input.IsKeyPressed(InputKey::AttackKey)) { weapon.attack = AttackWithSelectedWeapon(); }
         return { GameTickStatus::Advanced, interaction, results, movement, weapon };
     }
@@ -869,7 +878,7 @@ namespace Desperabis
             particle.velocityX = RandomSigned(4);
             particle.velocityY = static_cast<std::int16_t>(Random(6) + 2);
             particle.velocityZ = RandomSigned(4);
-            particle.behavior = BehaviorType::Behavior_1;
+            particle.behavior = BehaviorType::BouncingObject;
         }
         else
         {
@@ -1326,7 +1335,7 @@ namespace Desperabis
         part &= 255;
         fragment.health = 1000;
         fragment.soundEffectId = 6;
-        fragment.behavior = BehaviorType::Behavior_1;
+        fragment.behavior = BehaviorType::BouncingObject;
         fragment.itemValue = 85;
         fragment.field_24 = 8;
         fragment.winX = 128;
@@ -1582,7 +1591,8 @@ namespace Desperabis
         const auto index = static_cast<std::size_t>(weapon);
         if (index >= weaponAmounts.size()) { throw std::out_of_range("Invalid weapon selection ID."); }
         if (weaponAnimationSpeed != 0 || selectedWeapon == weapon ||
-            weaponInventorySlots[index] == 0 || weaponAmounts[index] <= 0)
+            weaponInventorySlots[index] == 0 ||
+            (weaponAmounts[index] <= 0 && weapon != WeaponType::Scythe))
         {
             return false;
         }
@@ -1644,14 +1654,38 @@ namespace Desperabis
         {
             return WeaponActionStatus::NoEffect;
         }
-        if (selectedWeapon != WeaponType::None && selectedWeapon != WeaponType::Dagger &&
-            selectedWeapon != WeaponType::Sword)
+        if (selectedWeapon > WeaponType::Showel &&
+            selectedWeapon != WeaponType::Lentils && selectedWeapon != WeaponType::Scythe)
         {
             return WeaponActionStatus::UnimplementedWeapon;
         }
         const auto index = static_cast<std::size_t>(selectedWeapon);
         weaponReady = weaponAmounts[index] > 0;
         if (playerUnderwater && selectedWeapon > WeaponType::Dagger) { return WeaponActionStatus::NoEffect; }
+        const bool usesHeldItem = selectedWeapon == WeaponType::Fireball ||
+            selectedWeapon == WeaponType::Stone || selectedWeapon == WeaponType::TrapOrPole ||
+            selectedWeapon == WeaponType::Lentils;
+        if (usesHeldItem && (weaponHand == 0 || weaponHand > inventory.size()))
+        {
+            throw std::out_of_range("This weapon requires an inventory hand in 1..14.");
+        }
+        if (selectedWeapon == WeaponType::TrapOrPole &&
+            inventory[weaponHand - 1].behavior != BehaviorType::BearTrapAmmo &&
+            inventory[weaponHand - 1].behavior != BehaviorType::MetalPole)
+        {
+            return WeaponActionStatus::UnimplementedWeapon;
+        }
+        if (selectedWeapon == WeaponType::Stone && inventory[weaponHand - 1].modelId < 30)
+        {
+            GetSpriteBottom(inventory[weaponHand - 1]);
+        }
+        if (selectedWeapon == WeaponType::Lentils && inventory[weaponHand - 1].modelId < 30)
+        {
+            auto thrown = inventory[weaponHand - 1];
+            thrown.animFrame = 2;
+            GetSpriteBottom(thrown);
+        }
+        const auto oldAmount = weaponAmounts[index];
         weaponAmounts[index] = WrapSignedWord(weaponAmounts[index] - 1);
         weaponReady = weaponAmounts[index] > 0;
         const auto slot = FindFreeOrLowestHealthObjectIndex();
@@ -1660,9 +1694,204 @@ namespace Desperabis
         {
             InitializeWeaponCollider(slot, 40, -12, 8, 18, 8, 10);
         }
+        auto& object = worldObjects[slot];
+        const auto camera = GetPlayerCamera();
+        const auto& player = worldObjects[1];
+        if (selectedWeapon == WeaponType::Crossbow)
+        {
+            PlaySoundEffect(static_cast<SoundEffect>(7), GetSoundVolume(0), object, 1);
+            object.displayType = DisplayType::VectorNormal;
+            object.groupIndexOrLock = object.doorLockOrGroupBitmask = 1;
+            object.collisionType = CollisionType::Ammo;
+            object.itemValue = 3;
+            object.collisionRadiusXZ = object.collisionRadiusY = 1;
+            object.behavior = BehaviorType::CrossbowBolt;
+            object.field_07 = 126;
+            object.renderPlacementMode = 1;
+            object.modelId = 31; object.animFrame = 2; object.modelAnim = 1;
+            object.winY = WrapSignedWord(512 - GetPlayerHeading());
+            object.health = 1000;
+            object.velocityX = static_cast<std::int16_t>(player.velocityX / 4);
+            object.velocityZ = static_cast<std::int16_t>(player.velocityZ / 4);
+            object.winX = WrapSignedWord(11 + WrapSignedWord(playerLookHeight - 90) / 2);
+            object.posX = camera.position[0];
+            object.posY = WrapSignedWord(camera.position[1] - 20);
+            object.posZ = camera.position[2];
+            for (int step = 1; step <= 6; ++step)
+            {
+                if ((GetCollisionMapPixelAtWorldXZ(
+                    WrapSignedWord(object.posX + ArithmeticShiftRight(WrapSignedWord(step * object.velocityX), 1)),
+                    WrapSignedWord(object.posZ + ArithmeticShiftRight(WrapSignedWord(step * object.velocityZ), 1))) & 8) != 0)
+                {
+                    object.velocityX = object.velocityZ = 0;
+                    object.field_24 = 1;
+                }
+            }
+        }
+        else if (selectedWeapon == WeaponType::Fireball)
+        {
+            inventory[weaponHand - 1].field_24 = static_cast<std::uint16_t>(weaponAmounts[4]);
+            object.displayType = DisplayType::SpriteTransparent;
+            object.blendWeightOrSpriteOpacity = 10;
+            object.field_26 = 100;
+            object.collisionRadiusXZ = object.collisionRadiusY = 8;
+            object.collisionType = CollisionType::Type_22;
+            object.behavior = BehaviorType::FireballProjectile;
+            object.field_07 = 126; object.renderPlacementMode = 1;
+            object.modelId = 6; object.animFrame = 1; object.modelAnim = 3;
+            object.health = 38; object.spriteScale = 45; object.behaviorParameter = 50;
+            object.velocityX = static_cast<std::int16_t>(player.velocityX / 4);
+            object.velocityZ = static_cast<std::int16_t>(player.velocityZ / 4);
+            object.velocityY = static_cast<std::int16_t>(std::max(-4, WrapSignedWord(playerLookHeight - 110) / 7));
+            object.posX = camera.position[0]; object.posY = WrapSignedWord(camera.position[1] - 20);
+            object.posZ = camera.position[2];
+        }
+        else if (selectedWeapon == WeaponType::Stone || selectedWeapon == WeaponType::TrapOrPole)
+        {
+            if (selectedWeapon == WeaponType::TrapOrPole &&
+                (GetCollisionMapPixelAtWorldXZ(camera.position[0], camera.position[2]) & 7) == 1)
+            {
+                weaponAnimationSpeed = 0;
+            }
+            else
+            {
+                auto& held = inventory[weaponHand - 1];
+                object = held;
+                held.health = 0;
+                if (selectedWeapon == WeaponType::Stone)
+                {
+                    for (std::size_t next = 0; next < inventory.size(); ++next)
+                    {
+                        auto& candidate = inventory[next];
+                        if (next != static_cast<std::size_t>(weaponHand - 1) && held.health == 0 &&
+                            candidate.health == 1000 && candidate.collisionType == CollisionType::Weapon &&
+                            candidate.itemValue == 5)
+                        {
+                            held = candidate;
+                            candidate.health = 0;
+                        }
+                    }
+                    object.winY = playerTargetHeading;
+                    object.collisionRadiusXZ = 10;
+                    object.behavior = BehaviorType::BouncingObject;
+                    object.itemValue = 60; object.groupIndexOrLock = 300;
+                    object.field_32 = 0; object.field_24 = 6; object.field_07 = 126;
+                    object.soundEffectId = 41;
+                    object.velocityX = static_cast<std::int16_t>(player.velocityX / 6);
+                    object.velocityZ = static_cast<std::int16_t>(player.velocityZ / 6);
+                    object.velocityY = WrapSignedWord(5 + WrapSignedWord(playerLookHeight - 90) / 12);
+                    const auto sign = weaponHand == 1 ? 1 : -1;
+                    object.posX = WrapSignedWord(camera.position[0] - object.velocityZ * sign);
+                    object.posY = WrapSignedWord(camera.position[1] + 10);
+                    object.posZ = WrapSignedWord(camera.position[2] + object.velocityX * sign);
+                    object.health = 1000;
+                }
+                else
+                {
+                    object.posX = camera.position[0]; object.posY = camera.position[1]; object.posZ = camera.position[2];
+                    object.winY = WrapSignedWord(-playerTargetHeading);
+                    object.velocityY = -10;
+                    object.winX = object.winZ = object.blendWeightOrSpriteOpacity = 0;
+                    object.field_24 = 0;
+                }
+            }
+        }
+        else if (selectedWeapon == WeaponType::Lentils)
+        {
+            auto* thrown = &object;
+            for (;;)
+            {
+                *thrown = inventory[weaponHand - 1];
+                thrown->blendWeightOrSpriteOpacity = 10;
+                thrown->field_26 = 100;
+                thrown->collisionRadiusXZ = 11;
+                thrown->collisionRadiusY = 6;
+                thrown->behavior = BehaviorType::BouncingObject;
+                thrown->itemValue = 50;
+                thrown->field_24 = 7;
+                thrown->groupIndexOrLock = 0;
+                thrown->renderPlacementMode = 6;
+                thrown->field_32 = 0;
+                thrown->animFrame = 2;
+                thrown->health = 200;
+                const auto angle = WrapSignedWord(GetPlayerHeading() + RandomSigned(20));
+                const auto speed = static_cast<std::int16_t>(Random(5) + 4);
+                GetClampedDirectionDisplacement(thrown->velocityX, thrown->velocityZ, angle, speed);
+                thrown->velocityZ = WrapSignedWord(-thrown->velocityZ);
+                thrown->velocityY = static_cast<std::int16_t>(Random(3) + 3);
+                thrown->posX = WrapSignedWord(camera.position[0] + RandomSigned(5));
+                thrown->posY = WrapSignedWord(camera.position[1] - 20);
+                thrown->posZ = WrapSignedWord(camera.position[2] + RandomSigned(5));
+                if (weaponAmounts[20] <= 5)
+                {
+                    thrown->soundEffectId = 101;
+                    break;
+                }
+                // Native recurses into A8F7; iterate to preserve large counters without stack growth.
+                weaponAmounts[20] = WrapSignedWord(weaponAmounts[20] - 1);
+                weaponReady = weaponAmounts[20] > 0;
+                thrown = &worldObjects[FindFreeOrLowestHealthObjectIndex()];
+            }
+        }
+        else if (selectedWeapon == WeaponType::Electricity && weaponReady)
+        {
+            weaponAmounts[7] = static_cast<std::int16_t>(std::clamp(
+                static_cast<int>(WrapSignedWord(weaponAmounts[7] - 2 * frameTickCount)), 0, 360));
+            std::uint16_t targetSlot = 0;
+            int best = 21;
+            for (std::uint16_t candidate = 2; candidate <= 165; ++candidate)
+            {
+                const auto& target = worldObjects[candidate];
+                if (target.health <= 0 || target.field_07 == 0 || target.collisionType <= CollisionType::WallDestruction) { continue; }
+                const auto score = std::abs(static_cast<int>(WrapSignedWord(GetSoundDistanceAt(target.posX, target.posZ) - 100)));
+                if (score < best) { best = score; targetSlot = candidate; }
+            }
+            if (targetSlot == 0)
+            {
+                weaponAnimationSpeed = -4;
+                weaponAmounts[7] = oldAmount;
+            }
+            else
+            {
+                PlaySoundEffect(static_cast<SoundEffect>(45),
+                    GetSoundVolume(WrapSignedWord(200 + Random(200))), object, 1);
+                object.posX = WrapSignedWord(camera.position[0] + ArithmeticShiftRight(player.velocityX, 1));
+                object.posY = WrapSignedWord(camera.position[1] - 24 +
+                    ArithmeticShiftRight(WrapSignedWord(playerLookHeight - 90), 2));
+                object.posZ = WrapSignedWord(camera.position[2] + ArithmeticShiftRight(player.velocityZ, 1));
+                object.displayType = DisplayType::VectorUnlit; object.renderPlacementMode = 1;
+                object.modelId = 31; object.modelAnim = 6;
+                object.animFrame = static_cast<std::uint8_t>(Random(3) + 1);
+                do { object.modelFrame2 = static_cast<std::uint8_t>(Random(3) + 1); }
+                while (object.modelFrame2 == object.animFrame);
+                object.blendWeightOrSpriteOpacity = -40;
+                object.health = WrapSignedWord(frameTickCount + 2);
+                auto& target = worldObjects[targetSlot];
+                const auto dx = WrapSignedWord(object.posX - target.posX);
+                const auto dz = WrapSignedWord(object.posZ - target.posZ);
+                const auto squared = WrapSignedWord(WrapSignedWord(dx * dx) + WrapSignedWord(dz * dz));
+                if (squared < 0) { throw std::domain_error("Electric beam squared distance overflows the native square-root domain."); }
+                object.winY = GetVectorAngle(dx, dz);
+                object.winX = GetVectorAngle(WrapSignedWord(target.posY - object.posY),
+                    WrapSignedWord(-static_cast<int>(std::lround(std::sqrt(static_cast<double>(squared))))));
+                DamageObject(target, WrapSignedWord(frameTickCount + 1));
+                auto& impact = worldObjects[FindFreeObjectIndex()];
+                impact.posX = target.posX; impact.posY = target.posY; impact.posZ = target.posZ;
+                impact.modelId = 1; impact.modelAnim = 2; impact.animFrame = 2;
+                impact.displayType = DisplayType::SpriteTorchlight;
+                impact.spriteScale = static_cast<std::uint8_t>(Random(30) + 10);
+                impact.health = WrapSignedWord(frameTickCount + 1);
+                impact.behavior = BehaviorType::LightSource;
+            }
+        }
         // Sword/unarmed input still clears a reclaiming allocation; their contact is delayed.
         RefreshWeaponInventory();
         return WeaponActionStatus::Applied;
+    }
+
+    std::int16_t GameContext::GetSpriteBottom(const RawGameObject&) const
+    {
+        throw std::runtime_error("Sprite projectile physics requires offsetY and imageHeight from the host's sprite assets.");
     }
 
     WeaponActionStatus GameContext::UpdateWeaponAnimation(std::int16_t ticks)
@@ -1765,6 +1994,141 @@ namespace Desperabis
                 {
                     weaponAnimationSpeed = -2;
                     weaponAnimationPosition = 10;
+                }
+            }
+        }
+        else if (selectedWeapon == WeaponType::Crossbow)
+        {
+            const auto phase = weaponAnimationSpeed;
+            if (phase == -3) { weaponAnimationSpeed = weaponAmounts[3] > 0 ? 50 : 0; weaponReady = false; }
+            else if (phase == -1) { weaponAnimationSpeed = 50; }
+            else if (phase == -2)
+            {
+                weaponAnimationPosition = 0; weaponAnimationSpeed = 20;
+                weaponReady = weaponAmounts[3] > 0;
+            }
+            else if (phase == 0)
+            {
+                if (!weaponReady && weaponAmounts[3] > 0) { weaponAnimationSpeed = 50; }
+                weaponAnimationPosition = 30;
+            }
+            else if (phase >= 1 && phase <= 10) { weaponAnimationPosition = WrapSignedWord(30 - 3 * phase); }
+            else if (phase >= 30 && phase <= 50) { weaponAnimationPosition = WrapSignedWord(3 * (phase - 40)); }
+            else if (phase >= 11 && phase <= 29)
+            {
+                weaponReady = weaponAmounts[3] > 0;
+                weaponAnimationPosition = 1;
+                if (selectedWeapon != requestedWeapon) { CommitWeaponSelection(); return WeaponActionStatus::Applied; }
+            }
+            weaponSpriteFrame = weaponReady ? 2 : 1;
+            decay();
+        }
+        else if (selectedWeapon == WeaponType::Fireball || selectedWeapon == WeaponType::Lentils)
+        {
+            if (weaponHand == 0 || weaponHand > inventory.size())
+            {
+                throw std::out_of_range("Casting animation requires an inventory hand in 1..14.");
+            }
+            auto& held = inventory[weaponHand - 1];
+            const auto index = static_cast<std::size_t>(selectedWeapon);
+            if (held.itemValue == 4) { weaponAmounts[index] = WrapSignedWord(held.field_24); }
+            weaponReady = weaponAmounts[index] > 0 || held.itemValue != static_cast<std::int16_t>(selectedWeapon);
+            if (!weaponReady) { held.health = 0; RefreshWeaponInventory(); }
+            if (weaponAnimationSpeed == -1) { weaponAnimationSpeed = 220; }
+            else if (weaponAnimationSpeed == -2) { weaponAnimationSpeed = 20; }
+            else if (weaponAnimationSpeed == -3) { weaponAnimationSpeed = 120; }
+            const auto phase = weaponAnimationSpeed;
+            weaponSpriteFrame = 1;
+            if (phase >= 201 && phase <= 250) { weaponAnimationPosition = WrapSignedWord(3 * (phase - 201)); }
+            else if (phase >= 0 && phase <= 20) { weaponAnimationPosition = WrapSignedWord(3 * (20 - phase)); }
+            else if (phase >= 150 && phase <= 200)
+            {
+                if (selectedWeapon != requestedWeapon) { CommitWeaponSelection(); return WeaponActionStatus::Applied; }
+                weaponAnimationSpeed = 0;
+            }
+            else if (phase >= 30 && phase <= 60) { weaponAnimationSpeed = 0; }
+            else if ((phase >= 71 && phase <= 80) || (phase >= 91 && phase <= 100)) { weaponSpriteFrame = 2; }
+            else if (phase >= 81 && phase <= 90) { weaponSpriteFrame = 3; }
+            weaponAmounts[20] = 12;
+            if (weaponAnimationSpeed > 0)
+            {
+                weaponAnimationSpeed = WrapSignedWord(weaponAnimationSpeed +
+                    GetStepToward(weaponAnimationSpeed, 0, WrapSignedWord(2 * ticks)));
+            }
+        }
+        else if (selectedWeapon == WeaponType::Stone)
+        {
+            if (weaponAnimationSpeed < 0) { weaponAnimationSpeed = 20; }
+            decay();
+            weaponAnimationPosition = weaponHand == 1 ? 1 : 7;
+            weaponAmounts[5] = 100;
+        }
+        else if (selectedWeapon == WeaponType::TrapOrPole)
+        {
+            const auto phase = weaponAnimationSpeed;
+            if (phase == 0)
+            {
+                if (selectedWeapon != requestedWeapon) { CommitWeaponSelection(); return WeaponActionStatus::Applied; }
+            }
+            else if (phase == -2) { weaponAnimationSpeed = 20; }
+            else if (phase == -3 || phase == -1) { weaponAnimationSpeed = 110; }
+            else if (phase >= 50 && phase <= 100) { weaponAnimationSpeed = 0; }
+            else { weaponAnimationSpeed = WrapSignedWord(phase + GetStepToward(phase, 0, ticks)); }
+            if (weaponAnimationSpeed >= 1 && weaponAnimationSpeed <= 20) { weaponAnimationPosition = weaponAnimationSpeed; }
+            else if (weaponAnimationSpeed >= 99 && weaponAnimationSpeed <= 120)
+            {
+                weaponAnimationPosition = WrapSignedWord(2 * (110 - weaponAnimationSpeed));
+            }
+            weaponAmounts[6] = 100;
+            weaponReady = true;
+        }
+        else if (selectedWeapon == WeaponType::Electricity)
+        {
+            weaponSpriteFrame = 1; weaponReady = true; weaponAmounts[23] = 100;
+            weaponAnimationPosition = 0;
+            if (weaponAnimationSpeed == -4 || weaponAnimationSpeed == -3) { weaponAnimationSpeed = 0; }
+            else if (weaponAnimationSpeed == -2) { weaponAnimationSpeed = 200; }
+            else if (weaponAnimationSpeed == -1) { weaponAnimationSpeed = 100; }
+            const auto phase = weaponAnimationSpeed;
+            if (phase >= 85 && phase <= 100) { weaponAnimationPosition = WrapSignedWord(phase - 85); }
+            else if (phase >= 2 && phase <= 100)
+            {
+                if (selectedWeapon != requestedWeapon) { CommitWeaponSelection(); return WeaponActionStatus::Applied; }
+            }
+            else if (phase >= 185 && phase <= 200) { weaponAnimationPosition = WrapSignedWord(200 - phase); }
+            else if (phase >= 102 && phase <= 200) { weaponAnimationSpeed = 0; }
+            decay();
+            if (weaponAnimationSpeed == 0) { weaponAnimationPosition = 15; }
+            weaponAmounts[7] = static_cast<std::int16_t>(std::clamp(static_cast<int>(weaponAmounts[7]), 0, 360));
+        }
+        else if (selectedWeapon == WeaponType::Showel || selectedWeapon == WeaponType::Scythe)
+        {
+            for (int tick = 0; tick < ticks; ++tick)
+            {
+                weaponAmounts[8] = 100; weaponReady = true;
+                weaponSpriteFrame = weaponAnimationRecoil == 0 ? 1 : 2;
+                switch (weaponAnimationSpeed)
+                {
+                case 0: weaponAnimationPosition = 10; break;
+                case -3: weaponAnimationRecoil = 0; weaponAnimationPosition = 11; weaponAnimationSpeed = 30; break;
+                case -2: weaponAnimationRecoil = 0; weaponAnimationPosition = 0; weaponAnimationSpeed = 10; break;
+                case -1: weaponAnimationRecoil = 0; weaponAnimationPosition = -10; weaponAnimationSpeed = 1010; break;
+                default:
+                    if (weaponAnimationSpeed >= 900 && weaponAnimationSpeed <= 1000 && selectedWeapon != requestedWeapon)
+                    {
+                        CommitWeaponSelection(); return WeaponActionStatus::Applied;
+                    }
+                    break;
+                }
+                if (weaponAnimationSpeed > 0) { --weaponAnimationSpeed; }
+                weaponAnimationPosition = WrapSignedWord(weaponAnimationPosition + 1);
+                if (weaponAnimationPosition >= 38) { weaponAnimationSpeed = -2; weaponAnimationPosition = 0; }
+                if (weaponAnimationPosition > 30) { weaponAnimationRecoil = 0; }
+                if (weaponAnimationPosition == 17 && weaponReady)
+                {
+                    PlaySoundEffect(static_cast<SoundEffect>(19), GetSoundVolume(500), -3, 2);
+                    InitializeWeaponCollider(FindFreeObjectIndex(), 55, -35, 5, 15, 6, 10);
+                    weaponReady = false;
                 }
             }
         }
@@ -1933,6 +2297,34 @@ namespace Desperabis
                 }
             }
             for (const auto address : addresses) { bytes[address] = static_cast<std::uint8_t>(value); }
+        }
+    }
+
+    void GameContext::SetBarrierCollisionMapAtWorldXZ(
+        std::int16_t x, std::int16_t z, std::int16_t heading, std::uint8_t value)
+    {
+        if (!collisionMap) { throw std::runtime_error("Barrier collision updates require collision-map memory."); }
+        auto& map = *collisionMap;
+        const auto column = WrapSignedWord(x - 112) / 25;
+        const auto row = WrapSignedWord(162 - WrapSignedWord(z - 38) / 25);
+        const bool horizontal = ((static_cast<std::uint16_t>(heading - 64) & 511u) & 128u) != 0;
+        for (int offset = -1; offset <= 1; ++offset)
+        {
+            const auto start = WrapSignedWord(column + (horizontal ? -1 : 0));
+            const auto targetRow = WrapSignedWord(row + (horizontal ? 0 : offset));
+            const int count = horizontal ? 3 : 1;
+            // 10AC:00DE rejects whole spans at the native right/bottom bounds.
+            if (start >= 0 && targetRow >= 0 && targetRow < map.heightMinusOne &&
+                WrapSignedWord(start + count) <= map.widthMinusOne)
+            {
+                const auto address = static_cast<std::size_t>(targetRow) * (map.widthMinusOne + 1u) + start;
+                if (address + count > std::size(map.data))
+                {
+                    throw std::out_of_range("Barrier collision span exceeds the allocated map.");
+                }
+                std::fill_n(map.data + address, count, value);
+            }
+            if (horizontal) { break; }
         }
     }
 

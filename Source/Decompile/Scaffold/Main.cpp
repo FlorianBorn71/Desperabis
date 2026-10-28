@@ -127,7 +127,7 @@ namespace
                         entry.type == BehaviorType::SinkingObject ||
                         entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ?
                         " implemented case (common processing missing)" :
-                        entry.type == BehaviorType::Behavior_1 ? " partial case (skeleton fragments)" :
+                        entry.type == BehaviorType::BouncingObject ? " partial case (fragments, stones, fireball breakup and Lentils)" :
                         entry.hasSpecificCase ? " unrecovered handler" : " common path only") << '\n';
             }
             return 0;

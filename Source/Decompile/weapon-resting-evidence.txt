@@ -1,0 +1,57 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 10AC:0767:0090
+10AC:0767  C8 04 00 00              ENTER 0x4,0x0
+10AC:076B  6B 7E 06 36              IMUL DI,word ptr [BP + 0x6],0x36
+10AC:076F  81 C7 3C 82              ADD DI,0x823c
+10AC:0773  89 7E FC                 MOV word ptr [BP + -0x4],DI
+10AC:0776  8C 5E FE                 MOV word ptr [BP + -0x2],DS
+10AC:0779  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:077C  31 C0                    XOR AX,AX
+10AC:077E  26 89 45 08              MOV word ptr ES:[DI + 0x8],AX
+10AC:0782  9A 49 20 48 2E           CALLF 0x3000:04c9 ; encoded analysis target 2E48:2049, module 1E48:2049
+10AC:0787  50                       PUSH AX
+10AC:0788  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:078B  26 FF 75 0C              PUSH word ptr ES:[DI + 0xc]
+10AC:078F  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:0792  26 FF 75 0E              PUSH word ptr ES:[DI + 0xe]
+10AC:0796  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:0799  26 FF 75 10              PUSH word ptr ES:[DI + 0x10]
+10AC:079D  6A 0A                    PUSH 0xa
+10AC:079F  6A 01                    PUSH 0x1
+10AC:07A1  6A 01                    PUSH 0x1
+10AC:07A3  0E                       PUSH CS
+10AC:07A4  E8 A7 FC                 CALL 0x2000:0f0e ; logical module target 10AC:044E
+10AC:07A7  6A 08                    PUSH 0x8
+10AC:07A9  9A 0A 17 E4 3C           CALLF 0x3000:e54a ; encoded analysis target 3CE4:170A, module 2CE4:170A
+10AC:07AE  05 06 00                 ADD AX,0x6
+10AC:07B1  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:07B4  26 89 45 0A              MOV word ptr ES:[DI + 0xa],AX
+10AC:07B8  6A 14                    PUSH 0x14
+10AC:07BA  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:07BD  26 FF 75 0C              PUSH word ptr ES:[DI + 0xc]
+10AC:07C1  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:07C4  26 FF 75 10              PUSH word ptr ES:[DI + 0x10]
+10AC:07C8  0E                       PUSH CS
+10AC:07C9  E8 5E 18                 CALL 0x2000:2aea ; logical module target 10AC:202A
+10AC:07CC  50                       PUSH AX
+10AC:07CD  9A 01 D0 48 2E           CALLF 0x3000:b481 ; encoded analysis target 2E48:D001, module 1E48:D001
+10AC:07D2  50                       PUSH AX
+10AC:07D3  FF 76 06                 PUSH word ptr [BP + 0x6]
+10AC:07D6  6A 01                    PUSH 0x1
+10AC:07D8  9A 5C D1 48 2E           CALLF 0x3000:b5dc ; encoded analysis target 2E48:D15C, module 1E48:D15C
+10AC:07DD  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:07E0  26 80 3D 1E              CMP byte ptr ES:[DI],0x1e
+10AC:07E4  76 08                    JBE 0x2000:12ae ; logical module target 10AC:07EE
+10AC:07E6  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:07E9  26 C6 45 33 46           MOV byte ptr ES:[DI + 0x33],0x46
+10AC:07EE  C9                       LEAVE
+10AC:07EF  CA 02 00                 RETF 0x2
+10AC:07F2  C8 04 00 00              ENTER 0x4,0x0
+STOP: instruction crosses requested range end.
+
+Range 0000:5108:0008
+0000:5108  FF 76 FC                 PUSH word ptr [BP + -0x4]
+0000:510B  9A F5 29 AC 20           CALLF 0x2000:34b5 ; encoded analysis target 20AC:29F5, module 10AC:29F5

@@ -278,7 +278,7 @@ namespace
         Check(context.AttackWithSelectedWeapon() == WeaponActionStatus::NoEffect &&
             context.weaponAmounts[2] == 9, "Underwater sword input must not consume resources or allocate.");
         context.playerUnderwater = false;
-        context.selectedWeapon = WeaponType::Crossbow;
+        context.selectedWeapon = static_cast<WeaponType>(9);
         const auto objects = context.worldObjects;
         Check(context.AttackWithSelectedWeapon() == WeaponActionStatus::UnimplementedWeapon &&
             context.UpdateWeaponAnimation(1) == WeaponActionStatus::UnimplementedWeapon &&
@@ -432,6 +432,7 @@ namespace
         {
         public:
             int calls = 0;
+            void StopAllSamples() override {}
             std::uint16_t GetSampleCount() const override { return 1; }
             bool IsChannelPlaying(std::size_t) const override { return false; }
             void PlaySample(std::size_t channel, std::uint8_t sample, std::uint8_t volume) override

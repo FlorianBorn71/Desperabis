@@ -8,11 +8,11 @@ namespace Desperabis
     enum class BehaviorType : std::uint16_t
     {
         None = 0,
-        Behavior_1 = 1,
+        BouncingObject = 1,
         WeaponDamageCollider = 2,
-        Behavior_3 = 3,
-        Behavior_4 = 4,
-        Behavior_5 = 5,
+        CrossbowBolt = 3,
+        FireballProjectile = 4,
+        FadingParticle = 5,
         Behavior_6 = 6,
         Behavior_7 = 7,
         Pillar = 8,
@@ -337,7 +337,9 @@ namespace Desperabis
         Stone = 5,
         TrapOrPole = 6,
         Electricity = 7,
-        Showel = 8
+        Showel = 8,
+        Lentils = 20,
+        Scythe = 24
     };
 
     static_assert(sizeof(BehaviorType) == 2);

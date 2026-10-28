@@ -108,7 +108,8 @@ namespace
                 ++postureCalls;
                 return key == InputKey::JumpKey ? jump : crouch;
             }
-            if (key == InputKey::AttackKey || key == InputKey::SelectDaggerKey || key == InputKey::SelectSwordKey)
+            if (key == InputKey::AttackKey || key == InputKey::SelectDaggerKey || key == InputKey::SelectSwordKey ||
+                (key >= InputKey::SelectCrossbowKey && key <= InputKey::SelectLentilsKey))
             {
                 return false;
             }

@@ -1139,7 +1139,7 @@ bool Level::CreateObjectRenderInstance(Scene& scene, std::shared_ptr<LevelGameOb
 }
 
 
-void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& rawGO) const
+void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& rawGO, Texture* spriteOverride) const
 {
     inst->SetVisible(false);
 	GamePlay::PropertyAccessorBase prop(rawGO);
@@ -1183,15 +1183,16 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
     else if (GamePlay::IsSpriteDisplayType(display))
     {
         char textureSlot = -1;
-        Texture* spriteTex = nullptr;
+        Texture* spriteTex = spriteOverride;
         float scale = prop.GetScale();
         bool flipped = prop.FlipSpriteU();
 
-        if (display == GamePlay::DisplayType::SpriteTorchlight || display == GamePlay::DisplayType::SpriteTorchlightTransparent)
+        if (spriteOverride == nullptr &&
+            (display == GamePlay::DisplayType::SpriteTorchlight || display == GamePlay::DisplayType::SpriteTorchlightTransparent))
         {
             textureSlot = prop.GetModelAnim() + 13; // it already subtracts 1, we need to add 12 to rawByte[1]
         }
-        else
+        else if (spriteOverride == nullptr)
         {
             auto texAnim = m_levelInfo.GetTextureAnim(modelId);
             if (texAnim == nullptr)

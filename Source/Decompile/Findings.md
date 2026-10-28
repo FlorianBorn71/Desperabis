@@ -899,9 +899,91 @@ The dagger emits an 8-damage contact immediately; the sword emits a
 are recovered and ported. GameCore now runs equip/holster, held-input
 repetition, swing/recovery and delayed contacts. The DX11 sample accepts
 Ctrl/left mouse to attack and 1/2 to select dagger/sword. The original
-held-weapon drawing is still a presentation boundary, and other weapon
-families return an explicit unsupported status. See
+held-weapon drawing is still a presentation boundary. See
 [the complete melee contract](BehaviorRecovery.md#player-melee-attack-sequence).
+
+**Additional weapons:** crossbow, fireball, thrown stones, electricity and
+shovel attacks are now implemented, including their native animation phases,
+ammo/energy handling, sound requests, contacts/projectile physics and shared
+damage. Placeable bear traps and metal poles also work; other ID-6 tools and
+extra IDs 9/23 remain explicitly unsupported. IDs 20/24 are now implemented
+as Lentils/scythe, including native bridge reveal and hedge destruction.
+Their labels are identified below. Fireball expiry uses all
+ten original `SCHUSS1.AN2` frames. Stone floor contact uses original sprite
+offset/encoded-height metadata supplied by the asset owner. DX11 exposes
+inventory selection on keys 1..8.
+See [ranged weapons and placement](BehaviorRecovery.md#ranged-weapons-shovel-and-placement).
+
+### Indexed item names and shop text: BEZEICH.TXT
+
+`LEVEL\BEZEICH.TXT` is the native indexed object-name/shop-message table.
+The loader at `1E48:C80F` opens it at `C927`, retaining blank lines and storing
+Pascal strings in 256-byte slots at offset `0xFA00 + index*256` in the memory
+block identified by DS:ECD8. Slot 0 is initially empty; physical line 1 is
+index 1. The final `@` terminates the table and is not an ordinary label.
+This copy has 152 lines before that terminator.
+
+The selector at `1E48:0B03` maps live object records to label indices:
+
+- Normally use `collisionType`: line 1 poison, 2 medicine, 3 gold, 6 key,
+  45 map, 100 end.
+- For weapons/ammunition, a positive `doorLockOrGroupBitmask` (raw word
+  offset `0x2E`) selects `100 + that value`. This is a label subtype,
+  **not** the attack/weapon ID in `itemValue`.
+- Placement mode 20 instead uses `100 + spriteScale` when that byte is
+  not 64.
+- Buy-item collision type 17 overrides the above with `field_24`, selecting
+  the shop text directly. Its price is taken from word `0x2E`.
+
+The first character is metadata, not visible punctuation. At `0BE2`, a
+leading `(` suppresses the result when the caller's flag is zero.
+Otherwise the routine deletes the first character, including a leading
+space, before returning the visible name. Thus ` Gold` permits the automatic
+contact label `Gold`; `(Dolch` hides that automatic label but still supplies
+`Dolch` for inventory display. Results longer than 50 characters are discarded.
+
+Observed consumers:
+
+| Call site | Flag | Use |
+|---|---|---|
+| `0000:79F1` | 1 | Inventory-slot name, then inventory text drawing |
+| `0000:F90E` | 0 | World-object contact message, additionally gated by `field_32 > 0` |
+| `10AC:D08B` | 1 | Buy-item message; replaces the first `=` with its numeric price |
+
+This identifies previously unnamed held-item records without guessing from
+their first-person animation family:
+
+| Attack ID (`itemValue`) | Original object | Name subtype (`0x2E`) | Text line | Label |
+|---|---|---|---|---|
+| 9 | OBJPOS30, slot 53 | 16 | 116 | Eimer (bucket) |
+| 20 | OBJPOS34, slot 44 | 15 | 115 | Lentils |
+| 23 | OBJPOS35, slot 79 | 12 | 112 | Folie (foil) |
+| 24 | OBJPOS30, slot 94 | 18 | 118 | Sense (scythe) |
+
+These are verified labels, not complete new behavior implementations.
+The author clarified the following gameplay uses:
+
+- `Sense` (ID 24) destroys a blocking hedge in the first level of part 1.
+- `Lentils` (ID 20) are thrown over an invisible bridge to reveal its walkable
+  path. The author confirms these are edible lentils carried in a sack and
+  scattered by the handful. The English localization now uses the correct
+  name rather than the former optical mistranslation.
+
+Both purposes are now binary-verified and implemented: Lentils use behavior 1,
+submode 7 to reveal individual mask-128 bridge pieces; the scythe shares the
+shovel contact and drives the now-recovered barrier behavior 26, including
+clearing its collision-map line after the cut animation.
+See [tool recovery](BehaviorRecovery.md#ranged-weapons-shovel-and-placement).
+Player bridge-support/bobbing movement remains a separate recovery;
+IDs 9/23 remain unsupported in GameCore.
+
+The packing tool already sources this file from localization `Items.txt`:
+[PackingTool.cpp](../PackingTool/PackingTool.cpp). English and German copies
+preserve the same line numbering and prefix convention.
+Evidence: [loader](item-label-loader-evidence.txt),
+[selector and prefix processing](item-label-selection-evidence.txt),
+[callers](item-label-consumers-evidence.txt), and
+[price substitution](item-price-message-tail-evidence.txt).
 
 ### Rotation lookup tables and fixed-point arithmetic
 

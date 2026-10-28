@@ -1,0 +1,77 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 2CE4:16B0:0080
+2CE4:16B0  CD 37                    INT 0x37
+2CE4:16B2  1E                       PUSH DS
+2CE4:16B3  4E                       DEC SI
+2CE4:16B4  F9                       STC
+2CE4:16B5  CD 3D                    INT 0x3d
+2CE4:16B7  A1 4E F9                 MOV AX,[0xf94e]
+2CE4:16BA  8B 16 50 F9              MOV DX,word ptr [0xf950]
+2CE4:16BE  CB                       RETF
+2CE4:16BF  CD 35                    INT 0x35
+2CE4:16C1  3E 52                    PUSH DX
+2CE4:16C3  F9                       STC
+2CE4:16C4  CD 3C                    INT 0x3c
+2CE4:16C6  99                       CWD
+2CE4:16C7  2E 27                    DAA
+2CE4:16C9  14 CD                    ADC AL,0xcd
+2CE4:16CB  35 FC CD                 XOR AX,0xcdfc
+2CE4:16CE  35 2E 52                 XOR AX,0x522e
+2CE4:16D1  F9                       STC
+2CE4:16D2  CB                       RETF
+2CE4:16D3  CD 35                    INT 0x35
+2CE4:16D5  3E 52                    PUSH DX
+2CE4:16D7  F9                       STC
+2CE4:16D8  CD 3C                    INT 0x3c
+2CE4:16DA  99                       CWD
+2CE4:16DB  2E 27                    DAA
+2CE4:16DD  14 CD                    ADC AL,0xcd
+2CE4:16DF  35 C0 CD                 XOR AX,0xcdc0
+2CE4:16E2  35 FC CD                 XOR AX,0xcdfc
+2CE4:16E5  3A E9                    CMP CH,CL
+2CE4:16E7  CD 35                    INT 0x35
+2CE4:16E9  2E 52                    PUSH DX
+2CE4:16EB  F9                       STC
+2CE4:16EC  CB                       RETF
+2CE4:16ED  CD 35                    INT 0x35
+2CE4:16EF  FA                       CLI
+2CE4:16F0  CB                       RETF
+2CE4:16F1  CD 3E                    INT 0x3e
+2CE4:16F3  EC                       IN AL,DX
+2CE4:16F4  90                       NOP
+2CE4:16F5  CB                       RETF
+2CE4:16F6  CD 3E                    INT 0x3e
+2CE4:16F8  EE                       OUT DX,AL
+2CE4:16F9  90                       NOP
+2CE4:16FA  CB                       RETF
+2CE4:16FB  CD 3E                    INT 0x3e
+2CE4:16FD  F2 90                    NOP
+2CE4:16FF  CB                       RETF
+2CE4:1700  CD 3E                    INT 0x3e
+2CE4:1702  F4                       HLT
+2CE4:1703  90                       NOP
+2CE4:1704  CB                       RETF
+2CE4:1705  CD 3E                    INT 0x3e
+2CE4:1707  FA                       CLI
+2CE4:1708  90                       NOP
+2CE4:1709  CB                       RETF
+2CE4:170A  E8 4C 00                 CALL 0x3000:e599 ; logical module target 2CE4:1759
+2CE4:170D  33 C0                    XOR AX,AX
+2CE4:170F  8B DC                    MOV BX,SP
+2CE4:1711  36 8B 5F 04              MOV BX,word ptr SS:[BX + 0x4]
+2CE4:1715  0B DB                    OR BX,BX
+2CE4:1717  74 04                    JZ 0x3000:e55d ; logical module target 2CE4:171D
+2CE4:1719  92                       XCHG AX,DX
+2CE4:171A  F7 F3                    DIV BX
+2CE4:171C  92                       XCHG AX,DX
+2CE4:171D  CA 02 00                 RETF 0x2
+2CE4:1720  E8 36 00                 CALL 0x3000:e599 ; logical module target 2CE4:1759
+2CE4:1723  93                       XCHG AX,BX
+2CE4:1724  B8 80 00                 MOV AX,0x80
+2CE4:1727  B9 20 00                 MOV CX,0x20
+2CE4:172A  F6 C6 80                 TEST DH,0x80
+2CE4:172D  75 0A                    JNZ 0x3000:e579 ; logical module target 2CE4:1739
+STOP: instruction crosses requested range end.

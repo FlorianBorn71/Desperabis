@@ -1,0 +1,43 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 1E48:00B5:002F
+1E48:00B5  55                       PUSH BP
+1E48:00B6  89 E5                    MOV BP,SP
+1E48:00B8  C4 7E 0A                 LES DI,[BP + 0xa]
+1E48:00BB  26 8B 05                 MOV AX,word ptr ES:[DI]
+1E48:00BE  3B 46 08                 CMP AX,word ptr [BP + 0x8]
+1E48:00C1  7D 09                    JGE 0x2000:e54c ; logical module target 1E48:00CC
+1E48:00C3  8B 46 08                 MOV AX,word ptr [BP + 0x8]
+1E48:00C6  C4 7E 0A                 LES DI,[BP + 0xa]
+1E48:00C9  26 89 05                 MOV word ptr ES:[DI],AX
+1E48:00CC  C4 7E 0A                 LES DI,[BP + 0xa]
+1E48:00CF  26 8B 05                 MOV AX,word ptr ES:[DI]
+1E48:00D2  3B 46 06                 CMP AX,word ptr [BP + 0x6]
+1E48:00D5  7E 09                    JLE 0x2000:e560 ; logical module target 1E48:00E0
+1E48:00D7  8B 46 06                 MOV AX,word ptr [BP + 0x6]
+1E48:00DA  C4 7E 0A                 LES DI,[BP + 0xa]
+1E48:00DD  26 89 05                 MOV word ptr ES:[DI],AX
+1E48:00E0  C9                       LEAVE
+1E48:00E1  CA 08 00                 RETF 0x8
+
+Range 0000:D174:003A
+0000:D174  2E A3 EC D4              MOV CS:[0xd4ec],AX
+0000:D178  89 16 EE D4              MOV word ptr [0xd4ee],DX
+0000:D17C  FF 36 DE D4              PUSH word ptr [0xd4de]
+0000:D180  9A 27 00 48 2E           CALLF 0x2000:e4a7 ; encoded analysis target 2E48:0027, module 1E48:0027
+0000:D185  A3 F0 D4                 MOV [0xd4f0],AX
+0000:D188  89 16 F2 D4              MOV word ptr [0xd4f2],DX
+0000:D18C  6A 00                    PUSH 0x0
+0000:D18E  6A 06                    PUSH 0x6
+0000:D190  FF 36 6C DC              PUSH word ptr [0xdc6c]
+0000:D194  9A 51 00 48 2E           CALLF 0x2000:e4d1 ; encoded analysis target 2E48:0051, module 1E48:0051
+0000:D199  52                       PUSH DX
+0000:D19A  50                       PUSH AX
+0000:D19B  66 59                    POP ECX
+0000:D19D  66 58                    POP EAX
+0000:D19F  66 F7 E9                 IMUL ECX
+0000:D1A2  66 C1 E8 10              SHR EAX,0x10
+0000:D1A6  9A BD 0E E4 3C           CALLF 0x3000:dcfd ; encoded analysis target 3CE4:0EBD, module 2CE4:0EBD
+0000:D1AB  89 46 E4                 MOV word ptr [BP + -0x1c],AX

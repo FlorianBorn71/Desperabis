@@ -426,7 +426,7 @@ namespace
         for (std::size_t i = 0; i < parts.size(); ++i)
         {
             const auto& part = f.context.worldObjects[i + 3];
-            Check(part.health == 1000 && part.behavior == BehaviorType::Behavior_1,
+            Check(part.health == 1000 && part.behavior == BehaviorType::BouncingObject,
                 "Skeleton death must create all eight native fragment records.");
             if (parts[i] == 6)
             {
@@ -474,7 +474,7 @@ namespace
         f.context.SpawnSkeletonFragment(f.Object(), 1, 0, 0, 0);
         fragment.posY = -1;
         fragment.velocityY = -4;
-        Check(Function_Behavior_1(fragment, f.context).status == DispatchStatus::ExecutedCase &&
+        Check(Function_BouncingObject(fragment, f.context).status == DispatchStatus::ExecutedCase &&
             fragment.health == 5 && fragment.behavior == BehaviorType::None,
             "Skeleton fragments hitting ordinary water must make a short-lived resting remnant.");
         auto& impact = f.context.worldObjects[4];
@@ -485,10 +485,10 @@ namespace
 
         Fixture unsupported;
         auto& object = unsupported.Object();
-        object.behavior = BehaviorType::Behavior_1;
+        object.behavior = BehaviorType::BouncingObject;
         object.modelId = 1;
         const auto before = object;
-        Check(Function_Behavior_1(object, unsupported.context).status == DispatchStatus::UnimplementedHandler &&
+        Check(Function_BouncingObject(object, unsupported.context).status == DispatchStatus::UnimplementedHandler &&
             std::memcmp(&before, &object, sizeof(before)) == 0,
             "Unrecovered non-skeleton fragment paths must remain explicitly unsupported.");
     }

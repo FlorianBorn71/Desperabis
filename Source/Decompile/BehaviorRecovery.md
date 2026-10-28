@@ -72,7 +72,7 @@ renderer dependencies. [GameEnums.h](Scaffold/GameEnums.h) brings over the
 renderer `BehaviorType`, `CollisionType`, `DisplayType`, and `WeaponType`
 definitions and comments without those dependencies. The generator preserves
 their values and augments `BehaviorType` with additional executable selectors.
-Names whose meanings remain unknown use identifiers such as `Behavior_1`
+Names whose meanings remain unknown use identifiers such as `Behavior_6`
 and `Behavior_300`; these are proper enum members, not raw IDs in dispatch.
 The recovered object is a standalone type, not a replacement renderer ABI.
 
@@ -2185,10 +2185,10 @@ are sample choices, not a claim about the original configurable keyboard default
 (native attack binding byte is DS:323D).
 
 `GameTickResult::weapon` exposes animation and attack statuses.
-Other weapon families report `UnimplementedWeapon` without executing a
-success-shaped partial trigger. Their amount/allocation prefix is not applied
-until those complete attack branches are recovered. The renderer reports
-an attempted unsupported attack in its window title.
+The additional combat families are implemented below. Unnamed tool IDs and
+unrecovered placeable behaviors report `UnimplementedWeapon` before consuming
+resources or allocating a projectile. The renderer reports an attempted
+unsupported attack in its window title.
 
 **Presentation boundary:** DOS held-weapon bitmap loading/drawing and the
 weapon HUD are not reproduced here. The timing/hand/pose fields are available
@@ -2205,14 +2205,176 @@ hotkey swaps, blocked input, unsupported weapon status, and pickup-to-enemy-hit
 sequences through `Tick`. These are static-instruction-derived host tests,
 not DOS-runtime comparisons.
 
+### Ranged weapons, shovel and placement
+
+The remaining named combat weapons use the same `0000:A8F7` trigger and
+`0000:B5E6` animation state as melee. Evidence:
+[factories](weapon-trigger-evidence.txt),
+[animation phases](weapon-sequence-evidence.txt),
+[routes](weapon-projectile-routes-evidence.txt),
+[projectile physics](ranged-weapon-physics-evidence.txt),
+[support helpers](ranged-weapon-support-evidence.txt),
+[support tails](ranged-weapon-support-tail-evidence.txt),
+[resting/lava transitions](weapon-resting-evidence.txt),
+[effect initialization](weapon-effect-initialization-evidence.txt),
+[effect loader](weapon-effect-loader-evidence.txt), and
+[Pascal rounding](weapon-square-root-evidence.txt).
+
+| Weapon ID | Implemented gameplay |
+|---|---|
+| 3 Crossbow | Immediate model-31 bolt, effect 7, six muzzle wall probes; reload phases 50..0 |
+| 4 Fireball | Item-local charges, player-following windup, effect 34, flight, light stencil, category-specific burning/damage and breakup |
+| 5 Stone | Throw the complete held record; refill its hand with the first spare; spin, gravity, bounces, target damage and restored pickup identity |
+| 6 TrapOrPole | Copy/place the held item, preserving its behavior; bear-trap closure/damage and metal-pole socket insertion |
+| 7 Electricity | Continuous distance-shell targeting, tick-scaled energy cost, vector beam, impact light and shared damage |
+| 8 Showel | Native swing/draw/holster, recoil sprite latch, effect 19 and a 5-damage/digging contact at pose 17 |
+| 20 Lentils | Shared casting animation; seven scattered markers per normal burst, gravity/bounces, bridge-piece reveal and effect 101 |
+| 24 Scythe | Shared shovel swing/contact; cuts original hedges through shared barrier damage and the recovered destruction/map-clear handler |
+
+Behavior 3 is now `CrossbowBolt`; behavior 4 is `FireballProjectile`, with the
+author's approval. Behavior 1 is now `BouncingObject`, also with the author's
+approval: it is a shared physical controller, not solely a thrown-stone or
+fireball behavior. Implemented submodes are 0/8 (fragments), 1 (bouncing flames),
+6 (stones) and 7 (Lentils); other submodes still report unsupported. Numeric behavior 300 calls
+`10AC:29F5`: clear behavior, restore item ID 5, set `field_32=3` and radius 22.
+
+**Crossbow:** each substep integrates the old velocities, decreases `winX` and
+derives next `velocityY=winX/4` using signed truncation. Wall/floor/ceiling
+reactions, water ripples, lava smoke/destruction, recoverable resting bolts and
+floating transitions are ported. A normal target receives 49 damage, then carries
+the attached bolt (`health=2000`, target slot in `field_24`). Attached poison
+uses the captured `arrowPoison` chance and shared RNG; target deactivation releases
+the bolt. Collision type 4 is a switch, not a door: its dedicated impact helper
+copies its timer and activates its group before the ordinary damage call.
+
+**Fireball asset dependency resolved:** startup loads `SCHUSS1.AN2` into DS:EB28
+at `0000:F33F`; `0000:EF97` stores the product of its two header counts at
+descriptor offset 2. The original resource is 2x5, so `1E48:C6BC` cycles **all ten**
+frames, not five. The projectile advances that phase every other flight substep
+and expires on wrapping. DX11 supplies the corresponding flattened image as a
+sprite override, rather than expecting DOS's mutable model-6/animation-3/frame-1
+texture buffer to exist. Windup exceeding 11 does not fly in that same dispatch.
+Skeleton fire hits set display 80 and health 3250 below the native 2000 threshold;
+they do not call generic 100-point skeleton damage.
+
+**Fireball breakup:** terrain/wall/ceiling impacts create nine model-1,
+animation-5, frame-1/2 flames with lifetime `50 + Random(50)`, restitution 75
+and `BouncingObject` submode 1. They use the existing sprite-bottom-aware
+gravity, bounce, wall reflection, damping and water handling. Native
+`10AC:2C19..2C93` adds per-substep size flicker:
+`min(byte(Random(unsignedHealth >> 3) + 6), 24)`, toggles `winY` bit zero,
+and with `Random(word(100-health)) < 6` adds `Random(20)` dynamic light.
+Preserve the byte truncation before the size clamp and this RNG order.
+Settling switches behavior to **`FadingParticle` (5)**; its complete case
+`0000:1369` sets opacity to `SAR2(health)` once per dispatch, even with zero
+behavior ticks. Generic lifetime countdown remains responsible for removal.
+Both numeric-placeholder renames were approved by the author.
+See [native breakup update evidence](fireball-breakup-evidence.txt) and the
+existing factory/physical-controller exports. Object impacts instead use the
+already recovered linked-target smoke path. The sprite model is a **level slot**:
+demo level 11 maps slot 1 to `ANIM4.AN2`, whose flame frames have native bottom
+offsets 16 and 11; do not assume model 1 means file `ANIM1.AN2`.
+`RangedWeaponTests.cpp` exercises all nine particles through settling/expiry,
+these original sprite bounds, all 65,536 health words for flame RNG/lighting
+and fading arithmetic, zero ticks, batched substeps and the motion gate.
+
+**Stone asset dependency resolved:** sprite-model floor contact adds
+`SAR6(lowword((offsetY + encodedImageHeight) * spriteScale))`. Encoded AN2 height
+is pixel count minus one; the original stone's bottom is 8, not 9.
+`GameContext::GetSpriteBottom` obtains that metadata from the asset owner; the
+default throws explicitly when unavailable. DX11 reads its already-loaded level
+sprite. No guessed sprite bounds are used. Muzzle X/Z divisions truncate toward
+zero, whereas bounce damping and fireball tracking use arithmetic right shifts.
+
+**Electricity:** among slots 2..165 with positive health, nonzero collision mask
+and collision type above 8, choose the first smallest
+`abs(word(ManhattanDistanceFromListener - 100)) < 21`. There is no aim, LOS or
+vertical eligibility test in this routine. Common cost is one plus twice the
+frame-tick count; absent a target restores the pre-trigger amount. Damage is
+`frameTickCount+1`. The last single charge creates no beam. Beam pitch uses
+target-minus-beam Y and a rounded square root of the native wrapped signed-word
+horizontal square; an invalid negative square-root domain throws explicitly.
+
+**Scythe/hedge:** attack ID 24 shares `0000:C1D0..C373` with the shovel:
+pose 17 creates the same 5-damage contact, with reach 55, Y offset -35,
+radii 15/6 and lifetime 10. The shared animation writes amount entry **8**,
+not 24, and sets readiness directly; the scythe's native zero-initialized
+amount entry is not a finite charge supply. The host's new scythe hotkey
+therefore permits an owned scythe even when that entry is nonpositive.
+There is no invented scythe-only hedge gate: native collision category 26
+uses the existing shared damage dispatcher.
+
+Barrier behavior 26 (`0000:1B64`, helper `10AC:8F1E`) was previously missing.
+It accelerates word `0x26` toward the target deformation in word `0x24`,
+updates `itemValue`, and presents its unsigned high byte as the blend weight.
+It writes a three-pixel blocking line (value 16), choosing the axis from
+`winY`. At blend 100 it clears its behavior and writes value 2 instead.
+This second step is essential: clearing the object's collision mask alone
+does not remove the collision-map obstacle. Original OBJPOS30 slots 100..104
+have parameter 100 and threshold 1; one 5-damage contact starts their complete
+cut animation.
+
+**Lentils/bridge:** native `0000:B1F2..B33B` copies the held record without
+consuming it. Each marker has behavior 1/submode 7, health 200, frame 2,
+placement 6, radii 11/6, restitution 50 and resting behavior 0.
+RNG order is signed angle scatter 20, horizontal speed `Random(5)+4`,
+vertical speed `Random(3)+3`, signed X scatter 5, signed Z scatter 5.
+Horizontal components use the clamped sine/cosine table; Y starts 20 below
+the camera. Native recursive firing continues until amount 20 reaches 5,
+yielding seven markers from the casting animation's reset value 12; the host
+uses iteration to avoid stack growth for the native initial value 1000.
+Only the last marker gets sound field 101. Zero per-object sounds are silent.
+The casting animation remains shared with fireball and resets amount 20 to 12.
+
+Submode 7 (`10AC:2EEF..2F7C`) temporarily sets mask 128 for the ordinary
+overlap query, then clears it. On a hit it plays effect 101, increments the
+target's word `0x24` with native wrapping and clamps it to 0..39, selects
+frame `counter/10+1`, sets display to VectorNormal and consumes the marker.
+It stops before further movement in that tick batch. There is no global
+bridge reveal or explicit collision-type filter: original OBJPOS34 bridge
+pieces are collision 47, mask 131, display Hidden and thus match this query.
+This implements revealing the path, not the still-unported player
+bridge-support/bobbing movement branch at `0000:D573`.
+
+Evidence: [tool physics and barrier handler](scythe-lentils-physics-evidence.txt),
+[barrier map orientation and damage](scythe-hedge-map-evidence.txt),
+[map span bounds](scythe-resource-evidence.txt),
+[bridge counter clamp](lentils-hit-clamp-evidence.txt), and the factory/animation
+exports linked above. No numeric-placeholder behavior enum was renamed.
+
+**Intentional boundaries:** ID 6 also covers bones and other tools whose
+placement handlers remain unrecovered; these are rejected before consuming
+the held item. Subsequent recovery of `BEZEICH.TXT` identifies IDs 9, 20, 23
+and 24 as Eimer (bucket), Lentils, Folie (foil) and Sense (scythe), respectively;
+only bucket and foil remain disabled among those four. These labels come from each record's separate
+name subtype, not from its attack ID. The author confirms that Lentils are
+thrown over an invisible bridge to reveal the walkable path, while the scythe
+destroys a blocking hedge in the first level of part 1. Both interactions
+are now confirmed by the native routines and original asset records above.
+See [indexed item names](Findings.md#indexed-item-names-and-shop-text-bezeichtxt).
+No new unknown global blocks the named combat weapons. First-person weapon
+overlays, broad swimming/underwater effects, and unrelated enemy AI remain
+separate recoveries.
+
+[RangedWeaponTests.cpp](Scaffold/RangedWeaponTests.cpp) covers factory records,
+native arithmetic, reload/equip/casting phase thresholds, projectile attachment
+and poison, resting ammo, stone sprite-floor bounds, spare-hand refill, fireball
+windup/expiry/burning/light, electrical target ties/resource use, trap closure,
+pole insertion, shovel/scythe contact timing, all signed scythe phase words,
+Lentils burst records/RNG/audio, bridge reveal counters, barrier map axes and
+word arithmetic, underwater gates and unsupported tools.
+It checks the original OBJPOS30/34 records and two original AN2 resources
+as well as synthetic gameplay fixtures.
+These are static-recovery regressions, not a claim of DOS runtime equivalence.
+
 ### Drifting particles and shared smoke creation
 
 The complete wrappers and supplied-object initializers are preserved in
 [particle-spawn-evidence.txt](particle-spawn-evidence.txt). This batch adds
 behavior 18 and `SpawnInCrater` (139), plus `GameContext` member initializers
 in [GameContext.cpp](Scaffold/GameContext.cpp). Other discovered behaviors,
-other weapon families remain outside this implementation. Shared damage,
-contact behavior and dagger/sword controls have subsequently been implemented above.
+unidentified tool families remain outside this implementation. Shared damage,
+contact behavior and the named combat weapons have subsequently been implemented above.
 
 #### DriftingParticle (18): whole-unit drifting and fading
 

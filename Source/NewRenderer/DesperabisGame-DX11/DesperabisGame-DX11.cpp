@@ -21,11 +21,14 @@
 #include <Renderer/RenderingSettings.h>
 #include <Renderer/VisibilitySettings.h>
 #include <GamePlay/GamePlay.h>
+#include <algorithm>
+#include <limits>
 #include <stdexcept>
 
 namespace
 {
 	constexpr int g_startLevelIndex = 11;
+	bool g_cheatMode = true;
 
 	// The host owns wall-clock conversion; the original game runs at 33 Hz.
 	constexpr double g_gameTicksPerSecond = 33.0;
@@ -57,6 +60,7 @@ namespace
 	RenderingSettings g_renderSettings;
 	VisibilitySettings g_visSettings{ (uint32_t)GamePlay::VisibilityFilter::NormalRendering };
 	std::unique_ptr<LevelScene> g_scene;
+	std::shared_ptr<TextureAnim> g_fireballFrames;
 	std::unique_ptr<FreeCamera> g_freeCam;
 	std::shared_ptr<Camera> g_camera;
 	class GameAppContext;
@@ -112,6 +116,20 @@ namespace
 
 		bool IsUserMessageActive() const override { return m_promptTicks > 0; }
 
+		std::int16_t GetSpriteBottom(const Desperabis::RawGameObject& object) const override
+		{
+			if (!g_scene || !g_scene->m_level) { throw std::runtime_error("Sprite physics requires loaded level assets."); }
+			const auto animation = g_scene->m_level->GetLevelInfo().GetTextureAnim(object.modelId);
+			const int row = static_cast<int>(object.modelAnim) - 1;
+			const int frame = static_cast<int>(object.animFrame) - 1;
+			if (!animation || !animation->IsValidFrame(row, frame))
+			{
+				throw std::runtime_error("Sprite physics references an unavailable animation frame.");
+			}
+			const auto* image = animation->GetFrame(row, frame);
+			return Desperabis::WrapSignedWord(image->m_relY + image->m_height - 1);
+		}
+
 		void UpdateUserMessage(std::int16_t ticks)
 		{
 			if (ticks < 0) { throw std::invalid_argument("Message updates require nonnegative ticks."); }
@@ -137,6 +155,69 @@ namespace
 			}
 		}
 
+		void ApplyCheatLoadout()
+		{
+			using Desperabis::CollisionType;
+			using Desperabis::WeaponType;
+			struct CheatWeapon
+			{
+				WeaponType type;
+				std::int16_t amount;
+			};
+			const CheatWeapon weapons[] =
+			{
+				{ WeaponType::Dagger, 360 },
+				{ WeaponType::Sword, 360 },
+				{ WeaponType::Crossbow, 10 },
+				{ WeaponType::Fireball, (std::numeric_limits<std::int16_t>::max)() },
+				{ WeaponType::Electricity, 360 },
+				{ WeaponType::Stone, 360 }
+			};
+			auto items = inventory;
+			auto amounts = weaponAmounts;
+			std::array<Desperabis::RawGameObject, 32> templates{};
+			for (const auto* filename : { "LEVEL\\OBJPOS0.DAT", "LEVEL\\OBJPOS10.DAT", "LEVEL\\OBJPOS50.DAT" })
+			{
+				const auto bytes = LoadFile(filename);
+				constexpr auto recordSize = sizeof(Desperabis::RawGameObject);
+				if (bytes.empty() || bytes.size() % recordSize != 0)
+				{
+					throw std::runtime_error(std::string(filename) + ": invalid cheat weapon templates.");
+				}
+				for (size_t offset = 0; offset < bytes.size(); offset += recordSize)
+				{
+					const auto item = Desperabis::DecodeGameObject(bytes.data() + offset, recordSize);
+					if (item.health == 1000 && item.collisionType == CollisionType::Weapon &&
+						item.itemValue > 0 && static_cast<size_t>(item.itemValue) < templates.size() &&
+						templates[item.itemValue].health == 0)
+					{
+						templates[item.itemValue] = item;
+					}
+				}
+			}
+			for (const auto& weapon : weapons)
+			{
+				const auto id = static_cast<size_t>(weapon.type);
+				auto slot = std::find_if(items.begin(), items.end(), [id](const auto& item)
+				{
+					return item.health == 1000 && item.collisionType == CollisionType::Weapon &&
+						item.itemValue == static_cast<std::int16_t>(id);
+				});
+				if (slot == items.end())
+				{
+					slot = std::find_if(items.begin(), items.end(), [](const auto& item) { return item.health == 0; });
+					if (slot == items.end()) { throw std::runtime_error("Cheat loadout requires six weapon inventory slots."); }
+					if (templates[id].health == 0) { throw std::runtime_error("Missing original cheat weapon template."); }
+					*slot = templates[id];
+				}
+				if (weapon.type == WeaponType::Fireball) { slot->field_24 = static_cast<std::uint16_t>(weapon.amount); }
+				amounts[id] = weapon.amount;
+			}
+			inventory = items;
+			weaponAmounts = amounts;
+			RefreshWeaponInventory();
+		}
+
 	protected:
 		std::vector<std::uint8_t> LoadFile(std::string_view filename) override
 		{
@@ -150,6 +231,7 @@ namespace
 			LoadLevelObjects(request.levelNumber, data);
 			InitializeLevelPlayerSpawn(data, g_initialPlayerDirection);
 			CompleteLevelLoad(request.id, std::move(data));
+			if (g_cheatMode) { ApplyCheatLoadout(); }
 		}
 
 	private:
@@ -182,6 +264,9 @@ namespace
 		bool selectSword = false;
 		bool jump = false;
 		bool crouch = false;
+		std::array<bool, 6> selectOtherWeapons{};
+		bool selectScythe = false;
+		bool selectLentils = false;
 
 		bool IsKeyPressed(Desperabis::InputKey key) override
 		{
@@ -199,6 +284,14 @@ namespace
 			case Desperabis::InputKey::SelectSwordKey: return selectSword;
 			case Desperabis::InputKey::JumpKey: return jump;
 			case Desperabis::InputKey::CrouchKey: return crouch;
+			case Desperabis::InputKey::SelectCrossbowKey: return selectOtherWeapons[0];
+			case Desperabis::InputKey::SelectFireballKey: return selectOtherWeapons[1];
+			case Desperabis::InputKey::SelectStoneKey: return selectOtherWeapons[2];
+			case Desperabis::InputKey::SelectPlaceableKey: return selectOtherWeapons[3];
+			case Desperabis::InputKey::SelectElectricityKey: return selectOtherWeapons[4];
+			case Desperabis::InputKey::SelectShovelKey: return selectOtherWeapons[5];
+			case Desperabis::InputKey::SelectScytheKey: return selectScythe;
+			case Desperabis::InputKey::SelectLentilsKey: return selectLentils;
 			}
 			throw std::invalid_argument("Unknown game input key.");
 		}
@@ -426,7 +519,18 @@ namespace
 			{
 				inst = std::make_shared<RenderableInstance>(nullptr, (uint32_t)GamePlay::VisibilityFilter::GameObjects);
 			}
-			level->ApplyRenderProperties(inst, state);
+			Texture* spriteOverride = nullptr;
+			const auto& coreObject = g_gameCore->GetWorldObjects().at(slot);
+			if (coreObject.behavior == Desperabis::BehaviorType::FireballProjectile)
+			{
+				const auto frame = coreObject.doorLockOrGroupBitmask == 0 ? 0 : coreObject.doorLockOrGroupBitmask - 1;
+				if (!g_fireballFrames || frame < 0 || frame >= static_cast<int>(g_fireballFrames->m_frames.size()))
+				{
+					throw std::runtime_error("Fireball animation frame is unavailable.");
+				}
+				spriteOverride = &g_fireballFrames->m_frames[frame];
+			}
+			level->ApplyRenderProperties(inst, state, spriteOverride);
 
 			const GamePlay::BehaviorType behavior = prop.GetBehaviorType();
 			if (behavior == GamePlay::BehaviorType::Moon && inst->GetRenderable() != nullptr && inst->m_materialOverride.size() == 1)
@@ -454,25 +558,49 @@ namespace
 
 	void LoadGameLevel(int levelIndex)
 	{
-		g_gameCore->ClearPrompt();
-		ClearGameObjects();
 		g_tickAccumulator = 0.0;
 
 		try
 		{
+			auto scene = std::make_unique<LevelScene>(levelIndex);
+			scene->m_createGameObjects = false;
+			scene->m_createMapIcons = false;
+			FORCE_WAIT(scene->CreateScene());
+			g_gameCore->ClearPrompt();
+			ClearGameObjects();
+			g_scene = std::move(scene);
+			g_freeCam->JumpTo(g_scene->GetInitialPosition());
 			g_gameCore->StartLevel(static_cast<std::int16_t>(levelIndex));
 			if (g_gameCore->GetRuntimeState() != Desperabis::GameRuntimeState::Ready)
 			{
 				throw std::runtime_error(g_gameCore->GetLevelLoadError());
 			}
+			SyncGameObjects();
+			const auto title = "Desperabis (DX11) - level " + std::to_string(levelIndex);
+			SetWindowTextA(g_hWnd, title.c_str());
 		}
 		catch (const std::exception& error)
 		{
+			if (!g_scene) { throw; }
 			ReportGameCoreError("level load failed", error.what());
 			g_useFreeCam = true;
 			return;
 		}
-		SyncGameObjects();
+	}
+
+	void LoadNextLevel()
+	{
+		for (int level = g_scene->m_levelIndex + 1; level <= 99; ++level)
+		{
+			if (LevelInfo::IsUsedLevelIndex(level))
+			{
+				LoadGameLevel(level);
+				g_previousTime = std::chrono::duration<double>(
+					std::chrono::steady_clock::now() - g_startTime).count();
+				return;
+			}
+		}
+		SetWindowTextA(g_hWnd, "Desperabis (DX11) - no next supported level");
 	}
 
 	void ApplyPlayerCamera()
@@ -554,16 +682,18 @@ namespace
 		}
 
 		g_gameCore = std::make_unique<GameAppContext>();
+#if defined(D_ASYNC)
+		g_fireballFrames = AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\SCHUSS1.AN2").get();
+#else
+		g_fireballFrames = AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\SCHUSS1.AN2");
+#endif
+		if (!g_fireballFrames || g_fireballFrames->m_frames.size() != 10)
+		{
+			throw std::runtime_error("Expected the original ten-frame SCHUSS1 fireball animation.");
+		}
 
 		g_freeCam = std::make_unique<FreeCamera>();
 		g_freeCam->SetUseGravity(false);
-
-		// static level presentation only; game objects come from the game context
-		g_scene = std::make_unique<LevelScene>(g_startLevelIndex);
-		g_scene->m_createGameObjects = false;
-		g_scene->m_createMapIcons = false;
-		FORCE_WAIT(g_scene->CreateScene());
-		g_freeCam->JumpTo(g_scene->GetInitialPosition());
 
 		g_camera = Renderer::Instance().GetOrCreateCamera();
 		UpdateProjection();
@@ -624,6 +754,12 @@ namespace
 				input.attack = IsKeyPressed(VK_CONTROL) || IsKeyPressed(VK_LBUTTON);
 				input.selectDagger = IsKeyPressed('1');
 				input.selectSword = IsKeyPressed('2');
+				input.selectScythe = IsKeyPressed('9');
+				input.selectLentils = IsKeyPressed('0');
+				for (size_t weapon = 0; weapon < input.selectOtherWeapons.size(); ++weapon)
+				{
+					input.selectOtherWeapons[weapon] = IsKeyPressed('3' + static_cast<int>(weapon));
+				}
 				input.jump = IsKeyPressed(VK_SPACE);
 				input.crouch = IsKeyPressed('C');
 			}
@@ -736,6 +872,10 @@ namespace
 			else if (wParam == 'F' && (lParam & (1 << 30)) == 0 && g_initialized)
 			{
 				ToggleFreeCamera();
+			}
+			else if (wParam == VK_TAB && (lParam & (1 << 30)) == 0 && g_initialized)
+			{
+				LoadNextLevel();
 			}
 			return 0;
 		case WM_DESTROY:

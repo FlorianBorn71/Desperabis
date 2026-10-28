@@ -1,0 +1,70 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 0000:1167:2C
+0000:1167  8B 46 04                 MOV AX,word ptr [BP + 0x4]
+0000:116A  89 46 C4                 MOV word ptr [BP + -0x3c],AX
+0000:116D  B8 01 00                 MOV AX,0x1
+0000:1170  3B 46 C4                 CMP AX,word ptr [BP + -0x3c]
+0000:1173  7F 18                    JG 0x1000:118d ; logical module target 0000:118D
+0000:1175  89 46 FE                 MOV word ptr [BP + -0x2],AX
+0000:1178  EB 03                    JMP 0x1000:117d ; logical module target 0000:117D
+0000:117A  FF 46 FE                 INC word ptr [BP + -0x2]
+0000:117D  FF 76 FC                 PUSH word ptr [BP + -0x4]
+0000:1180  9A 2E 2A AC 20           CALLF 0x2000:34ee ; encoded analysis target 20AC:2A2E, module 10AC:2A2E
+0000:1185  8B 46 FE                 MOV AX,word ptr [BP + -0x2]
+0000:1188  3B 46 C4                 CMP AX,word ptr [BP + -0x3c]
+0000:118B  75 ED                    JNZ 0x1000:117a ; logical module target 0000:117A
+0000:118D  E9 80 3F                 JMP 0x1000:5110 ; logical module target 0000:5110
+0000:1190  3D 02 00                 CMP AX,0x2
+
+Range 0000:1369:15
+0000:1369  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:136C  26 FF 75 0A              PUSH word ptr ES:[DI + 0xa]
+0000:1370  58                       POP AX
+0000:1371  C1 F8 02                 SAR AX,0x2
+0000:1374  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:1377  26 89 45 2A              MOV word ptr ES:[DI + 0x2a],AX
+0000:137B  E9 92 3D                 JMP 0x1000:5110 ; logical module target 0000:5110
+
+Range 10AC:2C19:7B
+10AC:2C19  C4 7E EE                 LES DI,[BP + -0x12]
+10AC:2C1C  26 8B 45 24              MOV AX,word ptr ES:[DI + 0x24]
+10AC:2C20  3D 01 00                 CMP AX,0x1
+10AC:2C23  75 6F                    JNZ 0x2000:3754 ; logical module target 10AC:2C94
+10AC:2C25  C4 7E EE                 LES DI,[BP + -0x12]
+10AC:2C28  26 8B 45 0A              MOV AX,word ptr ES:[DI + 0xa]
+10AC:2C2C  C1 E8 03                 SHR AX,0x3
+10AC:2C2F  50                       PUSH AX
+10AC:2C30  9A 0A 17 E4 3C           CALLF 0x3000:e54a ; encoded analysis target 3CE4:170A, module 2CE4:170A
+10AC:2C35  05 06 00                 ADD AX,0x6
+10AC:2C38  C4 7E EE                 LES DI,[BP + -0x12]
+10AC:2C3B  26 88 45 35              MOV byte ptr ES:[DI + 0x35],AL
+10AC:2C3F  C4 7E EE                 LES DI,[BP + -0x12]
+10AC:2C42  26 80 7D 35 18           CMP byte ptr ES:[DI + 0x35],0x18
+10AC:2C47  76 08                    JBE 0x2000:3711 ; logical module target 10AC:2C51
+10AC:2C49  C4 7E EE                 LES DI,[BP + -0x12]
+10AC:2C4C  26 C6 45 35 18           MOV byte ptr ES:[DI + 0x35],0x18
+10AC:2C51  C4 7E EE                 LES DI,[BP + -0x12]
+10AC:2C54  26 8B 45 1E              MOV AX,word ptr ES:[DI + 0x1e]
+10AC:2C58  35 01 00                 XOR AX,0x1
+10AC:2C5B  C4 7E EE                 LES DI,[BP + -0x12]
+10AC:2C5E  26 89 45 1E              MOV word ptr ES:[DI + 0x1e],AX
+10AC:2C62  B8 64 00                 MOV AX,0x64
+10AC:2C65  C4 7E EE                 LES DI,[BP + -0x12]
+10AC:2C68  26 2B 45 0A              SUB AX,word ptr ES:[DI + 0xa]
+10AC:2C6C  50                       PUSH AX
+10AC:2C6D  9A 0A 17 E4 3C           CALLF 0x3000:e54a ; encoded analysis target 3CE4:170A, module 2CE4:170A
+10AC:2C72  3D 06 00                 CMP AX,0x6
+10AC:2C75  73 1A                    JNC 0x2000:3751 ; logical module target 10AC:2C91
+10AC:2C77  C4 7E EE                 LES DI,[BP + -0x12]
+10AC:2C7A  26 FF 75 0C              PUSH word ptr ES:[DI + 0xc]
+10AC:2C7E  C4 7E EE                 LES DI,[BP + -0x12]
+10AC:2C81  26 FF 75 10              PUSH word ptr ES:[DI + 0x10]
+10AC:2C85  6A 14                    PUSH 0x14
+10AC:2C87  9A 0A 17 E4 3C           CALLF 0x3000:e54a ; encoded analysis target 3CE4:170A, module 2CE4:170A
+10AC:2C8C  50                       PUSH AX
+10AC:2C8D  0E                       PUSH CS
+10AC:2C8E  E8 6F D3                 CALL 0x2000:0ac0 ; logical module target 10AC:0000
+10AC:2C91  E9 EB 02                 JMP 0x2000:3a3f ; logical module target 10AC:2F7F

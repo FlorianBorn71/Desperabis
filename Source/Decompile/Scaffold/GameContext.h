@@ -190,7 +190,15 @@ namespace Desperabis
         SelectDaggerKey,
         SelectSwordKey,
         JumpKey,
-        CrouchKey
+        CrouchKey,
+        SelectCrossbowKey,
+        SelectFireballKey,
+        SelectStoneKey,
+        SelectPlaceableKey,
+        SelectElectricityKey,
+        SelectShovelKey,
+        SelectScytheKey,
+        SelectLentilsKey
     };
 
     class InputHandler
@@ -317,6 +325,8 @@ namespace Desperabis
         void SpawnSkeletonFragment(const RawGameObject& source, std::uint16_t part,
             std::int16_t x, std::int16_t y, std::int16_t z);
         void SpawnWaterImpact(std::int16_t x, std::int16_t z);
+        // Native offsetY + encoded height (pixel count minus one), before spriteScale / 64.
+        virtual std::int16_t GetSpriteBottom(const RawGameObject& object) const;
         std::int16_t frameTickCount = 1; // DS:D4CA; burning uses this rather than the behavior argument.
         LightingCache lightingCache;
         std::uint16_t field_DC34 = 0; // Near lights add random values; also used as a timer RNG range.
@@ -346,6 +356,8 @@ namespace Desperabis
         // Original 10AC:387B: three word slots, X/Z/value push order, RETF 6.
         void SetCollisionMapPixelAtWorldXZ(std::int16_t x, std::int16_t z, std::uint16_t value);
         void SetDoorCollisionMapAtWorldXZ(std::int16_t x, std::int16_t z, std::uint16_t value);
+        void SetBarrierCollisionMapAtWorldXZ(std::int16_t x, std::int16_t z,
+            std::int16_t heading, std::uint8_t value);
 
         // Original 1E48:CF49: X/Z word arguments, RETF 4; returns a byte in AL.
         std::uint8_t GetCollisionMapPixelAtWorldXZ(std::int16_t x, std::int16_t z) const;

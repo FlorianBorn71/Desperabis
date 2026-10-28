@@ -1,9 +1,18 @@
 #include "GameMath.h"
 
 #include <cmath>
+#include <stdexcept>
 
 namespace Desperabis
 {
+    std::int16_t ArithmeticShiftRight(std::int16_t value, unsigned int bits)
+    {
+        if (bits > 15) { throw std::invalid_argument("Signed-word shift exceeds 15 bits."); }
+        const auto divisor = 1 << bits;
+        return static_cast<std::int16_t>(value >= 0 ? value / divisor :
+            -((-static_cast<int>(value) + divisor - 1) / divisor));
+    }
+
     namespace
     {
         // Verified against the original x87 generation path at all 513 indices.

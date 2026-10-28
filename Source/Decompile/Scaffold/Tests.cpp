@@ -156,7 +156,8 @@ namespace
             object.health = 1;
             object.posX = -100;
             if (entry.type == BehaviorType::WaterDrop || entry.type == BehaviorType::FloatingDebris ||
-                entry.type == BehaviorType::SinkingObject)
+                entry.type == BehaviorType::SinkingObject || entry.type == BehaviorType::MetalPole ||
+                entry.type == BehaviorType::BearTrapAmmo)
             {
                 object.posX = 150;
                 object.posZ = 4050;
@@ -177,6 +178,11 @@ namespace
                 entry.type == BehaviorType::Door ||
                 entry.type == BehaviorType::Flies ||
                 entry.type == BehaviorType::WeaponDamageCollider ||
+                entry.type == BehaviorType::CrossbowBolt || entry.type == BehaviorType::FireballProjectile ||
+                entry.type == BehaviorType::FadingParticle ||
+                entry.type == BehaviorType::MetalPole || entry.type == BehaviorType::BearTrapAmmo ||
+                entry.type == BehaviorType::Behavior_300 ||
+                entry.type == BehaviorType::DestroyableBarrier ||
                 entry.type == BehaviorType::DriftingParticle || entry.type == BehaviorType::SpawnInCrater ||
                 entry.type == BehaviorType::FloatingDebris || entry.type == BehaviorType::LevelStartOverride ||
                 entry.type == BehaviorType::RatAndSnake ||
@@ -325,6 +331,7 @@ namespace
             std::uint8_t lastSample = 0;
             std::uint8_t lastVolume = 0;
             std::uint16_t GetSampleCount() const override { return 129; }
+            void StopAllSamples() override { playing.fill(false); }
             bool IsChannelPlaying(std::size_t channel) const override { return playing.at(channel); }
             void PlaySample(std::size_t channel, std::uint8_t sample, std::uint8_t volume) override
             {
@@ -602,14 +609,17 @@ namespace
     {
         struct Keys final : InputHandler
         {
-            std::array<bool, 12> pressed{};
+            std::array<bool, 20> pressed{};
             bool IsKeyPressed(InputKey key) override { return pressed.at(static_cast<std::size_t>(key)); }
         } keys;
         constexpr std::array inputs{
             InputKey::ForwardKey, InputKey::BackwardKey, InputKey::StrafeLeftKey,
             InputKey::StrafeRightKey, InputKey::TurnLeftKey, InputKey::TurnRightKey, InputKey::InteractionKey,
             InputKey::AttackKey, InputKey::SelectDaggerKey, InputKey::SelectSwordKey,
-            InputKey::JumpKey, InputKey::CrouchKey
+            InputKey::JumpKey, InputKey::CrouchKey,
+            InputKey::SelectCrossbowKey, InputKey::SelectFireballKey, InputKey::SelectStoneKey,
+            InputKey::SelectPlaceableKey, InputKey::SelectElectricityKey, InputKey::SelectShovelKey,
+            InputKey::SelectScytheKey, InputKey::SelectLentilsKey
         };
         InputHandler& input = keys;
         for (unsigned mask = 0; mask < (1u << inputs.size()); ++mask)
@@ -632,6 +642,7 @@ namespace
             std::uint8_t lastSample = 0;
             std::uint8_t lastVolume = 0;
             std::uint16_t GetSampleCount() const override { return 129; }
+            void StopAllSamples() override { playing.fill(false); }
             bool IsChannelPlaying(std::size_t channel) const override { return playing.at(channel); }
             void PlaySample(std::size_t channel, std::uint8_t sample, std::uint8_t volume) override
             {
@@ -1231,6 +1242,7 @@ namespace
             std::uint8_t lastSample = 0;
             std::uint8_t lastVolume = 0;
             std::uint16_t GetSampleCount() const override { return 129; }
+            void StopAllSamples() override { playing.fill(false); }
             bool IsChannelPlaying(std::size_t channel) const override { return playing.at(channel); }
             void PlaySample(std::size_t channel, std::uint8_t sample, std::uint8_t volume) override
             {
@@ -1461,6 +1473,7 @@ namespace
             std::array<bool, SoundChannelCount> playing{};
             int calls = 0;
             std::uint16_t GetSampleCount() const override { return 129; }
+            void StopAllSamples() override { playing.fill(false); }
             bool IsChannelPlaying(std::size_t channel) const override { return playing.at(channel); }
             void PlaySample(std::size_t channel, std::uint8_t sample, std::uint8_t volume) override
             {
@@ -3011,6 +3024,7 @@ namespace
             unsigned int starts = 0;
             bool failStart = false;
             std::uint16_t GetSampleCount() const override { return sampleCount; }
+            void StopAllSamples() override { playing.fill(false); }
             bool IsChannelPlaying(std::size_t channel) const override { return playing.at(channel); }
             void PlaySample(std::size_t channel, std::uint8_t sample, std::uint8_t volume) override
             {
@@ -3322,7 +3336,7 @@ namespace
             object.behavior = static_cast<BehaviorType>(behavior);
             level.heightSurfaces[0] = Level::HeightSurface{ 0, 0 };
             const auto result = DispatchObjectCase(object, context);
-            Check(result.moduleOffset == originalEntry(behavior) && result.behavior == object.behavior,
+            Check(result.moduleOffset == originalEntry(behavior) && result.behavior == static_cast<BehaviorType>(behavior),
                 "C++ routing differs from the original executable's selector instructions.");
         }
     }

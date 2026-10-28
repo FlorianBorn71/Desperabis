@@ -37,8 +37,19 @@ game ticks (33 Hz, as in the original game)
   targets too. Dagger/sword input, equip/holster, swing/recovery and contact creation are now
   driven by GameCore. A dagger hits immediately; a sword hits after its wind-up. Held attack
   repeats after recovery. Eligible hand slot 2 takes priority over slot 1; weapon-number
-  selection moves the requested weapon into slot 2. Other weapon families and remaining
-  dormant-object activation drivers are still incomplete; Enter remains interaction.
+  selection moves the requested weapon into slot 2. Crossbow, fireball, stone,
+  electricity, shovel and scythe attacks are also driven by GameCore, as are
+  Lentils throws and bear-trap/metal-pole placement. Scythe hits deform hedges
+  and clear their blocking map pixels; Lentils reveal individual invisible bridge
+  pieces. Walking on bridges still requires the separate player-support recovery.
+  Other placeable tools, extra item IDs 9/23 (bucket and foil),
+  and remaining dormant-object activation drivers are still incomplete;
+  unsupported placement leaves the item intact. Enter remains interaction.
+  The host supplies stone sprite-bottom metadata from loaded level assets and
+  presents fireballs using the ten original `ANIMS\SCHUSS1.AN2` images.
+  Terrain-impact breakup flames now use recovered `BouncingObject` physics,
+  size flicker and dynamic light, then `FadingParticle` opacity on settling.
+  Their sprite bounds and images come from the level-mapped common animation bank.
   The sample does not yet draw a held-weapon overlay, but world hits/particles are active.
   Player-life depletion installs the core death state and disables normal keyboard movement,
   but the native meter HUD, death camera and restart/menu presentation are not yet available.
@@ -57,6 +68,12 @@ game ticks (33 Hz, as in the original game)
 
 Current assumptions/limitations:
 
+* The host's global `g_cheatMode` defaults to `true`. After every level load it grants missing
+  dagger, sword, crossbow, fireball, electricity and stone items using original OBJPOS templates.
+  It refills crossbow ammo to 10 arrows, electricity to 360 (100%), and fireballs to 32,767
+  (the maximum positive native signed-word charge count, including the item-local counter).
+  Existing inventory items are preserved; other weapons remain level-specific.
+  Set `g_cheatMode = false` to leave inventory and ammo unchanged on level load.
 * FELD geometry up to 50x40 uses the recovered native row placement and outside-file defaults.
   Static collision is built on loading; doors, pillars and wall destruction mutate the same map.
   Core wall/floor-object changes increment `Level::geometryRevision`, but this sample does not
@@ -72,9 +89,15 @@ Current assumptions/limitations:
   (the window title reports the result and selected native slot/type; supports medicine pickup,
   ordinary doors, grouped switches, and ordinary switches linked to damage/activation targets)
 * `Ctrl` or left mouse: attack with the equipped weapon (normal player camera only)
-* `1` / `2`: select dagger / sword from inventory (normal player camera only)
+* `1`..`8`: select dagger, sword, crossbow, fireball, stone, placeable item,
+  electricity, or shovel from inventory (normal player camera only)
+* `9`: select scythe; `0`: select Lentils from inventory (sample bindings)
   The weapon must be available and its current animation idle; selection uses native holster/draw timing.
 * `Space`: jump, or stand up first when crouched (normal player camera only)
 * `C`: crouch; release keeps the stance, as in the original. Use `Space` to stand.
 * `F`: toggle free camera (`WASD` move, `Shift` faster, mouse position relative to the window center steers)
+* `Tab`: load the next supported level in numeric order, skipping unused IDs.
+  Reloads the renderer scene and gameplay state, reapplies the cheat loadout when enabled,
+  and resets the camera to the new start. Holding the key does not skip multiple levels.
+  At the last supported level, the window title reports that no next level exists.
 * `Esc` quits

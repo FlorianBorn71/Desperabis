@@ -101,7 +101,7 @@
 (Arrow
 (Fire power
 (Stone
-(Lenses
+(Lentils
 (Blade
 (Sword  
 (Crossbow
@@ -112,7 +112,7 @@
 (Foil 
 (Vase
 (Mirror 
-(Lenses
+(Lentils
 (Pail 
 (Coffin
 (Scyth
@@ -142,7 +142,7 @@
 (Foil
 (Vase
 (Mirror
-(Lenses
+(Lentils
 (Bucket
 (Coffin
 (Scythe

@@ -164,7 +164,7 @@ namespace
         int fragments = 0;
         for (const auto& object : f.context.worldObjects)
         {
-            if (object.behavior == BehaviorType::Behavior_1 && object.health > 0) { ++fragments; }
+            if (object.behavior == BehaviorType::BouncingObject && object.health > 0) { ++fragments; }
         }
         Check(f.Target().health == 0 && fragments == 8 && f.Contact().behavior == BehaviorType::DriftingParticle,
             "Fatal skeleton contact must retain its impact particle and create all eight death parts.");
@@ -626,7 +626,7 @@ namespace
         int fragments = 0;
         for (const auto& object : f.context.worldObjects)
         {
-            if (object.behavior == BehaviorType::Behavior_1 && object.health > 0)
+            if (object.behavior == BehaviorType::BouncingObject && object.health > 0)
             {
                 ++fragments;
                 Check(object.modelId == 1 && object.modelAnim == 5 && object.field_24 == 1 &&
@@ -667,7 +667,7 @@ namespace
         auto seed = f.context.randomSeed;
         f.context.DamageObject(f.Target(), 0);
         for (int i = 0; i < 81; ++i) { Next(seed, 1); }
-        Check(f.Target().health == 0 && f.context.worldObjects[165].behavior == BehaviorType::Behavior_1 &&
+        Check(f.Target().health == 0 && f.context.worldObjects[165].behavior == BehaviorType::BouncingObject &&
             f.context.randomSeed == seed, "A full world must repeatedly reuse fallback 165 without truncating the nine-fragment loop.");
         for (auto& object : f.context.worldObjects) { object = {}; object.health = 1000; }
         f.Set(CollisionType::ActivateSpiders);

@@ -101,6 +101,29 @@ For the first explained case and shared collision-map pointer, see
 - `Scaffold/WeaponTests.cpp`: exhaustive phase-word tests, swing/recovery
   timelines, contact records, hand/registry selection, audio and live `Tick`
   pickup-to-hit integration. See [melee attack sequence](BehaviorRecovery.md#player-melee-attack-sequence).
+- `ranged-weapon-physics-evidence.txt`, `ranged-weapon-support-evidence.txt`,
+  `ranged-weapon-support-tail-evidence.txt`, `weapon-projectile-routes-evidence.txt`,
+  `weapon-resting-evidence.txt`, `weapon-effect-initialization-evidence.txt`,
+  `weapon-effect-loader-evidence.txt`, `weapon-square-root-evidence.txt`:
+  crossbow/fireball physics, stone contact, placement and effect-resource contracts.
+- `fireball-breakup-evidence.txt`: `BouncingObject` (1) flame submode, shared
+  per-substep dispatch and complete `FadingParticle` (5) opacity update.
+- `Scaffold/RangedWeaponTests.cpp`: crossbow, fireball, stone, electricity,
+  shovel/scythe, Lentils bridge reveal, hedge destruction, bear-trap/metal-pole
+  placement, fireball breakup movement/flicker/light/fading, exhaustive flame
+  arithmetic/RNG, and original OBJPOS/AN2 regressions.
+  See [ranged weapons and placement](BehaviorRecovery.md#ranged-weapons-shovel-and-placement)
+  for unimplemented extra tools and explicit unsupported placement boundaries.
+- `scythe-lentils-physics-evidence.txt`, `scythe-hedge-map-evidence.txt`,
+  `scythe-lentils-support-evidence.txt`, `scythe-resource-evidence.txt`,
+  `scythe-resource-init-evidence.txt`, `lentils-hit-clamp-evidence.txt`:
+  hedge animation/map removal, native tool counters, Lentils overlap masks,
+  bridge frame progression and remaining platform-support boundaries.
+- `item-label-loader-evidence.txt`, `item-label-selection-evidence.txt`,
+  `item-label-consumers-evidence.txt`, `item-price-message-tail-evidence.txt`:
+  indexed `BEZEICH.TXT` loading, item-name subtype selection, the leading
+  parenthesis display flag and shop-price substitution.
+  See [item-name findings](Findings.md#indexed-item-names-and-shop-text-bezeichtxt).
 - `lighting-shade-evidence.txt`: timer-driven shade noise, its quantization
   consumer, a separate global shading term, and per-frame noise-range resets.
 - `object-render-list-evidence.txt`: render-sort-key assignment and signed
