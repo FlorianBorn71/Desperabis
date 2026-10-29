@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{199fe3b5-31d4-48e9-b5bc-1793f7189c69}</ProjectGuid>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <OutDir>$(ProjectDir)x64\$(Configuration)\ApplicationUiTests\</OutDir>
+    <IntDir>$(OutDir)obj\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\SharedSource\base;$(ProjectDir)..\SharedSource;$(ProjectDir)..\..\Decompile\Scaffold;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link><SubSystem>Console</SubSystem></Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(DesperabisAsyncAssets)'=='true'">
+    <ClCompile>
+      <PreprocessorDefinitions>D_ASYNC;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalOptions>/await %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="ApplicationUiTests.cpp" />
+    <ClCompile Include="ApplicationUi.cpp" />
+    <ClCompile Include="..\SharedSource\DX11\BuiltInShaders_Release.cpp" />
+    <ClCompile Include="..\SharedSource\DX11\NativeTextureDX11.cpp" />
+    <ClCompile Include="..\SharedSource\DX11\RenderContextDX11.cpp" />
+    <ClCompile Include="..\SharedSource\DX11\RendererDX11.cpp" />
+    <ClCompile Include="..\SharedSource\IO\FileManagerBuiltIn.cpp" />
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInANIMS.cpp" />
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInGRAFIK.cpp" />
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInLEVEL.cpp" />
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInVEKT.cpp" />
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInMapIcons.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\BaseLibrary\DesperabisBaseLib.vcxproj">
+      <Project>{175c94fd-9c87-445a-8608-8cc4d7935797}</Project>
+    </ProjectReference>
+    <ProjectReference Include="..\..\Desperabis-GameCore\Desperabis-GameCore.vcxproj">
+      <Project>{a48204c9-c011-4a14-97ae-d3d6d7c8c649}</Project>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

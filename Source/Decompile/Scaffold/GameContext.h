@@ -204,7 +204,16 @@ namespace Desperabis
         SelectLentilsKey,
         LookUpKey,
         LookDownKey,
-        CenterLookKey
+        CenterLookKey,
+        MainMenuKey,
+        InventoryKey,
+        UiUpKey,
+        UiDownKey,
+        UiLeftKey,
+        UiRightKey,
+        UiConfirmKey,
+        UiCancelKey,
+        Count
     };
 
     class InputHandler
@@ -235,6 +244,10 @@ namespace Desperabis
         void SetPaused(bool paused);
         bool IsPaused() const;
         GameTickResult Tick(GameTickTiming timing, InputHandler& input);
+        // Call every host frame, including zero-tick frames and modal/loading states.
+        // Owns 33 Hz gameplay timing, input edges/repeat, and nonblocking page dispatch.
+        ApplicationUpdateResult UpdateApplication(double elapsedSeconds, InputHandler& input);
+        ApplicationPresentation GetApplicationPresentation() const;
         const std::array<RawGameObject, 166>& GetWorldObjects() const;
         // Immediate game-thread hooks for active (health > 0) world slots 1..165.
         // Destruction sees the old record; creation sees the initialized replacement.
@@ -254,7 +267,7 @@ namespace Desperabis
 
         MenuPage GetMenuPage() const;
         void SetMenuPage(MenuPage page);
-        // Runs modal pages until Quit. Unrecovered page implementations throw explicitly.
+        // Legacy blocking recovery driver. Interactive hosts use UpdateApplication instead.
         void RunApplication();
         void RunApplicationStep();
         bool CanResumeGame() const;
@@ -436,7 +449,7 @@ namespace Desperabis
         void LoadLevelObjects(std::int16_t levelNumber, LevelLoadData& data);
         // May complete synchronously or start host-side async work. Default reports an explicit error.
         virtual void LoadLevel(const LevelLoadRequest& request);
-        // Each modal page owns its input/drawing loop and returns its next application page.
+        // Legacy blocking recovery hooks; UpdateApplication never invokes these.
         virtual MainMenuAction ShowMainMenu();
         virtual std::optional<std::int16_t> ShowChapterSelection();
         virtual MenuPage RunGameplay();
@@ -450,6 +463,20 @@ namespace Desperabis
         virtual void InitializeNewGame(std::int16_t chapter);
 
     private:
+        void UpdateInventoryInput(bool confirm);
+        void SwapInventoryItems(std::size_t first, std::size_t second);
+        std::uint8_t inventoryFocus = 0;
+        std::optional<std::uint8_t> inventorySource;
+        std::uint16_t inventoryPulsePhase = 0;
+        double inventoryPulseAccumulator = 0;
+        std::uint8_t mainMenuFocus = 0;
+        double applicationTickAccumulator = 0;
+        static constexpr std::size_t InputKeyCount = static_cast<std::size_t>(InputKey::Count);
+        std::array<bool, InputKeyCount> applicationPreviousKeys{};
+        std::array<bool, InputKeyCount> applicationBlockedKeys{};
+        std::optional<InputKey> navigationRepeatKey;
+        double navigationRepeatSeconds = 0;
+        bool applicationPageChanged = false;
         int FindWorldObjectSlot(const RawGameObject& object) const;
         void NotifyObjectCreated(const RawGameObject& object);
         void UpdateWeaponSelection();

@@ -6,6 +6,7 @@
 #include <GameContext.h>
 #include <GameMath.h>
 #include "AudioPlayer.h"
+#include "ApplicationUi.h"
 
 #include <DesperabisCommon.h>
 #include <Asset/AssetManager.h>
@@ -37,10 +38,6 @@ namespace
 	constexpr int g_startLevelIndex = g_playableLevels.front();
 	bool g_cheatMode = true;
 
-	// The host owns wall-clock conversion; the original game runs at 33 Hz.
-	constexpr double g_gameTicksPerSecond = 33.0;
-	// Cap catch-up after stalls to one second of game time.
-	constexpr int g_maxTicksPerFrame = 33;
 	constexpr int g_numObjectSlots = static_cast<int>(std::tuple_size_v<decltype(Desperabis::GameContext::worldObjects)>);
 	// OBJPOS has no player record, so the initial view vector is a host choice.
 	// GameContext seeds the player heading from it at load and rewrites velocityX/Z from the heading every tick.
@@ -77,6 +74,7 @@ namespace
 	std::unique_ptr<AudioPlayer> g_audioPlayer;
 	std::array<std::shared_ptr<TextureAnim>, 3> g_fontAnimations;
 	std::unique_ptr<Font> g_promptFont;
+	ApplicationUi g_applicationUi;
 	bool g_initialized = false;
 
 	// presentation of the game world, indexed by native slot
@@ -84,7 +82,7 @@ namespace
 	RawGameObject g_objectState[g_numObjectSlots] = {};
 	RawGameObject g_presentedState[g_numObjectSlots] = {};
 	bool g_objectBehaviorCreated[g_numObjectSlots] = {};
-	double g_tickAccumulator = 0.0;
+	double g_worldTime = 0.0;
 	bool g_useFreeCam = false;
 	Vector g_playerForward(0.f, 0.f, 1.f, 0.f);
 
@@ -331,6 +329,14 @@ namespace
 		std::array<bool, 6> selectOtherWeapons{};
 		bool selectScythe = false;
 		bool selectLentils = false;
+		bool mainMenu = false;
+		bool inventory = false;
+		bool uiUp = false;
+		bool uiDown = false;
+		bool uiLeft = false;
+		bool uiRight = false;
+		bool uiConfirm = false;
+		bool uiCancel = false;
 
 		bool IsKeyPressed(Desperabis::InputKey key) override
 		{
@@ -359,6 +365,15 @@ namespace
 			case Desperabis::InputKey::SelectShovelKey: return selectOtherWeapons[5];
 			case Desperabis::InputKey::SelectScytheKey: return selectScythe;
 			case Desperabis::InputKey::SelectLentilsKey: return selectLentils;
+			case Desperabis::InputKey::MainMenuKey: return mainMenu;
+			case Desperabis::InputKey::InventoryKey: return inventory;
+			case Desperabis::InputKey::UiUpKey: return uiUp;
+			case Desperabis::InputKey::UiDownKey: return uiDown;
+			case Desperabis::InputKey::UiLeftKey: return uiLeft;
+			case Desperabis::InputKey::UiRightKey: return uiRight;
+			case Desperabis::InputKey::UiConfirmKey: return uiConfirm;
+			case Desperabis::InputKey::UiCancelKey: return uiCancel;
+			case Desperabis::InputKey::Count: break;
 			}
 			throw std::invalid_argument("Unknown game input key.");
 		}
@@ -655,7 +670,6 @@ namespace
 	{
 		g_gameCore->StopAllSoundEffects();
 		g_audioPlayer->StopAmbientPlayback();
-		g_tickAccumulator = 0.0;
 
 		try
 		{
@@ -666,7 +680,9 @@ namespace
 			g_gameCore->ClearPrompt();
 			g_gameCore->ClearHealthBar();
 			ClearGameObjects();
+			g_applicationUi.Clear();
 			g_scene = std::move(scene);
+			g_worldTime = 0;
 			g_freeCam->JumpTo(g_scene->GetInitialPosition());
 			g_gameCore->StartLevel(static_cast<std::int16_t>(levelIndex));
 			if (g_gameCore->GetRuntimeState() != Desperabis::GameRuntimeState::Ready)
@@ -773,23 +789,18 @@ namespace
 		{
 			L"ANIMS\\SCHRIFT0.AN2", L"ANIMS\\SCHRIFT1.AN2", L"ANIMS\\SCHRIFT2.AN2"
 		};
-		const std::string_view characterMappings[] =
-		{
-			"abcdefghijklmnopqrstuvwxyz\x94\x81\x84\xe1",
-			"ABCDEFGHIJKLMNOPQRSTUVWXYZ\x99\x9a\x8e?",
-			"0123456789.:"
-		};
 		auto fontPalette = std::make_shared<Palette>();
 		fontPalette->BuildGrayscale();
 		for (size_t i = 0; i < g_fontAnimations.size(); ++i)
 		{
 			g_fontAnimations[i] = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(fontFiles[i], fontPalette);
-			g_promptFont->AddGlyphs(g_fontAnimations[i].get(), characterMappings[i]);
+			g_promptFont->AddGlyphs(g_fontAnimations[i].get(), ApplicationUi::FontCharacters[i]);
 		}
 
 		g_gameCore = std::make_unique<GameAppContext>();
 		g_fireballFrames = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\SCHUSS1.AN2");
 		g_hudAnimations = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\AMA_ANI.AN2");
+		CO_AWAIT g_applicationUi.Initialize();
 		std::vector<std::shared_ptr<const SoundSample>> samples;
 		for (int sample = 1; sample <= 129; ++sample)
 		{
@@ -832,6 +843,7 @@ namespace
 		g_audioPlayer.reset();
 		g_gameCore->ClearPrompt();
 		g_gameCore->ClearHealthBar();
+		g_applicationUi.Deinitialize();
 		ClearGameObjects();
 		g_scene.reset();
 		g_promptFont.reset();
@@ -860,82 +872,82 @@ namespace
 		const double deltaTime = g_currentTime - g_previousTime;
 		g_previousTime = g_currentTime;
 
-		g_scene->Update(deltaTime);
-
 		const bool hasFocus = GetForegroundWindow() == g_hWnd;
 		auto IsKeyPressed = [hasFocus](int key) { return hasFocus && (GetAsyncKeyState(key) & 0x8000) != 0; };
 
-		// advance the game simulation and present the resulting world state
-		if (g_gameCore->GetRuntimeState() == Desperabis::GameRuntimeState::Ready)
+		GameInput input;
+		if (!g_useFreeCam)
 		{
-			GameInput input;
-			if (!g_useFreeCam)
+			input.forward = IsKeyPressed('W') || IsKeyPressed(VK_UP);
+			input.backward = IsKeyPressed('S') || IsKeyPressed(VK_DOWN);
+			input.strafeLeft = IsKeyPressed('A');
+			input.strafeRight = IsKeyPressed('D');
+			input.turnLeft = IsKeyPressed(VK_LEFT);
+			input.turnRight = IsKeyPressed(VK_RIGHT);
+			input.lookUp = IsKeyPressed(VK_PRIOR);
+			input.lookDown = IsKeyPressed(VK_NEXT);
+			input.centerLook = IsKeyPressed(VK_HOME);
+			input.attack = IsKeyPressed(VK_CONTROL) || IsKeyPressed(VK_LBUTTON);
+			input.selectDagger = IsKeyPressed('1');
+			input.selectSword = IsKeyPressed('2');
+			input.selectScythe = IsKeyPressed('9');
+			input.selectLentils = IsKeyPressed('0');
+			for (size_t weapon = 0; weapon < input.selectOtherWeapons.size(); ++weapon)
 			{
-				input.forward = IsKeyPressed('W') || IsKeyPressed(VK_UP);
-				input.backward = IsKeyPressed('S') || IsKeyPressed(VK_DOWN);
-				input.strafeLeft = IsKeyPressed('A');
-				input.strafeRight = IsKeyPressed('D');
-				input.turnLeft = IsKeyPressed(VK_LEFT);
-				input.turnRight = IsKeyPressed(VK_RIGHT);
-				input.lookUp = IsKeyPressed(VK_PRIOR);
-				input.lookDown = IsKeyPressed(VK_NEXT);
-				input.centerLook = IsKeyPressed(VK_HOME);
-				input.attack = IsKeyPressed(VK_CONTROL) || IsKeyPressed(VK_LBUTTON);
-				input.selectDagger = IsKeyPressed('1');
-				input.selectSword = IsKeyPressed('2');
-				input.selectScythe = IsKeyPressed('9');
-				input.selectLentils = IsKeyPressed('0');
-				for (size_t weapon = 0; weapon < input.selectOtherWeapons.size(); ++weapon)
-				{
-					input.selectOtherWeapons[weapon] = IsKeyPressed('3' + static_cast<int>(weapon));
-				}
-				input.jump = IsKeyPressed(VK_SPACE);
-				input.crouch = IsKeyPressed('C');
+				input.selectOtherWeapons[weapon] = IsKeyPressed('3' + static_cast<int>(weapon));
 			}
-			input.interaction = IsKeyPressed(VK_RETURN);
+			input.jump = IsKeyPressed(VK_SPACE);
+			input.crouch = IsKeyPressed('C');
+		}
+		input.interaction = IsKeyPressed(VK_RETURN);
+		input.mainMenu = IsKeyPressed(VK_F1);
+		input.inventory = IsKeyPressed(VK_F2);
+		input.uiUp = IsKeyPressed(VK_UP);
+		input.uiDown = IsKeyPressed(VK_DOWN);
+		input.uiLeft = IsKeyPressed(VK_LEFT);
+		input.uiRight = IsKeyPressed(VK_RIGHT);
+		input.uiConfirm = IsKeyPressed(VK_RETURN);
+		input.uiCancel = IsKeyPressed(VK_ESCAPE);
 
-			g_tickAccumulator += deltaTime * g_gameTicksPerSecond;
-			const int ticks = (int)g_tickAccumulator;
-			if (ticks > 0)
+		Desperabis::ApplicationUpdateResult application;
+		try
+		{
 			{
-				g_tickAccumulator -= ticks;
-				const int clampedTicks = __min(ticks, g_maxTicksPerFrame);
-				try
+				ProfilingScope _(g_profilingStats.m_duration_game);
+				application = g_gameCore->UpdateApplication(deltaTime, input);
+			}
+			if (application.tick && application.tick->status == Desperabis::GameTickStatus::Advanced)
+			{
+				const auto& result = *application.tick;
+				g_gameCore->UpdateUserMessage(application.timing.frameTicks);
+				SyncGameObjects();
+				if (input.attack && result.weapon &&
+					result.weapon->attack == Desperabis::WeaponActionStatus::UnimplementedWeapon)
 				{
-					const auto nativeTicks = static_cast<std::int16_t>(clampedTicks);
-					Desperabis::GameTickResult result;
-					{
-						ProfilingScope _(g_profilingStats.m_duration_game);
-						result = g_gameCore->Tick({ nativeTicks, nativeTicks }, input);
-					}
-					if (result.status == Desperabis::GameTickStatus::Advanced)
-					{
-						g_gameCore->UpdateUserMessage(nativeTicks);
-						SyncGameObjects();
-						if (input.attack && result.weapon &&
-							result.weapon->attack == Desperabis::WeaponActionStatus::UnimplementedWeapon)
-						{
-							SetWindowTextA(g_hWnd, "Desperabis (DX11) - this weapon's attack is not recovered yet");
-						}
-						if (input.interaction && result.interaction)
-						{
-							const std::string title = "Desperabis (DX11) - " + DescribeInteraction(*result.interaction);
-							SetWindowTextA(g_hWnd, title.c_str());
-						}
-					}
+					SetWindowTextA(g_hWnd, "Desperabis (DX11) - this weapon's attack is not recovered yet");
 				}
-				catch (const std::exception& error)
+				if (input.interaction && result.interaction)
 				{
-					ReportGameCoreError("tick failed", error.what());
+					const std::string title = "Desperabis (DX11) - " + DescribeInteraction(*result.interaction);
+					SetWindowTextA(g_hWnd, title.c_str());
 				}
 			}
 		}
+		catch (const std::exception& error)
+		{
+			ReportGameCoreError("application update failed", error.what());
+			const std::string title = std::string("Desperabis (DX11) - ") + error.what();
+			SetWindowTextA(g_hWnd, title.c_str());
+		}
+		g_worldTime += application.worldDeltaSeconds;
+		if (application.worldDeltaSeconds > 0) { g_scene->Update(application.worldDeltaSeconds); }
 
 		if (!g_useFreeCam)
 		{
 			ApplyPlayerCamera();
 			return;
 		}
+		if (application.worldDeltaSeconds == 0) { return; }
 
 		// free camera input
 		float forward = 0.f;
@@ -957,11 +969,12 @@ namespace
 
 		Level* level = g_scene->IsReady() ? g_scene->m_level : nullptr;
 		g_freeCam->SetSpeed(forward, sideways);
-		g_freeCam->Update(deltaTime, level);
+		g_freeCam->Update(application.worldDeltaSeconds, level);
 	}
 
 	void Render()
 	{
+		const auto presentation = g_gameCore->GetApplicationPresentation();
 		g_renderer.ReInitialize(g_renderTargetView.Get(), g_depthStencilView.Get(), g_viewport);
 
 		g_d3dContext->RSSetViewports(1, &g_viewport);
@@ -969,7 +982,7 @@ namespace
 		g_d3dContext->OMSetRenderTargets(1, targets, g_depthStencilView.Get());
 
 		Vector4 clearCol = { 0.05f, 0.06f, 0.08f, 1.f };
-		if (g_scene->IsReady())
+		if (presentation.commands.empty() && g_scene->IsReady())
 		{
 			clearCol = g_scene->GetClearColor();
 		}
@@ -980,9 +993,22 @@ namespace
 		g_d3dContext->ClearDepthStencilView(g_depthStencilView.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
 		Renderer::Instance().SetCamera(g_camera);
-		Renderer::Instance().SetCurrentTime(g_currentTime);
-		UpdateItemPreview();
-		Renderer::Instance().RenderScene(g_scene.get(), g_renderSettings, g_visSettings, &g_profilingStats);
+		Renderer::Instance().SetCurrentTime(g_worldTime);
+		if (presentation.commands.empty())
+		{
+			UpdateItemPreview();
+			Renderer::Instance().RenderScene(g_scene.get(), g_renderSettings, g_visSettings, &g_profilingStats);
+		}
+		else
+		{
+			g_renderer.SetItemPreview(nullptr, false, {});
+			VisibilityResult elements;
+			elements.m_mainCamera = g_camera.get();
+			g_renderer.RenderSceneElements(elements, g_renderSettings, g_profilingStats);
+			g_applicationUi.Draw(presentation, g_renderer, *g_scene->m_level, *g_promptFont, *g_hudAnimations,
+				g_renderSettings, g_profilingStats, g_viewport, g_d3dContext.Get(),
+				g_renderTargetView.Get(), g_depthStencilView.Get());
+		}
 		g_profilingStats.Update();
 
 		g_swapChain->Present(1, 0);
@@ -1000,21 +1026,20 @@ namespace
 			}
 			return 0;
 		case WM_KEYDOWN:
-			if (wParam == VK_ESCAPE)
-			{
-				DestroyWindow(hWnd);
-			}
-			else if (wParam == 'F' && (lParam & (1 << 30)) == 0 && g_initialized)
+			if (wParam == 'F' && (lParam & (1 << 30)) == 0 && g_initialized &&
+				g_gameCore->GetMenuPage() == Desperabis::MenuPage::Gameplay)
 			{
 				ToggleFreeCamera();
 			}
-			else if (wParam == 'N' && (lParam & (1 << 30)) == 0 && g_initialized)
+			else if (wParam == 'N' && (lParam & (1 << 30)) == 0 && g_initialized &&
+				g_gameCore->GetMenuPage() == Desperabis::MenuPage::Gameplay)
 			{
 				g_gameCore->DEBUG_noPlayerCollision = !g_gameCore->DEBUG_noPlayerCollision;
 				g_gameCore->PromptUserMessage(g_gameCore->DEBUG_noPlayerCollision ?
 					"Player collision: off" : "Player collision: on", 90);
 			}
-			else if (wParam == VK_TAB && (lParam & (1 << 30)) == 0 && g_initialized)
+			else if (wParam == VK_TAB && (lParam & (1 << 30)) == 0 && g_initialized &&
+				g_gameCore->GetMenuPage() == Desperabis::MenuPage::Gameplay)
 			{
 			    // Shift TAB moves to the next part of the game
 				LoadNextLevel((GetKeyState(VK_SHIFT) & 0x8000) != 0);
@@ -1080,8 +1105,18 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR,
 
 		if (g_initialized && !IsIconic(g_hWnd))
 		{
-			Update();
-			Render();
+			try
+			{
+				Update();
+				if (g_gameCore->GetMenuPage() == Desperabis::MenuPage::Quit) { DestroyWindow(g_hWnd); }
+				else { Render(); }
+			}
+			catch (const std::exception& error)
+			{
+				ReportGameCoreError("frame failed", error.what());
+				MessageBoxA(g_hWnd, error.what(), "Desperabis frame failed", MB_ICONERROR);
+				DestroyWindow(g_hWnd);
+			}
 		}
 		else
 		{

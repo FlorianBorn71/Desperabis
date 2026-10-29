@@ -263,9 +263,19 @@ Subclass `GameContext` and override only `LoadLevel(const LevelLoadRequest&)`
 to start loading host assets. Call `StartLevel(number)` to enter loading,
 then `CompleteLevelLoad(request.id, std::move(data))` with owned
 `LevelLoadData`, or `FailLevelLoad(request.id, message)` on failure.
-Use `Tick({behaviorTicks, frameTicks}, input)` from the host loop, inspect its
-results, and synchronize render instances from `GetWorldObjects()`.
-No modal UI override is required. See the
+Interactive hosts call `UpdateApplication(elapsedSeconds, input)` every frame,
+including paused, loading and zero-simulation-tick frames. GameCore checks
+F1/F2 input, dispatches gameplay/main-menu/inventory updates, and owns the
+33 Hz accumulator. Inspect the optional `result.tick`, synchronize render
+instances from `GetWorldObjects()`, and use `result.worldDeltaSeconds` for
+world presentation clocks. Draw the core-authored `GetApplicationPresentation()`
+recipe on its original 360x240 logical canvas; the host only resolves assets and scales
+that canvas. No modal UI override is required.
+Inventory recipes reference the original frame/action/resource art and palette
+shade states rather than replacement widgets. See the
+[native layout recovery](HighLevelStructure.md#original-inventory-artwork-and-placement).
+`Tick({behaviorTicks, frameTicks}, input)` remains the low-level recovery API;
+do not mix it with the application's time accumulator. See the
 [runtime integration contract](BehaviorRecovery.md#host-driven-runtime-integration)
 for lifetime, timing, pause, error, and object-copy details.
 

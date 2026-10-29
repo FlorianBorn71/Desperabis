@@ -1,6 +1,7 @@
 # Desperabis Game (DX11)
 
-Minimal standalone DX11 window without menus. On startup it loads the training level (50) and renders it.
+Standalone DX11 host with core-owned nonblocking gameplay, inventory and a
+first-pass main menu. On startup it loads the training level (50).
 
 Both standalone project and solution builds write to the repository's `Bin` folder:
 Release uses `Bin`, and Debug uses `Bin\Debug`.
@@ -10,9 +11,9 @@ Release uses `Bin`, and Debug uses `Bin\Debug`.
 The game exposes `g_profilingStats` alongside the renderer's existing visibility
 and rendering timings. Inspect it in the debugger; durations are **microseconds**:
 
-* `m_duration_game`: time spent inside the current frame's `GameContext::Tick`,
-  including synchronous callbacks. Zero means no simulation tick ran that frame.
-* `m_max_duration_game`: largest recorded Tick duration since startup or `ResetMax()`.
+* `m_duration_game`: time spent inside the current frame's `GameContext::UpdateApplication`,
+  including page input, optional gameplay ticks and synchronous callbacks.
+* `m_max_duration_game`: largest recorded application-update duration since startup or `ResetMax()`.
 
 The scope excludes input polling, `Scene::Update`, post-tick `SyncGameObjects`,
 rendering and swap-chain presentation. A catch-up call can simulate several native
@@ -112,6 +113,69 @@ all five core recipes using the original cached sample resources.
 
 ## Gameplay integration
 
+### Application flow and inventory
+
+The host forwards F1/F2, UI arrows, Enter and Escape through `GameInput`, but
+does not interpret their actions. `UpdateApplication(elapsedSeconds, input)`
+runs every frame; GameCore checks shortcuts and dispatches the current page.
+It owns the 33 Hz accumulator and discards modal/pause time, including fractional
+catch-up. `worldDeltaSeconds` advances scene/free-camera animations and renderer
+shader time only during gameplay. Native object ticks and message countdowns
+also freeze in inventory/main menu. Keys held across page transitions must be
+released before they can affect gameplay again.
+
+The core supplies a 360x240 drawing recipe through `GetApplicationPresentation()`:
+layout, labels, resource availability shades, source pulse and item picture
+references all originate there. `ApplicationUi` resolves assets and executes
+the commands with aspect-preserving canvas scaling/letterboxing. It caches
+screen meshes, handles stored bitmap and model pictures separately, and does
+not modify shared renderable metadata/materials. No shared renderer API was added.
+Model pictures use the supplied fixed pose/depth, not the corner preview's
+rotating/bounds-fitting policy.
+
+Inventory supports separate focus/source, complete-record swaps (including
+nonweapons in hand slots), self-swap cancellation, Back/Escape, and Use on the
+selected medicine. It retains the original potion's final-dose refund and
+suppression behavior. Its 512-phase source pulse advances at the port's 33 Hz
+UI rate; native wall-clock timing has not been measured.
+
+Inventory uses the original `AMA_ANI.AN2` frames, hand/Back/Use artwork and
+chapter-specific `ANIM4.AN2`/`ANIM12.AN2` resource pictures, at their recovered coordinates and natural pixel
+sizes. The right hand is mirrored as in the original. Focus, pulse and
+unavailable icons use `LEVEL\OPSET10.256`, not RGB-tint approximations.
+The health meter retains the original gradient, fill threshold and beveled
+palette shading; numbers use the recovered percent glyph and formatting.
+Inventory text also preserves native glyph Y offsets, pen-X adjustment and
+character advances, so the health caption clears the bar and resource numbers
+do not use the wider modern spacing. Main-menu and prompt text are unchanged.
+All extra texture variants live in `ApplicationUi`, not shared renderer data.
+Model projection/centering and the disabled electricity-model tint still use
+modern approximations; native item descriptions/preview animation remain open.
+The main menu offers Resume/Quit and explicitly identifies the other choices
+as unimplemented. Book sequences, cutscenes, chapter/new-game flow, settings,
+save and load remain future nonblocking pages. Tab is still a development
+level-switching shortcut.
+
+Headless presentation tests use D3D11 WARP plus the debug layer; no window,
+keyboard injection or audio device is needed:
+
+```powershell
+msbuild Source\NewRenderer\DesperabisGame-DX11\ApplicationUiTests.vcxproj /p:Configuration=Debug /p:Platform=x64 /nologo
+.\Source\NewRenderer\DesperabisGame-DX11\x64\Debug\ApplicationUiTests\ApplicationUiTests.exe
+```
+
+They render original key/medicine and cheat-weapon pictures at native, wide
+and portrait sizes, verify natural-size hand artwork, horizontal mirroring,
+palette-state changes, both chapters' resource/model banks, native text metrics,
+health-caption separation at all tested aspect ratios, the health meter's bounds, cache stability and
+shared-material isolation, and check for D3D11 error/corruption messages.
+An optional output BMP path captures the native-size inventory for inspection:
+`ApplicationUiTests.exe <output.bmp>`. Core behavior is covered by CTest's
+`application-update` and existing `application-flow`, `game-runtime`,
+`weapon-sequences` and `player-health` tests.
+
+### World integration
+
 The project links against `Desperabis-GameCore`. `GameAppContext` in
 `DesperabisGame-DX11.cpp` derives directly from `Desperabis::GameContext`:
 
@@ -124,8 +188,8 @@ The project links against `Desperabis-GameCore`. `GameAppContext` in
   failed mid-tick without this metadata, leaving camera rotation stale.
   These loaders use the app's `LoadFile` override. Malformed files fail loading explicitly.
   The renderer scene does not create game objects itself.
-game ticks (33 Hz, as in the original game)
-  back the object states. Changed slots update their `RenderableInstance` via `Level::ApplyRenderProperties`.
+* GameCore schedules game ticks (33 Hz, as in the original game).
+  Changed slots update their `RenderableInstance` via `Level::ApplyRenderProperties`.
 * The camera comes from `GameContext::GetPlayerCamera()`: eye position via `Level::DespToPos`, with no extra offset,
   forward = normalize(-dir.x, dir.y + (110-lookHeight)*horizontalLength/100, dir.z);
   a zero direction keeps the previous orientation. `lookHeight` is the core's native
@@ -270,6 +334,11 @@ Current assumptions/limitations:
 * `Enter`: interaction key
   (the window title reports the result and selected native slot/type; supports medicine pickup,
   ordinary doors, grouped switches, and ordinary switches linked to damage/activation targets)
+* `F1`: open the main menu; arrows/Enter choose Resume or Quit.
+* `F2`: open inventory; arrows navigate, Enter selects/moves/swaps.
+  Select medicine, then choose Use to consume it; Back or Escape returns to gameplay.
+* `Esc`: leave inventory/main menu, not window shutdown. Quit through the main menu
+  or use the window close button/Alt+F4.
 * `Ctrl` or left mouse: attack with the equipped weapon (normal player camera only)
 * `1`..`8`: select dagger, sword, crossbow, fireball, stone, placeable item,
   electricity, or shovel from inventory (normal player camera only)
@@ -294,4 +363,4 @@ Current assumptions/limitations:
 * `Shift+Tab`: jump to the next game part: training -> part 1 (30) -> part 2 (10).
   From any level within a part, skips its remaining levels. In part 2, stops
   without wrapping and reports that no next game part exists. Key repeat is ignored.
-* `Esc` quits
+Development shortcuts `F`, `N`, `Tab` and `Shift+Tab` are available only in gameplay.

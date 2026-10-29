@@ -327,7 +327,8 @@ namespace Desperabis
         levelLoadError.clear();
         hasActiveGame = true;
         runtimeState = GameRuntimeState::Ready;
-        menuPage = MenuPage::Gameplay;
+        SetMenuPage(MenuPage::Gameplay);
+        applicationTickAccumulator = 0;
         for (std::size_t slot = 1; slot < worldObjects.size(); ++slot)
         {
             NotifyObjectCreated(worldObjects[slot]);
@@ -350,7 +351,11 @@ namespace Desperabis
     std::optional<LevelLoadRequest> GameContext::GetPendingLevelLoad() const { return pendingLevelLoad; }
     std::optional<std::int16_t> GameContext::GetLoadedLevelNumber() const { return loadedLevelNumber; }
     const std::string& GameContext::GetLevelLoadError() const { return levelLoadError; }
-    void GameContext::SetPaused(bool value) { paused = value; }
+    void GameContext::SetPaused(bool value)
+    {
+        paused = value;
+        if (value) { applicationTickAccumulator = 0; }
+    }
     bool GameContext::IsPaused() const { return paused; }
     const std::array<RawGameObject, 166>& GameContext::GetWorldObjects() const { return worldObjects; }
     const Level* GameContext::GetLevel() const { return level; }
@@ -753,7 +758,21 @@ namespace Desperabis
 
     void GameContext::SetMenuPage(MenuPage page)
     {
+        if (page == menuPage) { return; }
         menuPage = page;
+        applicationPageChanged = true;
+        applicationTickAccumulator = 0;
+        navigationRepeatKey.reset();
+        navigationRepeatSeconds = 0;
+        if (page == MenuPage::Inventory)
+        {
+            inventoryFocus = 0;
+            inventorySource.reset();
+            inventoryPulsePhase = 0;
+            inventoryPulseAccumulator = 0;
+        }
+        else { inventorySource.reset(); }
+        if (page == MenuPage::MainMenu || page == MenuPage::AlternateMainMenu) { mainMenuFocus = 0; }
     }
 
     bool GameContext::CanResumeGame() const
@@ -771,21 +790,21 @@ namespace Desperabis
         {
         case MainMenuAction::Cancel:
             if (positionalSoundsSuppressed) { return false; }
-            menuPage = MenuPage::Gameplay;
+            SetMenuPage(MenuPage::Gameplay);
             break;
         case MainMenuAction::ResumeGame:
             if (!CanResumeGame()) { return false; }
-            menuPage = MenuPage::Gameplay;
+            SetMenuPage(MenuPage::Gameplay);
             break;
-        case MainMenuAction::NewGame: menuPage = MenuPage::ChapterSelection; break;
-        case MainMenuAction::LoadGame: menuPage = MenuPage::LoadGame; break;
+        case MainMenuAction::NewGame: SetMenuPage(MenuPage::ChapterSelection); break;
+        case MainMenuAction::LoadGame: SetMenuPage(MenuPage::LoadGame); break;
         case MainMenuAction::SaveGame:
             if (!CanResumeGame()) { return false; }
-            menuPage = MenuPage::SaveGame;
+            SetMenuPage(MenuPage::SaveGame);
             break;
-        case MainMenuAction::Settings: menuPage = MenuPage::Settings; break;
-        case MainMenuAction::Configuration: menuPage = MenuPage::Configuration; break;
-        case MainMenuAction::Quit: menuPage = MenuPage::Quit; break;
+        case MainMenuAction::Settings: SetMenuPage(MenuPage::Settings); break;
+        case MainMenuAction::Configuration: SetMenuPage(MenuPage::Configuration); break;
+        case MainMenuAction::Quit: SetMenuPage(MenuPage::Quit); break;
         default: throw std::invalid_argument("Unknown main-menu action.");
         }
         return true;
@@ -798,7 +817,7 @@ namespace Desperabis
             throw std::logic_error("Inventory can only be opened from gameplay.");
         }
         if (positionalSoundsSuppressed) { return false; }
-        menuPage = MenuPage::Inventory;
+        SetMenuPage(MenuPage::Inventory);
         return true;
     }
 
@@ -1912,13 +1931,7 @@ namespace Desperabis
         }
         const auto slot = weaponInventorySlots[index];
         if (slot > inventory.size()) { throw std::out_of_range("Weapon registry slot must be in 1..14."); }
-        std::swap(inventory[1], inventory[slot - 1]);
-        if (selectedWeapon == WeaponType::TrapOrPole)
-        {
-            if (weaponHand == 2) { weaponHand = static_cast<std::uint8_t>(slot); }
-            else if (weaponHand == slot) { weaponHand = 2; }
-        }
-        RefreshWeaponInventory();
+        SwapInventoryItems(1, slot - 1);
         requestedWeapon = weapon;
         requestedWeaponHand = 2;
         weaponAnimationSpeed = -1;

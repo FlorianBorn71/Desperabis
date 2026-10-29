@@ -1,6 +1,11 @@
 #pragma once
 
+#include "GameRuntime.h"
+
 #include <cstdint>
+#include <string>
+#include <variant>
+#include <vector>
 
 namespace Desperabis
 {
@@ -46,5 +51,83 @@ namespace Desperabis
         Settings = 3,
         Configuration = 4,
         Quit = 5
+    };
+
+    struct ApplicationUpdateResult
+    {
+        std::optional<GameTickResult> tick;
+        GameTickTiming timing{ 0, 0 };
+        double worldDeltaSeconds = 0;
+    };
+
+    struct UiRectangle
+    {
+        float x, y, width, height;
+    };
+
+    struct UiColor
+    {
+        std::uint8_t r = 255, g = 255, b = 255, a = 255;
+    };
+
+    struct UiFill
+    {
+        UiRectangle bounds;
+        UiColor color;
+    };
+
+    enum class UiTextAlignment { Left, Center, Right };
+    enum class UiTextLayout { TopAligned, Native };
+
+    struct UiText
+    {
+        float x, y;
+        std::string text;
+        float scale = 1;
+        UiColor color;
+        UiTextAlignment alignment = UiTextAlignment::Left;
+        UiTextLayout layout = UiTextLayout::TopAligned;
+    };
+
+    enum class UiBitmapSource { Hud, LevelSprite, ModelTexture, InventoryIcons };
+    enum class UiBitmapLayout { Fit, TopLeft, SpriteAnchor, Center };
+
+    struct UiBitmap
+    {
+        UiRectangle bounds;
+        UiBitmapSource source;
+        // Animation frames are zero-based; model textures retain their native slot index.
+        std::uint8_t assetSlot, animation, frame;
+        UiColor color;
+        UiBitmapLayout layout = UiBitmapLayout::Fit;
+        bool flipHorizontal = false;
+        std::uint8_t shade = 0;
+    };
+
+    struct UiHealthMeter
+    {
+        float x, y;
+        std::int16_t filledColumns;
+    };
+
+    struct UiModel
+    {
+        UiRectangle bounds;
+        std::uint8_t modelId, animation, frame, blendFrame;
+        std::int16_t blendWeight;
+        DisplayType displayType;
+        std::array<std::int16_t, 3> angles;
+        std::int16_t depth;
+        float focalLength = 128;
+        UiColor color;
+    };
+
+    using UiDrawCommand = std::variant<UiFill, UiText, UiBitmap, UiHealthMeter, UiModel>;
+
+    struct ApplicationPresentation
+    {
+        static constexpr float Width = 360, Height = 240;
+        MenuPage page;
+        std::vector<UiDrawCommand> commands;
     };
 }

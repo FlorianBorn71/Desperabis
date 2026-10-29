@@ -16,6 +16,7 @@ add_library(behavior-recovery STATIC
     Scaffold/GameContext.cpp
     Scaffold/GameRuntime.h
     Scaffold/ApplicationFlow.h
+    Scaffold/ApplicationFlow.cpp
     Scaffold/BehaviorDispatch.cpp
     Scaffold/CollisionMap.cpp
     Scaffold/Heightfield.cpp
@@ -57,6 +58,9 @@ if(BUILD_TESTING)
     add_executable(application-flow-tests Scaffold/ApplicationFlowTests.cpp)
     target_link_libraries(application-flow-tests PRIVATE behavior-recovery)
     add_test(NAME application-flow COMMAND application-flow-tests)
+    add_executable(application-update-tests Scaffold/ApplicationUpdateTests.cpp)
+    target_link_libraries(application-update-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME application-update COMMAND application-update-tests)
     add_executable(fireplace-tests Scaffold/FireplaceTests.cpp)
     target_link_libraries(fireplace-tests PRIVATE behavior-recovery)
     add_test(NAME fireplace-behavior COMMAND fireplace-tests
@@ -127,7 +131,7 @@ foreach(target behavior-recovery desperabis-recovery)
     endif()
 endforeach()
 if(BUILD_TESTING)
-    foreach(target ambient-tests behavior-recovery-tests application-flow-tests fireplace-tests particle-tests floating-debris-tests rat-snake-tests cockroach-tests bat-indoor-tests mummy-tests skeleton-tests damage-tests weapon-tests ranged-weapon-tests game-runtime-tests player-posture-tests player-look-tests player-support-tests player-health-tests)
+    foreach(target ambient-tests behavior-recovery-tests application-flow-tests application-update-tests fireplace-tests particle-tests floating-debris-tests rat-snake-tests cockroach-tests bat-indoor-tests mummy-tests skeleton-tests damage-tests weapon-tests ranged-weapon-tests game-runtime-tests player-posture-tests player-look-tests player-support-tests player-health-tests)
         set_target_properties(${target} PROPERTIES FOLDER "Tests")
         if(MSVC)
             target_compile_options(${target} PRIVATE /W4 /WX)

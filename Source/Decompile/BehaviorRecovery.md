@@ -9,10 +9,12 @@ each recovered case an editable, named home without hiding missing behavior.
 [GameContext.h](Scaffold/GameContext.h) now owns the `GameContext` class,
 formerly the `GameState` struct embedded in the dispatch header. Existing
 context-owned operations remain member functions: sound, random numbers,
-collision/height queries, object allocation, and prompts. All `GameContext`
-member definitions, including application flow and page hooks, live together in
-[GameContext.cpp](Scaffold/GameContext.cpp). Their private implementation helpers
-also live there. Public gameplay state remains
+collision/height queries, object allocation, and prompts. Gameplay definitions
+and the original blocking application dispatcher live in
+[GameContext.cpp](Scaffold/GameContext.cpp). The cohesive nonblocking
+application controller and its drawing recipes live in
+[ApplicationFlow.cpp](Scaffold/ApplicationFlow.cpp), avoiding further growth
+of the gameplay implementation. Public gameplay state remains
 directly accessible. There is no compatibility alias for the old type name.
 The gameplay free-function and behavior-handler APIs still receive
 `GameContext&`; converting all of them to members is deliberately out of scope.
@@ -24,7 +26,10 @@ outer state machine lives in
 `GameContext` member functions:
 
 - `RunApplication()` dispatches modal pages until Quit; `RunApplicationStep()`
-  performs one page invocation for host-driven execution.
+  performs one blocking page invocation for the recovery harness.
+- `UpdateApplication(elapsedSeconds, input)` is the nonblocking host entry:
+  it owns F1/F2 edges, UI navigation, gameplay timing and page transitions.
+  `GetApplicationPresentation()` produces a renderer-independent drawing recipe.
 - `SelectMainMenuAction()` routes to chapter selection, load/save, settings,
   configuration, resumed gameplay, or Quit. It returns false for a disabled
   choice without changing pages. Resume/save use `hasActiveGame` together with
@@ -35,15 +40,16 @@ outer state machine lives in
   `0000:0D30(1, chapter)`; cancellation returns to the main menu without loading.
   See [chapter-selection evidence](ui-chapter-evidence.txt).
 
-Page bodies are protected virtual member functions, so future implementations
-operate on their own context rather than receiving another context reference.
+The blocking recovery page bodies are protected virtual member functions,
+operating on their own context rather than receiving another context reference.
+They are not the extension points used by the nonblocking host.
 Ordinary pages return their next `MenuPage`; the main menu returns an action,
 and chapter selection returns an optional chapter number. Settings/load/save
 and inventory outcomes are supplied by their page bodies, not guessed by the
 outer dispatcher. Unknown presentation bodies have an explicit shared hook;
 verified forced outer transitions are still applied after those bodies return.
 
-**This is an executable skeleton, not playable UI.** Default page hooks,
+**The legacy blocking driver remains an executable skeleton.** Default page hooks,
 the complete gameplay frame loop, and new-game loading throw descriptive
 `std::logic_error` exceptions. No page silently succeeds, loads resources,
 or substitutes a partial object update for a gameplay loop.
@@ -493,11 +499,11 @@ burning bounds and audio admission, and all seven independent input actions.
 ### Host-driven runtime integration
 
 The renderer-independent `GameContext` can now serve as the game manager.
-Its new host-driven lifecycle is separate from the older, modal
+Its host-driven lifecycle is separate from the older, modal
 `RunApplication` / `RunApplicationStep` recovery harness. Do not run both loops
-on the same live context. All context member definitions remain in
-[GameContext.cpp](Scaffold/GameContext.cpp); behavior implementations remain
-in their free handlers.
+on the same live context. The nonblocking controller is implemented in
+[ApplicationFlow.cpp](Scaffold/ApplicationFlow.cpp); behavior implementations
+remain in their free handlers.
 
 #### Loading and ownership
 
@@ -624,7 +630,79 @@ code must not replace those installed pointers; `Tick` checks them.
 
 #### Tick, input, presentation, and timing
 
-After installing a level, the host advances it with:
+Interactive hosts advance the application once per frame, even when gameplay
+does not advance:
+
+```cpp
+const auto frame = game.UpdateApplication(elapsedSeconds, input);
+if (frame.tick && frame.tick->status == Desperabis::GameTickStatus::Advanced)
+{
+    // Inspect frame.tick and synchronize renderer instances.
+}
+// Advance world animation/shader clocks only by frame.worldDeltaSeconds.
+// Execute game.GetApplicationPresentation(), without interpreting input/layout.
+```
+
+The host sets `MainMenuKey` (F1), `InventoryKey` (F2), the four UI arrow states,
+`UiConfirmKey` (Enter) and `UiCancelKey` (Escape), just like movement keys.
+GameCore samples each key once, handles page-key/confirm/cancel rising edges,
+and supplies navigation repeat (350 ms initial delay, then 100 ms; at most
+one repeated step per frame). F1 opens the main menu; F2 opens inventory
+only with a ready level and the native shared gate enabled. The first-pass
+main menu supports Resume/Quit and explicitly labels the other menu pages
+unimplemented. Escape resumes only when a loaded game and the native gate
+allow it. Quit is a core state, translated into window shutdown by the host.
+Unsupported nonblocking pages throw rather than invoking a blocking callback.
+
+The core accumulates gameplay at 33 Hz with a one-second catch-up cap.
+Entering/leaving a page, explicit pause, loading and load completion discard
+modal/fractional catch-up. Transition frames do not simulate. Keys held at a
+page transition are blocked from gameplay until released; Enter cannot close
+a page and interact with the world in the same press.
+
+Inventory implements the recovered 4x4 nonwrapping navigation, separate focus
+and source, full-record move/swap/self-swap, Back, Escape, and selected-medicine
+Use. Hand slots accept nonweapons. Swaps share the weapon-selection helper,
+including weapon-6 hand tracking and registry refresh. Medicine uses
+`ApplyPlayerLifeDelta(29491)` and preserves the native final-dose refund,
+inclusive maximum clamp, suppression and empty-record cleanup.
+
+The recipe contains fills, aligned text, bitmap references, the native health
+meter and model pictures, with explicit placement, palette states, model
+frames/pose/depth and the original **360x240** canvas.
+It contains no renderer handles. UI model pictures retain the byte-50
+`2*value+50` depth; sprites and associated model textures remain distinct.
+The DX11 executor is local to the game app; no shared renderer fields or
+virtual hooks were added. It caches 2D meshes, retains aspect ratio and
+letterboxes the canvas. It never mutates inventory or shared world materials.
+
+Inventory now uses original artwork rather than placeholder frames/buttons:
+`AMA_ANI.AN2` supplies the grid, mirrored hands, Back and Use; level sprite
+slot 1 supplies the resource pictures (`ANIM4.AN2` or part 2's `ANIM12.AN2`).
+Bitmaps retain native pixel sizes and metadata
+anchors. `OPSET10.256` supplies the original focus, source-pulse and unavailable
+palette remaps, applied privately by the game-local executor. The health meter
+uses the original 90-pixel gradient and two-stage horizontal/vertical palette
+lookups, not a stretched generic bar. See the
+[recovered inventory layout](HighLevelStructure.md#original-inventory-artwork-and-placement).
+
+This still does **not** claim pixel-identical DOS rendering: model projection,
+model centering and the disabled electricity model's tint use the modern
+adapter; the per-item description/animation path is not yet ported.
+The main menu remains a first-pass Resume/Quit page. Advancing source phase
+by 17 at 33 Hz is a port timing policy, not a measured native inventory-loop
+frequency.
+Books, cutscenes, chapter/new-game flow, settings and save/load pages remain
+unimplemented and can be added as further nonblocking page handlers.
+The host's Tab level navigation remains a development shortcut, not game flow.
+
+`ApplicationUpdateTests.cpp` tests routing, gates, timing, input leakage,
+navigation/repeat, all pulse phases, record swaps, hand references, native potion
+boundaries and recipe contents. DX11's `ApplicationUiTests.vcxproj` renders
+original items through D3D11 WARP at native/wide/portrait sizes, verifies cache
+stability/material isolation, and rejects D3D11 errors.
+
+Low-level recovery callers can still advance an explicitly timed tick:
 
 ```cpp
 const auto result = game.Tick({ behaviorTicks, frameTicks }, input);
@@ -636,11 +714,11 @@ if (result.status == Desperabis::GameTickStatus::Advanced)
 ```
 
 `InputHandler` and `AudioHandler` remain the narrow input/audio service
-interfaces. `Tick` does not invoke the old modal UI virtuals. `SetPaused(true)`
-or a menu page other than `Gameplay` suspends gameplay; the host processes UI
-commands through the existing page/action APIs and renders the exposed state.
+interfaces. Neither entry invokes the old modal UI virtuals. `SetPaused(true)`
+or a menu page other than `Gameplay` suspends gameplay; `UpdateApplication`
+continues processing page input without advancing the world.
 The loading lifecycle is independent of native numeric `MenuPage` values.
-No menu rendering is invented here. A partial basic horizontal controller is
+A partial basic horizontal controller is
 now wired into `Tick`, with its exact scope documented below.
 
 An advanced tick runs in this host-integration order:
@@ -661,12 +739,14 @@ movement/contact damage, menus, and many behaviors are still incomplete.
 including `UnimplementedHandler` and `NoSpecificCase`; hosts must not interpret
 an advanced tick as a claim of complete gameplay.
 
-The host owns wall-clock conversion and scheduling. Both counts must be
-nonnegative signed words; no assumed DOS frequency, hidden clock, or arbitrary
-catch-up cap is added. One call with ten ticks is not necessarily equivalent
+For direct `Tick` callers, the host owns wall-clock conversion and scheduling.
+Both explicit counts must be nonnegative signed words; `Tick` adds no clock
+or catch-up cap. `UpdateApplication` instead supplies the 33 Hz timing policy
+described above. One call with ten ticks is not necessarily equivalent
 to ten calls with one tick, because several behaviors consume RNG once per
 call. A **zero-count tick still updates**. Do not call it as a render-only
-poll: render the last world state instead. Loading/paused/failed ticks consume
+poll: render the last world state instead. `UpdateApplication` never invokes
+a zero-count `Tick`. Loading/paused/failed ticks consume
 no input/RNG and do not clear lighting or age prompts.
 
 The game world is authoritative. Use the const `GetWorldObjects`, `GetLevel`,

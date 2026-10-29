@@ -209,7 +209,12 @@ fields; no weapon-ID-to-icon switch is involved in these drawing branches.
   which are passed to palette-aware blitter `1E48:2787`.
 - For model IDs `31..50`, byte-50 values `1..14` select an associated stored
   bitmap pointer at model-descriptor offset `16Ah + value*4`, again blitted
-  through `2787`.
+  through `2787`. This is a **direct texture-slot index**, not a one-based
+  animation-frame number: the port uses `ModelAnim::m_ownTextures[value]`.
+  The common model bank `VEKT42.3DA` has textures 1, 2, 3, 4 and 6;
+  crossbow selector 1 and key selector 4 address their respective slots.
+  Sprite image selectors above instead require the usual frame-minus-one
+  conversion. Original-asset WARP tests cover both indexing conventions.
 - For those same model IDs, byte-50 values `15..220` instead take
   `1E48:45DD..4673`: the renderer passes the model descriptor, `modelAnim`,
   `animFrame`, `modelFrame2`, and blend weight to model-render routine
@@ -430,8 +435,103 @@ DS:`D510`. Descriptor `i` is at **DS:`D7EF + i*31`**, starting at index 1.
 Setup clears the count and registers two descriptors bound to DS:`2DBA`
 and DS:`2DC4`. Inventory drawing routine `0000:7743` loops through this
 list, draws labels, and reads the pointed-to words at `+2` and `+6` for
-resource/meter calculations. The complete value-record layout, style enum,
-and floating-point drawing calculations remain open.
+resource/meter calculations. Some value-record fields and unused styles remain open; the active health
+meter's layout and drawing calculations are recovered below.
+
+### Original inventory artwork and placement
+
+The original canvas is **360x240**, not 320x240. Entry at `0000:7C44`
+copies `5460h = 21600` bytes per VGA plane, or 86400 pixels over four
+planes. `4A0D(2,0)` selects background slot zero and its palette through
+`C5E2`/`4940`; that is `BACKGR1.256`/`.PAL`, whose image is one black
+pixel. The textured paper and book images in other `BACKGR` assets are
+**not** the inventory backdrop.
+
+`1E48:CDEF` decrements the raw visual selector, extracts bit 7 as horizontal
+reflection, then divides the remaining value by five for the animation row
+and takes its remainder for the frame. The native output indices are
+one-based; the C++ drawing recipe uses zero-based indices:
+
+| Native selector | `AMA_ANI` row/frame | Native picture |
+| --- | --- | --- |
+| 1 | 0/0 | Empty backpack frame, 44x40 |
+| 2 | 0/1 | Hand, 45x40 |
+| 4 | 0/3 | Back arrow, 45x40 |
+| 5 | 0/4 | Use/cutlery, 45x40 |
+| 130 | 0/1, reflected | Opposite hand |
+
+The twelve grid frames remain at `(10+50*column,10+46*row)`.
+The bottom four positions are `(10,182)`, `(60,182)`, `(110,182)` and
+`(160,182)`. They need no extra text buttons, hand captions, frame rectangles
+or invented instruction lines. Constructor `0EF0:0542` negates the frame's
+metadata to obtain the content anchor: `(21,19)` for a backpack frame and
+`(22,19)` for a hand. Sprite pictures add their own native frame offsets;
+associated model bitmaps subtract half their stored width/height-minus-one.
+Neither path fits or rescales pictures to fill a cell.
+
+`0000:7516` draws the resource pictures using the anchor table at DS:`0000`
+(EXE file offset `31720h`). The relevant zero-based AN2 frames are:
+
+| Resource | Asset and frame | Top-left | Value anchor |
+| --- | --- | --- | --- |
+| Gold | `ANIM4`, 5/0 | 232,84 | 250,111 |
+| Medicine | `ANIM4`, 2/1 | 273,68 | 290,111 |
+| Arrows | `AMA_ANI`, 1/4 | 235,137 | 250,176 |
+| Fireballs | `ANIM4`, 0/2 | 270,133 | 290,176 |
+| Arrow-poison indicator | `ANIM4`, 2/0 | 315,83 | No separate quantity |
+| Map, only when owned | `ANIM4`, 5/1 | 240,204 | No quantity |
+
+These are references to **level sprite slot 1**, not a global fixed filename.
+Part 1 and training map that slot to `ANIM4`; part 2 maps it to `ANIM12`.
+Likewise the shared model slot 1 is `VEKT14` versus `VEKT67`. The executor
+resolves the current level's bank, with private palette variants for both
+resource-art files. Headless checks cover levels 11, 30 and 50 and verify
+the chapter-specific map picture: part 1 has a 45x27 map, while part 2's
+corresponding frame is a 1x1 placeholder. Gold, medicine and fireball resource
+pictures themselves are byte-identical between these two banks.
+
+Unavailable gold/medicine/arrows/fireballs retain darkened icons, but omit
+their number. Available icons use the fullbright lookup. Medicine sums word
+34 of collision-2 records with health exactly 1000, and rounds its healing
+capacity to percent: `quantity * 29491 * 100 / (360 * 65536)`. Fireballs sum
+word 36 of live health-1000 weapon-4 records, rather than displaying a guessed
+ammunition entry. Electricity uses the shared native model bank at DS:`7066`,
+animation 6/frame 4, depth 210; its quantity is `round(amount*100/360)`.
+The current DX11 model projection/centering and disabled-model tint remain
+approximations, distinct from the recovered bitmap placement.
+
+The active descriptor at `0000:7743` draws `Gesundheit:` at `(234,14)`,
+rounded percent at `(236,46)`, and a 92x11 bordered meter at `(225,27)`.
+Text coordinates are **native pen origins**, not top-left glyph bounds.
+`1E48:3C2F` starts X at the supplied coordinate minus five and adds each
+glyph's stored `relY` to Y. `1E48:3B43` advances by
+`pixelWidth + relX + 1`, or eight for a space. Centering subtracts half
+each character's advance using integer division; right alignment subtracts
+the whole advance. Discarding these metrics placed the health caption too
+low, overlapping the correctly positioned meter, and crowded resource numbers.
+The local UI executor restores these metrics without changing shared font or
+renderer APIs; ordinary main-menu/prompt text keeps its existing layout.
+See the [text-anchor export](inventory-text-anchor-evidence.txt).
+
+It reads the signed high word of current life; the horizontal threshold is
+that value divided by four. Across the 90-pixel `AMA_ANI` 1/0 gradient,
+columns after the threshold use shade 6 and the boundary uses shade 3.
+The nine interior rows apply shades `4,3,2,1,0,1,2,3,4` to that result.
+The second registered `Gold:` descriptor is conditional on its maximum;
+its complete live value-record initialization remains open.
+
+Palette mode 10 is selected by `1E48:B74C`, copying 2048 bytes to DS:`0A00`
+with native bank stride DS:`0330 = 0800h`. The eight 256-entry maps are
+preserved in `LEVEL\OPSET10.256` after its four-byte header. Overlay focus,
+ordinary frames and source pulse select maps 0, 2 and 0..4 respectively.
+They are **indexed-color remaps**, not RGB brightness multipliers. Transparent
+source index zero remains transparent when expanding sprite variants.
+The full font mapping at CS:`0018` includes `%` at zero-based frame 27 of
+`SCHRIFT2`, after the other punctuation.
+
+Code evidence: [inventory layout export](inventory-layout-evidence.txt).
+Floating-emulator spans and inline constants are excluded from its instruction
+ranges; inspect the original bytes rather than interpreting them as x86.
 
 ### Inventory page lifecycle and remaining boundaries
 
@@ -457,17 +557,15 @@ function claim.
 **Porting implication:** recover page-state/input/action logic separately from
 overlay descriptions and drawing. The functional modal contract is recovered:
 navigation, selection, swapping, medicine use, exit, hand priority and
-gameplay placement do not need renderer-owned decisions. Remaining visual
-recovery includes full per-item preview animation, the resource percentage/
-text formatting, and the complete right-side availability-to-palette recipe.
-The author's fullbright-when-available rule is confirmed context, not a claim
-that every indicator's native rendering branch has already been decoded.
+gameplay placement do not need renderer-owned decisions. The nonblocking
+[application dispatcher and presentation recipe](Scaffold/ApplicationFlow.cpp)
+now implement inventory/main-menu flow, and the local DX11 adapter draws
+the recovered inventory art, layout and palette states. No shared renderer
+API has been added. Remaining visual work includes native per-item descriptions,
+preview animation, exact model projection and disabled-model shading.
 Exact DOS loop-to-wall-clock pulse timing also remains unmeasured.
-No inventory implementation or new rendering API has been added.
-The [outer application-flow skeleton](Scaffold/GameContext.cpp) is now
-implemented as `GameContext` members, with native-valued
-[menu enums](Scaffold/ApplicationFlow.h). Page bodies and complete game
-initialization remain explicit throwing hooks; no UI rendering has been added.
+The legacy blocking driver retains its separate modal hooks; unsupported
+nonblocking pages and complete game initialization still fail explicitly.
 The [chapter selector export](ui-chapter-evidence.txt) confirms that Escape
 returns to the main menu and acceptance invokes `0000:0D30(1, chapter)`.
 See [the scaffold contract](BehaviorRecovery.md#game-context-and-application-flow).
