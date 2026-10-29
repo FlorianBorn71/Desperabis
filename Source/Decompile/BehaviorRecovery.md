@@ -1345,6 +1345,62 @@ and checks level-11 medicine pickup, unlocked-door activation, and linked-switch
 animation. The playable app displays interaction
 outcomes in its window title; it does not silently discard the result.
 
+### Native inventory cleanup on level progression
+
+[Level-transition evidence](level-inventory-cleanup-evidence.txt) identifies
+`0000:CE0F` as the progression routine called by the ordinary level-exit
+contact path at `0000:D923`, as well as `0000:CA15`, `0000:6FA7`, and
+`0000:EA0D`. Before selecting/loading the next level, `CE13..CE56` iterates
+native inventory indices **0..14**, including preview scratch slot zero:
+
+```cpp
+if (item.collisionType == CollisionType::Weapon &&
+    item.doorLockOrGroupBitmask > 10) // Signed word at record offset 46.
+{
+    item.health = 0;
+    selectedWeapon = WeaponType::None; // DS:DDB6.
+    requestedWeapon = WeaponType::None; // DS:DDB7.
+}
+```
+
+There is no health gate, no full-record clearing, and no removal based directly
+on the weapon ID at offset 34. Original assets confirm the distinction:
+
+| Weapon ID | Example original record | Offset-46 value | Removed by this loop |
+| --- | --- | --- | --- |
+| 8 (shovel) | `OBJPOS19.DAT`, slot 75 | 10 | No |
+| 9 (bucket) | `OBJPOS30.DAT`, slot 53 | 16 | Yes |
+| 20 (Lentils) | `OBJPOS34.DAT`, slot 44 | 15 | Yes |
+| 23 | `OBJPOS35.DAT`, slot 79 | 12 | Yes |
+| 24 (scythe) | `OBJPOS30.DAT`, slot 94 | 18 | Yes |
+
+These are original object-table values; later item mutation or pickup conversion
+can change the field. The native test does **not** establish removal of the
+shovel. Keys have collision type 6, so this weapon-only loop does not remove them.
+The author's subsequent original-game test confirms that an unused level-10
+key survives into the next level, where doors report "wrong key". Thus at least
+this transition does not discard all keys; do not introduce a blanket key purge
+as supposedly recovered native behavior.
+
+The confirmed key-removal path is **successful door unlocking**:
+`10AC:3EAA..3EB0` clears the matching inventory slot's health, as documented in
+[door-unlock evidence](door-unlock-evidence.txt). Thus a key used to open the
+exit route is already consumed, but that alone does not establish a policy for
+unused keys. Original assets also need to be distinguished from remembered key
+identities: `OBJPOS10.DAT` slot 63 is a key with ID **99**, whereas that level's
+positively locked door (slot 85) requires **1**; the level-11 key (slot 29) and
+locked door (slot 5) both use **1**. The door helper compares exact IDs, with no
+99-as-master-key exception. This is consistent with the author's observed
+cross-level "wrong key" behavior. Other transition paths and the recollected
+shovel removal remain separate recovery questions.
+
+The level-loading routine at `0000:0427` separately clears `hasMap` and removes
+inventory records with collision type 45 (`PickableMap`) at `04AA..04E2`, only
+when the requested level differs from DS:D4BE. This is not a key filter.
+The host's `CompleteLevelLoad` currently preserves inventory; neither of these
+native cleanup loops is wired into the port yet. Save loading must remain
+distinct from ordinary level progression when implementing them.
+
 ### Inventory and explicit interaction
 
 `HandlePlayerObjectInteraction` in [ObjectInteraction.cpp](Scaffold/ObjectInteraction.cpp)
@@ -3009,6 +3065,191 @@ lookup bounds, no-ceiling behavior, byte/word wrapping, old-position floor
 selection, zero-tick splash updates, and a complete 41-update drop cycle
 with wait 20 and target scale 2. These remain host tests, not DOS-runtime
 validation.
+
+### Generated ambient sound loop
+
+The original generates its environmental background at level load, rather
+than loading a finished ambient recording. The author's recollection of XMS
+read/modify/write mixing is confirmed by
+[ambient-mixing-evidence.txt](ambient-mixing-evidence.txt).
+The recovered environmental recipes are now implemented by GameCore, with
+PCM construction and looping playback supplied by the DX11 audio backend.
+
+**Entry points and level selection**
+
+- `0000:06AA..07BD` reads DS:`32AC`, byte **100** of the 124-byte
+  level-info row. This is already named `AmbientSound` in the renderer's
+  [LevelInfo.h](../NewRenderer/SharedSource/base/Asset/LevelInfo.h).
+- `1E48:D8B3(sampleId, gapChanceDenominator)` builds the base track.
+- `1E48:DA0E(sampleId, occurrenceCount)` blends that sample into the
+  generated track at random positions. These are **sample IDs**, not
+  sound-effect IDs resolved through the variant table.
+- Both generation helpers return immediately when DS:`F6C1` is zero.
+
+The environment recipes are hardcoded in the level loader:
+
+| Selector / existing name | Base sample | Random-gap parameter | Overlay sample : number of placements |
+| --- | --- | --- | --- |
+| 0 / DefaultInside (also other non-special values) | 46 | 0 | 5 : 50, then 38 : 50 |
+| 1 / Rain | 30 | 0 | 31 : 20 |
+| 2 / Forest | 28 | 13 | 82 : 100, then 29 : 10, then 40 : 4 |
+| 3 / MorningCrows | 28 | 4 | 82 : 100, then 44 : 4, then 73 : 8 |
+| 4 / BurningForest | 62 | 0 | 62 : 140, then 63 : 140, then 64 : 140 |
+
+Thus indoor drops use both sample 5 and sample 38 explicitly, independently
+of live WaterDrop objects and the effect-variant selector. Recipe ordering
+matters because overlapping placements modify the previously mixed bytes.
+Shipped level-row checks include training 50 = Inside, level 10 = Rain,
+level 16 = Forest, level 30 = MorningCrows, and level 25 = BurningForest.
+
+Selectors 100 and 101 instead call `1E48:C379(1)`; 101 additionally changes
+the playback/loop-start cursors. Selector 102 skips the builder. Values
+103..150 call `C379(selector-100)`. These are separate audio-loading/control
+paths, not additional environmental recipes; their full contract is not
+recovered here.
+
+**Memory layout and base generation**
+
+At `1E48:C19C`, the ambient XMS allocation request is **1,800,000 bytes**
+(`001B:7740`); the separate sample-bank request is **2,000,000 bytes**
+(`001E:8480`). The handles live at DS:`F6C6` and DS:`F6C8`, respectively.
+The common allocator requests `floor(bytes/1024)+1` KiB.
+
+The base constructor allocates **two conventional-memory buffers of
+64,000 bytes each**, not the entire ambient track. It reads the selected
+base sample from the XMS sample bank into one and fills the other with
+unsigned-PCM silence **128**. It then repeatedly:
+
+1. If the gap parameter is positive and `Random(parameter)==0`, append
+   `4*Random(10000)` silent bytes (0..39,996, in multiples of four).
+2. Append one complete base sample.
+3. Continue until the write cursor reaches or exceeds DS:`0334`, whose
+   initialized dword is **1,499,904** (`0016:E300`).
+
+On termination it subtracts one base-sample length from the cursor and
+stores that as the logical loop endpoint, DS:`F6CE/F6D0`. The last copied
+sample therefore extends beyond the logical endpoint. This is not a
+fixed-size 2 MB loop: allocation size, generation threshold, and logical
+playback length are distinct.
+
+Using the native sample lengths, the no-gap recipes produce:
+
+| Recipe | Base PCM length | Logical loop bytes | Approximate duration at 11,025 Hz |
+| --- | --- | --- | --- |
+| Rain | 60,068 | 1,441,632 | 130.76 s |
+| Inside | 20,040 | 1,482,960 | 134.51 s |
+| BurningForest | 22,048 | 1,499,264 | 135.99 s |
+
+The forest/crows lengths depend on the random gaps. The two playback-rate
+call sites `1E48:B8EF` and `C307` request **11,025 Hz** through `B7CA`;
+actual legacy DSP timing is quantized by its time-constant calculation.
+
+**Random placement and exact integer blending**
+
+For each overlay call, the source sample is read from the sample bank
+once into a 64,000-byte conventional buffer. A second 64,000-byte buffer
+holds the destination window. For every requested occurrence:
+
+```text
+position = NativeRealToInteger(
+    RandomReal() * (logicalLoopBytes - sourceLength - 100))
+position &= ~1
+weight = 200 - Random(150)        // 51..200 inclusive
+destination = ReadAmbientXms(position, sourceLength)
+for i = 0 .. sourceLength-1:
+    destination[i] =
+        (destination[i]*weight + source[i]*(255-weight)) >> 8
+WriteAmbientXms(position, destination)
+```
+
+`RandomReal` is the Pascal helper at `2CE4:173D`, using the shared RNG.
+The inline software-floating-point bytes at `DAB2..DABD` encode a
+signed-dword load, the real random call, and multiplication; the ordinary
+x86 mnemonics printed there are misleading. `2CE4:16B0` performs the native
+real-to-integer conversion. Its full floating-point environment has not
+been reproduced for bit-exact generated-track comparison.
+
+The byte blend at `DB4B..DB57` is fully integer-defined: two unsigned
+8x8 multiplies, a word add, and retention of the high byte. It is
+**not additive mixing with saturation**, and the denominator is **256,
+not 255**. The weight belongs to the existing destination; the newly
+inserted sample gets the complementary weight. Even two 128-valued bytes
+produce 127, so replacing this with a normalized modern crossfade changes
+the original output. There is no overlay wrapping: positions leave the
+whole source inside the logical track, with an additional 100-byte margin
+before conversion/alignment.
+
+`1E48:03F1` reads XMS into conventional memory; `0397` writes it back,
+using XMS move function `0Bh`. The generation loop performs exactly the
+sample-sized read/mix/write described by the author. Both buffers are
+freed at the end of each builder/overlay call.
+
+**Streaming and sample-loader boundary**
+
+The runtime mixer at `1E48:BAF3` reads ambient data from handle `F6C6`
+using playback cursor DS:`F6CA/F6CC`, normally in **512-byte** blocks
+(256 when DS:`F6C3` is set), alongside the four live effect channels.
+After a read advances beyond the endpoint, it resets the cursor to
+DS:`F6D2/F6D4` when that loop-start value is nonnegative, otherwise it
+disables ambient playback. Generated recipes initialize that loop start
+to zero. This confirms playback from the prepared XMS loop, not fresh
+random overlay construction during gameplay.
+
+Native sample lengths above come from `1E48:D297`: it reads the first
+two file bytes separately and stores `(fileSize-2)&~1` PCM bytes in the
+sample bank, with additional endpoint processing. This native preprocessing
+is **not** a change to the modern loader's explicitly chosen entire-file
+PCM policy. No sample-format or smoothing changes were made in this recovery.
+The arithmetic, assets, and byte counts were checked statically; no DOS
+memory capture or auditory comparison of a reconstructed ambient loop has
+been performed.
+
+**Modern implementation**
+
+`GameContext::CreateAmbientLoop` owns the recipes, base/gap sequencing,
+overlay order, random offsets and weights. `RandomReal` reproduces the
+`2CE4:173D` signed-seed absolute-value scaling by `2^-31`, using the same
+seed as integer `Random`. Offset conversion uses nearest-integer rounding
+under the default rounding environment, followed by even alignment.
+
+The extended `AudioHandler` contract exposes sample lengths and
+`BeginAmbientLoopCreation(capacityFrames)`, `CopyAmbient(sample, offset)`,
+`MixAmbient(sample, offset, existingWeight)`,
+`EndAmbientLoopCreation(loopLengthFrames)`, `StartAmbientPlayback`, and
+`StopAmbientPlayback`. It never exposes asset buffers to GameCore.
+Effect-only hosts inherit explicit unsupported-operation errors for these
+methods, rather than silently pretending to construct/play ambient sound.
+
+`LoadLevelGeometry` carries byte 100 into `LevelLoadData::ambientSound`.
+With that metadata and an attached audio handler, `CompleteLevelLoad`
+stops the old loop, generates/finalizes the replacement, then starts it.
+Disabled sound stops the old loop without generation or RNG draws.
+Missing metadata deliberately leaves ambient control to the host (for
+existing save/recovery fixtures). Backend failures propagate through the
+normal level-load failure path; they cannot report a successful level
+load with silently missing ambient audio.
+
+The XAudio2 `AudioPlayer` owns a silence-initialized **1,800,000-byte**
+buffer, applies the recovered byte blend, and uses a separate infinitely
+looping source voice. It retains the full allocation but submits only the
+logical playback length. Rebuilding synchronously destroys the old voice
+before replacing its buffer. Ambient and effect stop operations are
+independent; the game explicitly stops both on level transitions/shutdown.
+
+Construction uses the existing **prepared playback PCM**, including the
+configured onset/end fades and the entire-file loading policy. Therefore modern
+sample/loop lengths differ slightly from the native table above, and PCM
+is not claimed to be DOS-bit-exact. No additional fade is applied to the
+finished ambient loop's seam.
+Music/cutscene selectors 100..150 are explicitly unsupported, not replaced
+with an indoor recipe; all currently playable menu levels use 0..4.
+
+`Scaffold/AmbientTests.cpp` checks all five recipes against original assets,
+independently computes RNG draws/rounded offsets, checks gaps, ordering,
+weights, endpoints, metadata loading, disabled sound, and failed-load retry.
+DX11 `AudioTests.cpp` checks exact copy/blend/overlap bytes, invalid states
+and bounds, real infinite-loop advancement, independent effect playback,
+safe rebuild, and every recipe through the actual asset-backed backend.
 
 ### Sound effects, attenuation, and four-channel admission
 

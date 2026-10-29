@@ -155,6 +155,11 @@ For the first explained case and shared collision-map pointer, see
   `GameContext.cpp`.
 - `sound-evidence.txt`: exact distance, volume, sample selection, channel
   policy, table-loading prefix, and random-number instruction ranges.
+- `ambient-mixing-evidence.txt`: level-selected ambient recipes, base-track
+  construction, random weighted blending, XMS transfers, and loop streaming.
+  See [generated ambient sound](BehaviorRecovery.md#generated-ambient-sound-loop).
+- `Scaffold/AmbientTests.cpp`: original-asset recipe/RNG checks and ambient
+  level-load metadata, disabled-sound, failure propagation and retry tests.
 - `Scaffold/Heightfield.cpp`: unpacked geometry stream loading for `Level`.
   Native floor/room queries and special surfaces are in `GameContext.cpp`.
 - `heightfield-evidence.txt`: exact WaterDrop, height lookup, and Pascal

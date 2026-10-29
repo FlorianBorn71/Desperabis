@@ -161,6 +161,7 @@ namespace Desperabis
         // Fresh level: GameContext creates slot 1 from this eye position/view direction.
         // Omit to preserve the supplied slot-1 record (e.g. a save or recovery fixture).
         std::optional<PlayerCamera> playerSpawn;
+        std::optional<std::uint8_t> ambientSound; // LEVELS.INF byte 100; omitted for fixtures/saves without this metadata.
     };
 
     struct LightingCache
@@ -356,9 +357,11 @@ namespace Desperabis
         virtual void PromptUserMessage(std::string_view text, std::int16_t duration);
         virtual bool IsUserMessageActive() const;
         std::uint16_t Random(std::uint16_t range);
+        double RandomReal();
         // Native signed random helper replaces a zero result with the positive radius.
         std::int16_t RandomSigned(std::uint16_t radius);
         void LoadSoundEffects(const std::uint8_t* data, std::size_t size);
+        void CreateAmbientLoop(std::uint8_t environment);
         std::int16_t GetSoundDistanceAt(std::int16_t x, std::int16_t z) const;
         static std::uint8_t GetSoundVolume(std::int16_t distance);
         std::uint8_t GetSoundVolumeAt(std::int16_t x, std::int16_t z, std::int16_t distanceScale = 1) const;

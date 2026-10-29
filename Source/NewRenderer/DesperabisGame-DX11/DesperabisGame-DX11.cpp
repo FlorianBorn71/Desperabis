@@ -28,7 +28,13 @@
 
 namespace
 {
-	constexpr int g_startLevelIndex = 11;
+	// Matches the DesktopPlayer's Level menu (training, part 1, part 2).
+	constexpr std::array<int, 26> g_playableLevels = {
+		50,
+		30, 31, 32, 33, 36, 34, 35,
+		10, 11, 12, 13, 14, 15, 16, 17, 18, 90, 19, 20, 21, 22, 23, 24, 25, 26
+	};
+	constexpr int g_startLevelIndex = g_playableLevels.front();
 	bool g_cheatMode = true;
 
 	// The host owns wall-clock conversion; the original game runs at 33 Hz.
@@ -36,7 +42,7 @@ namespace
 	// Cap catch-up after stalls to one second of game time.
 	constexpr int g_maxTicksPerFrame = 33;
 	constexpr int g_numObjectSlots = static_cast<int>(std::tuple_size_v<decltype(Desperabis::GameContext::worldObjects)>);
-	// OBJPOS has no player record, so the initial view vector is a host choice (faces into level 11's start corridor).
+	// OBJPOS has no player record, so the initial view vector is a host choice.
 	// GameContext seeds the player heading from it at load and rewrites velocityX/Z from the heading every tick.
 	constexpr std::array<int16_t, 3> g_initialPlayerDirection = { -256, 0, 0 };
 	constexpr int g_initialWidth = 1280;
@@ -647,6 +653,7 @@ namespace
 	void LoadGameLevel(int levelIndex)
 	{
 		g_gameCore->StopAllSoundEffects();
+		g_audioPlayer->StopAmbientPlayback();
 		g_tickAccumulator = 0.0;
 
 		try
@@ -679,19 +686,27 @@ namespace
 		}
 	}
 
-	void LoadNextLevel()
+	void LoadNextLevel(bool nextPart = false)
 	{
-		for (int level = g_scene->m_levelIndex + 1; level <= 99; ++level)
+		const auto current = std::find(g_playableLevels.begin(), g_playableLevels.end(), g_scene->m_levelIndex);
+		if (current == g_playableLevels.end())
 		{
-			if (LevelInfo::IsUsedLevelIndex(level))
-			{
-				LoadGameLevel(level);
-				g_previousTime = std::chrono::duration<double>(
-					std::chrono::steady_clock::now() - g_startTime).count();
-				return;
-			}
+			ReportGameCoreError("next level", "Current level is not in the playable level sequence.");
+			SetWindowTextA(g_hWnd, "Desperabis (DX11) - current level is not in the playable sequence");
+			return;
 		}
-		SetWindowTextA(g_hWnd, "Desperabis (DX11) - no next supported level");
+		const auto next = nextPart ?
+			std::find_if(current + 1, g_playableLevels.end(), [](int level) { return level == 30 || level == 10; }) :
+			current + 1;
+		if (next == g_playableLevels.end())
+		{
+			SetWindowTextA(g_hWnd, nextPart ?
+				"Desperabis (DX11) - no next game part" : "Desperabis (DX11) - no next playable level");
+			return;
+		}
+		LoadGameLevel(*next);
+		g_previousTime = std::chrono::duration<double>(
+			std::chrono::steady_clock::now() - g_startTime).count();
 	}
 
 	void ApplyPlayerCamera()
@@ -811,6 +826,7 @@ namespace
 	{
 		g_initialized = false;
 		g_gameCore->StopAllSoundEffects();
+		g_audioPlayer->StopAmbientPlayback();
 		g_gameCore->audioHandler = nullptr;
 		g_audioPlayer.reset();
 		g_gameCore->ClearPrompt();
@@ -987,7 +1003,8 @@ namespace
 			}
 			else if (wParam == VK_TAB && (lParam & (1 << 30)) == 0 && g_initialized)
 			{
-				LoadNextLevel();
+			    // Shift TAB moves to the next part of the game
+				LoadNextLevel((GetKeyState(VK_SHIFT) & 0x8000) != 0);
 			}
 			return 0;
 		case WM_DESTROY:

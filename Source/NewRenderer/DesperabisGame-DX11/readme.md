@@ -1,6 +1,6 @@
 # Desperabis Game (DX11)
 
-Minimal standalone DX11 window without menus. On startup it loads level 11 and renders it.
+Minimal standalone DX11 window without menus. On startup it loads the training level (50) and renders it.
 
 Both standalone project and solution builds write to the repository's `Bin` folder:
 Release uses `Bin`, and Debug uses `Bin\Debug`.
@@ -15,6 +15,17 @@ volume 0..255; it does not interpret sound-effect IDs or use an RNG.
 The supplied volume is a fixed linear gain (`volume / 255`) for the entire sample;
 moving the listener does not change an already-playing sample's volume.
 
+Environmental ambient audio uses a separate, infinitely looping XAudio2 voice,
+not one of the four effect channels. GameCore reads `LEVELS.INF` byte 100 and
+chooses the original indoor, rain, forest, morning/crows or burning-forest recipe.
+It owns all random placement/weight decisions; `AudioPlayer` owns the PCM.
+The creation API allocates 1,800,000 mono frames (bytes), copies the base sounds,
+blends overlays with `(existing*weight + source*(255-weight)) >> 8`, and finalizes
+the actual loop length separately. Silence gaps are initialized to 128.
+Generation uses the same prepared/faded samples as effects, without changing
+the entire-file PCM policy below; it is not claimed to be DOS-byte-identical.
+Music/cutscene selectors 100..150 are explicitly unsupported.
+
 All 129 `SAMP\SOUND<n>.SMP` files are `SoundSample` resources loaded and cached
 through `AssetManager`. Match the browser's original loader: **the entire file**
 is unsigned 8-bit, mono PCM at **11025 Hz**. No bytes are interpreted as a header
@@ -22,13 +33,16 @@ or removed, even if leading bytes resemble a frequency or length. XAudio2 handle
 resampling to the output device. Playback is centered mono; music WAV files and
 additional spatialization are not implemented.
 
-At load time, a separate playback buffer receives a short linear fade-in around
-unsigned PCM silence (128), reducing clicks from abrupt sample starts. The raw
+At load time, a separate playback buffer receives short linear fade-in and fade-out
+envelopes around unsigned PCM silence (128), reducing clicks at both sample ends. The raw
 buffer and embedded files remain byte-exact; no leading bytes are removed.
-`AssetSettings::Instance().soundFadeInMilliseconds` configures the duration
-globally (default **5 ms**, **0** disables it). Set it before loading sound assets;
+`AssetSettings::Instance().soundFadeInMilliseconds` and `soundFadeOutMilliseconds`
+configure the durations independently (both default to **5 ms**, **0** disables
+that fade). Set them before loading sound assets;
 already-cached resources retain their prepared buffers. The fade is clamped to
-the sample length and does not add a playback delay. Negative/nonfinite durations
+the sample length and does not add a playback delay or change sample length.
+Overlapping fades use the lower gain, applied once to raw PCM, so even short
+samples start and end at silence. Negative/nonfinite durations
 are rejected. Water-drop variants 5 and 38 both have strong six-byte onset
 transients; tests verify the default fade reduces these to at most 12 PCM units
 from silence, versus up to 128 in the originals.
@@ -49,6 +63,11 @@ Because XAudio2 stop/flush is asynchronous, `StopAllSamples` destroys the source
 voices synchronously; subsequent playback recreates only the channels it needs.
 The output voice/engine remain alive. Initialization/API errors are explicit;
 audio initialization failures are shown in the startup error dialog.
+`StopAllSamples` affects only effects; `StopAmbientPlayback` destroys only the
+dedicated looping voice. The game calls both for level changes and shutdown.
+Starting a new creation pass also destroys any old ambient voice before its
+buffer is replaced. Creation/placement/finalization errors fail level loading
+through the existing host error reporting.
 
 Asset loading uses `CO_AWAIT`, which is empty in synchronous builds. The synchronous
 core file-loading override uses `FORCE_GET`; `FORCE_WAIT` consumes void results at
@@ -72,6 +91,10 @@ resource ownership after cache teardown, core RNG/channel dispatch and await-res
 exception propagation. A volume-meter test checks actual mixed-output gain at
 0, 64, 128 and 255 throughout playback and after channel reuse, using a quiet test
 tone. Other direct playback checks are muted; the core-dispatch check uses volume 1/255.
+Ambient tests verify exact PCM blending and overlap ordering, buffer bounds and
+creation-state errors, logical length versus allocation size, actual loop
+advancement, independent effect/ambient stops, rebuilding during playback, and
+all five core recipes using the original cached sample resources.
 
 ## Gameplay integration
 
@@ -223,8 +246,14 @@ Current assumptions/limitations:
 * `Page Up` / `Page Down`: look up/down; `Home`: center manual look (sample bindings).
   Look is smoothed and also follows the terrain ahead, affecting arrow launch elevation.
 * `F`: toggle free camera (`WASD` move, `Shift` faster, mouse position relative to the window center steers)
-* `Tab`: load the next supported level in numeric order, skipping unused IDs.
+* `Tab`: load the next playable level in DesktopPlayer menu order:
+  training `50`, part 1 `30, 31, 32, 33, 36, 34, 35`, then part 2
+  `10, 11, 12, 13, 14, 15, 16, 17, 18, 90, 19, 20, 21, 22, 23, 24, 25, 26`.
   Reloads the renderer scene and gameplay state, reapplies the cheat loadout when enabled,
   and resets the camera to the new start. Holding the key does not skip multiple levels.
-  At the last supported level, the window title reports that no next level exists.
+  Startup is training (50), followed by part 1 and then part 2. At the final entry (26), navigation stops without
+  wrapping and the window title reports that no next level exists.
+* `Shift+Tab`: jump to the next game part: training -> part 1 (30) -> part 2 (10).
+  From any level within a part, skips its remaining levels. In part 2, stops
+  without wrapping and reports that no next game part exists. Key repeat is ignored.
 * `Esc` quits

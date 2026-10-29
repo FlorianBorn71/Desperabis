@@ -74,15 +74,21 @@ namespace
         CO_RETURN;
     }
 
-    void TestSampleFadeIn()
+    void TestSampleFades()
     {
         auto& settings = AssetSettings::Instance();
         struct RestoreDuration
         {
-            float value;
-            ~RestoreDuration() { AssetSettings::Instance().soundFadeInMilliseconds = value; }
-        } restore{settings.soundFadeInMilliseconds};
-        const std::vector<byte> raw{0, 0, 255, 255, 42, 128};
+            float fadeIn;
+            float fadeOut;
+            ~RestoreDuration()
+            {
+                auto& settings = AssetSettings::Instance();
+                settings.soundFadeInMilliseconds = fadeIn;
+                settings.soundFadeOutMilliseconds = fadeOut;
+            }
+        } restore{settings.soundFadeInMilliseconds, settings.soundFadeOutMilliseconds};
+        const std::vector<byte> raw{0, 0, 255, 255, 42, 255};
         SoundSample sample;
         const auto load = [&]
         {
@@ -90,26 +96,54 @@ namespace
             sample.Read(stream);
         };
         settings.soundFadeInMilliseconds = 0.3f; // Four samples at 11025 Hz.
+        settings.soundFadeOutMilliseconds = 0.f;
         load();
         Check(sample.GetPcm() == raw &&
-            sample.GetPlaybackPcm() == std::vector<byte>({128, 85, 213, 255, 42, 128}),
+            sample.GetPlaybackPcm() == std::vector<byte>({128, 85, 213, 255, 42, 255}),
             "Fade-in must scale around unsigned PCM silence and leave the remaining bytes unchanged.");
         settings.soundFadeInMilliseconds = 0.f;
         load();
         Check(sample.GetPlaybackPcm() == raw, "Zero fade duration must preserve bit-exact playback.");
+        settings.soundFadeOutMilliseconds = 0.3f;
+        load();
+        Check(sample.GetPcm() == raw &&
+            sample.GetPlaybackPcm() == std::vector<byte>({0, 0, 255, 213, 99, 128}),
+            "Fade-out must preserve the prefix and end exactly at unsigned PCM silence.");
+        settings.soundFadeInMilliseconds = 0.3f;
+        load();
+        Check(sample.GetPlaybackPcm() == std::vector<byte>({128, 85, 213, 213, 99, 128}),
+            "Overlapping fades must use the lower gain, applied once to raw PCM.");
+        settings.soundFadeOutMilliseconds = 0.f;
         settings.soundFadeInMilliseconds = 1000.f;
         load();
         Check(sample.GetPlaybackPcm().size() == raw.size() && sample.GetPlaybackPcm().front() == 128 &&
             sample.GetPlaybackPcm().back() == raw.back(), "Long fades must be clamped to the sample length.");
+        settings.soundFadeOutMilliseconds = 1000.f;
+        load();
+        Check(sample.GetPlaybackPcm() == std::vector<byte>({128, 102, 179, 179, 111, 128}),
+            "Long overlapping fades must be clamped and retain both silent endpoints.");
+        settings.soundFadeInMilliseconds = 0.f;
         const std::vector<byte> oneByte{255};
         AssetStream oneByteStream(oneByte);
         sample.Read(oneByteStream);
-        Check(sample.GetPlaybackPcm() == std::vector<byte>({128}), "A single-byte fade must be safe.");
+        Check(sample.GetPlaybackPcm() == std::vector<byte>({128}), "A single-byte fade-out must be safe.");
+        settings.soundFadeInMilliseconds = 0.001f;
+        settings.soundFadeOutMilliseconds = 0.001f;
+        load();
+        Check(sample.GetPlaybackPcm() == std::vector<byte>({128, 0, 255, 255, 42, 128}),
+            "Single-frame fades must change only the two endpoints.");
+        const auto prepared = sample.GetPlaybackPcm();
         for (const float invalid : {-1.f, std::numeric_limits<float>::infinity(),
             std::numeric_limits<float>::quiet_NaN()})
         {
             settings.soundFadeInMilliseconds = invalid;
             Reject<std::invalid_argument>(load);
+            settings.soundFadeInMilliseconds = 0.f;
+            settings.soundFadeOutMilliseconds = invalid;
+            Reject<std::invalid_argument>(load);
+            settings.soundFadeOutMilliseconds = 0.f;
+            Check(sample.GetPcm() == raw && sample.GetPlaybackPcm() == prepared,
+                "Invalid fade settings must not mutate a previously loaded sample.");
         }
         sample.Reset();
         Check(sample.GetPcm().empty() && sample.GetPlaybackPcm().empty(),
@@ -182,6 +216,130 @@ public:
     }
 };
 
+class AudioPlayerAmbientTest
+{
+public:
+    static void Run()
+    {
+        struct RestoreDuration
+        {
+            float fadeIn = AssetSettings::Instance().soundFadeInMilliseconds;
+            float fadeOut = AssetSettings::Instance().soundFadeOutMilliseconds;
+            ~RestoreDuration()
+            {
+                auto& settings = AssetSettings::Instance();
+                settings.soundFadeInMilliseconds = fadeIn;
+                settings.soundFadeOutMilliseconds = fadeOut;
+            }
+        } restore;
+        AssetSettings::Instance().soundFadeInMilliseconds = 0.f;
+        AssetSettings::Instance().soundFadeOutMilliseconds = 0.f;
+        class Sample final : public SoundSample
+        {
+        public:
+            explicit Sample(const std::vector<byte>& pcm)
+            {
+                AssetStream stream(pcm);
+                Read(stream);
+                m_loaded = true;
+            }
+        };
+        AudioPlayer audio({
+            std::make_shared<Sample>(std::vector<byte>{0, 64, 128, 255}),
+            std::make_shared<Sample>(std::vector<byte>{255, 128, 64, 0}),
+            std::make_shared<Sample>(std::vector<byte>(4, 128)),
+            std::make_shared<Sample>(std::vector<byte>(SoundSample::SampleRate, 128))
+        });
+        Check(SUCCEEDED(audio.m_masteringVoice->SetVolume(0.f)), "Cannot mute ambient test output.");
+        Check(audio.GetSampleLength(1) == 4, "Ambient lengths must count PCM frames.");
+        Reject<std::out_of_range>([&] { audio.GetSampleLength(0); });
+        Reject<std::out_of_range>([&] { audio.GetSampleLength(5); });
+        Reject<std::logic_error>([&] { audio.StartAmbientPlayback(); });
+        Reject<std::logic_error>([&] { audio.EndAmbientLoopCreation(1); });
+        Reject<std::logic_error>([&] { audio.CopyAmbient(1, 0); });
+        Reject<std::logic_error>([&] { audio.MixAmbient(1, 0, 100); });
+        Reject<std::invalid_argument>([&] { audio.BeginAmbientLoopCreation(0); });
+        Reject<std::invalid_argument>([&]
+        {
+            audio.BeginAmbientLoopCreation(static_cast<std::size_t>(XAUDIO2_MAX_BUFFER_BYTES) + 1);
+        });
+
+        audio.BeginAmbientLoopCreation(2048);
+        Check(std::all_of(audio.m_ambientPcm.begin(), audio.m_ambientPcm.end(),
+            [](byte value) { return value == 128; }), "Ambient gaps must start as unsigned PCM silence.");
+        Reject<std::logic_error>([&] { audio.StartAmbientPlayback(); });
+        audio.CopyAmbient(1, 8);
+        Check(std::equal(audio.m_ambientPcm.begin() + 8, audio.m_ambientPcm.begin() + 12,
+            std::vector<byte>{0, 64, 128, 255}.begin()), "Ambient base copy must be byte-exact.");
+        audio.MixAmbient(2, 8, 100);
+        const std::vector<byte> expected{154, 102, 88, 99};
+        Check(std::equal(expected.begin(), expected.end(), audio.m_ambientPcm.begin() + 8),
+            "Ambient must use unsigned weighted blending with denominator 256.");
+        audio.MixAmbient(2, 8, 200);
+        const std::vector<byte> source{255, 128, 64, 0};
+        for (std::size_t i = 0; i < expected.size(); ++i)
+        {
+            Check(audio.m_ambientPcm[8 + i] == (expected[i] * 200 + source[i] * 55) >> 8,
+                "Overlapping ambient placements must mix into the previous output.");
+        }
+        audio.MixAmbient(3, 0, 100);
+        Check(audio.m_ambientPcm[0] == 127, "Ambient blending must preserve the native silence bias.");
+        const auto snapshot = audio.m_ambientPcm;
+        Reject<std::out_of_range>([&] { audio.CopyAmbient(1, 2047); });
+        Reject<std::out_of_range>([&]
+        {
+            audio.MixAmbient(1, (std::numeric_limits<std::size_t>::max)(), 100);
+        });
+        Reject<std::out_of_range>([&] { audio.CopyAmbient(0, 0); });
+        Reject<std::out_of_range>([&] { audio.EndAmbientLoopCreation(0); });
+        Reject<std::out_of_range>([&] { audio.EndAmbientLoopCreation(2049); });
+        Check(audio.m_ambientPcm == snapshot, "Rejected ambient writes must not mutate PCM.");
+        audio.EndAmbientLoopCreation(1024);
+        Check(audio.m_ambientLoopLength == 1024 && audio.m_ambientPcm.size() == 2048,
+            "Ambient logical length must be independent of allocation capacity.");
+        Reject<std::logic_error>([&] { audio.MixAmbient(1, 0, 100); });
+        Reject<std::logic_error>([&] { audio.EndAmbientLoopCreation(1024); });
+        audio.StartAmbientPlayback();
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        XAUDIO2_VOICE_STATE state{};
+        audio.m_ambientVoice->GetState(&state);
+        Check(state.BuffersQueued == 1 && state.SamplesPlayed > 1024,
+            "Ambient must keep looping beyond its first logical-length buffer.");
+        audio.StopAllSamples();
+        Check(audio.m_ambientVoice != nullptr, "Effect cleanup must not consume the dedicated ambient voice.");
+        audio.PlaySample(0, 4, 0);
+        audio.StopAmbientPlayback();
+        audio.StopAmbientPlayback();
+        Check(audio.IsChannelPlaying(0), "Ambient stop must not stop live effects.");
+        audio.StartAmbientPlayback();
+        audio.BeginAmbientLoopCreation(4096);
+        Check(!audio.m_ambientVoice && audio.IsChannelPlaying(0) && audio.m_ambientLoopLength == 0,
+            "Rebuilding must synchronously release old ambient playback without touching effects.");
+        audio.CopyAmbient(1, 0);
+        audio.EndAmbientLoopCreation(2048);
+        audio.StartAmbientPlayback();
+    }
+
+    static void RunRecipes(AudioPlayer& audio)
+    {
+        Check(SUCCEEDED(audio.m_masteringVoice->SetVolume(0.f)), "Cannot mute ambient recipe test output.");
+        Desperabis::GameContext core;
+        core.audioHandler = &audio;
+        for (std::uint8_t environment = 0; environment < 5; ++environment)
+        {
+            core.CreateAmbientLoop(environment);
+            Check(audio.m_ambientPcm.size() == 1800000 && audio.m_ambientLoopLength > 1400000 &&
+                !audio.m_buildingAmbient, "Original recipe must produce a finalized ambient buffer.");
+            core.audioHandler->StartAmbientPlayback();
+            XAUDIO2_VOICE_STATE state{};
+            audio.m_ambientVoice->GetState(&state);
+            Check(state.BuffersQueued == 1, "Original recipe must reach the dedicated looping voice.");
+        }
+        audio.StopAmbientPlayback();
+        Check(SUCCEEDED(audio.m_masteringVoice->SetVolume(1.f)), "Cannot restore audio output volume.");
+    }
+};
+
 int main(int argc, char** argv)
 {
     try
@@ -193,7 +351,8 @@ int main(int argc, char** argv)
         FORCE_WAIT(TestAwaitMacros());
         Check(FORCE_GET(AwaitValue()) == 42, "FORCE_GET lost its return value.");
         Reject<std::runtime_error>([] { FORCE_WAIT(AwaitFailure()); });
-        TestSampleFadeIn();
+        TestSampleFades();
+        AudioPlayerAmbientTest::Run();
 
         auto& assets = AssetManager::Instance();
         std::vector<std::shared_ptr<const SoundSample>> samples;
@@ -208,11 +367,17 @@ int main(int argc, char** argv)
                 "Repeated sample requests must reuse the asset-manager resource.");
             const auto& raw = sample->GetPcm();
             const auto& playback = sample->GetPlaybackPcm();
-            const auto fadeSamples = static_cast<std::size_t>(
-                std::ceil(AssetSettings::Instance().soundFadeInMilliseconds * SoundSample::SampleRate / 1000.0));
-            Check(playback.size() == raw.size() && playback.front() == 128 &&
-                std::equal(raw.begin() + fadeSamples, raw.end(), playback.begin() + fadeSamples),
-                "Prepared samples must start at silence without altering length or bytes after the fade.");
+            const auto fadeInSamples = static_cast<std::size_t>(std::min<double>(static_cast<double>(raw.size()),
+                std::ceil(AssetSettings::Instance().soundFadeInMilliseconds * SoundSample::SampleRate / 1000.0)));
+            const auto fadeOutSamples = static_cast<std::size_t>(std::min<double>(static_cast<double>(raw.size()),
+                std::ceil(AssetSettings::Instance().soundFadeOutMilliseconds * SoundSample::SampleRate / 1000.0)));
+            Check(playback.size() == raw.size() && playback.front() == 128 && playback.back() == 128,
+                "Prepared samples must retain their length and start/end at silence.");
+            if (fadeInSamples + fadeOutSamples <= raw.size())
+            {
+                Check(std::equal(raw.begin() + fadeInSamples, raw.end() - fadeOutSamples,
+                    playback.begin() + fadeInSamples), "Samples must remain byte-exact outside both fades.");
+            }
             if (id == 5 || id == 38)
             {
                 for (std::size_t i = 0; i < 6; ++i)
@@ -280,6 +445,7 @@ int main(int argc, char** argv)
             core.StopAllSoundEffects();
             Check(!audio.IsChannelPlaying(3) && core.soundChannelSources[3] == 0,
                 "Core stop must flush playback and clear channel-source ownership.");
+            AudioPlayerAmbientTest::RunRecipes(audio);
 
             // A queued sample must outlive removal from the asset-manager cache.
             audio.PlaySample(0, 1, 0);
@@ -289,7 +455,8 @@ int main(int argc, char** argv)
         }
         files.Deinitialize();
         std::cout << "Audio tests passed: 129 byte-exact built-in samples, asset caching, four XAudio2 channels, "
-            "load-time fade-in and water-drop transient reduction, sustained mixed-output volume, "
+            "load-time fade-in/out and water-drop transient reduction, sustained mixed-output volume, "
+            "ambient PCM blending/looping/rebuild and original recipes, "
             "natural completion, stop/reuse, ownership, core RNG and await/error propagation.\n";
         return 0;
     }

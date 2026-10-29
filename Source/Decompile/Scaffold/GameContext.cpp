@@ -274,6 +274,16 @@ namespace Desperabis
         LightingCache newLighting;
         newLighting.Reset(data.objects[1].posX, data.objects[1].posZ);
 
+        if (audioHandler && data.ambientSound)
+        {
+            audioHandler->StopAmbientPlayback();
+            if (soundEnabled)
+            {
+                CreateAmbientLoop(*data.ambientSound);
+                audioHandler->StartAmbientPlayback();
+            }
+        }
+
         for (std::size_t slot = 1; slot < worldObjects.size(); ++slot)
         {
             SetObjectHealth(worldObjects[slot], 0);
@@ -594,6 +604,7 @@ namespace Desperabis
             info[recordOffset + 116] > 0 ? info[recordOffset + 117] * 5 : 0);
         data.level = std::move(loadedLevel);
         data.floorRepeatHeight = repeatHeight;
+        data.ambientSound = info[recordOffset + 100];
     }
 
     void GameContext::LoadLevelObjects(std::int16_t levelNumber, LevelLoadData& data)
@@ -2578,6 +2589,91 @@ namespace Desperabis
         // 2CE4:170A uses the high seed word modulo the range, not multiply-high scaling.
         randomSeed = randomSeed * 0x08088405u + 1u;
         return range == 0 ? 0 : static_cast<std::uint16_t>((randomSeed >> 16) % range);
+    }
+
+    double GameContext::RandomReal()
+    {
+        Random(0);
+        // 2CE4:173D takes ABS of the signed seed, then scales by 2^-31.
+        const auto signedSeed = randomSeed <= 0x7fffffffu ?
+            static_cast<std::int64_t>(randomSeed) : static_cast<std::int64_t>(randomSeed) - 0x100000000ll;
+        return std::abs(static_cast<double>(signedSeed)) / 2147483648.0;
+    }
+
+    void GameContext::CreateAmbientLoop(std::uint8_t environment)
+    {
+        if (!audioHandler) { throw std::logic_error("Ambient creation requires an audio handler."); }
+        if (environment >= 100 && environment <= 150)
+        {
+            throw std::runtime_error("Music/cutscene ambient selectors are not implemented.");
+        }
+        struct Overlay
+        {
+            std::uint8_t sample;
+            std::uint16_t count;
+        };
+        struct Recipe
+        {
+            std::uint8_t base;
+            std::uint16_t gapChance;
+            std::array<Overlay, 3> overlays;
+        };
+        static constexpr std::array<Recipe, 5> recipes{{
+            {46, 0, {{{5, 50}, {38, 50}, {0, 0}}}},
+            {30, 0, {{{31, 20}, {0, 0}, {0, 0}}}},
+            {28, 13, {{{82, 100}, {29, 10}, {40, 4}}}},
+            {28, 4, {{{82, 100}, {44, 4}, {73, 8}}}},
+            {62, 0, {{{62, 140}, {63, 140}, {64, 140}}}}
+        }};
+        const auto& recipe = recipes[environment < recipes.size() ? environment : 0];
+        constexpr std::size_t capacity = 1800000;
+        constexpr std::size_t targetLength = 1499904;
+        const auto sampleLength = [&](std::uint8_t sample)
+        {
+            if (sample == 0 || sample > audioHandler->GetSampleCount())
+            {
+                throw std::out_of_range("Ambient recipe references a missing sample.");
+            }
+            const auto length = audioHandler->GetSampleLength(sample);
+            if (length == 0 || length > 64000)
+            {
+                throw std::invalid_argument("Ambient recipe samples must contain 1..64000 PCM frames.");
+            }
+            return length;
+        };
+        const auto baseLength = sampleLength(recipe.base);
+        std::array<std::size_t, 3> overlayLengths{};
+        for (std::size_t i = 0; i < recipe.overlays.size(); ++i)
+        {
+            if (recipe.overlays[i].count != 0) { overlayLengths[i] = sampleLength(recipe.overlays[i].sample); }
+        }
+
+        audioHandler->BeginAmbientLoopCreation(capacity);
+        std::size_t cursor = 0;
+        do
+        {
+            if (recipe.gapChance != 0 && Random(recipe.gapChance) == 0)
+            {
+                cursor += 4u * Random(10000);
+            }
+            audioHandler->CopyAmbient(recipe.base, cursor);
+            cursor += baseLength;
+        } while (cursor < targetLength);
+        const auto loopLength = cursor - baseLength;
+        for (std::size_t i = 0; i < recipe.overlays.size(); ++i)
+        {
+            const auto& overlay = recipe.overlays[i];
+            if (overlay.count == 0) { continue; }
+            const auto maximumOffset = loopLength - overlayLengths[i] - 100;
+            for (std::uint16_t occurrence = 0; occurrence < overlay.count; ++occurrence)
+            {
+                const auto offset = static_cast<std::size_t>(
+                    std::nearbyint(RandomReal() * static_cast<double>(maximumOffset))) & ~std::size_t{1};
+                const auto weight = static_cast<std::uint8_t>(200 - Random(150));
+                audioHandler->MixAmbient(overlay.sample, offset, weight);
+            }
+        }
+        audioHandler->EndAmbientLoopCreation(loopLength);
     }
 
     void GameContext::LoadSoundEffects(const std::uint8_t* data, std::size_t size)
