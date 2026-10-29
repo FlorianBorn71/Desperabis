@@ -331,8 +331,15 @@ native horizon with terrain-ahead adjustment and per-frame smoothing.
 weapon launch elevation uses that same state. The `player-look` suite checks
 input timing/limits, all 65,536 applied horizon words, slopes, arrow launch and
 controller gates. See [native evidence](player-look-evidence.txt).
-Steep-slope position correction, bridge support, full ceiling collision,
-swimming and other special contacts remain TODOs. Supply a valid starting
+Steep slopes now apply the native 3x3 terrain correction. Collision-47 bridge
+pieces supply smooth support, suppress terrain look/pushing, and choose their
+own footstep effect; plank and activated-drawbridge behaviors are implemented.
+Walking includes native bobbing, surface-dependent footsteps, landing sounds
+and two-instance channel admission. The `player-support` suite covers these
+paths, including original level 23/34 bridge records. See
+[support evidence](player-support-footsteps-evidence.txt) and the
+[support contract](BehaviorRecovery.md#terrain-slopes-bridge-support-and-footsteps).
+Full ceiling collision, swimming and other special contacts remain TODOs. Supply a valid starting
 position, a horizontal view vector, and real map data for walls. See the
 [basic controller contract](BehaviorRecovery.md#basic-horizontal-player-controller).
 

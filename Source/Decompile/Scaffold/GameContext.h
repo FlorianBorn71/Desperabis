@@ -310,6 +310,7 @@ namespace Desperabis
         std::int16_t playerBodyHeight = 45; // DS:D4B2: standing 45, crouching 28.
         std::int16_t playerPostureDelta = 0; // DS:D4B4: raise/lower request; also -1 on depletion.
         bool playerGrounded = false; // DS:05D4.
+        std::int16_t playerWalkPhase = 0; // DS:DC6C; bobbing and footstep cadence.
         WeaponType selectedWeapon = WeaponType::None; // DS:DDB6.
         WeaponType requestedWeapon = WeaponType::None; // DS:DDB7.
         std::uint8_t weaponSpriteFrame = 0; // DS:DDB8.
@@ -375,6 +376,9 @@ namespace Desperabis
         std::int16_t GetRoomHeight(std::int16_t x, std::int16_t z) const;
         // Original 1E48:18CF: terrain interpolation without the flat-surface shortcut.
         std::int16_t GetTerrainFloorHeight(std::int16_t x, std::int16_t y, std::int16_t z) const;
+        // Original 1E48:3621: center floor and 3x3 steep-slope correction.
+        std::int16_t QueryTerrainSupport(std::int16_t x, std::int16_t y, std::int16_t z,
+            std::int16_t& correctionX, std::int16_t& correctionZ) const;
         // Original 1E48:1AF9, including the floorSurfaceValue side effect.
         std::int16_t GetHeightSurfaceDepth(std::uint16_t surface);
 
@@ -455,6 +459,7 @@ namespace Desperabis
         std::int16_t playerSidewaysSpeed = 0;
         std::int16_t playerTurnSpeed = 0;
         std::int16_t playerVerticalSpeed = 0;
+        std::int16_t playerSurfaceSpeedLimit = 5; // DS:DC6A; applied on the following substep.
         std::int16_t playerHeading = 0;
         std::int16_t playerTargetHeading = 0;
         MenuPage menuPage = MenuPage::MainMenu;

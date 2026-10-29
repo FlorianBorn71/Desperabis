@@ -296,6 +296,8 @@ namespace Desperabis
         playerSidewaysSpeed = 0;
         playerTurnSpeed = 0;
         playerVerticalSpeed = 0;
+        playerWalkPhase = 0;
+        playerSurfaceSpeedLimit = 5;
         playerLookHeight = 110;
         playerTargetLookHeight = 110;
         playerBodyHeight = 45;
@@ -402,10 +404,9 @@ namespace Desperabis
         playerTurnSpeed = WrapSignedWord(playerTurnSpeed - SignWord(playerTurnSpeed));
 
         // TODO: Recover remaining special speed limits, mouse controls and swimming.
-        // TODO: Recover steep-slope correction, bridge support and bobbing.
         for (int tick = 0; tick < frameTickCount; ++tick)
         {
-            int limit = playerBodyHeight < 45 && behaviorDispatchEnabled ? 2 : 5;
+            int limit = playerBodyHeight < 45 && behaviorDispatchEnabled ? 2 : playerSurfaceSpeedLimit;
             if (playerUnderwater) { limit = 3; }
             if (playerForwardSpeed != 0 && playerSidewaysSpeed != 0) { limit = 2 * limit / 3; }
             playerForwardSpeed = static_cast<std::int16_t>(std::clamp<int>(playerForwardSpeed, -limit, limit));
@@ -421,6 +422,36 @@ namespace Desperabis
             std::int16_t negativeDirectionZ;
             GetDirectionDisplacement(directionX, negativeDirectionZ, playerHeading, 100);
             const auto directionZ = WrapSignedWord(-static_cast<int>(negativeDirectionZ));
+            const auto signedBob = WrapSignedWord(static_cast<std::int32_t>(
+                static_cast<std::uint32_t>(6 * Sine(playerWalkPhase)) >> 16));
+            const auto bob = std::abs(static_cast<int>(signedBob));
+            auto eyeY = WrapSignedWord(player.posY + player.collisionRadiusY + 2);
+            bool bridgeSupported = false;
+            std::uint8_t footstepEffect = 0;
+            if (field_D500)
+            {
+                int contacts = 0;
+                for (std::size_t slot = 2; slot <= 164 && contacts < 50; ++slot)
+                {
+                    auto& candidate = worldObjects[slot];
+                    if (candidate.health <= 999 || (player.collisionMask & candidate.collisionMask) == 0) { continue; }
+                    const auto radiusXZ = ArithmeticShiftRight(WrapSignedWord(
+                        3 * WrapSignedWord(player.collisionRadiusXZ + candidate.collisionRadiusXZ)), 1);
+                    if (!AxisOverlaps(player.posX, candidate.posX, radiusXZ, 0) ||
+                        !AxisOverlaps(player.posZ, candidate.posZ, radiusXZ, 0) ||
+                        !AxisOverlaps(player.posY, candidate.posY,
+                            player.collisionRadiusY, candidate.collisionRadiusY)) { continue; }
+                    ++contacts;
+                    if (candidate.collisionType != CollisionType::WalkablePlanks ||
+                        candidate.blendWeightOrSpriteOpacity != 0 || eyeY <= candidate.posY) { continue; }
+                    eyeY = WrapSignedWord(eyeY + GetStepToward(eyeY,
+                        WrapSignedWord(candidate.posY + playerBodyHeight + bob), 4));
+                    playerVerticalSpeed = 1;
+                    candidate.itemValue = 7;
+                    footstepEffect = candidate.soundEffectId;
+                    bridgeSupported = true;
+                }
+            }
             playerBodyHeight = WrapSignedWord(playerBodyHeight + GetStepToward(playerBodyHeight,
                 WrapSignedWord(playerBodyHeight + playerPostureDelta), 3));
             if (player.itemValue == 0 && field_D500)
@@ -449,11 +480,26 @@ namespace Desperabis
                 directionX * playerSidewaysSpeed) / 100;
             auto x = WrapSignedWord(player.posX + deltaX);
             auto z = WrapSignedWord(player.posZ + deltaZ);
-            const auto lookEyeY = WrapSignedWord(player.posY + player.collisionRadiusY + 2 + playerVerticalSpeed);
+            eyeY = WrapSignedWord(eyeY + playerVerticalSpeed);
+            const auto walkingSpeed = std::abs(static_cast<int>(playerForwardSpeed)) +
+                std::abs(static_cast<int>(playerSidewaysSpeed));
+            if (!playerUnderwater && walkingSpeed > 1)
+            {
+                playerWalkPhase = WrapSignedWord(playerWalkPhase + 3 * walkingSpeed);
+            }
+            bool footstep = playerWalkPhase > 256;
+            if (footstep) { playerWalkPhase = WrapSignedWord(playerWalkPhase - 256); }
             const auto aheadFloor = GetTerrainFloorHeight(
-                WrapSignedWord(x + directionX), lookEyeY, WrapSignedWord(z + directionZ));
-            const auto currentFloor = GetTerrainFloorHeight(x, lookEyeY, z);
-            const auto slopeDifference = WrapSignedWord(currentFloor - aheadFloor);
+                WrapSignedWord(x + directionX), eyeY, WrapSignedWord(z + directionZ));
+            std::int16_t slopeX = 0;
+            std::int16_t slopeZ = 0;
+            const auto currentFloor = QueryTerrainSupport(x, eyeY, z, slopeX, slopeZ);
+            const auto slopeDifference = bridgeSupported ? 0 : WrapSignedWord(currentFloor - aheadFloor);
+            if (field_D500 && !bridgeSupported)
+            {
+                x = WrapSignedWord(x + slopeX);
+                z = WrapSignedWord(z + slopeZ);
+            }
             playerLookHeight = WrapSignedWord(playerLookHeight + GetStepToward(playerLookHeight,
                 WrapSignedWord(playerTargetLookHeight - slopeDifference), 5));
             playerLookHeight = WrapSignedWord(static_cast<std::uint16_t>(playerLookHeight) & 0xfffeu);
@@ -488,17 +534,31 @@ namespace Desperabis
             {
                 ++result.blockedTicks;
             }
-            auto eyeY = WrapSignedWord(player.posY + player.collisionRadiusY + 2 + playerVerticalSpeed);
             const auto supportY = WrapSignedWord(
-                GetTerrainFloorHeight(player.posX, eyeY, player.posZ) + playerBodyHeight);
-            playerGrounded = supportY > eyeY;
-            if (playerGrounded)
+                GetTerrainFloorHeight(player.posX, eyeY, player.posZ) + playerBodyHeight + bob);
+            playerGrounded = bridgeSupported;
+            if (supportY > eyeY)
             {
+                if (playerVerticalSpeed < -4)
+                {
+                    footstep = true;
+                    playerWalkPhase = 0;
+                }
                 eyeY = supportY;
                 playerVerticalSpeed = 0;
+                playerGrounded = true;
             }
             // DE45..DED4: the map byte controls contact; FELD surfaceFlags supplies depth.
             const auto surface = field_D500 ? GetCollisionMapPixelAtWorldXZ(player.posX, player.posZ) : 0;
+            static constexpr std::array<std::uint8_t, 8> terrainFootsteps = { 1,10,26,10,26,97,10,105 };
+            if (footstepEffect == 0) { footstepEffect = terrainFootsteps[surface & 7]; }
+            playerSurfaceSpeedLimit = 5;
+            if ((surface & 7) == 4)
+            {
+                playerSurfaceSpeedLimit = 2;
+                if (Random(5) == 0) { footstepEffect = 52; }
+            }
+            else if ((surface & 7) == 6) { playerSurfaceSpeedLimit = 3; }
             if (surface != 1 && player.generalPurpose3 == 1)
             {
                 player.generalPurpose3 = 0;
@@ -512,6 +572,16 @@ namespace Desperabis
                 const auto position = GetHeightPosition(player.posX, player.posZ);
                 const auto depth = GetHeightSurfaceDepth(level->surfaceFlags[position.row][position.column]);
                 playerUnderwater = WrapSignedWord(eyeY + depth) < 0;
+            }
+            if (playerUnderwater)
+            {
+                footstep = false;
+                playerWalkPhase = WrapSignedWord(playerWalkPhase + Random(6) + 2);
+            }
+            if (footstep)
+            {
+                const auto volume = GetSoundVolume(WrapSignedWord(430 + Random(150)));
+                PlaySoundEffect(static_cast<SoundEffect>(footstepEffect), volume, -6, 2);
             }
             const auto halfHeight = playerBodyHeight < 0 ?
                 -((-static_cast<int>(playerBodyHeight) + 1) / 2) : playerBodyHeight / 2;
@@ -2519,6 +2589,27 @@ namespace Desperabis
     {
         if (!level) { throw std::runtime_error("Terrain floor lookup requires level geometry."); }
         return GetTerrainHeight(*level, floorRepeatHeight, x, y, z);
+    }
+
+    std::int16_t GameContext::QueryTerrainSupport(std::int16_t x, std::int16_t y, std::int16_t z,
+        std::int16_t& correctionX, std::int16_t& correctionZ) const
+    {
+        const auto center = GetTerrainFloorHeight(x, y, z);
+        correctionX = 0;
+        correctionZ = 0;
+        for (int dx = -1; dx <= 1; ++dx)
+        {
+            for (int dz = -1; dz <= 1; ++dz)
+            {
+                const auto neighbor = GetTerrainFloorHeight(
+                    WrapSignedWord(x + 30 * dx), y, WrapSignedWord(z + 30 * dz));
+                const auto difference = WrapSignedWord(center - neighbor);
+                if (AbsoluteWord(difference) <= 16) { continue; }
+                correctionX = WrapSignedWord(correctionX + SignWord(difference) * dx);
+                correctionZ = WrapSignedWord(correctionZ + SignWord(difference) * dz);
+            }
+        }
+        return center;
     }
 
     std::int16_t GameContext::GetRoomHeight(std::int16_t x, std::int16_t z) const

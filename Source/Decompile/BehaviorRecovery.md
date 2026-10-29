@@ -903,7 +903,8 @@ Explicit host policies, not recovered native initialization/fallbacks:
 - Level installation resets all controller speeds and derives initial heading
   from the supplied player's horizontal view vector. A zero X/Z direction
   starts at heading 0 (+Z). No record Euler field is assumed to be player yaw.
-  Body height/request reset to 45/0, grounded/submerged flags to false, as at
+  Walking phase and surface speed cap reset to 0/5. Body height/request reset
+  to 45/0, grounded/submerged flags to false, as at
   native `0DD4..0DF2`. Both look horizons reset to 110. Complete restoration
   of posture/look from a save is not implemented.
 - Each positive substep writes horizontal direction at the native 100 scale to
@@ -929,7 +930,8 @@ Explicit host policies, not recovered native initialization/fallbacks:
 - Terrain support is sampled at the final map-corrected X/Z, including on
   horizontally blocked steps. This keeps the normal host controller grounded;
   it does not reproduce the original ordering around special contact modes.
-  The native bob and other support offsets are omitted. Initial position is
+  The native walking bob is included; the unrelated DS:2B12 shake offset is
+  still omitted. Initial position is
   retained until the first simulated substep, so an airborne start falls rather
   than silently snapping during loading.
 - The native map-correction loop is unbounded. The host preview attempts at
@@ -947,13 +949,10 @@ TODOs are placed beside the partial implementation in
 
 1. Load the actual working camera position, applied/target headings, and speed
    state from native level/save initialization.
-2. Recover the remaining view-vector pipeline, steep-slope X/Z corrections
-   (`1E48:3621`), bridges/platforms and bobbing. Normal gravity,
-   posture, room-clearance gates and center-terrain support are implemented;
-   full ceiling collision and object-supported floors are not. Some native
-   object-support branches suppress terrain look; the attached-object path
-   smooths toward manual look without slope. Those paths remain deferred,
-   not guessed into the normal terrain controller.
+2. Recover the remaining view-vector pipeline, full ceiling collision and
+   attached-object support modes. Normal terrain slopes, collision-47 bridges
+   and walking bobbing are implemented below; this does not generalize to
+   arbitrary renderer colliders or other native contact modes.
 3. Add remaining special speed states, mouse look, swimming controls and the
    alternate controller path.
 4. Recover DS:`2DDC` collision gating and native stuck recovery.
@@ -962,7 +961,61 @@ TODOs are placed beside the partial implementation in
 
 Fresh levels loaded through `LoadLevelGeometry` have a real static FELD-derived
 collision map. Explicit dummy fixtures still have no walls unless populated.
-No object support or renderer-scene collision is invented.
+No renderer-scene collision is invented.
+
+#### Terrain slopes, bridge support and footsteps
+
+Evidence: [native support, cadence and bridge cases](player-support-footsteps-evidence.txt).
+
+- `QueryTerrainSupport` ports `1E48:3621`: return center terrain height and
+  inspect a 3x3 neighborhood at 30-unit spacing. A signed-word absolute height
+  difference **greater than 16** contributes `Sign(center-neighbor)*dx/dz`.
+  The normal body-mode gate enables these X/Z corrections. The host applies
+  them before its bounded wall-map correction, then samples final-position
+  terrain support, preserving its existing no-through-walls policy.
+- Before integration, body mode scans slots 2..164 in order, retaining the
+  first 50 contacts with health >999 and a shared collision-mask bit.
+  Horizontal overlap uses `SAR1(low16(3*(playerRadius+objectRadius)))`;
+  vertical overlap uses the ordinary summed radii. All comparisons are strict.
+  Collision type **47**, `WalkablePlanks`, supplies support only when word 42
+  is zero and working eye Y is above object Y. Visibility does not gate this:
+  unrevealed level-34 bridge pieces remain walkable.
+- Each eligible bridge moves eye Y toward `objectY+bodyHeight+bob` by at most
+  four, sets physical vertical speed to one before gravity, marks grounded,
+  excites that object's `itemValue` to seven, and supplies byte 5 as its
+  footstep effect. Terrain slope pushing and terrain-look adjustment are
+  suppressed while supported. Leaving the contact restores gravity; this is
+  the native center-overlap test, not a swept/top-face physics collider.
+- `playerWalkPhase` is DS:DC6C. Before advancing it, bob is
+  `ABS(highWord(6*Sine(phase)))`, using the clamped sine table. Non-submerged
+  movement with `ABS(forward)+ABS(side)>1` adds three times that speed each
+  substep. **Strictly above 256**, subtract 256 once and request a footstep.
+  Landing with vertical speed below -4 also requests a step and resets phase.
+  The native cadence does not have an extra grounded-only gate.
+- Unless a bridge supplied an effect, map byte `&7` indexes initialized
+  DS:0386: **[1,10,26,10,26,97,10,105]**. Category 4 sets the following
+  substep's speed cap to two and draws `Random(5)` even when idle; zero
+  replaces the effect with 52. Category 6 sets cap three; otherwise cap five.
+  Submersion cancels footsteps and adds `Random(6)+2` to the phase.
+  Each actual step draws distance `430+Random(150)`, passes it through
+  `GetSoundVolume`, and uses the existing variant/channel system with
+  **source -6, instance limit 2**. Muting still preserves these RNG draws.
+- Behavior 47 excites/decays planks: when amplitude is positive,
+  `Random(18/ticks+1)==0` decrements it once; word **38**
+  (`generalPurpose2`) advances by `11*ticks`, and `winZ` receives the signed
+  high word of `amplitude*Sine(phase)`. Host zero-tick updates are no-ops,
+  explicitly avoiding the DOS divide-by-zero.
+- Behavior 49 only opens after activation makes health exactly 1000.
+  Word 42 approaches zero with step `low16(velocityZ*ticks)`, playing byte 5's
+  positional effect with limit two while the resulting word remains positive.
+  At zero it becomes collision-47 walkable support. The renderer already
+  consumes the updated transform/animation words.
+
+The `player-support` tests cover exact threshold-16 versus representable
+threshold-18 slopes, wall rejection, bridge gates/widened overlap/contact cap,
+material/bridge footsteps, exact RNG ordering, channel admission, underwater
+suppression, landings, batching, both bridge behaviors, and original level
+23/34 bridge records. No DOS/modern auditory comparison has been performed.
 
 #### Jumping, crouching and water-forced posture
 
@@ -2627,8 +2680,9 @@ frame `counter/10+1`, sets display to VectorNormal and consumes the marker.
 It stops before further movement in that tick batch. There is no global
 bridge reveal or explicit collision-type filter: original OBJPOS34 bridge
 pieces are collision 47, mask 131, display Hidden and thus match this query.
-This implements revealing the path, not the still-unported player
-bridge-support/bobbing movement branch at `0000:D573`.
+This implements revealing the path. The separately recovered player support
+at `0000:D573` now makes these pieces walkable even before they are revealed;
+see [bridge support](#terrain-slopes-bridge-support-and-footsteps).
 
 Evidence: [tool physics and barrier handler](scythe-lentils-physics-evidence.txt),
 [barrier map orientation and damage](scythe-hedge-map-evidence.txt),

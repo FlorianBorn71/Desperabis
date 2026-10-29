@@ -1416,9 +1416,19 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_46, 0x1EDB };
     }
 
-    DispatchResult Function_WalkablePlanks(RawGameObject&, GameContext&)
+    DispatchResult Function_WalkablePlanks(RawGameObject& object, GameContext& state)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::WalkablePlanks, 0x1F12 };
+        if (state.tickCount > 0)
+        {
+            if (object.itemValue > 0 && state.Random(static_cast<std::uint16_t>(18 / state.tickCount + 1)) == 0)
+            {
+                --object.itemValue;
+            }
+            object.generalPurpose2 = static_cast<std::uint16_t>(object.generalPurpose2 + 11 * state.tickCount);
+            object.winZ = WrapSignedWord(static_cast<std::int32_t>(
+                static_cast<std::uint32_t>(object.itemValue * Sine(WrapSignedWord(object.generalPurpose2))) >> 16));
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::WalkablePlanks, 0x1F12 };
     }
 
     DispatchResult Function_BreakableStoneWallFloodingWater(RawGameObject&, GameContext&)
@@ -1426,9 +1436,20 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::BreakableStoneWallFloodingWater, 0x1F72 };
     }
 
-    DispatchResult Function_WalkableDrawBridge(RawGameObject&, GameContext&)
+    DispatchResult Function_WalkableDrawBridge(RawGameObject& object, GameContext& state)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::WalkableDrawBridge, 0x1F85 };
+        if (object.health == 1000)
+        {
+            auto& angle = object.blendWeightOrSpriteOpacity;
+            angle = WrapSignedWord(angle + GetStepToward(angle, 0,
+                WrapSignedWord(object.velocityZ * state.tickCount)));
+            if (angle > 0)
+            {
+                state.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+                    state.GetSoundVolumeAt(object.posX, object.posZ), object, 2);
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::WalkableDrawBridge, 0x1F85 };
     }
 
     DispatchResult Function_Switch1(RawGameObject& object, GameContext& state)

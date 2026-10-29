@@ -209,6 +209,7 @@ namespace
                 entry.type == BehaviorType::PulsatingLight ||
                 entry.type == BehaviorType::IdleAnimation ||
                 entry.type == BehaviorType::SmokeFading || entry.type == BehaviorType::Switch1 ||
+                entry.type == BehaviorType::WalkablePlanks || entry.type == BehaviorType::WalkableDrawBridge ||
                 entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ||
                 entry.type == BehaviorType::DisabledSentinel;
             Check(result.status == (implemented ?

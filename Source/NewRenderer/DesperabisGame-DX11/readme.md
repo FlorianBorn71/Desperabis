@@ -130,6 +130,11 @@ game ticks (33 Hz, as in the original game)
 * Jump/crouch use the recovered 45/28 body heights, changing collision radius and camera height.
   Low rooms cancel ascent and force crouching. Water contact also forces crouching; submersion
   is detected separately. Swimming/buoyancy, oxygen and other underwater effects remain deferred.
+* Walking now uses native steep-slope correction, bobbing and collision-47 bridge support.
+  Planks remain walkable before Lentils reveal them; activated drawbridges become walkable
+  once fully opened. Footsteps follow native movement cadence and landing events, select
+  floor/bridge-specific sounds, and are suppressed underwater. They share the existing
+  effect channels with a two-instance limit and use load-time sample fades.
 * Awake skeletons use recovered pursuit, wall avoidance, attacks and fixed-point player-life damage.
   Indoor bats use recovered flight, wall lookahead, ceiling roosting/waking,
   wing animation, positional sound and weapon-hit falling/corpse states.
@@ -151,7 +156,7 @@ game ticks (33 Hz, as in the original game)
   electricity, shovel and scythe attacks are also driven by GameCore, as are
   Lentils throws and bear-trap/metal-pole placement. Scythe hits deform hedges
   and clear their blocking map pixels; Lentils reveal individual invisible bridge
-  pieces. Walking on bridges still requires the separate player-support recovery.
+  pieces; player support is independent of their visibility.
   Other placeable tools, extra item IDs 9/23 (bucket and foil),
   and remaining dormant-object activation drivers are still incomplete;
   unsupported placement leaves the item intact. Enter remains interaction.

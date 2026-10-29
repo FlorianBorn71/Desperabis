@@ -292,8 +292,8 @@ investigation. Evidence: [player movement](player-movement-evidence.txt),
 
 **Author's additional movement context:** forced crouch is associated with
 water; teleporting and walking on collider objects such as bridges also affect
-movement. Water forcing is now verified below; bridge/teleport integration
-remains deferred. A basic normal-keyboard horizontal subset has
+movement. Water forcing is now verified below; bridge support has also been
+ported, while teleport integration remains deferred. A basic normal-keyboard horizontal subset has
 subsequently been implemented for host-driven `Tick`; see the
 [controller contract and TODOs](BehaviorRecovery.md#basic-horizontal-player-controller).
 The normal subset now includes per-frame gravity and interpolated terrain support,
@@ -982,7 +982,9 @@ submode 7 to reveal individual mask-128 bridge pieces; the scythe shares the
 shovel contact and drives the now-recovered barrier behavior 26, including
 clearing its collision-map line after the cut animation.
 See [tool recovery](BehaviorRecovery.md#ranged-weapons-shovel-and-placement).
-Player bridge-support/bobbing movement remains a separate recovery;
+Player bridge-support/bobbing movement and footsteps have since been recovered
+and implemented; see [support contract](BehaviorRecovery.md#terrain-slopes-bridge-support-and-footsteps)
+and [native evidence](player-support-footsteps-evidence.txt).
 IDs 9/23 remain unsupported in GameCore.
 
 The packing tool already sources this file from localization `Items.txt`:

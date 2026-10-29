@@ -763,6 +763,8 @@ namespace
                 int eyeY = 85;
                 int verticalSpeed = 0;
                 int z = 2500;
+                int walkPhase = 0;
+                auto expectedSeed = host.randomSeed;
                 // Exhaust all key combinations across held input, braking and normal/diagonal limits.
                 for (int frame = 0; frame < 8; ++frame)
                 {
@@ -782,6 +784,8 @@ namespace
                     const int ticks = frame % 3 + 1;
                     for (int tick = 0; tick < ticks; ++tick)
                     {
+                        const auto product = 6 * ClampedSineTable[static_cast<std::size_t>(walkPhase & 511)];
+                        const int bob = std::abs(product < 0 ? -((-product + 65535) / 65536) : product / 65536);
                         const int limit = forward != 0 && side != 0 ? 3 : 5;
                         forward = std::clamp(forward, -limit, limit);
                         side = std::clamp(side, -limit, limit);
@@ -792,10 +796,19 @@ namespace
                         x += (dx * forward + dz * side) / 100;
                         z += (dz * forward - dx * side) / 100;
                         eyeY += --verticalSpeed;
-                        if (eyeY < 45) { eyeY = 45; verticalSpeed = 0; }
+                        const int speed = std::abs(forward) + std::abs(side);
+                        if (speed > 1) { walkPhase += 3 * speed; }
+                        bool step = walkPhase > 256;
+                        if (step) { walkPhase -= 256; }
+                        if (eyeY < 45 + bob)
+                        {
+                            if (verticalSpeed < -4) { step = true; walkPhase = 0; }
+                            eyeY = 45 + bob;
+                            verticalSpeed = 0;
+                        }
+                        if (step) { expectedSeed = expectedSeed * 0x08088405u + 1u; }
                     }
                     const auto before = host.worldObjects;
-                    const auto seed = host.randomSeed;
                     const auto result = host.Tick({ 0, static_cast<std::int16_t>(ticks) }, input);
                     const auto camera = host.GetPlayerCamera();
                     Check(result.playerMovement && result.playerMovement->simulatedTicks == ticks &&
@@ -803,7 +816,8 @@ namespace
                         camera.position[2] == z && camera.position[1] == eyeY && camera.direction[1] == 17 &&
                         camera.direction[0] == fixed100(SineTable[static_cast<std::size_t>(heading)]) &&
                         camera.direction[2] == fixed100(SineTable[static_cast<std::size_t>((heading + 128) % 512)]) &&
-                        host.soundListenerX == x && host.soundListenerZ == z && host.randomSeed == seed,
+                        host.soundListenerX == x && host.soundListenerZ == z &&
+                        host.randomSeed == expectedSeed && host.playerWalkPhase == walkPhase,
                         "Basic movement differs from normal keyboard/local-axis arithmetic, view direction, or listener order.");
                     auto expected = before;
                     expected[1].posX = static_cast<std::int16_t>(x);
@@ -968,8 +982,9 @@ namespace
             host.Tick({}, input);
             const auto camera = host.GetPlayerCamera();
             const auto floor = host.GetTerrainFloorHeight(camera.position[0], camera.position[1], camera.position[2]);
-            Check(camera.position[1] == floor + 45 && host.worldObjects[1].posY == floor + 20,
-                "Walking uphill must follow interpolated terrain at the final horizontal position.");
+            Check(camera.position[1] >= floor + 45 && camera.position[1] <= floor + 51 &&
+                host.worldObjects[1].posY == camera.position[1] - 25,
+                "Walking uphill must follow final-position terrain with the recovered zero-to-six-unit bob.");
         }
         Check(host.GetPlayerCamera().position[1] > initialY, "Uphill fixture must actually change elevation.");
         input.movement.fill(false);
@@ -978,8 +993,8 @@ namespace
         input.movement.fill(false);
         host.Tick({ 0, 30 }, input);
         const auto camera = host.GetPlayerCamera();
-        Check(camera.position[1] == host.GetTerrainFloorHeight(
-            camera.position[0], camera.position[1], camera.position[2]) + 45 &&
+        const auto settledFloor = host.GetTerrainFloorHeight(camera.position[0], camera.position[1], camera.position[2]);
+        Check(camera.position[1] >= settledFloor + 45 && camera.position[1] <= settledFloor + 51 &&
             camera.position[1] < initialY,
             "Walking downhill must fall and settle onto the lower terrain, not retain the old Y.");
         // Native player support uses terrain interpolation, not the special flat-depth floor shortcut.
@@ -1608,6 +1623,8 @@ namespace
                     const bool submerged = floor + 45 + host.level->heightSurfaces[flag - 1]->depth < 0;
                     if (number != 17 && !submerged) { continue; }
                     std::int16_t correctionX = 0, correctionZ = 0;
+                    host.QueryTerrainSupport(x, WrapSignedWord(floor + 45), z, correctionX, correctionZ);
+                    if (correctionX || correctionZ) { continue; }
                     std::uint16_t center = 0;
                     host.QueryCollisionMapNeighborhood(x, z, 5, correctionX, correctionZ, center, 0x18);
                     if (center || correctionX || correctionZ) { continue; }
