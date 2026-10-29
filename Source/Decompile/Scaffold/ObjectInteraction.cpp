@@ -78,6 +78,8 @@ namespace Desperabis
         bool activated = false;
         switch (object.collisionType)
         {
+        case CollisionType::Teleporter:
+            return state.HandleTeleporterContact(object, true);
         case CollisionType::Poison:
             if (state.arrowPoison < object.itemValue)
             {
@@ -203,7 +205,6 @@ namespace Desperabis
         case CollisionType::VaseToGrab:
         case CollisionType::MirrorToGrab:
         case CollisionType::LevelEnd:
-        case CollisionType::Teleporter:
         case CollisionType::SarcophagusWithBones:
         case CollisionType::PictureMap:
         case CollisionType::Lorry:

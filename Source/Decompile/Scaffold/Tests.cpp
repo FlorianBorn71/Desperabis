@@ -210,6 +210,8 @@ namespace
                 entry.type == BehaviorType::IdleAnimation ||
                 entry.type == BehaviorType::SmokeFading || entry.type == BehaviorType::Switch1 ||
                 entry.type == BehaviorType::WalkablePlanks || entry.type == BehaviorType::WalkableDrawBridge ||
+                entry.type == BehaviorType::Teleporter || entry.type == BehaviorType::ActivatableLadder ||
+                entry.type == BehaviorType::ClimbableLadder || entry.type == BehaviorType::RoofTopThunderHandler3 ||
                 entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ||
                 entry.type == BehaviorType::DisabledSentinel;
             Check(result.status == (implemented ?
@@ -2019,7 +2021,7 @@ namespace
             "Host interaction requests must reject inactive selected objects.");
         for (const auto type : { CollisionType::BookWithCode, CollisionType::BuyItem,
             CollisionType::WheelToLiftRope, CollisionType::VaseToGrab, CollisionType::MirrorToGrab,
-            CollisionType::LevelEnd, CollisionType::Teleporter, CollisionType::SarcophagusWithBones,
+            CollisionType::LevelEnd, CollisionType::SarcophagusWithBones,
             CollisionType::PictureMap, CollisionType::Lorry })
         {
             auto unsupported = pickup(type);

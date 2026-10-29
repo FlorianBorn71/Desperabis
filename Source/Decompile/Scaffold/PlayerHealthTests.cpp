@@ -104,6 +104,36 @@ namespace
             "Notifications must preserve the existing native dword-wrap then clamp semantics.");
     }
 
+    void TestNoCollisionCheat()
+    {
+        Host host;
+        host.Load();
+        Check(!host.DEBUG_noPlayerCollision, "The player collision cheat must default to off.");
+        host.ApplyPlayerLifeDelta(-10 * 65536);
+        const auto life = host.playerLife;
+        const auto events = host.events.size();
+        host.DEBUG_noPlayerCollision = true;
+        host.ApplyPlayerLifeDelta(-1);
+        host.ApplyPlayerLifeDelta(-(std::numeric_limits<std::int32_t>::max)());
+        RawGameObject creature;
+        creature.behaviorParameter = 255;
+        creature.doorLockOrGroupBitmask = 1;
+        host.HandleCockroachContact(creature);
+        Check(host.playerLife == life && host.events.size() == events && !host.positionalSoundsSuppressed &&
+            host.playerPostureDelta == 0,
+            "The cheat must suppress fractional, lethal and gameplay damage without depletion or health callbacks.");
+        host.ApplyPlayerLifeDelta(65536);
+        Check(host.playerLife == life + 65536 && host.events.size() == events + 1,
+            "The collision cheat must still permit healing and its notification.");
+        host.Load();
+        Check(host.DEBUG_noPlayerCollision && host.playerLife == life + 65536,
+            "The host cheat must remain enabled across level loads without altering life.");
+        host.DEBUG_noPlayerCollision = false;
+        host.ApplyPlayerLifeDelta(-1);
+        Check(host.playerLife == life + 65535 && host.events.size() == events + 2,
+            "Disabling the cheat must restore ordinary player damage immediately.");
+    }
+
     void TestGameplayAndLoading()
     {
         Host host;
@@ -132,6 +162,7 @@ int main()
         TestChanges();
         TestDepletion();
         TestGameplayAndLoading();
+        TestNoCollisionCheat();
         std::cout << "Player health notification tests passed.\n";
         return 0;
     }

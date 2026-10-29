@@ -23,9 +23,11 @@ namespace
     {
         bool forward = false;
         bool jump = false;
+        bool interact = false;
         bool IsKeyPressed(InputKey key) override
         {
-            return (key == InputKey::ForwardKey && forward) || (key == InputKey::JumpKey && jump);
+            return (key == InputKey::ForwardKey && forward) || (key == InputKey::JumpKey && jump) ||
+                (key == InputKey::InteractionKey && interact);
         }
     };
 
@@ -418,6 +420,275 @@ namespace
             "An open drawbridge must stop at zero, enabling the player support gate.");
     }
 
+    void SetUpPortal(Host& host)
+    {
+        host.Load();
+        host.worldObjects[2] = Bridge(host, 20);
+        auto& source = host.worldObjects[2];
+        source.behavior = BehaviorType::Teleporter;
+        source.collisionType = CollisionType::Teleporter;
+        source.itemValue = 1;
+        source.generalPurpose1 = 2;
+        source.generalPurpose3 = 20;
+        auto& destination = host.worldObjects[3];
+        destination = source;
+        destination.posX = 2200;
+        destination.posZ = 3100;
+        destination.posY = 200;
+        destination.velocityY = 1;
+        destination.itemValue = 2;
+        destination.generalPurpose1 = 1;
+        destination.winY = 128;
+    }
+
+    void TestTeleporters()
+    {
+        Host host;
+        Input input;
+        SetUpPortal(host);
+        auto& source = host.worldObjects[2];
+        auto& destination = host.worldObjects[3];
+        input.interact = true;
+        destination.velocityZ = 1;
+        destination.behaviorParameter = 10;
+        Step(host, input);
+        const auto camera = host.GetPlayerCamera();
+        Check(camera.position[0] == 2200 && camera.position[2] == 3100 && camera.position[1] == 200 &&
+            host.GetPlayerHeading() == 128 && camera.direction[0] == 100 && camera.direction[2] == 0,
+            "Enter must transfer to the destination eye height and immediately apply its heading.");
+        Check(destination.generalPurpose3 == 0 && host.soundListenerX == 2200 && host.soundListenerZ == 3100 &&
+            host.playerRenderTable == 10 && host.field_D503,
+            "Arrival must reset destination cooldown and refresh listener/render state.");
+        Step(host, input);
+        Check(host.worldObjects[1].posX == 2200, "Held Enter must not bounce through an uncharged destination.");
+
+        SetUpPortal(host);
+        source.generalPurpose3 = 10;
+        Check(HandlePlayerObjectInteraction(source, host).status == InteractionStatus::NoEffect,
+            "Manual teleport cooldown must be strictly greater than ten.");
+        source.generalPurpose3 = 11;
+        source.doorLockOrGroupBitmask = 7;
+        host.inventory[0].health = 1000;
+        host.inventory[0].collisionType = CollisionType::Key;
+        host.inventory[0].itemValue = 6;
+        Check(HandlePlayerObjectInteraction(source, host).status == InteractionStatus::NoEffect &&
+            source.doorLockOrGroupBitmask == 7 && host.inventory[0].health == 1000,
+            "Wrong teleporter keys must not be consumed.");
+        host.inventory[0].itemValue = 7;
+        Check(HandlePlayerObjectInteraction(source, host).status == InteractionStatus::Applied &&
+            source.doorLockOrGroupBitmask == 0 && host.inventory[0].health == 0 &&
+            host.worldObjects[1].posX == 1500,
+            "Unlocking must reuse the door key path without transferring on the same Enter.");
+        Check(HandlePlayerObjectInteraction(source, host).status == InteractionStatus::Applied &&
+            host.worldObjects[1].posX == 2200, "The following Enter must transfer through the unlocked portal.");
+
+        SetUpPortal(host);
+        source.doorLockOrGroupBitmask = 10;
+        input.interact = false;
+        Step(host, input);
+        Check(host.worldObjects[1].posX == 1500, "Automatic teleport requires word 46 strictly above ten.");
+        source.doorLockOrGroupBitmask = 11;
+        source.groupIndexOrLock = 1;
+        Step(host, input);
+        Check(host.worldObjects[1].posX == 1500, "Automatic teleport requires a zero word-44 gate.");
+        source.groupIndexOrLock = 0;
+        source.generalPurpose3 = 0;
+        Step(host, input);
+        Check(host.worldObjects[1].posX == 2200,
+            "Automatic teleport must use word 46, independently of the manual word-40 cooldown.");
+
+        SetUpPortal(host);
+        source.velocityX = 2;
+        source.blendWeightOrSpriteOpacity = 98;
+        host.frameTickCount = 1;
+        HandlePlayerObjectInteraction(source, host);
+        Check(source.blendWeightOrSpriteOpacity == 100 && source.velocityX == 2 &&
+            host.worldObjects[1].posX == 1500, "The opening stage must not finish at exactly 100.");
+        HandlePlayerObjectInteraction(source, host);
+        Check(source.blendWeightOrSpriteOpacity == 100 && source.velocityX == 0,
+            "Opening must clamp and finish only after overshooting 100.");
+        HandlePlayerObjectInteraction(source, host);
+        Check(host.worldObjects[1].posX == 2200, "Transfer must wait until the opening stage has completed.");
+
+        source.generalPurpose3 = 10;
+        host.tickCount = 20;
+        Function_Teleporter(source, host);
+        Check(source.generalPurpose3 == 11, "Portal cooldown must recharge once per dispatch, not once per tick.");
+        source.posX = host.worldObjects[1].posX;
+        source.posY = host.worldObjects[1].posY;
+        source.posZ = host.worldObjects[1].posZ;
+        Function_Teleporter(source, host);
+        Check(source.generalPurpose3 == 11, "A portal must not recharge while the player overlaps it.");
+
+        SetUpPortal(host);
+        destination.behavior = BehaviorType::None;
+        destination.velocityY = 0;
+        destination.winY = -1;
+        for (auto& row : host.level->floorHeights) { std::fill(std::begin(row), std::end(row), std::uint8_t{10}); }
+        for (auto& row : host.level->surfaceFlags) { std::fill(std::begin(row), std::end(row), std::uint8_t{1}); }
+        host.level->heightSurfaces[0] = Level::HeightSurface{40,1};
+        host.TeleportPlayer(2);
+        Check(Eye(host) == 29 && host.GetPlayerHeading() == 0,
+            "Terrain-mode destinations need no teleporter behavior and negative headings preserve orientation.");
+        host.worldObjects[4] = destination;
+        host.worldObjects[4].posX = 2400;
+        host.worldObjects[4].velocityY = 1;
+        host.worldObjects[4].posY = 300;
+        host.worldObjects[4].generalPurpose3 = 20;
+        host.worldObjects[5] = host.worldObjects[4];
+        host.worldObjects[5].health = 1001;
+        host.worldObjects[5].posX = 2600;
+        host.worldObjects[142] = host.worldObjects[4];
+        host.worldObjects[142].posX = 2800;
+        host.TeleportPlayer(2);
+        Check(host.worldObjects[1].posX == 2400 && Eye(host) == 300 &&
+            destination.generalPurpose3 == 0 && host.worldObjects[4].generalPurpose3 == 0 &&
+            host.worldObjects[5].generalPurpose3 == 20 && host.worldObjects[142].generalPurpose3 == 20,
+            "Transfer must visit every health-1000 destination in slots 2..141, with the last match winning.");
+        host.worldObjects[141] = host.worldObjects[4];
+        host.worldObjects[141].posX = 2700;
+        host.worldObjects[141].velocityZ = -1;
+        host.playerRenderTable = 17;
+        host.field_D503 = true;
+        host.TeleportPlayer(2);
+        Check(host.worldObjects[1].posX == 2700 && host.playerRenderTable == 17 && !host.field_D503,
+            "Slot 141 must be included; zero selectors preserve the table and nonpositive velocityZ clears D503.");
+        bool rejected = false;
+        try { host.TeleportPlayer(12345); }
+        catch (const std::runtime_error&) { rejected = true; }
+        Check(rejected && host.worldObjects[1].posX == 2700, "Missing destinations must report a data error.");
+
+        SetUpPortal(host);
+        input = {};
+        Step(host, input);
+        input.jump = true;
+        Step(host, input);
+        input.jump = false;
+        input.forward = true;
+        Step(host, input);
+        HandlePlayerObjectInteraction(source, host);
+        Step(host, input);
+        if (Eye(host) != 204 || host.worldObjects[1].posX != 2205)
+        {
+            throw std::runtime_error("Teleport retained-momentum camera differs: eye=" +
+                std::to_string(Eye(host)) + ", X=" + std::to_string(host.worldObjects[1].posX));
+        }
+    }
+
+    void TestLaddersAndMapGates()
+    {
+        Host host;
+        Input input;
+        Audio audio;
+        host.Load(150);
+        host.EnableAudio(audio);
+        auto& object = host.worldObjects[2];
+        object = Bridge(host, 125);
+        object.behavior = BehaviorType::ActivatableLadder;
+        object.health = 1001;
+        host.tickCount = 4;
+        Function_ActivatableLadder(object, host);
+        Check(object.generalPurpose2 == 0, "An inactive ladder must wait for health exactly 1000.");
+        object.health = 1000;
+        Function_ActivatableLadder(object, host);
+        Check(object.generalPurpose2 == 4 && object.blendWeightOrSpriteOpacity == 4,
+            "An activated ladder must accelerate its opening using word-38*ticks SAR 2.");
+        object.blendWeightOrSpriteOpacity = 99;
+        Function_ActivatableLadder(object, host);
+        Check(object.blendWeightOrSpriteOpacity == 100 && object.generalPurpose2 == 0 &&
+            object.collisionMask == 0 && host.playerLadderMovement &&
+            host.GetCollisionMapPixelAtWorldXZ(1525, 2500) == 8 &&
+            audio.plays.size() == 2 && audio.plays.back().sample == 54,
+            "A fully opened ladder must update the collision map and enable nearby vertical control.");
+        input.jump = true;
+        Step(host, input);
+        Check(Eye(host) == 150 && host.playerGrounded,
+            "Entering a ladder from midair must first establish supported movement.");
+        Step(host, input);
+        Check(Eye(host) == 151 && host.playerGrounded,
+            "Ladder control must use Sign(vertical speed + posture delta), not jump acceleration.");
+        object.health = 0;
+        UpdateObjects(host);
+        Check(!host.playerLadderMovement, "Each world pass must clear the ladder flag without an active writer.");
+
+        host.Load();
+        object = Bridge(host, 20);
+        object.behavior = BehaviorType::RoofTopThunderHandler3;
+        Function_RoofTopThunderHandler3(object, host);
+        Check(!host.playerMapCollisionsEnabled && object.collisionMask == 0,
+            "Behavior 184 must disable wall correction while the player overlaps its temporary mask.");
+        object.posX += 1000;
+        Function_RoofTopThunderHandler3(object, host);
+        Check(host.playerMapCollisionsEnabled && object.collisionMask == 0,
+            "Leaving behavior 184's volume must restore map collisions.");
+        std::fill(std::begin(host.collisionMap->data), std::end(host.collisionMap->data), std::uint8_t{0x18});
+        input = {};
+        input.forward = true;
+        host.playerMapCollisionsEnabled = false;
+        Step(host, input);
+        Check(host.worldObjects[1].posZ == 2503, "The independent DS:2DDC gate must bypass blocked map pixels.");
+        host.playerMapCollisionsEnabled = true;
+        host.field_D500 = false;
+        Step(host, input);
+        Check(host.worldObjects[1].posZ == 2508, "The native body-mode gate must independently bypass map correction.");
+
+        host.Load(100);
+        object = Bridge(host, 75);
+        object.collisionType = CollisionType::ClimbableLadder;
+        SetSlope(*host.level, 128);
+        Function_ClimbableLadder(object, host);
+        Check(object.blendWeightOrSpriteOpacity == host.tickCount,
+            "A live climbable ladder must approach its fully open pose by tick count.");
+        input = {};
+        Step(host, input);
+        Check(!host.playerGrounded && Eye(host) == 99 && host.worldObjects[1].posX == 1500 &&
+            host.GetPlayerCamera().lookHeight == 110,
+            "Collision 48 must suppress terrain pushing/look without inventing bridge grounding or vertical mode.");
+        host.Load();
+        host.worldObjects[1].blendWeightOrSpriteOpacity = 12;
+        input.forward = true;
+        Step(host, input);
+        Step(host, input);
+        Check(host.worldObjects[1].posZ == 2502 && host.worldObjects[1].blendWeightOrSpriteOpacity == 10,
+            "The player word-42 drag counter must reduce forward movement to its sign and decay per substep.");
+    }
+
+    void TestOriginalTeleporters(const std::filesystem::path& root)
+    {
+        for (std::int16_t level : {std::int16_t{10},std::int16_t{23},std::int16_t{36}})
+        {
+            Host host;
+            host.root = root;
+            LevelLoadData data;
+            host.LoadLevelObjects(level, data);
+            host.Load();
+            host.worldObjects = data.objects;
+            int count = 0;
+            for (std::size_t slot = 2; slot <= 141; ++slot)
+            {
+                const auto& original = data.objects[slot];
+                if (original.health != 1000 || original.collisionType != CollisionType::Teleporter) { continue; }
+                ++count;
+                auto lastMatch = slot;
+                for (auto next = slot + 1; next <= 141; ++next)
+                {
+                    if (data.objects[next].health == 1000 &&
+                        data.objects[next].collisionType == CollisionType::Teleporter &&
+                        data.objects[next].itemValue == original.itemValue)
+                    {
+                        lastMatch = next;
+                    }
+                }
+                host.TeleportPlayer(original.itemValue);
+                Check(host.worldObjects[1].posX == data.objects[lastMatch].posX &&
+                    host.worldObjects[1].posZ == data.objects[lastMatch].posZ &&
+                    host.worldObjects[slot].generalPurpose3 == 0,
+                    "Original level 10/23/36 destinations must transfer without requiring behavior 120.");
+            }
+            Check(count > 0, "Expected original teleporter records were not found.");
+        }
+    }
+
     void TestOriginalBridges(const std::filesystem::path& root)
     {
         for (std::int16_t level : {std::int16_t{23},std::int16_t{34}})
@@ -470,8 +741,11 @@ int main(int argc, char** argv)
         TestBridgeContacts();
         TestFootsteps();
         TestBridgeBehaviors();
+        TestTeleporters();
+        TestLaddersAndMapGates();
+        TestOriginalTeleporters(argv[1]);
         TestOriginalBridges(argv[1]);
-        std::cout << "Player slope, bridge and footstep tests passed.\n";
+        std::cout << "Player support, teleport, ladder and footstep tests passed.\n";
         return 0;
     }
     catch (const std::exception& error)

@@ -6,6 +6,16 @@ For setup, naming, and evidence conventions, see [README.md](README.md).
 
 ## Scope and evidence
 
+Recent movement recovery: [teleporters, ladders and collision-bypass volumes](BehaviorRecovery.md#teleporters-ladders-and-collision-bypass-volumes)
+now have verified native contracts and C++ implementations, with original level
+10/23/36 teleporter fixtures. DS:`D4FF` is activated-ladder vertical control;
+it is not swimming. The author confirms underwater walking/crouching along
+the bottom. Behavior 184's old thunder-handler name hides a wall-collision
+bypass volume; behavior 178 controls a DOS viewport region, with a possible
+foil connection still unproven. Teleport render-table/lighting state is
+preserved but its modern presentation, vehicle drivers, several contacts,
+oxygen and underwater effects remain incomplete.
+
 All executable addresses below refer to the original
 [DESPERAB.EXE](../../Game/Original/DESPERAB.EXE), SHA-256:
 

@@ -40,6 +40,7 @@ struct ProfilingStats
         m_max_duration_visibility = __max(m_max_duration_visibility, m_duration_visibility);
         m_max_duration_rendering = __max(m_max_duration_rendering, m_duration_rendering);
         m_max_duration_update = __max(m_max_duration_update, m_duration_update);
+        m_max_duration_game = __max(m_max_duration_game, m_duration_game);
     }
 
     void ResetMax()
@@ -47,6 +48,7 @@ struct ProfilingStats
         m_max_duration_visibility = {};
         m_max_duration_rendering = {};
         m_max_duration_update = {};
+        m_max_duration_game = {};
     }
 
     void ResetRenderStats()
@@ -58,10 +60,12 @@ struct ProfilingStats
     ProfilingDuration m_duration_visibility = {};
     ProfilingDuration m_duration_rendering = {};
     ProfilingDuration m_duration_update = {};
+    ProfilingDuration m_duration_game = {};
 
     ProfilingDuration m_max_duration_visibility = {};
     ProfilingDuration m_max_duration_rendering = {};
     ProfilingDuration m_max_duration_update = {};
+    ProfilingDuration m_max_duration_game = {};
 
     std::wstring m_debugString;
 };

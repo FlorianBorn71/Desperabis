@@ -1657,9 +1657,35 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::LightRayKillsGhost, 0x2697 };
     }
 
-    DispatchResult Function_ActivatableLadder(RawGameObject&, GameContext&)
+    DispatchResult Function_ActivatableLadder(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::ActivatableLadder, 0x26B5 };
+        if (object.health == 1000)
+        {
+            object.generalPurpose2 = static_cast<std::uint16_t>(object.generalPurpose2 + context.tickCount);
+            object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity +
+                ArithmeticShiftRight(WrapSignedWord(
+                    WrapSignedWord(object.generalPurpose2) * context.tickCount), 2));
+            if (object.blendWeightOrSpriteOpacity > 100)
+            {
+                object.blendWeightOrSpriteOpacity = 100;
+                object.generalPurpose2 = 0;
+                if (object.soundEffectId != 0) { object.soundEffectId = 54; }
+            }
+            if (object.soundEffectId != 0)
+            {
+                context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+                    context.GetSoundVolumeAt(object.posX, object.posZ), object, 1);
+            }
+            if (object.blendWeightOrSpriteOpacity == 100)
+            {
+                context.SetCollisionMapPixelAtWorldXZ(WrapSignedWord(object.posX + 25), object.posZ, 8);
+                object.collisionMask = 3;
+                object.soundEffectId = 0;
+                if (context.OverlapsPlayer(object)) { context.playerLadderMovement = true; }
+                object.collisionMask = 0;
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::ActivatableLadder, 0x26B5 };
     }
 
     DispatchResult Function_LiftUp(RawGameObject&, GameContext&)
@@ -2030,9 +2056,14 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::BurriedVerticalDoor, 0x377F };
     }
 
-    DispatchResult Function_Teleporter(RawGameObject&, GameContext&)
+    DispatchResult Function_Teleporter(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Teleporter, 0x37B0 };
+        if (WrapSignedWord(object.generalPurpose3) < 20 && !context.OverlapsPlayer(object))
+        {
+            ++object.generalPurpose3;
+        }
+        object.collisionType = CollisionType::Teleporter;
+        return { DispatchStatus::ExecutedCase, BehaviorType::Teleporter, 0x37B0 };
     }
 
     DispatchResult Function_LevelStartOverride(RawGameObject& object, GameContext& context)
@@ -2098,9 +2129,14 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::FloodingWater, 0x3BF7 };
     }
 
-    DispatchResult Function_ClimbableLadder(RawGameObject&, GameContext&)
+    DispatchResult Function_ClimbableLadder(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::ClimbableLadder, 0x3C30 };
+        if (object.health == 1000)
+        {
+            object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity +
+                GetStepToward(object.blendWeightOrSpriteOpacity, 100, context.tickCount));
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::ClimbableLadder, 0x3C30 };
     }
 
     DispatchResult Function_CurtainOpens(RawGameObject&, GameContext&)
@@ -2351,9 +2387,12 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::RoofTopThunderHandler2, 0x4E28 };
     }
 
-    DispatchResult Function_RoofTopThunderHandler3(RawGameObject&, GameContext&)
+    DispatchResult Function_RoofTopThunderHandler3(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::RoofTopThunderHandler3, 0x4E85 };
+        object.collisionMask = 1;
+        context.playerMapCollisionsEnabled = !context.OverlapsPlayer(object);
+        object.collisionMask = 0;
+        return { DispatchStatus::ExecutedCase, BehaviorType::RoofTopThunderHandler3, 0x4E85 };
     }
 
     DispatchResult Function_AmbientSoundPosition(RawGameObject&, GameContext&)

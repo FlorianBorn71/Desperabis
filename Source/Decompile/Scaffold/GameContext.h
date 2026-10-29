@@ -288,6 +288,7 @@ namespace Desperabis
         // CE9E's post-test loop also reads slot 165 when the initial hit is 164.
         std::array<RawGameObject, 166> worldObjects{};
         bool objectCollisionsEnabled = true;
+        bool DEBUG_noPlayerCollision = false; // Host cheat: bypass player walls and suppress negative life deltas.
         bool discardBlockedObjects = false; // DS:D501; false exposes the native WC-Error diagnostic path.
         std::uint16_t playerCollisionSlot = 0;
         Level* level = nullptr;
@@ -325,6 +326,10 @@ namespace Desperabis
         std::int16_t playerTargetLookHeight = 110; // DS:D4B6, keyboard-requested horizon.
         bool playerUnderwater = false; // DS:D4FC; swimming controller remains separate.
         bool field_D500 = true; // Native body-mode gate, also used by the unarmed weapon branch.
+        bool playerMapCollisionsEnabled = true; // DS:2DDC; independently controlled by behavior 184.
+        bool playerLadderMovement = false; // DS:D4FF; refreshed by the active-object loop.
+        std::uint8_t playerRenderTable = 0; // DS:D4BA/EC6E selector; DOS 2048-byte render table.
+        bool field_D503 = false; // Teleporter destination velocityZ > 0; DOS lighting/render gate.
         bool debugWeaponColliders = false; // DS:D502.
         void RefreshWeaponInventory();
         bool SelectWeapon(WeaponType weapon);
@@ -336,6 +341,9 @@ namespace Desperabis
         void RequestPlayerCrouch();
         // Native 0000:DA3C: selected cockroach contact uses forward speed, not an interaction key.
         InteractionResult HandleCockroachContact(RawGameObject& object);
+        InteractionResult HandleTeleporterContact(RawGameObject& object, bool interactionPressed);
+        // Native 0EF0:0896 scans every matching live destination in slots 2..141.
+        void TeleportPlayer(std::int16_t destinationId);
         // Native 10AC:3D30: automatic one-shot contact, not ordinary switch activation.
         InteractionResult HandleActivationTriggerContact(RawGameObject& object);
         // Authoritative player-life update, including suppression, clamping, death and notification.

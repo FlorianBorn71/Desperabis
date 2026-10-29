@@ -5,6 +5,20 @@ Minimal standalone DX11 window without menus. On startup it loads the training l
 Both standalone project and solution builds write to the repository's `Bin` folder:
 Release uses `Bin`, and Debug uses `Bin\Debug`.
 
+## CPU profiling
+
+The game exposes `g_profilingStats` alongside the renderer's existing visibility
+and rendering timings. Inspect it in the debugger; durations are **microseconds**:
+
+* `m_duration_game`: time spent inside the current frame's `GameContext::Tick`,
+  including synchronous callbacks. Zero means no simulation tick ran that frame.
+* `m_max_duration_game`: largest recorded Tick duration since startup or `ResetMax()`.
+
+The scope excludes input polling, `Scene::Update`, post-tick `SyncGameObjects`,
+rendering and swap-chain presentation. A catch-up call can simulate several native
+ticks; the measurement is the whole call, not a per-native-tick average.
+Existing visibility/rendering timings share the same stats object.
+
 ## Audio and asset loading
 
 The host installs an XAudio2-backed `AudioPlayer` through GameCore's existing
@@ -129,12 +143,19 @@ game ticks (33 Hz, as in the original game)
   above the floor, consumes itself, and lets normal gravity begin the drop; no Enter press is needed.
 * Jump/crouch use the recovered 45/28 body heights, changing collision radius and camera height.
   Low rooms cancel ascent and force crouching. Water contact also forces crouching; submersion
-  is detected separately. Swimming/buoyancy, oxygen and other underwater effects remain deferred.
+  is detected separately. Underwater play remains bottom walking/crouching;
+  oxygen and other underwater effects remain deferred, not free-swimming controls.
 * Walking now uses native steep-slope correction, bobbing and collision-47 bridge support.
   Planks remain walkable before Lentils reveal them; activated drawbridges become walkable
   once fully opened. Footsteps follow native movement cadence and landing events, select
   floor/bridge-specific sounds, and are suppressed underwater. They share the existing
   effect channels with a two-instance limit and use load-time sample fades.
+* Teleporters support Enter-to-unlock/open/use, native automatic-contact gates,
+  destination eye height/heading and departure cooldown. Ladder behaviors 75/133
+  and behavior 184's wall-bypass volume are implemented. The special vertical
+  mode belongs to activated ladders, not water. Vehicle controllers, several
+  contact hazards and teleporter-specific DOS render-table/lighting effects
+  remain incomplete; behavior 178's suspected foil viewport effect is unproven.
 * Awake skeletons use recovered pursuit, wall avoidance, attacks and fixed-point player-life damage.
   Indoor bats use recovered flight, wall lookahead, ceiling roosting/waking,
   wing animation, positional sound and weapon-hit falling/corpse states.
@@ -251,6 +272,10 @@ Current assumptions/limitations:
 * `Page Up` / `Page Down`: look up/down; `Home`: center manual look (sample bindings).
   Look is smoothed and also follows the terrain ahead, affecting arrow launch elevation.
 * `F`: toggle free camera (`WASD` move, `Shift` faster, mouse position relative to the window center steers)
+* `N`: toggle the player collision cheat (`GameContext::DEBUG_noPlayerCollision`).
+  When enabled, player wall collisions and all player damage are suppressed;
+  pickups/interactions and healing remain enabled. The HUD shows `Player collision: off/on`.
+  The flag defaults to false and persists across level changes. Key repeat is ignored.
 * `Tab`: load the next playable level in DesktopPlayer menu order:
   training `50`, part 1 `30, 31, 32, 33, 36, 34, 35`, then part 2
   `10, 11, 12, 13, 14, 15, 16, 17, 18, 90, 19, 20, 21, 22, 23, 24, 25, 26`.

@@ -66,6 +66,7 @@ namespace
 	NullPhysicsModule g_physics;
 	RenderingSettings g_renderSettings;
 	VisibilitySettings g_visSettings{ (uint32_t)GamePlay::VisibilityFilter::NormalRendering };
+	ProfilingStats g_profilingStats;
 	std::unique_ptr<LevelScene> g_scene;
 	std::shared_ptr<TextureAnim> g_fireballFrames;
 	std::shared_ptr<TextureAnim> g_hudAnimations;
@@ -853,6 +854,7 @@ namespace
 
 	void Update()
 	{
+		g_profilingStats.m_duration_game = {};
 		std::chrono::duration<double> duration = std::chrono::steady_clock::now() - g_startTime;
 		g_currentTime = duration.count();
 		const double deltaTime = g_currentTime - g_previousTime;
@@ -901,7 +903,11 @@ namespace
 				try
 				{
 					const auto nativeTicks = static_cast<std::int16_t>(clampedTicks);
-					const auto result = g_gameCore->Tick({ nativeTicks, nativeTicks }, input);
+					Desperabis::GameTickResult result;
+					{
+						ProfilingScope _(g_profilingStats.m_duration_game);
+						result = g_gameCore->Tick({ nativeTicks, nativeTicks }, input);
+					}
 					if (result.status == Desperabis::GameTickStatus::Advanced)
 					{
 						g_gameCore->UpdateUserMessage(nativeTicks);
@@ -976,7 +982,8 @@ namespace
 		Renderer::Instance().SetCamera(g_camera);
 		Renderer::Instance().SetCurrentTime(g_currentTime);
 		UpdateItemPreview();
-		Renderer::Instance().RenderScene(g_scene.get(), g_renderSettings, g_visSettings, nullptr);
+		Renderer::Instance().RenderScene(g_scene.get(), g_renderSettings, g_visSettings, &g_profilingStats);
+		g_profilingStats.Update();
 
 		g_swapChain->Present(1, 0);
 	}
@@ -1000,6 +1007,12 @@ namespace
 			else if (wParam == 'F' && (lParam & (1 << 30)) == 0 && g_initialized)
 			{
 				ToggleFreeCamera();
+			}
+			else if (wParam == 'N' && (lParam & (1 << 30)) == 0 && g_initialized)
+			{
+				g_gameCore->DEBUG_noPlayerCollision = !g_gameCore->DEBUG_noPlayerCollision;
+				g_gameCore->PromptUserMessage(g_gameCore->DEBUG_noPlayerCollision ?
+					"Player collision: off" : "Player collision: on", 90);
 			}
 			else if (wParam == VK_TAB && (lParam & (1 << 30)) == 0 && g_initialized)
 			{

@@ -61,6 +61,17 @@ namespace Desperabis
         }
         if (object.health <= 0) { return { InteractionStatus::InactiveObject }; }
         if (object.health != 1000 || object.generalPurpose2 != 0) { return { InteractionStatus::NoEffect }; }
+        return HandleLockedObjectInteraction(object, context);
+    }
+
+    InteractionResult HandleLockedObjectInteraction(RawGameObject& object, GameContext& context)
+    {
+        if (object.collisionType != CollisionType::Door && object.collisionType != CollisionType::Teleporter)
+        {
+            throw std::invalid_argument("Key unlocking requires a door or teleporter.");
+        }
+        if (object.health <= 0) { return { InteractionStatus::InactiveObject }; }
+        if (object.generalPurpose2 != 0) { return { InteractionStatus::NoEffect }; }
         const auto lock = object.doorLockOrGroupBitmask;
         if (lock < 0)
         {
@@ -94,7 +105,8 @@ namespace Desperabis
             context.inventory[selectedSlot].health = 0;
         }
         object.doorLockOrGroupBitmask = 0;
-        return { ActivateDoor(object, context) ? InteractionStatus::Applied : InteractionStatus::NoEffect };
+        context.DamageObject(object, 0);
+        return { InteractionStatus::Applied };
     }
 
     DispatchResult Function_Door(RawGameObject& object, GameContext& context)

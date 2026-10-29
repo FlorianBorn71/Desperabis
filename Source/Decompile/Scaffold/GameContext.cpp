@@ -298,6 +298,10 @@ namespace Desperabis
         playerVerticalSpeed = 0;
         playerWalkPhase = 0;
         playerSurfaceSpeedLimit = 5;
+        playerMapCollisionsEnabled = true;
+        playerLadderMovement = false;
+        playerRenderTable = 0;
+        field_D503 = false;
         playerLookHeight = 110;
         playerTargetLookHeight = 110;
         playerBodyHeight = 45;
@@ -403,7 +407,7 @@ namespace Desperabis
         playerSidewaysSpeed = WrapSignedWord(playerSidewaysSpeed - SignWord(playerSidewaysSpeed));
         playerTurnSpeed = WrapSignedWord(playerTurnSpeed - SignWord(playerTurnSpeed));
 
-        // TODO: Recover remaining special speed limits, mouse controls and swimming.
+        // TODO: Recover mouse controls and vehicle/attached-object movement.
         for (int tick = 0; tick < frameTickCount; ++tick)
         {
             int limit = playerBodyHeight < 45 && behaviorDispatchEnabled ? 2 : playerSurfaceSpeedLimit;
@@ -427,6 +431,7 @@ namespace Desperabis
             const auto bob = std::abs(static_cast<int>(signedBob));
             auto eyeY = WrapSignedWord(player.posY + player.collisionRadiusY + 2);
             bool bridgeSupported = false;
+            bool terrainSlopeEnabled = true;
             std::uint8_t footstepEffect = 0;
             if (field_D500)
             {
@@ -442,6 +447,10 @@ namespace Desperabis
                         !AxisOverlaps(player.posY, candidate.posY,
                             player.collisionRadiusY, candidate.collisionRadiusY)) { continue; }
                     ++contacts;
+                    if (candidate.collisionType == CollisionType::ClimbableLadder && candidate.health == 1000)
+                    {
+                        terrainSlopeEnabled = false;
+                    }
                     if (candidate.collisionType != CollisionType::WalkablePlanks ||
                         candidate.blendWeightOrSpriteOpacity != 0 || eyeY <= candidate.posY) { continue; }
                     eyeY = WrapSignedWord(eyeY + GetStepToward(eyeY,
@@ -450,6 +459,7 @@ namespace Desperabis
                     candidate.itemValue = 7;
                     footstepEffect = candidate.soundEffectId;
                     bridgeSupported = true;
+                    terrainSlopeEnabled = false;
                 }
             }
             playerBodyHeight = WrapSignedWord(playerBodyHeight + GetStepToward(playerBodyHeight,
@@ -467,13 +477,17 @@ namespace Desperabis
             const auto room = GetRoomHeight(WrapSignedWord(player.posX + shift3(directionX)),
                 WrapSignedWord(player.posZ + shift3(directionZ)));
             // Keep physical speed separate from the host's view-vector Y.
-            playerVerticalSpeed = WrapSignedWord(playerVerticalSpeed - 1);
+            playerVerticalSpeed = playerLadderMovement ?
+                SignWord(WrapSignedWord(playerVerticalSpeed + playerPostureDelta)) :
+                WrapSignedWord(playerVerticalSpeed - 1);
             if (room < 96 && playerVerticalSpeed > 0) { playerVerticalSpeed = 0; }
             if (room < 65)
             {
                 playerBodyHeight = WrapSignedWord(
                     playerBodyHeight + GetStepToward(playerBodyHeight, 28, 8));
             }
+            if (player.blendWeightOrSpriteOpacity > 10) { playerForwardSpeed = SignWord(playerForwardSpeed); }
+            if (player.blendWeightOrSpriteOpacity > 0) { --player.blendWeightOrSpriteOpacity; }
             const auto deltaX = WrapSignedWord(directionX * playerForwardSpeed +
                 directionZ * playerSidewaysSpeed) / 100;
             const auto deltaZ = WrapSignedWord(directionZ * playerForwardSpeed -
@@ -494,8 +508,8 @@ namespace Desperabis
             std::int16_t slopeX = 0;
             std::int16_t slopeZ = 0;
             const auto currentFloor = QueryTerrainSupport(x, eyeY, z, slopeX, slopeZ);
-            const auto slopeDifference = bridgeSupported ? 0 : WrapSignedWord(currentFloor - aheadFloor);
-            if (field_D500 && !bridgeSupported)
+            const auto slopeDifference = terrainSlopeEnabled ? WrapSignedWord(currentFloor - aheadFloor) : 0;
+            if (field_D500 && terrainSlopeEnabled)
             {
                 x = WrapSignedWord(x + slopeX);
                 z = WrapSignedWord(z + slopeZ);
@@ -504,11 +518,13 @@ namespace Desperabis
                 WrapSignedWord(playerTargetLookHeight - slopeDifference), 5));
             playerLookHeight = WrapSignedWord(static_cast<std::uint16_t>(playerLookHeight) & 0xfffeu);
 
-            bool resolved = !objectCollisionsEnabled;
-            if (objectCollisionsEnabled)
+            const bool collideWithMap = !DEBUG_noPlayerCollision &&
+                objectCollisionsEnabled && field_D500 && playerMapCollisionsEnabled;
+            bool resolved = !collideWithMap;
+            if (collideWithMap)
             {
                 // DD97..DE08 uses step 5, mask 18h and repeated correction. Bound retries for the host.
-                // TODO: Recover DS:2DDC gating and native stuck recovery; center blocking must not cancel by symmetry.
+                // The native loop is unbounded; reject unresolved/symmetric blocking instead of hanging the host.
                 for (int attempt = 0; attempt < 16; ++attempt)
                 {
                     std::int16_t correctionX = 0;
@@ -536,7 +552,7 @@ namespace Desperabis
             }
             const auto supportY = WrapSignedWord(
                 GetTerrainFloorHeight(player.posX, eyeY, player.posZ) + playerBodyHeight + bob);
-            playerGrounded = bridgeSupported;
+            playerGrounded = bridgeSupported || playerLadderMovement;
             if (supportY > eyeY)
             {
                 if (playerVerticalSpeed < -4)
@@ -591,7 +607,7 @@ namespace Desperabis
             player.velocityZ = directionZ;
             ++result.simulatedTicks;
         }
-        // TODO: Port automatic damage, teleports and other contact modes; interaction remains in Tick after movement.
+        // TODO: Port remaining damage/contact modes; selected interactions run in Tick after movement.
         return result;
     }
 
@@ -625,6 +641,8 @@ namespace Desperabis
         lightingCache.Reset(soundListenerX, soundListenerZ, lightingCache.activeRadius);
         field_DC34 = 0;
         const auto interaction = UpdatePlayerInteraction(*this, input);
+        soundListenerX = worldObjects[1].posX;
+        soundListenerZ = worldObjects[1].posZ;
         UpdateWeaponSelection();
         const auto results = UpdateObjects(*this);
         PlayerWeaponResult weapon;
@@ -943,6 +961,83 @@ namespace Desperabis
         return playerHeading;
     }
 
+    void GameContext::TeleportPlayer(std::int16_t destinationId)
+    {
+        std::array<std::uint16_t, 140> destinations{};
+        std::size_t count = 0;
+        for (std::uint16_t slot = 2; slot <= 141; ++slot)
+        {
+            const auto& object = worldObjects[slot];
+            if (object.health == 1000 && object.collisionType == CollisionType::Teleporter &&
+                object.itemValue == destinationId)
+            {
+                destinations[count++] = slot;
+            }
+        }
+        if (count == 0) { throw std::runtime_error("Teleporter destination not found: " + std::to_string(destinationId)); }
+        auto& player = worldObjects[1];
+        auto eyeY = WrapSignedWord(player.posY + player.collisionRadiusY + 2);
+        for (std::size_t index = 0; index < count; ++index)
+        {
+            auto& destination = worldObjects[destinations[index]];
+            eyeY = destination.velocityY == 0 ? WrapSignedWord(
+                GetTerrainFloorHeight(destination.posX, eyeY, destination.posZ) + playerBodyHeight) : destination.posY;
+            player.posX = destination.posX;
+            player.posZ = destination.posZ;
+            player.posY = WrapSignedWord(eyeY - player.collisionRadiusY - 2);
+            if (destination.winY >= 0) { playerTargetHeading = destination.winY; }
+            playerHeading = playerTargetHeading;
+            std::int16_t negativeZ;
+            GetDirectionDisplacement(player.velocityX, negativeZ, playerHeading, 100);
+            player.velocityZ = WrapSignedWord(-static_cast<int>(negativeZ));
+            if (destination.behaviorParameter != 0) { playerRenderTable = destination.behaviorParameter; }
+            field_D503 = destination.velocityZ > 0;
+            destination.generalPurpose3 = 0;
+        }
+        soundListenerX = player.posX;
+        soundListenerZ = player.posZ;
+        lightingCache.Reset(soundListenerX, soundListenerZ, lightingCache.activeRadius);
+    }
+
+    InteractionResult GameContext::HandleTeleporterContact(RawGameObject& object, bool interactionPressed)
+    {
+        if (object.collisionType != CollisionType::Teleporter)
+        {
+            throw std::invalid_argument("Teleporter contact requires collision type 120.");
+        }
+        if (object.health <= 0) { return { InteractionStatus::InactiveObject }; }
+        if (!interactionPressed)
+        {
+            // DBC3: the automatic gate is word 46, not the manual path's word-40 cooldown.
+            if (object.doorLockOrGroupBitmask <= 10 || object.groupIndexOrLock != 0)
+            {
+                return { InteractionStatus::NoEffect };
+            }
+        }
+        else
+        {
+            if (object.doorLockOrGroupBitmask > 0) { return HandleLockedObjectInteraction(object, *this); }
+            if (object.velocityX != 0)
+            {
+                if (object.soundEffectId != 0)
+                {
+                    PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId), GetSoundVolume(0), object, 1);
+                }
+                object.blendWeightOrSpriteOpacity = WrapSignedWord(
+                    object.blendWeightOrSpriteOpacity + object.velocityX * frameTickCount);
+                if (object.blendWeightOrSpriteOpacity > 100)
+                {
+                    object.blendWeightOrSpriteOpacity = 100;
+                    object.velocityX = 0;
+                }
+                return { InteractionStatus::Applied };
+            }
+            if (WrapSignedWord(object.generalPurpose3) <= 10) { return { InteractionStatus::NoEffect }; }
+        }
+        TeleportPlayer(WrapSignedWord(object.generalPurpose1));
+        return { InteractionStatus::Applied };
+    }
+
     InteractionResult GameContext::HandleCockroachContact(RawGameObject& object)
     {
         if (!behaviorDispatchEnabled) { return { InteractionStatus::NoEffect }; }
@@ -961,6 +1056,7 @@ namespace Desperabis
 
     void GameContext::ApplyPlayerLifeDelta(std::int32_t delta)
     {
+        if (DEBUG_noPlayerCollision && delta < 0) { return; }
         const auto previousLife = playerLife;
         if (playerLifeDeltaSuppressed == 0)
         {

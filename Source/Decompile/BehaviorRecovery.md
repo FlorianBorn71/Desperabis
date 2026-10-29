@@ -468,8 +468,8 @@ in this prefix or the shared suffix. Motion remains in the individual
 behaviors/helpers: moving WaterDrop or SmokeFading again here would double
 their movement. The suffix at `5110` works on distance/scene-list assignment,
 not a universal physics update; it is not implemented in the renderer-free
-library. The original loop's reset of player-movement flag DS:`D4FF` is also
-outside the current player-controller implementation.
+library. The loop now resets DS:`D4FF` before dispatch; an opened activated
+ladder can set it for the following movement frame.
 
 Two context methods reproduce the allocators, including their side effects:
 
@@ -949,15 +949,16 @@ TODOs are placed beside the partial implementation in
 
 1. Load the actual working camera position, applied/target headings, and speed
    state from native level/save initialization.
-2. Recover the remaining view-vector pipeline, full ceiling collision and
-   attached-object support modes. Normal terrain slopes, collision-47 bridges
+2. Recover the remaining view-vector pipeline and
+   attached-object/vehicle modes. Normal terrain slopes, collision-47 bridges
    and walking bobbing are implemented below; this does not generalize to
    arbitrary renderer colliders or other native contact modes.
-3. Add remaining special speed states, mouse look, swimming controls and the
-   alternate controller path.
-4. Recover DS:`2DDC` collision gating and native stuck recovery.
-5. Implement automatic player damage, teleporting and other contact modes in
-   the shared contact pipeline, not in this normal movement subset.
+3. Add mouse controls and remaining special speed/contact states.
+4. Finish automatic contact/environmental damage and radial push separation.
+   Teleporters, ladder vertical mode, the player word-42 drag counter and
+   DS:`2DDC` map gating are now implemented below. No separate native stuck
+   recovery was found: the native map-correction loop is unbounded; the host
+   deliberately retains its bounded rollback policy.
 
 Fresh levels loaded through `LoadLevelGeometry` have a real static FELD-derived
 collision map. Explicit dummy fixtures still have no walls unless populated.
@@ -1017,6 +1018,75 @@ material/bridge footsteps, exact RNG ordering, channel admission, underwater
 suppression, landings, batching, both bridge behaviors, and original level
 23/34 bridge records. No DOS/modern auditory comparison has been performed.
 
+#### Teleporters, ladders and collision-bypass volumes
+
+Evidence: [transfer and movement cases](player-special-movement-evidence.txt),
+[mode drivers](player-special-mode-drivers-evidence.txt), and
+[manual interaction, full ladder helper and render-table transfer](player-special-context-evidence.txt).
+
+- `0EF0:0896` visits **every** destination in slots **2..141** with health
+  exactly 1000, collision 120 and `itemValue == destination ID`; behavior 120
+  is not required. The last matching record determines the final position.
+  X/Z come from the destination. `velocityY == 0` selects interpolated terrain
+  plus body height, using the working eye Y for stacked-floor selection;
+  otherwise `posY` is already eye height. Nonnegative `winY` replaces target
+  heading; applied heading follows it even when `winY` is negative.
+  Destination word 40 is cleared. Physical and horizontal speeds are retained.
+- The host immediately updates camera direction, listener and lighting-cache
+  origin after transfer, avoiding a stale listener during following behaviors.
+  Missing destinations throw an explicit data error instead of DOS's silent
+  no-transfer path. The DOS helper also clears unported render/input/tick
+  globals D504/D506/2B0A/DC52; this is not a request to discard host frame ticks.
+- Enter first unlocks a positive word-46 lock through the shared door-key
+  helper, consuming the matching key but **not** transferring on that Enter.
+  With no positive lock, nonzero `velocityX` advances word 42 by
+  `low16(velocityX*frameTicks)` with byte-5 sound, limit one. Only overshooting
+  100 clamps it and clears `velocityX`; transfer waits for another Enter.
+  With `velocityX == 0`, signed word 40 must be **greater than 10**.
+- Automatic selected contact instead requires **word 46 > 10 and word 44 == 0**.
+  It does not use manual cooldown. These genuinely different native gates
+  must not be conflated. Behavior 120 increments signed word 40 below 20
+  once per dispatch while outside player overlap, and always assigns collision 120.
+- Arrival byte 52 selects a 2048-byte DOS render lookup table through
+  `1E48:B74C`; positive `velocityZ` sets DS:`D503`, used by DOS lighting/render
+  consumers. `playerRenderTable` and `field_D503` preserve the recovered state,
+  but the modern renderer does **not** yet reproduce either presentation
+  effect. Nonzero selectors occur in playable levels 19/24/33/36.
+- Activated ladder behavior **75**, health exactly 1000, adds ticks to word 38,
+  then adds `SAR2(low16(word38*ticks))` to word 42. Overshooting 100 clamps
+  angle, clears word 38 and replaces a nonzero sound with effect 54.
+  It plays its nonzero positional effect with limit one. At angle 100 it
+  writes map byte 8 at `(X+25,Z)`, clears its sound, temporarily uses collision
+  mask 3 to test player overlap, sets DS:`D4FF` on overlap, then clears mask.
+  The flag is reset at world-pass start; movement therefore uses the previous
+  pass's result, matching the native frame boundary.
+- DS:`D4FF` sets vertical speed to `Sign(verticalSpeed + postureDelta)` and
+  marks support instead of applying gravity. It is **ladder movement, not
+  free swimming**. Climbable ladder behavior **133** only approaches word 42
+  toward 100 by ticks. Its collision **48**, health 1000, suppresses terrain
+  pushing/look without independently grounding the player.
+- Behavior **184**, currently named `RoofTopThunderHandler3`, actually sets
+  DS:`2DDC = !OverlapsPlayer` using temporary mask 1, then clears its mask.
+  Map correction needs both DS:`D500` and DS:`2DDC`, in addition to the host's
+  existing `objectCollisionsEnabled` switch. The old name is retained.
+- Player word 42 above 10 reduces forward speed to its sign; positive values
+  decay once per movement substep.
+
+`player-support` tests cover both entry paths, key rejection/consumption,
+opening/cooldown boundaries, duplicate/excluded destinations, terrain versus
+explicit eye height, heading, retained momentum, render-state capture,
+same-frame listener updates, original level 10/23/36 records, ladder state and
+frame timing, drag, and independent map gates.
+
+**Remaining boundaries:** Lorry 78 and Submarine 141 attach the player but
+require substantial native vehicle controllers; neither is implemented by
+merely copying vehicle position. Radial contact separation, several other
+contact/hazard responses, oxygen depletion, bubbles and underwater audio
+remain unported. Behavior **178** compares horizontal player distance with
+`itemValue` and switches a DOS viewport-region height; it does not move the
+player. A connection to foil-revealed fire particles is the author's
+hypothesis, **not yet established**; keep `Behavior_178` unchanged.
+
 #### Jumping, crouching and water-forced posture
 
 Evidence: [posture helpers/controller](player-posture-evidence.txt),
@@ -1061,9 +1131,11 @@ Evidence: [posture helpers/controller](player-posture-evidence.txt),
   `game-runtime` now checks turning and forward motion in/under water in original
   levels 12, 17, 20 and 22, as well as metadata decoding and invalid-file handling.
 
-The native DS:`D4FF` special-vertical mode, swimming/buoyancy, oxygen,
-underwater presentation and environmental damage are **not ported here**.
-Normal terrain gravity still applies underwater. The native death animation
+The author confirms underwater play is **walking/crouching along the bottom**,
+not free swimming; normal terrain gravity still applies. DS:`D4FF` is now
+identified and implemented as ladder control, not underwater buoyancy.
+Oxygen, underwater presentation and environmental damage remain unported.
+The native death animation
 also remains separate. `player-posture` tests cover the jump arc, input
 ordering/batching, posture boundaries, camera/radius coherence, clearance and
 speed thresholds, water forcing/exit/submersion, and lifecycle gates.
@@ -1365,8 +1437,9 @@ to the supplied input handler. It is independent of the behavior-dispatch
 enable flag. It preserves strict axis boundaries, wrapped signed-word
 coordinate differences/radius sums, and the original signed ABS overflow.
 
-This is not a lift of all of `0000:D060` or a complete game loop: player
-movement and automatic damage/teleporter responses remain separate work.
+This is not a lift of all of `0000:D060` or a complete game loop.
+`Tick` now supplies player movement and recovered teleporter responses;
+several automatic damage/contact paths remain incomplete.
 The ordinary door contact branch is implemented: the selected door's occupancy
 byte is set even without interaction input. World-object updates and recovered
 audio requests are available separately; drawing remains outside this port.
@@ -1529,7 +1602,7 @@ identify indices 20 and 23. Their values are retained without speculative
 resource names.
 
 The gameplay branches for books, purchasing, rope wheels, vases/mirrors,
-level exits, teleporters, sarcophagi, picture maps,
+level exits, sarcophagi, picture maps,
 and lorries explicitly return `UnimplementedHandler` without mutating the
 object or inventory. Other collision values follow the original generic
 pickup tail. Door prompts and sound requests are implemented; the playable DX11

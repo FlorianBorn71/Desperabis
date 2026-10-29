@@ -874,6 +874,14 @@ namespace
             "Disabling object collisions must bypass map correction explicitly.");
         host.objectCollisionsEnabled = true;
         load(host, 0);
+        std::fill(std::begin(host.collisionMap->data), std::end(host.collisionMap->data), std::uint8_t{0x18});
+        host.DEBUG_noPlayerCollision = true;
+        Check(host.Tick({}, input).playerMovement->blockedTicks == 0 && host.worldObjects[1].posZ == 2503,
+            "The player collision cheat must bypass blocked walls without disabling object collisions.");
+        host.DEBUG_noPlayerCollision = false;
+        Check(host.Tick({}, input).playerMovement->blockedTicks == 1 && host.worldObjects[1].posZ == 2503,
+            "Disabling the cheat must immediately restore wall correction.");
+        load(host, 0);
         std::fill(std::begin(host.collisionMap->data), std::end(host.collisionMap->data), std::uint8_t{ 0x20 });
         Check(host.Tick({}, input).playerMovement->blockedTicks == 0 && host.worldObjects[1].posZ == 2503,
             "Normal player collision correction must use native mask 18h, not generic object mask 38h.");
@@ -899,10 +907,12 @@ namespace
         pickup.itemValue = 9;
         input.pressed = true;
         const auto gold = host.gold;
+        host.DEBUG_noPlayerCollision = true;
         const auto contact = host.Tick({}, input);
         Check(host.gold == gold + 9 && contact.interaction->status == InteractionStatus::Applied &&
             host.worldObjects[2].health == 0,
-            "Contact and interaction must use the player position after basic movement.");
+            "Contact and interaction must use the moved player position even with the collision cheat enabled.");
+        host.DEBUG_noPlayerCollision = false;
         load(host, 128);
         host.worldObjects[1].posX = 1599;
         host.Tick({}, input);

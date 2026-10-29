@@ -320,10 +320,14 @@ and interpolated terrain support, jumping, crouching and low-room clearance. It 
 `frameTicks` for player substeps and updates the camera/listener before contacts
 and object behaviors. Set `basicPlayerMovementEnabled = false` if the host owns
 movement. `result.playerMovement` reports simulated and blocked substeps.
+The host cheat flag `DEBUG_noPlayerCollision` defaults to false and persists
+across level changes. It bypasses player wall correction and suppresses negative
+`ApplyPlayerLifeDelta` updates, without disabling object interactions or healing.
 The normal standing eye height is 45 native units above terrain; crouched height
 is 28, with the original gradual transitions and changing collision radius.
 `JumpKey` raises a crouched player before jumping; releasing `CrouchKey` does not
-automatically stand. Water contact forces crouching; full swimming is deferred.
+automatically stand. Water contact forces crouching; underwater play is bottom
+walking/crouching, not free swimming.
 `GetPlayerCamera()` returns eye position, not object-center Y; do not add another
 host eye offset. `LookUpKey`, `LookDownKey` and `CenterLookKey` control the
 native horizon with terrain-ahead adjustment and per-frame smoothing.
@@ -339,7 +343,17 @@ and two-instance channel admission. The `player-support` suite covers these
 paths, including original level 23/34 bridge records. See
 [support evidence](player-support-footsteps-evidence.txt) and the
 [support contract](BehaviorRecovery.md#terrain-slopes-bridge-support-and-footsteps).
-Full ceiling collision, swimming and other special contacts remain TODOs. Supply a valid starting
+Teleporters now support manual unlocking/opening, native automatic contact,
+destination heading/eye-height modes and cooldown. Activated ladders provide
+native vertical control; collision-48 ladders suppress terrain sliding/look.
+Behavior 184 supplies the native wall-collision bypass gate. See the
+[special movement contract](BehaviorRecovery.md#teleporters-ladders-and-collision-bypass-volumes)
+and `player-special-*-evidence.txt`; `player-support` also tests original
+level 10/23/36 teleporter records. Vehicle attachment/controllers, several
+contact hazards, oxygen and underwater effects remain deferred. Teleport
+render-table and lighting flags are recorded, not yet rendered; behavior 178's
+possible foil/viewport relationship remains unproven.
+Supply a valid starting
 position, a horizontal view vector, and real map data for walls. See the
 [basic controller contract](BehaviorRecovery.md#basic-horizontal-player-controller).
 
@@ -423,9 +437,9 @@ turn, and interaction actions through `IsKeyPressed(InputKey)`.
 case dispatch for slots 2..164; the console uses this path. Both native
 free-slot allocation methods are available on the context. There is no
 universal velocity or angular-speed integration in the original shared loop.
-Player movement, automatic contact responses other than the door occupancy
-marker, inventory use, platform input, message rendering, and unsupported interactions remain
-explicitly unimplemented. Follow
+Player movement and selected contact/interaction paths run through `Tick`,
+not this low-level loop. Vehicle controllers, several contact hazards and
+unsupported interactions remain incomplete; rendering belongs to the host. Follow
 [Object behavior recovery](BehaviorRecovery.md) for scope, regeneration
 precautions, and unresolved globals. Before future Ghidra-only edits become
 essential, add tested annotation exports/restoration or transfer a project

@@ -24,6 +24,11 @@ namespace Desperabis
             // Player contact keeps a door open even without an interaction-key press.
             object.behaviorParameter = 1;
         }
+        if (object.collisionType == CollisionType::Teleporter)
+        {
+            const auto automatic = context.HandleTeleporterContact(object, false);
+            if (automatic.status != InteractionStatus::NoEffect) { return automatic; }
+        }
         if (!input.IsKeyPressed(InputKey::InteractionKey)) { return { InteractionStatus::NoEffect }; }
         return HandlePlayerObjectInteraction(object, context);
     }
