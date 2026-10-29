@@ -1,0 +1,75 @@
+Original EXE SHA-256:
+219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+
+Bounded raw reads use MZ header size 2D40h plus module segment*16+offset.
+These are original EXE bytes, not relocated Ghidra bytes.
+Do not linearly disassemble floating-emulator operands as ordinary x86.
+
+0000:7C2C (24 bytes; angle extended, amplitude extended, bias float32):
+B8 B9 8C F6 D3 DA 0F C9 F8 3F
+33 33 33 33 33 33 33 F3 FF 3F
+00 00 00 40
+
+Decoded positive extended angle: approximately 0.012271846484375.
+Decoded positive extended amplitude: 1.9.
+Bias: 2.0.
+
+0000:7E54 (75 bytes; selected-source guard, pulse, frame state and redraw):
+83 7E F2 FF 7E 45
+CD 3B 46 F0
+CD 3C 9B 2E 2C 7C
+CD 3A C9
+9A F1 16 E4 2C
+CD 3C 9B 2E 36 7C
+CD 3A C9
+CD 3C 98 06 40 7C
+9A B0 16 E4 2C
+8B D0 A0 B1 2D 30 E4 03 46 F2 6B F8 18 89 95 12 2B
+A0 B1 2D 30 E4 03 46 F2 50 9A FE CA 48 1E
+
+Floating sequence interpretation:
+- emulated FILD signed word [BP-10h] (phase)
+- emulated FLD extended CS:[7C2C], FMULP
+- runtime 2CE4:16F1 (sine; previously traced through runtime dispatch)
+- emulated FLD extended CS:[7C36], FMULP
+- emulated FADD float32 CS:[7C40]
+- runtime 2CE4:16B0 (signed-dword nearest/even conversion)
+- low result word to selected overlay +22; queue selected overlay redraw
+
+Host double-math check, not execution of the original floating emulator:
+Visit phase=(phase+17)&511 for 512 iterations, starting at zero.
+All 512 phases visited exactly once; recurrence ends at zero.
+Resulting rounded shade states: 0,1,2,3,4.
+Minimum distance from a half-integer: approximately 0.002141717576846336.
+This is comfortably away from host-double rounding boundaries.
+No native real-time inventory-loop timing was measured.
+
+DS module 2E9E:02F6 (medicine dose dword):
+33 73 00 00
+Little-endian signed dword 29491 = 0x00007333.
+16.16 life increment approximately 0.4499969482421875.
+
+1E48:D64B (13 bytes; meter helper returns upper-clamp flag, then RETF 8):
+8A 46 FE 88 46 FF 8A 46 FF C9 CA 08 00
+
+Integer transcription of 0000:7A33 checked against these boundary cases.
+Illustrative cap = 100*65536 = 6553600, not an assertion of the game's cap.
+Assumes normal unsuppressed player meter addition; dose d=29491.
+
+Initial life       Initial quantity   Calls   Final life   Final quantity
+cap                5                  1       cap          5
+cap-1              5                  1       cap          5
+cap-d              5                  1       cap          5
+cap-2*d            5                  2       cap          4
+cap-d-1            5                  2       cap          4
+0                  1                  2       58982        0
+0                  0                  0       0            0
+
+All seven cases passed. These checks verify the arithmetic transcription,
+not an end-to-end execution of the DOS inventory or a C++ inventory UI.
+
+All original LEVEL\OBJPOS*.DAT files checked at 54-byte record boundaries:
+OBJPOS34.DAT record=56 mapped-slot=58 collision=93 itemValue=6 GP1=0 behavior=165
+OBJPOS34.DAT record=62 mapped-slot=64 collision=92 itemValue=6 GP1=30 behavior=165
+No other collision-92/93 records were present.
+Mapped slot uses the scaffold's current zero-based-record-index+2 convention.

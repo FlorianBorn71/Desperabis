@@ -141,7 +141,7 @@ The same list supplies gameplay HUD elements and inventory cells.
 | `+16` | Caller-supplied word payload; inventory uses an item/action identifier. |
 | `+18` | Another caller-supplied word selector; exact meaning remains open. |
 | `+20` | State word initialized to zero and cleared on inventory exit; complete animation semantics remain open. |
-| `+22` | Drawing/selection state: inventory changes this between `0` and `2`; setup uses other values too. |
+| `+22` | Frame lookup-table state: focused `0`, ordinary `2`, selected-source pulse `0..4`. Setup also uses other values outside this page. |
 
 The constructor and renderer prefix `1E48:4368` establish that these are
 renderable overlay records, not 54-byte gameplay objects. There is no callback
@@ -157,11 +157,244 @@ y = 10 + row * 46
 payload = 14 - (row * 4 + column)
 ```
 
-Four further records have payloads `100`, `101`, `2`, and `1`. The latter
-two address the hand inventory slots; the exact actions associated with
-`100` and `101` still need their action branches traced.
+The bottom row is registered in this exact left-to-right order:
+
+| X/Y | Raw visual selector | Payload | Meaning |
+| --- | --- | --- | --- |
+| `10,182` | `4` | `100` | Arrow: return to gameplay. |
+| `60,182` | `5` | `101` | Fork/knife: use the selected medicine item. |
+| `110,182` | `2` | `1` | Visually left-hand inventory slot. |
+| `160,182` | `130` (`82h`) | `2` | Visually right-hand inventory slot. |
+
+These are raw selector words, not a claim that every value names a separate
+unmodified image asset. The setup tail `0EF0:07A5..0895` is preserved in
+[inventory-hands-render-evidence.txt](inventory-hands-render-evidence.txt).
 The input loop navigates all sixteen entries as a 4-by-4 logical grid;
-this does not imply that every entry has uniform visual spacing.
+arrows stop at the edges rather than wrapping. This does not imply that
+every entry has uniform visual spacing.
+
+#### Author-provided inventory screenshot
+
+The original-game screenshot confirms twelve backpack frames in three rows
+of four, followed by a separated bottom row: return arrow, fork/knife, and
+two hand slots. A key is visible in the left of the two hand slots.
+The right side contains the health label/bar/percentage and resource icons.
+The author confirms that these right-side icons render fullbright when their
+corresponding inventory resource is present (for example, a nonzero health
+potion amount). This brightness indicates availability, not cursor selection.
+The fork/knife consumes health potion; the arrow closes inventory and resumes
+gameplay. Exact consumption amount, input semantics and native brightness
+calculation are not established by the screenshot alone; the author's subsequent
+functional clarification is recorded below.
+
+The author's second screenshot, with dagger and sword present, shows health
+at 40%, a bright right-side medicine icon with quantity `25`, and a bright
+arrow icon with count `1`; the other resource symbols remain dark. This
+provides a concrete example of availability-dependent brightness independent
+of focus. Items appear as bitmap icons inside the backpack and hand frames;
+no separate 3D item preview is visible. A still screenshot does not establish
+whether any of those bitmap icons animate or whether their pixels were
+produced by the model renderer. The native branches below distinguish these
+cases; the weapon pictures must not be assumed to be stored bitmap assets.
+
+#### Item pictures: stored frames or rendered models
+
+The inventory renderer reads **object byte 50**, currently provisionally named
+`RawGameObject::pickupType`. It is not just a Boolean pickup flag, nor a
+universal bitmap ID. The object also retains its ordinary model and frame
+fields; no weapon-ID-to-icon switch is involved in these drawing branches.
+
+- For model IDs `1..6`, byte 50 selects an image entry within the sprite asset,
+  alongside `modelAnim`. The entry contains offsets and a bitmap pointer,
+  which are passed to palette-aware blitter `1E48:2787`.
+- For model IDs `31..50`, byte-50 values `1..14` select an associated stored
+  bitmap pointer at model-descriptor offset `16Ah + value*4`, again blitted
+  through `2787`.
+- For those same model IDs, byte-50 values `15..220` instead take
+  `1E48:45DD..4673`: the renderer passes the model descriptor, `modelAnim`,
+  `animFrame`, `modelFrame2`, and blend weight to model-render routine
+  `1E48:9C62`. It supplies fixed pose values `30,-60,30`, screen position from
+  the inventory overlay, and depth parameter **`2*byte50 + 50`**.
+  `1E48:A660` maps the object's display mode for this call; it is not the
+  model-projection routine.
+
+Across all original object tables, dagger and sword records have:
+
+| Weapon | `modelId` | `modelAnim` | `animFrame` | Byte 50 | Preview depth |
+| --- | --- | --- | --- | --- | --- |
+| Dagger (`itemValue == 1`) | `39` | `2` | `1` | `22` | `94` |
+| Sword (`itemValue == 2`) | `39` | `2` | `2` | `40` | `130` |
+
+Both therefore use the **model-rendered inventory picture**, not the
+associated-bitmap branch. Their different frame values select their shapes;
+byte 50 adjusts the preview distance/size rather than identifying a separate
+dagger or sword bitmap. This is compatible with a static icon-like appearance
+in a screenshot and does not imply a separate enlarged or rotating preview.
+The existing field/enum names remain unchanged pending a naming decision.
+See [inventory-actions-evidence.txt](inventory-actions-evidence.txt),
+[inventory-icon-evidence.txt](inventory-icon-evidence.txt), and
+[inventory-model-preview-evidence.txt](inventory-model-preview-evidence.txt).
+
+#### Author-confirmed inventory interactions
+
+- Enter selects an item; Enter at another slot moves it or swaps it with the
+  occupied destination. A selected item's frame oscillates from dark to
+  fullbright. The author implemented this by blitting the frame icon with
+  different lookup tables; the recovered sequence is documented below.
+- Escape immediately returns to gameplay, including while an item is selected;
+  it is not a separate first-stage selection-cancel command.
+- The fork/knife consumes only enough health potion to restore full health,
+  rather than exhausting the stored amount. The native loop broadly matches
+  that intent, but has the refund/off-by-one behavior documented below.
+- Weapons are placed in hand slots; left versus right does not inherently change
+  their use. If both hands contain weapons, only one is used. The author
+  tentatively recalls right-hand priority; the native slot-2-first scan now
+  verifies this. The in-game "Haende tauschen" action swaps complete records
+  in slots 1 and 2, using the configurable binding described below.
+  This is not evidence that non-weapons are
+  forbidden in hand slots: the screenshot shows a key in one.
+- There is no general drop or examine action. A few puzzle-specific exceptions
+  allow placing objects such as the mirror or vase; these require their own
+  recovered gameplay branches rather than a universal inventory drop feature.
+- Right-side symbols are quantity indicators, not interactive cells: for example,
+  health-potion percentage and arrow count.
+
+#### Verified selection and action contract
+
+The modal loop at `0000:7C44` keeps **focus and selected source separately**.
+Its selected-source grid index, local `BP-0E`, starts at `-1`; selecting an
+item does not remove it from its slot. At `7D76`, Enter on a live item
+(`health > 0`, payload below 28) with no selected source records that source
+and resets its pulse phase. Otherwise Enter invokes nested helper `7B1E`.
+
+The helper implements these actions:
+
+| Focused payload | Action |
+| --- | --- |
+| `100` | Clear selection and return directly to gameplay, whether or not an item was selected. |
+| `101` | With a source selected, invoke `7A33` on that item. No automatic search for another potion occurs. |
+| `0..27` | With source payload `1..27`, swap the complete 54-byte source/destination records, queue both icons for redraw, and clear selection. |
+
+The visible page only supplies inventory payloads `1..14`. The wider helper
+range is not evidence for extra visible cells. Swapping the selected slot
+with itself is allowed and clears selection. Neither this dispatcher nor
+the swap helper `0000:C4E0` checks collision type to restrict hand slots to
+weapons: keys and other items can be moved there. Escape immediately exits,
+without first requiring selection cancellation.
+
+The fork action handles **only collision type 2 (`Medicine`)**. A selected
+nonmedicine item leaves the selection unchanged; pressing the fork with no
+selection does nothing. Handled medicine clears selection, refreshes the
+resource display in both pages, and clears the entire item record if its
+remaining value is below 1. See
+[inventory-actions-evidence.txt](inventory-actions-evidence.txt).
+
+#### Exact native potion arithmetic
+
+`0000:7A33` uses signed word `itemValue` as the stored quantity. For positive
+quantity it clears auxiliary dword DS:`2DD8`, then runs:
+
+```text
+repeat:
+    quantity -= 1
+    upperClamped = AdjustMeter(playerLife, 0x00007333)
+until upperClamped or quantity < 0
+quantity += 1
+```
+
+The dose is the initialized dword at DS:`02F6`: **29491 raw 16.16 units**,
+approximately `0.4499969482421875` life units, not one whole life point.
+`1E48:D579` adds at value-record offset `+4`, then clamps to
+`maximum << 16` and returns true when the signed value high word is
+**greater than or equal to** the maximum at offset `+2`. It also retains
+the native player-meter suppression gate DS:`2DDD`; the examples below
+assume unsuppressed updates.
+
+The final increment is unconditional after entering the loop. Consequently:
+
+- Already full health consumes no quantity.
+- Filling a gap of at most one dose also consumes no quantity.
+- Exactly two doses of missing life consumes one quantity.
+- If health cannot fill, starting with quantity `q > 0` permits `q+1`
+  adjustment calls and finishes at quantity zero.
+- Starting at quantity zero performs no adjustment; common medicine cleanup
+  still removes the empty record and clears selection.
+
+Thus a simple "ceil missing health / dose" subtraction would **not** reproduce
+the original. Preserve this distinction when deciding the port's compatibility
+policy; no corrected consumption rule has been implemented.
+Raw constants and checked boundary examples are preserved in
+[inventory-pulse-potion-probe.txt](inventory-pulse-potion-probe.txt).
+
+#### Hand priority and gameplay hand swap
+
+`0000:793E` checks native slot **2 before 1**, requiring collision type 21
+(`Weapon`) and health exactly 1000. Together with the setup coordinates this
+verifies **visually right-hand priority**. It then rebuilds the weapon-to-slot
+registry by scanning slots `1..14`; positive weapon IDs are registered and a
+later duplicate replaces the earlier registry entry. Priority of a held
+weapon and duplicate-ID registry precedence are separate rules.
+
+Gameplay keyboard controls at `0000:C717` read binding byte DS:`323F`,
+index key state at DS:`3132 + binding`, and swap slots 1 and 2 only when
+weapon-animation state DS:`DDBB == 0`. Both held-item overlays are queued for
+redraw. The default initializer at `1E48:D8AC` assigns scan code **`0C`**
+(the US-layout minus key; the printed legend depends on keyboard layout).
+Configuration can override it; this is not a hard-coded H action.
+The swap exchanges all 54 bytes. For selected weapon ID 6, `C4E0` also
+updates the active hand reference so it follows the moved object.
+See [inventory-hands-render-evidence.txt](inventory-hands-render-evidence.txt)
+and the existing [keyboard export](player-movement-evidence.txt).
+
+#### Selected-source brightness, not item movement
+
+Local phase `BP-10` advances by **17 modulo 512 per inventory-loop iteration**.
+For a selected source, `0000:7E54..7E9E` computes:
+
+```text
+shade = roundToNearestEven(sin(phase * 0.012271846484375) * 1.9 + 2.0)
+sourceOverlay.frameLookupState = shade
+queueRedraw(sourceOverlay)
+```
+
+The phase factor and amplitude are CS-relative 80-bit constants at
+`7C2C` and `7C36`; the bias at `7C40` is single-precision `2.0`. This is the
+**selected source frame's lookup-table pulse**, not a separate item-movement
+or 3D-preview transform. It covers integer states `0..4`. The current focus
+normally uses state `0` and the previous focus state `2`; the selected-source
+pulse overrides its frame state independently of the current destination.
+
+`1E48:4317` selects lookup address `DS:DC4A + state*256` in rendering mode 10.
+Outside that mode, it instead selects `1900h` for state 0 and `1300h` otherwise.
+This confirms a palette-remapped blit, not modern alpha fading. The source
+loop establishes no milliseconds-based pulse period: exact phase recurrence
+is 512 iterations, with approximately 30 iterations per sine cycle.
+The raw floating-emulator bytes and a 512-phase host-math check are retained
+in [inventory-pulse-potion-probe.txt](inventory-pulse-potion-probe.txt);
+the sine/rounding runtime identification is established separately in
+[Findings.md](Findings.md#rotation-lookup-tables-and-fixed-point-arithmetic).
+
+#### Mirror and vase placement belongs to gameplay
+
+The original object tables contain one mirror and one vase, both in
+`OBJPOS34.DAT`: zero-based records **56** and **62**, corresponding to slots
+58 and 64 under the current record-to-slot mapping. Both have weapon
+`itemValue == 6` and behavior 165; their pickup collision types are 93
+(`MirrorToGrab`) and 92 (`VaseToGrab`). The vase also carries group 30 in
+word 36; the mirror carries zero.
+
+At `0EF0:0CB4`, these collision cases change the object to collision 21
+(`Weapon`), optionally activate the positive word-36 group, and re-enter
+normal weapon pickup. The existing weapon-use branch for ID 6 at
+`0000:ADB8..AE76` copies the held 54-byte record into a world slot, clears
+held health, places it at the camera/player coordinates, sets vertical
+velocity `-10` and negative player heading, and resets words 28, 32, 36 and 42.
+It refuses this operation when the tested map bits satisfy `(pixel & 7) == 1`.
+It does not add a generic inventory drop command or a special modal action.
+Subsequent behavior-165 puzzle physics is outside this inventory analysis.
+See [player-collision-evidence.txt](player-collision-evidence.txt),
+[weapon-trigger-evidence.txt](weapon-trigger-evidence.txt), and the original
+record checks in [inventory-pulse-potion-probe.txt](inventory-pulse-potion-probe.txt).
 
 ### Per-buffer redraw lists
 
@@ -214,15 +447,23 @@ The recovered inventory skeleton is:
 7. On Escape, set application state to `0`; on exit, save focus, reset
    selection/animation state, and call `0000:793E` to rebuild held-weapon indices.
 
-The preview span beginning at `0000:7E5A`, and part of the resource-meter
-drawing, contain Turbo Pascal floating-point emulator sequences. The durable
-export deliberately excludes those sequences rather than treating inline
-emulator data as ordinary instructions. It also exports only the useful prefix
-of some larger routines; an exported range is not a complete function claim.
+The pulse span beginning at `0000:7E5A`, and part of the resource-meter
+drawing, contain Turbo Pascal floating-point emulator sequences. The pulse
+has now been decoded separately above; its raw bytes are retained rather than
+misleading ordinary-x86 mnemonics. The exports still contain only useful
+prefixes of some larger routines; an exported range is not a complete
+function claim.
 
 **Porting implication:** recover page-state/input/action logic separately from
-overlay descriptions and drawing. We have enough evidence for this skeleton,
-but not yet for a complete widget API, every inventory action, or every page.
+overlay descriptions and drawing. The functional modal contract is recovered:
+navigation, selection, swapping, medicine use, exit, hand priority and
+gameplay placement do not need renderer-owned decisions. Remaining visual
+recovery includes full per-item preview animation, the resource percentage/
+text formatting, and the complete right-side availability-to-palette recipe.
+The author's fullbright-when-available rule is confirmed context, not a claim
+that every indicator's native rendering branch has already been decoded.
+Exact DOS loop-to-wall-clock pulse timing also remains unmeasured.
+No inventory implementation or new rendering API has been added.
 The [outer application-flow skeleton](Scaffold/GameContext.cpp) is now
 implemented as `GameContext` members, with native-valued
 [menu enums](Scaffold/ApplicationFlow.h). Page bodies and complete game

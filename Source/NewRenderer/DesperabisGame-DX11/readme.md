@@ -198,6 +198,14 @@ game ticks (33 Hz, as in the original game)
   sphere-fitted orthographic camera and a slow independent rotation with a fixed
   camera-space tilt of about 17 degrees to show their depth. Sprites
   remain flat, preserving their aspect ratio and atlas mapping.
+  Models consisting of one billboard (such as the small key) use that same
+  bitmap-fitting path instead of their conservative world-culling sphere,
+  so their pictures occupy comparable space without changing world bounds.
+  The preview detects these on demand from the existing geometry counts
+  (one anchor position, one polygon, one two-triangle draw call, no submodels);
+  no extra flag is stored on the shared renderable.
+  Bitmap previews fill two-thirds of their available rectangle, centered with
+  their aspect ratio preserved; rotating 3D model fitting is unchanged.
   `RendererDX11::SetItemPreview` retains a shared instance and viewport for
   one render. HUD geometry uses the statically dispatched render context, not a
   renderer virtual hook. The pass runs after world transparency, water and

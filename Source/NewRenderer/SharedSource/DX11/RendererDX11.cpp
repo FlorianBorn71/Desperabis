@@ -280,24 +280,35 @@ void RendererDX11::RenderHudGeometry(const RenderingSettings& settings, Profilin
     const auto item = std::move(m_itemPreview);
     if (item == nullptr) { return; }
     const auto& viewport = m_itemPreviewViewport;
+    const auto& renderable = *item->GetRenderable();
+    const bool isSingleSprite = renderable.m_numPositions == 1 && renderable.m_numPolygons == 1 &&
+        renderable.m_subRenderables.empty() && renderable.m_drawCalls.size() == 1 &&
+        renderable.m_drawCalls[0].m_primitiveCount == 2;
     VisibilityResult elements;
-    if (m_itemPreviewIsSprite)
+    if (m_itemPreviewIsSprite || isSingleSprite)
     {
         const auto& materials = item->GetMaterialOverrides();
-        const Texture* texture = materials.empty() ?
-            item->GetRenderable()->m_drawCalls.at(0).m_material.m_texture : materials[0].m_texture;
+        const auto& material = materials.empty() ?
+            item->GetRenderable()->m_drawCalls.at(0).m_material : materials[0];
+        const Texture* texture = material.m_texture;
         if (texture == nullptr || texture->m_width == 0 || texture->m_height == 0)
         {
             throw std::runtime_error("Pickup sprite preview has no texture.");
         }
-        const float scale = (std::min)(viewport.Width / texture->m_width, viewport.Height / texture->m_height);
+        const float scale = (2.f / 3.f) *
+            (std::min)(viewport.Width / texture->m_width, viewport.Height / texture->m_height);
         const float width = texture->m_width * scale;
         const float height = texture->m_height * scale;
         TextMeshInstance sprite(TextMesh::CreateTexturedQuad(*texture, width, height));
         sprite.SetScale(1.f);
         sprite.SetPosition(viewport.TopLeftX + (viewport.Width - width) * 0.5f,
             viewport.TopLeftY + (viewport.Height - height) * 0.5f);
-        sprite.SetTintColor(item->m_tintColor);
+        Color4 tint = item->m_tintColor;
+        if (!m_itemPreviewIsSprite)
+        {
+            tint = { 255,255,255,static_cast<byte>((std::clamp)(tint.a * material.m_opacity, 0.f, 255.f)) };
+        }
+        sprite.SetTintColor(tint);
         RenderContextDX11 context(*this, elements, settings, stats);
         context.RenderTextMeshes({ &sprite });
         return;
