@@ -23,6 +23,7 @@ public:
 
 	void AddGlyphs(TextureAnim* glyphs, std::string_view characterMapping);
 	void SetSpaceWidth(float width);
+	// DOS 0xFB selects dark red; 0xFA restores the caller color. Controls have no glyph or advance.
 	std::shared_ptr<TextMesh> CreateGlyphMesh(std::string_view text, const Color4& color,
 		HorizontalAlignment horizontalAlignment = HorizontalAlignment::Left,
 		VerticalAlignment verticalAlignment = VerticalAlignment::Top) const;

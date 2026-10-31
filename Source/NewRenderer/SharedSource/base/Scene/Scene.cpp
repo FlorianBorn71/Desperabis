@@ -8,6 +8,8 @@
 #include <Asset/AssetManager.h>
 #include <Asset/TextureAnim.h>
 #include <GamePlay/GamePlay.h>
+#include <cmath>
+#include <stdexcept>
 
 Scene::Scene()
 {
@@ -35,7 +37,7 @@ void Scene::ClearScene()
 	m_lightSources.clear();
 	m_debugGeometry.clear();
 
-	FireAnimationSlot m_fireAnimations[16];
+	for (auto& slot : m_fireAnimations) { slot = {}; }
 	m_fireAnimationInstances.clear();
 }
 
@@ -92,6 +94,9 @@ void Scene::AddRenderableInstance(RenderableInstancePtr inst)
 
 void Scene::RemoveRenderableInstance(RenderableInstancePtr inst)
 {
+    m_fireAnimationInstances.erase(std::remove_if(m_fireAnimationInstances.begin(), m_fireAnimationInstances.end(),
+        [&](const FireAnimationPhase& animation) { return animation.m_targetInstance == inst.get(); }),
+        m_fireAnimationInstances.end());
     m_renderInstances.erase(std::remove(m_renderInstances.begin(), m_renderInstances.end(), inst), m_renderInstances.end());
 }
 
@@ -146,17 +151,31 @@ void Scene::AddDebugGeometry(const std::vector<DebugLine>& lineBuffer)
 
 void Scene::AddFireAnimation(std::shared_ptr<TextureAnim> torchAnim, int targetSlot, float speed)
 {
-    assert(targetSlot >= 0 && targetSlot < 16);
+    if (targetSlot < 0 || targetSlot >= 16 || !torchAnim || torchAnim->m_frames.empty() ||
+        !std::isfinite(speed) || speed <= 0.f)
+    {
+        throw std::invalid_argument("Fire animation requires a valid texture slot, nonempty frames and positive speed.");
+    }
     m_fireAnimations[targetSlot].m_torchAnim = torchAnim;
     m_fireAnimations[targetSlot].m_speed = speed;
 }
 
-void Scene::AddFireAnimationInstance(DrawCallMaterial& targetMaterial)
+void Scene::AddFireAnimationInstance(RenderableInstance& instance, std::size_t materialIndex)
 {
+    auto& targetMaterial = instance.m_materialOverride.at(materialIndex);
     targetMaterial.m_transparencyType = TransparencyMode::Additive; // fire animation = additive
-
+    for (auto& animation : m_fireAnimationInstances)
+    {
+        if (animation.m_targetInstance == &instance && animation.m_materialIndex == materialIndex)
+        {
+            animation.m_textureSlot = targetMaterial.m_textureSlot;
+            return;
+        }
+    }
     FireAnimationPhase& anim = m_fireAnimationInstances.emplace_back();
-    anim.m_targetMaterial = &targetMaterial;
+    anim.m_targetInstance = &instance;
+    anim.m_materialIndex = materialIndex;
+    anim.m_textureSlot = targetMaterial.m_textureSlot;
     anim.m_phase = (float)rand() * 0.001f;
     anim.m_speedMultiplier = 0.8f + fmodf((float)rand() * 0.12527f, 1.0f);
 }
@@ -201,7 +220,7 @@ void Scene::AssignFireAnimations(RenderableInstance& inst)
         if (mat.m_texture != nullptr || mat.m_textureSlot < 0)
             continue;
 
-        AddFireAnimationInstance(mat);
+        AddFireAnimationInstance(inst, static_cast<std::size_t>(i));
         mat.ComputeHash();
     }
     inst.ComputeTransparencyMask();
@@ -212,7 +231,13 @@ void Scene::HandleFireAnimations(double elapsedTime)
     float dt = (float)elapsedTime;
     for (FireAnimationPhase& anim : m_fireAnimationInstances)
     {
-        DrawCallMaterial& mat(*anim.m_targetMaterial);
+        if (anim.m_materialIndex >= anim.m_targetInstance->m_materialOverride.size()) { continue; }
+        DrawCallMaterial& mat = anim.m_targetInstance->m_materialOverride[anim.m_materialIndex];
+        if (mat.m_textureSlot != anim.m_textureSlot) { continue; }
+        if (mat.m_textureSlot < 0 || mat.m_textureSlot >= 16)
+        {
+            throw std::out_of_range("Fire animation material references an invalid texture slot.");
+        }
         const FireAnimationSlot& slot = m_fireAnimations[mat.m_textureSlot];
         if (slot.m_torchAnim == nullptr)
         {

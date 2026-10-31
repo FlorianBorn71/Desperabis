@@ -78,6 +78,8 @@ namespace Desperabis
         bool activated = false;
         switch (object.collisionType)
         {
+        case CollisionType::TriggerTextPrompt:
+            return state.HandleTextPromptContact(object);
         case CollisionType::Teleporter:
             return state.HandleTeleporterContact(object, true);
         case CollisionType::Poison:

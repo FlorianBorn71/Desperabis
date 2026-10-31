@@ -2440,9 +2440,13 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_209, 0x502D };
     }
 
-    DispatchResult Function_TutorialTrigger(RawGameObject&, GameContext&)
+    DispatchResult Function_TutorialTrigger(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::TutorialTrigger, 0x5083 };
+        if (context.OverlapsPlayer(object) && context.FindCollidingObject(object) < 2)
+        {
+            context.HandleTextPromptContact(object);
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::TutorialTrigger, 0x5083 };
     }
 
     DispatchResult Function_SkullInCutScene(RawGameObject&, GameContext&)

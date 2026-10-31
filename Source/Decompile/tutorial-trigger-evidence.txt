@@ -1,0 +1,20 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 0000:5083:2C
+0000:5083  FF 76 FC                 PUSH word ptr [BP + -0x4]
+0000:5086  9A 63 2D 48 2E           CALLF 0x3000:11e3 ; encoded analysis target 2E48:2D63, module 1E48:2D63
+0000:508B  08 C0                    OR AL,AL
+0000:508D  74 19                    JZ 0x1000:50a8 ; logical module target 0000:50A8
+0000:508F  FF 76 FC                 PUSH word ptr [BP + -0x4]
+0000:5092  9A 33 2B 48 2E           CALLF 0x3000:0fb3 ; encoded analysis target 2E48:2B33, module 1E48:2B33
+0000:5097  3D 02 00                 CMP AX,0x2
+0000:509A  7D 0C                    JGE 0x1000:50a8 ; logical module target 0000:50A8
+0000:509C  FF 76 FC                 PUSH word ptr [BP + -0x4]
+0000:509F  A0 CD 04                 MOV AL,[0x4cd]
+0000:50A2  50                       PUSH AX
+0000:50A3  9A 02 C3 AC 20           CALLF 0x2000:cdc2 ; encoded analysis target 20AC:C302, module 10AC:C302
+0000:50A8  EB 66                    JMP 0x1000:5110 ; logical module target 0000:5110
+0000:50AA  3D D4 00                 CMP AX,0xd4
+0000:50AD  75 0D                    JNZ 0x1000:50bc ; logical module target 0000:50BC

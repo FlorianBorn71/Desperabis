@@ -36,6 +36,51 @@ void Font::SetSpaceWidth(float width)
 std::shared_ptr<TextMesh> Font::CreateGlyphMesh(std::string_view text, const Color4& color,
 	HorizontalAlignment horizontalAlignment, VerticalAlignment verticalAlignment) const
 {
+	const auto separator = text.find_first_of("\\\n");
+	if (separator != std::string_view::npos)
+	{
+		auto mesh = std::make_shared<TextMesh>();
+		float y = 0.f;
+		std::size_t start = 0;
+		bool highlighted = false;
+		for (;;)
+		{
+			const auto end = text.find_first_of("\\\n", start);
+			std::string lineText(text.substr(start, end == std::string_view::npos ? end : end - start));
+			if (highlighted) { lineText.insert(lineText.begin(), '\xfb'); }
+			const auto line = CreateGlyphMesh(lineText,
+				color, horizontalAlignment, VerticalAlignment::Top);
+			for (const unsigned char character : lineText)
+			{
+				if (character == 0xfb) { highlighted = true; }
+				else if (character == 0xfa) { highlighted = false; }
+			}
+			mesh->m_extent.x = __max(mesh->m_extent.x, line->m_extent.x);
+			mesh->m_extent.y = __max(mesh->m_extent.y, y + line->m_extent.y);
+			for (const auto& source : line->m_batches)
+			{
+				auto& batch = mesh->m_batches.emplace_back(source);
+				for (auto& vertex : batch.m_vertices) { vertex.m_position.y += y; }
+			}
+			if (end == std::string_view::npos) { break; }
+			start = end + 1;
+			y += 20.f;
+		}
+		float anchorY = 0.f;
+		switch (verticalAlignment)
+		{
+		case VerticalAlignment::Top: break;
+		case VerticalAlignment::Center: anchorY = mesh->m_extent.y * 0.5f; break;
+		case VerticalAlignment::Bottom: anchorY = mesh->m_extent.y; break;
+		default: throw std::invalid_argument("Invalid vertical text alignment.");
+		}
+		for (auto& batch : mesh->m_batches)
+		{
+			for (auto& vertex : batch.m_vertices) { vertex.m_position.y -= anchorY; }
+		}
+		if (Renderer::IsReady()) { mesh->CreateRuntimes(Renderer::Instance()); }
+		return mesh;
+	}
 	auto mesh = std::make_shared<TextMesh>();
 	float penX = 0.f;
 	float minX = 0.f;
@@ -43,9 +88,20 @@ std::shared_ptr<TextMesh> Font::CreateGlyphMesh(std::string_view text, const Col
 	float minY = 0.f;
 	float maxY = 0.f;
 	bool hasGlyphBounds = false;
+	Color4 glyphColor = color;
 
 	for (char character : text)
 	{
+		if (static_cast<unsigned char>(character) == 0xfb)
+		{
+			glyphColor = { 128,0,0,color.a };
+			continue;
+		}
+		if (static_cast<unsigned char>(character) == 0xfa)
+		{
+			glyphColor = color;
+			continue;
+		}
 		const auto glyphIt = m_glyphs.find(character);
 		if (glyphIt == m_glyphs.end())
 		{
@@ -81,10 +137,10 @@ std::shared_ptr<TextMesh> Font::CreateGlyphMesh(std::string_view text, const Col
 			const Vector2 uvTopLeft = frame.m_atlasData.Apply(0.f, 0.f);
 			const Vector2 uvBottomRight = frame.m_atlasData.Apply(1.f, 1.f);
 
-			batchIt->m_vertices.push_back({ { left, top }, uvTopLeft, color });
-			batchIt->m_vertices.push_back({ { right, top }, { uvBottomRight.x, uvTopLeft.y }, color });
-			batchIt->m_vertices.push_back({ { left, bottom }, { uvTopLeft.x, uvBottomRight.y }, color });
-			batchIt->m_vertices.push_back({ { right, bottom }, uvBottomRight, color });
+			batchIt->m_vertices.push_back({ { left, top }, uvTopLeft, glyphColor });
+			batchIt->m_vertices.push_back({ { right, top }, { uvBottomRight.x, uvTopLeft.y }, glyphColor });
+			batchIt->m_vertices.push_back({ { left, bottom }, { uvTopLeft.x, uvBottomRight.y }, glyphColor });
+			batchIt->m_vertices.push_back({ { right, bottom }, uvBottomRight, glyphColor });
 			batchIt->m_indices.insert(batchIt->m_indices.end(),
 				{ firstVertex, firstVertex + 1, firstVertex + 2, firstVertex + 2, firstVertex + 1, firstVertex + 3 });
 

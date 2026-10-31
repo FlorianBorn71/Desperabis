@@ -145,6 +145,10 @@ namespace Desperabis
         };
         // DS:D494..D49A and the byte lookup used by 1E48:1AF9; not in the geometry streams.
         std::array<std::optional<HeightSurface>, 4> heightSurfaces{};
+        std::array<std::uint8_t, 16> textureFileIndices{};
+        std::array<std::vector<std::string>, 16> textureMessages;
+
+        void LoadTextureMessages(std::size_t slot, const std::uint8_t* data, std::size_t size);
 
         void LoadGeometry(const std::uint8_t* data, std::size_t size);
         void BuildCollisionMap();
@@ -354,6 +358,7 @@ namespace Desperabis
         void RequestPlayerCrouch();
         // Native 0000:DA3C: selected cockroach contact uses forward speed, not an interaction key.
         InteractionResult HandleCockroachContact(RawGameObject& object);
+        InteractionResult HandleDamageObjectContact(const RawGameObject& object);
         InteractionResult HandleTeleporterContact(RawGameObject& object, bool interactionPressed);
         // Native 0EF0:0896 scans every matching live destination in slots 2..141.
         void TeleportPlayer(std::int16_t destinationId);
@@ -378,6 +383,7 @@ namespace Desperabis
         // The app owns prompt bytes, lifetime and presentation. Empty text requests a reset on level completion.
         virtual void PromptUserMessage(std::string_view text, std::int16_t duration);
         virtual bool IsUserMessageActive() const;
+        InteractionResult HandleTextPromptContact(RawGameObject& object);
         std::uint16_t Random(std::uint16_t range);
         double RandomReal();
         // Native signed random helper replaces a zero result with the positive radius.

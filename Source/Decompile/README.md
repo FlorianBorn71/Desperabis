@@ -279,6 +279,27 @@ do not mix it with the application's time accumulator. See the
 [runtime integration contract](BehaviorRecovery.md#host-driven-runtime-integration)
 for lifetime, timing, pause, error, and object-copy details.
 
+Tutorial prompts use `CollisionType::TriggerTextPrompt` (210) on contact and
+`BehaviorType::TutorialTrigger` (210) after other overlapping objects disappear.
+`LoadLevelGeometry` resolves level texture slots from `LEVELS.INF`;
+`LoadLevelObjects` decodes referenced `TUR<n>.256` message tables. Each texture
+row contains a length-prefixed DOS string, not rendered text pixels. Object
+`generalPurpose3` selects the texture slot, `itemValue` the zero-based row, and
+`generalPurpose1` the signed prompt duration. Tutorial level 50 uses slot 10,
+`TUR39.256`, with fourteen rows. Negative durations request bottom placement;
+backslashes separate lines. `HandleTextPromptContact` sends the original bytes
+through `PromptUserMessage` and uses `SetObjectHealth` for one-shot removal when
+`behaviorParameter` and the native DS:04CD gate are nonzero.
+See `tutorial-*-evidence.txt` for native dispatch, contact and string-transfer code.
+
+Player contact also handles `DestroyOnCollide` (10), including the tutorial's
+spider web: native `DamageObject(object, 0)` disables collision and advances to
+the destroyed model frame rather than deleting the record. `DamageObj` (49) and
+burning oil puddles apply `-29491 * behaviorParameter` to signed 16.16
+`playerLife` on each selected-contact update, through `ApplyPlayerLifeDelta`.
+They need no interaction key and preserve the native suppression/depletion rules.
+See `player-collision-evidence.txt` at `0000:DB42` and `0000:DBF1`.
+
 `OnObjectCreated(int slot)` and `OnObjectDestroyed(int slot)` are default-empty
 virtual host hooks, delivered immediately on the game thread, including factories
 and interactions called outside `Tick`. Active means `health > 0`; slots 1..165

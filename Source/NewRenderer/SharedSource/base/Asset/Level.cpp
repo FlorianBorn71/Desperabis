@@ -1085,7 +1085,9 @@ bool Level::CreateObjectRenderInstance(Scene& scene, std::shared_ptr<LevelGameOb
         float scale = prop.GetScale();
         bool flipped = prop.FlipSpriteU();
 
-        if (display == GamePlay::DisplayType::SpriteTorchlight || display == GamePlay::DisplayType::SpriteTorchlightTransparent)
+        // Native sprite bank 6 is populated by TrackFireAnimation, even for ordinary sprite display modes.
+        if (modelId == 6 || display == GamePlay::DisplayType::SpriteTorchlight ||
+            display == GamePlay::DisplayType::SpriteTorchlightTransparent)
         {
             textureSlot = prop.GetModelAnim() + 13; // it already subtracts 1, we need to add 12 to rawByte[1]
         }
@@ -1188,7 +1190,8 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
         bool flipped = prop.FlipSpriteU();
 
         if (spriteOverride == nullptr &&
-            (display == GamePlay::DisplayType::SpriteTorchlight || display == GamePlay::DisplayType::SpriteTorchlightTransparent))
+            (modelId == 6 || display == GamePlay::DisplayType::SpriteTorchlight ||
+                display == GamePlay::DisplayType::SpriteTorchlightTransparent))
         {
             textureSlot = prop.GetModelAnim() + 13; // it already subtracts 1, we need to add 12 to rawByte[1]
         }
@@ -1214,7 +1217,7 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
         inst->SetRenderable(inst2->GetRenderable(), inst2->GetBlendTargetRenderable());
         inst->m_uniformScale = inst2->m_uniformScale;
         inst->SetTransformAndUpdate(prop.GetScaledTransform());
-        assignLevelTextures = inst->m_materialOverride[0].m_texture == nullptr;
+        assignLevelTextures = false;
         inst->SetVisible(true);
 		inst->m_tintColor = inst2->m_tintColor;
 		inst->m_fireIntensity = inst2->m_fireIntensity;

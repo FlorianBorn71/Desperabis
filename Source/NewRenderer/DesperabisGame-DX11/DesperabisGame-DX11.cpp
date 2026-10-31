@@ -167,6 +167,7 @@ namespace
 			}
 			m_promptText = text;
 			m_promptTicks = ticks;
+			m_promptBottomAnchored = duration < 0;
 			if (IsUserMessageActive()) { UpdatePromptPosition(); }
 			else { RemovePromptMesh(); }
 		}
@@ -208,7 +209,14 @@ namespace
 		{
 			if (m_promptInstance)
 			{
-				m_promptInstance->SetPosition(g_viewport.Width * 0.5f, g_viewport.Height * 0.5f);
+				const float scale = (std::min)(2.f, g_viewport.Width /
+					(std::max)(1.f, m_promptInstance->GetMesh()->GetExtent().x + 16.f));
+				m_promptInstance->SetScale(scale);
+				const float y = m_promptBottomAnchored ?
+					g_viewport.Height - GetHealthBarHeight() - 16.f -
+						m_promptInstance->GetMesh()->GetExtent().y * scale * 0.5f :
+					g_viewport.Height * 0.5f;
+				m_promptInstance->SetPosition(g_viewport.Width * 0.5f, y);
 			}
 		}
 
@@ -306,6 +314,7 @@ namespace
 		std::shared_ptr<TextMeshInstance> m_healthFill;
 		std::string m_promptText;
 		std::int16_t m_promptTicks = 0;
+		bool m_promptBottomAnchored = false;
 	};
 
 	class GameInput final : public Desperabis::InputHandler
@@ -653,6 +662,7 @@ namespace
 				g_scene->AddRenderableInstance(inst);
 				inst->UpdateGlobalBounds();
 			}
+			else { g_scene->AssignFireAnimations(*inst); }
 
 			// Presentation-only extras (lights, fire texture animations), once per slot. The renderer-side
 			// game object is not added to the scene, so it does not simulate anything itself.

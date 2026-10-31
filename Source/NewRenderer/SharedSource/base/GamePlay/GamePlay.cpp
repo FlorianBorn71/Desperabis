@@ -4,6 +4,7 @@
 #include <Asset/Level.h>
 #include <GamePlay/SimpleBehavior.h>
 #include <algorithm>
+#include <stdexcept>
 
 extern float SkyVerticalScale;
 extern float SkyVerticalOffset;
@@ -478,6 +479,10 @@ namespace GamePlay
         {
             int torchlightTexAnim = rawGo.m_rawBytes[34];
             int targetTexSlot = rawGo.m_rawBytes[44] + 12;
+            if (torchlightTexAnim < 1 || torchlightTexAnim > 7 || targetTexSlot < 13 || targetTexSlot > 15)
+            {
+                throw std::invalid_argument("Flame marker requires animation 1..7 and reserved texture slot 13..15.");
+            }
             std::wstringstream wss;
             wss << L"ANIMS\\FACKEL" << torchlightTexAnim << ".AN2";
             std::shared_ptr<TextureAnim> torchAnim = CO_AWAIT assets.LoadAsset<TextureAnim>(wss.str());

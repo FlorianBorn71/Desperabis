@@ -9,6 +9,7 @@
 #include <IO/FileManagerBuiltIn.h>
 #include <Physics/PhysicsInterface.h>
 #include <Renderer/Camera.h>
+#include <Scene/Scene.h>
 #include <d3d11sdklayers.h>
 #include <cmath>
 #include <cstring>
@@ -103,6 +104,146 @@ namespace
         }
     };
 
+    class FlameScene final : public Scene
+    {
+    public:
+        FUTURE(void) CreateScene() override { CO_RETURN; }
+        std::size_t BindingCount() const { return m_fireAnimationInstances.size(); }
+        bool HasFlameSlot(int slot) const { return m_fireAnimations[slot].m_torchAnim != nullptr; }
+    };
+
+    void CheckTextControls(const Font& font)
+    {
+        const Color4 base{ 204,102,0,190 };
+        const auto plain = font.CreateGlyphMesh("aaa", base);
+        const auto styled = font.CreateGlyphMesh("a\xfb" "a\xfa" "a", base);
+        Check(styled->GetExtent().x == plain->GetExtent().x &&
+            styled->GetBatches().size() == 1, "Color controls must occupy no glyph width or extra batches.");
+        const auto& vertices = styled->GetBatches()[0].m_vertices;
+        Check(vertices.size() == 12, "Text controls must not emit glyphs.");
+        for (std::size_t i = 0; i < vertices.size(); ++i)
+        {
+            const auto expected = i >= 4 && i < 8 ? Color4{ 128,0,0,190 } : base;
+            Check(vertices[i].m_color.r == expected.r && vertices[i].m_color.g == expected.g &&
+                vertices[i].m_color.b == expected.b && vertices[i].m_color.a == expected.a &&
+                vertices[i].m_position.x == plain->GetBatches()[0].m_vertices[i].m_position.x,
+                "0xFB must select dark red and 0xFA restore the caller color, preserving alpha and spacing.");
+        }
+        const auto multiline = font.CreateGlyphMesh("\xfb" "a\\a\xfa" "a", base);
+        Check(multiline->GetBatches().size() == 2 &&
+            multiline->GetBatches()[1].m_vertices[0].m_color.r == 128 &&
+            multiline->GetBatches()[1].m_vertices[4].m_color.g == base.g,
+            "Highlight state must carry over line breaks and reset within the next line.");
+        const auto next = font.CreateGlyphMesh("a", base);
+        Check(next->GetBatches()[0].m_vertices[0].m_color.g == base.g,
+            "Color controls must not leak into subsequent messages.");
+    }
+
+    void CheckTutorialFlames()
+    {
+        auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(50));
+        const auto bytes = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS50.DAT")));
+        {
+            Desperabis::GameContext core;
+            auto web = Desperabis::DecodeGameObject(bytes.data() + 60 * 54, 54);
+            ::RawGameObject object{};
+            Desperabis::EncodeGameObject(web, object.m_rawBytes, 54);
+            object.m_level = level;
+            auto instance = std::make_shared<RenderableInstance>(nullptr);
+            level->ApplyRenderProperties(instance, object);
+            Check(instance->GetVisible(), "Original spider web must initially render.");
+            const auto* intact = instance->GetRenderable();
+            core.DamageObject(web, 0);
+            Desperabis::EncodeGameObject(web, object.m_rawBytes, 54);
+            level->ApplyRenderProperties(instance, object);
+            const auto* destroyed = level->GetLevelInfo().GetModelAnim(web.modelId - 30)->GetModelSafe(
+                web.modelAnim - 1, web.animFrame - 1);
+            Check(instance->GetRenderable() == destroyed && destroyed != intact &&
+                destroyed->m_localBounds.GetSphereRadius() < intact->m_localBounds.GetSphereRadius(),
+                "Walked-through spider web must select the native torn-web geometry.");
+        }
+        FlameScene scene;
+        std::array<RenderableInstancePtr, 3> flames;
+        for (int index = 0; index < 3; ++index)
+        {
+            ::RawGameObject object{};
+            const auto source = Desperabis::DecodeGameObject(bytes.data() + (23 + index) * 54, 54);
+            Desperabis::EncodeGameObject(source, object.m_rawBytes, 54);
+            object.m_level = level;
+            flames[index] = std::make_shared<RenderableInstance>(nullptr);
+            level->ApplyRenderProperties(flames[index], object);
+            if (!flames[index]->GetVisible())
+            {
+                throw std::runtime_error("Tutorial flame fixture is invisible: display " +
+                    std::to_string(static_cast<int>(source.displayType)) + ", model " +
+                    std::to_string(source.modelId) + ", animation " + std::to_string(source.modelAnim));
+            }
+            if (flames[index]->m_materialOverride[0].m_textureSlot != 14)
+            {
+                throw std::runtime_error("Tutorial flame texture slot: " +
+                    std::to_string(flames[index]->m_materialOverride[0].m_textureSlot) +
+                    ", source animation: " + std::to_string(source.modelAnim));
+            }
+            scene.AddRenderableInstance(flames[index]);
+        }
+        Check(scene.BindingCount() == 3, "Each visible fire sprite must have an animation binding.");
+        scene.HandleFireAnimations(0.1);
+        Check(flames[0]->m_materialOverride[0].m_texture == nullptr,
+            "Reserved texture slots are initially unbound until the invisible marker is processed.");
+        for (int slot : { 24,70 })
+        {
+            ::RawGameObject marker{};
+            Desperabis::EncodeGameObject(Desperabis::DecodeGameObject(bytes.data() + (slot - 2) * 54, 54),
+                marker.m_rawBytes, 54);
+            marker.m_level = level;
+            Check(GamePlay::PropertyAccessorBase(marker).GetDisplayType() == GamePlay::DisplayType::Hidden,
+                "Original flame-slot markers are intentionally hidden.");
+            LevelGameObject object(&scene, marker);
+            FORCE_WAIT(GamePlay::CreateObjectBehavior(scene, object, marker));
+        }
+        Check(scene.HasFlameSlot(13) && scene.HasFlameSlot(14),
+            "Hidden markers must load FACKEL1/FACKEL2 into slots 13/14.");
+        scene.HandleFireAnimations(0.1);
+        const auto* firstFrame = flames[0]->m_materialOverride[0].m_texture;
+        Check(firstFrame != nullptr && firstFrame->m_width > 0, "Tutorial flames must resolve an actual animation frame.");
+        bool changed = false;
+        for (int step = 0; step < 10; ++step)
+        {
+            scene.HandleFireAnimations(0.1);
+            changed |= flames[0]->m_materialOverride[0].m_texture != firstFrame;
+        }
+        Check(changed, "Flame frames must advance over time.");
+        for (int index = 0; index < 3; ++index)
+        {
+            ::RawGameObject object{};
+            auto source = Desperabis::DecodeGameObject(bytes.data() + (23 + index) * 54, 54);
+            source.winY += 20;
+            Desperabis::EncodeGameObject(source, object.m_rawBytes, 54);
+            object.m_level = level;
+            level->ApplyRenderProperties(flames[index], object);
+            scene.AssignFireAnimations(*flames[index]);
+        }
+        scene.HandleFireAnimations(0.1);
+        Check(scene.BindingCount() == 3 && flames[0]->m_materialOverride[0].m_texture != nullptr,
+            "Repeated core presentation updates must preserve and rebind native flame sprites.");
+        std::vector<DrawCallMaterial> replacement = flames[0]->m_materialOverride;
+        replacement[0].m_texture = nullptr;
+        flames[0]->m_materialOverride.swap(replacement);
+        scene.AssignFireAnimations(*flames[0]);
+        Check(scene.BindingCount() == 3, "Refreshing a flame material must not duplicate its animation binding.");
+        scene.HandleFireAnimations(0.1);
+        Check(flames[0]->m_materialOverride[0].m_texture != nullptr,
+            "Animation must target the current material after its vector storage is replaced.");
+        scene.RemoveRenderableInstance(flames[0]);
+        flames[0].reset();
+        Check(scene.BindingCount() == 2, "Removing a flame must discard its material binding.");
+        scene.HandleFireAnimations(0.1);
+        scene.ClearScene();
+        Check(scene.BindingCount() == 0 && !scene.HasFlameSlot(13) && !scene.HasFlameSlot(14),
+            "Scene reset must release both flame slots and animation bindings.");
+    }
+
     std::array<Desperabis::RawGameObject, 8> OriginalItems()
     {
         std::array<Desperabis::RawGameObject, 8> items{};
@@ -163,6 +304,35 @@ int main(int argc, char* argv[])
             font.AddGlyphs(fonts[i].get(), ApplicationUi::FontCharacters[i]);
         }
         const auto items = OriginalItems();
+        CheckTextControls(font);
+        CheckTutorialFlames();
+        const auto singleLine = font.CreateGlyphMesh("Nimm den Schl\x81ssel", Color4{ 204,102,0,255 },
+            Font::HorizontalAlignment::Center, Font::VerticalAlignment::Center);
+        const auto multiline = font.CreateGlyphMesh("Nimm den Schl\x81ssel\\Wechsle mit F2 ins \xfbInventar",
+            Color4{ 204,102,0,255 }, Font::HorizontalAlignment::Center, Font::VerticalAlignment::Center);
+        Check(multiline->GetExtent().y == singleLine->GetExtent().y + 20.f,
+            "Tutorial backslash separators must create distinct lines with native 20-pixel spacing.");
+        std::size_t batchIndex = 0;
+        float lineY = 0.f;
+        for (const auto text : { "Nimm den Schl\x81ssel", "Wechsle mit F2 ins \xfbInventar" })
+        {
+            const auto lineMesh = font.CreateGlyphMesh(text, Color4{ 204,102,0,255 },
+                Font::HorizontalAlignment::Center, Font::VerticalAlignment::Top);
+            for (const auto& source : lineMesh->GetBatches())
+            {
+                const auto& actual = multiline->GetBatches().at(batchIndex++);
+                Check(actual.m_vertices.size() == source.m_vertices.size(), "Multiline prompt must preserve every glyph.");
+                for (std::size_t i = 0; i < source.m_vertices.size(); ++i)
+                {
+                    Check(actual.m_vertices[i].m_position.x == source.m_vertices[i].m_position.x &&
+                        actual.m_vertices[i].m_position.y ==
+                            source.m_vertices[i].m_position.y + lineY - multiline->GetExtent().y * 0.5f,
+                        "Each tutorial line must retain independent centering and native vertical spacing.");
+                }
+            }
+            lineY += 20.f;
+        }
+        Check(batchIndex == multiline->GetBatches().size(), "Multiline prompts must not add separator glyphs.");
         const auto dagger = level->GetLevelInfo().GetModelAnim(9)->GetModel(1, 0);
         const auto materialBefore = dagger->m_drawCalls.at(0).m_material;
         RenderingSettings settings;
@@ -188,6 +358,36 @@ int main(int argc, char* argv[])
                 return target.Pixels(device.Get(), context.Get());
             };
             const auto render = [&] { return drawRecipe(core.GetApplicationPresentation()); };
+            {
+                const float black[4]{ 0,0,0,1 };
+                context->ClearRenderTargetView(target.colorView.Get(), black);
+                TextMeshInstance prompt(multiline);
+                prompt.SetScale(1.f);
+                prompt.SetPosition(size.first * 0.5f, size.second * 0.5f);
+                VisibilityResult visible;
+                visible.m_mainCamera = &camera;
+                visible.m_visibleTextMeshInstances.push_back(&prompt);
+                renderer.RenderSceneElements(visible, settings, stats);
+                const auto pixels = target.Pixels(device.Get(), context.Get());
+                std::array<int, 2> linePixels{};
+                int redPixels = 0;
+                const float secondLineTop = size.second * 0.5f - multiline->GetExtent().y * 0.5f + 20.f;
+                for (UINT y = 0; y < size.second; ++y)
+                {
+                    for (UINT x = 0; x < size.first; ++x)
+                    {
+                        if ((pixels[static_cast<std::size_t>(y) * size.first + x] & 0xffffff) != 0)
+                        {
+                            ++linePixels[y < secondLineTop ? 0 : 1];
+                            const auto pixel = pixels[static_cast<std::size_t>(y) * size.first + x];
+                            if ((pixel & 255) > 4 && (pixel & 0xffff00) == 0) { ++redPixels; }
+                        }
+                    }
+                }
+                Check(linePixels[0] > 20 && linePixels[1] > 20,
+                    "Both tutorial prompt lines must render visible glyphs on wide and portrait targets.");
+                Check(redPixels > 20, "Highlighted tutorial text must render actual red pixels.");
+            }
             core.inventory = {};
             const auto baseline = render();
             const float scale = (std::min)(size.first / 360.f, size.second / 240.f);

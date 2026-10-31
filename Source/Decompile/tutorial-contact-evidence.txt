@@ -1,0 +1,30 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 0000:D90B:48
+0000:D90B  2C E8                    SUB AL,0xe8
+0000:D90D  03 75 08                 ADD SI,word ptr [DI + 0x8]
+0000:D910  A1 E9 2D                 MOV AX,[0x2de9]
+0000:D913  A3 5E DC                 MOV [0xdc5e],AX
+0000:D916  EB 0E                    JMP 0x1000:d926 ; logical module target 0000:D926
+0000:D918  C4 BE BC FE              LES DI,[BP + 0xfebc]
+0000:D91C  26 83 7D 2E 00           CMP word ptr ES:[DI + 0x2e],0x0
+0000:D921  75 03                    JNZ 0x1000:d926 ; logical module target 0000:D926
+0000:D923  E8 E9 F4                 CALL 0x1000:ce0f ; logical module target 0000:CE0F
+0000:D926  E9 B4 03                 JMP 0x1000:dcdd ; logical module target 0000:DCDD
+0000:D929  3C D2                    CMP AL,0xd2
+0000:D92B  75 10                    JNZ 0x1000:d93d ; logical module target 0000:D93D
+0000:D92D  FF 36 60 DC              PUSH word ptr [0xdc60]
+0000:D931  A0 CD 04                 MOV AL,[0x4cd]
+0000:D934  50                       PUSH AX
+0000:D935  9A 02 C3 AC 20           CALLF 0x2000:cdc2 ; encoded analysis target 20AC:C302, module 10AC:C302
+0000:D93A  E9 A0 03                 JMP 0x1000:dcdd ; logical module target 0000:DCDD
+0000:D93D  3C FA                    CMP AL,0xfa
+0000:D93F  75 0E                    JNZ 0x1000:d94f ; logical module target 0000:D94F
+0000:D941  C4 BE BC FE              LES DI,[BP + 0xfebc]
+0000:D945  26 8B 45 22              MOV AX,word ptr ES:[DI + 0x22]
+0000:D949  A3 5E DC                 MOV [0xdc5e],AX
+0000:D94C  E9 8E 03                 JMP 0x1000:dcdd ; logical module target 0000:DCDD
+0000:D94F  3C 7F                    CMP AL,0x7f
+0000:D951  75 0E                    JNZ 0x1000:d961 ; logical module target 0000:D961

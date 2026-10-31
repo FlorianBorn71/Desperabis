@@ -10,6 +10,22 @@ namespace Desperabis
             return { InteractionStatus::NoEffect };
         }
         auto& object = context.worldObjects[context.playerCollisionSlot];
+        if (object.collisionType == CollisionType::DestroyOnCollide)
+        {
+            if (!context.behaviorDispatchEnabled) { return { InteractionStatus::NoEffect }; }
+            context.DamageObject(object, 0);
+            return { InteractionStatus::Applied };
+        }
+        if (object.collisionType == CollisionType::DamageObj ||
+            (object.collisionType == CollisionType::BurnableOilPuddle &&
+                static_cast<std::uint8_t>(object.displayType) > 49))
+        {
+            return context.HandleDamageObjectContact(object);
+        }
+        if (object.collisionType == CollisionType::TriggerTextPrompt)
+        {
+            return context.HandleTextPromptContact(object);
+        }
         if (object.collisionType == CollisionType::TriggerActivation ||
             object.collisionType == CollisionType::DeadBullHead)
         {

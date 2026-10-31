@@ -47,7 +47,7 @@ public:
     void AddDebugGeometry(const std::vector<DebugLine>& lineBuffer);
 
     void AddFireAnimation(std::shared_ptr<TextureAnim> torchAnim, int targetSlot, float speed);
-    void AddFireAnimationInstance(DrawCallMaterial& targetMaterial);
+    void AddFireAnimationInstance(RenderableInstance& instance, std::size_t materialIndex);
     void AssignFireAnimations(RenderableInstance& inst);
     void HandleFireAnimations(double elapsedTime);
 
@@ -101,7 +101,9 @@ protected:
     {
         float m_phase;
         float m_speedMultiplier;
-        DrawCallMaterial* m_targetMaterial;
+        RenderableInstance* m_targetInstance;
+        std::size_t m_materialIndex;
+        int m_textureSlot;
     };
 
     std::unique_ptr<PhysicsWorld> m_physicsWorld;
@@ -131,4 +133,3 @@ protected:
 
     bool m_sceneReady = false;
 };
-

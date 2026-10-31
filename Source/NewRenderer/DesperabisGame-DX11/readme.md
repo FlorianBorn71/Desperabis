@@ -3,6 +3,16 @@
 Standalone DX11 host with core-owned nonblocking gameplay, inventory and a
 first-pass main menu. On startup it loads the training level (50).
 
+Flame markers (`TrackFireAnimation`, 202) load `FACKEL<n>.AN2` into reserved
+texture slots 13..15. Native sprite bank 6 uses its one-based animation row to
+select those slots, including ordinary transparent sprites in the tutorial;
+torch-display sprites and model materials share the same animation bindings.
+Sprite updates retain their explicit material instead of overwriting it with
+level wall textures. Animation bindings survive material-vector replacement,
+are refreshed after core-state presentation updates, and are removed with their
+renderable instances. The existing renderer supplies independent flame phases
+and its approximate animation speeds; this is not DOS-frame-exact timing.
+
 Both standalone project and solution builds write to the repository's `Bin` folder:
 Release uses `Bin`, and Debug uses `Bin\Debug`.
 
@@ -306,6 +316,12 @@ The project links against `Desperabis-GameCore`. `GameAppContext` in
   the original letter banks end in o-umlaut, u-umlaut, a-umlaut order.
   no UTF-8 or Windows code-page conversion is applied.
   `GameAppContext::PromptUserMessage` owns the text and countdown and updates the text mesh directly,
+  including tutorial texture-row prompts. Backslashes split independently centered lines at
+  20 native pixels; negative durations place the block above the health bar. Long prompts
+  scale down to fit the viewport width, including portrait windows.
+  Glyph generation interprets DOS byte `0xFB` as dark red (`RGB(128, 0, 0)`) and
+  `0xFA` as restoring the caller's color. Controls consume no glyph width; the
+  style persists across line breaks but never leaks into another message.
   with no host adapter, forwarded callback or message polling. The core queries the app's active
   state only to gate locked-door feedback. Advanced frame ticks control visibility without an
   additional wall-clock timer or fade. Replacement, refresh, expiration, level changes and viewport

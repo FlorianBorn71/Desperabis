@@ -698,6 +698,20 @@ namespace Desperabis
         data.level = std::move(loadedLevel);
         data.floorRepeatHeight = repeatHeight;
         data.ambientSound = info[recordOffset + 100];
+        if (info[recordOffset] > 15)
+        {
+            throw std::invalid_argument("LEVELS.INF has too many texture slots.");
+        }
+        for (std::size_t i = 0; i < info[recordOffset]; ++i)
+        {
+            const auto file = info[recordOffset + 4 + 2 * i];
+            const auto slot = info[recordOffset + 5 + 2 * i];
+            if (slot >= data.level->textureFileIndices.size())
+            {
+                throw std::invalid_argument("LEVELS.INF has an invalid texture slot.");
+            }
+            data.level->textureFileIndices[slot] = file;
+        }
     }
 
     void GameContext::LoadLevelObjects(std::int16_t levelNumber, LevelLoadData& data)
@@ -719,6 +733,24 @@ namespace Desperabis
             const auto offset = (slot - firstSlot) * recordSize;
             data.objects[slot] = offset < payload.size() ?
                 DecodeGameObject(payload.data() + offset, recordSize) : RawGameObject{};
+        }
+        if (data.level)
+        {
+            for (const auto& object : data.objects)
+            {
+                if (object.health <= 0 || (object.behavior != BehaviorType::TutorialTrigger &&
+                    object.collisionType != CollisionType::TriggerTextPrompt)) { continue; }
+                const auto slot = object.generalPurpose3;
+                if (WrapSignedWord(slot) <= 0) { continue; }
+                if (slot >= data.level->textureFileIndices.size() || data.level->textureFileIndices[slot] == 0)
+                {
+                    throw std::invalid_argument("Text prompt references an unavailable level texture slot.");
+                }
+                if (!data.level->textureMessages[slot].empty()) { continue; }
+                const auto texture = LoadFile("GRAFIK\\TUR" +
+                    std::to_string(data.level->textureFileIndices[slot]) + ".256");
+                data.level->LoadTextureMessages(slot, texture.data(), texture.size());
+            }
         }
     }
 
@@ -1068,6 +1100,12 @@ namespace Desperabis
         if (object.behaviorParameter == 0) { return { InteractionStatus::NoEffect }; }
         object.velocityX = 0;
         object.velocityZ = 0;
+        return HandleDamageObjectContact(object);
+    }
+
+    InteractionResult GameContext::HandleDamageObjectContact(const RawGameObject& object)
+    {
+        if (object.behaviorParameter == 0) { return { InteractionStatus::NoEffect }; }
         ApplyPlayerLifeDelta(-29491 * static_cast<std::int32_t>(object.behaviorParameter));
         playerHitEffectTicks = 8;
         return { InteractionStatus::Applied };
@@ -2978,6 +3016,48 @@ namespace Desperabis
         }
         if (!audioHandler) { return PlaySoundEffect(effect, volume, 0, instanceLimit); }
         throw std::invalid_argument("Object sound sources must belong to GameContext::worldObjects.");
+    }
+
+    void Level::LoadTextureMessages(std::size_t slot, const std::uint8_t* data, std::size_t size)
+    {
+        if (slot >= textureMessages.size() || !data || size < 4)
+        {
+            throw std::invalid_argument("Text prompt texture requires a valid slot and four-byte header.");
+        }
+        const auto width = std::size_t{1} + data[0] + (std::size_t{data[1]} << 8);
+        const auto height = std::size_t{1} + data[2] + (std::size_t{data[3]} << 8);
+        if (size - 4 != width * height)
+        {
+            throw std::invalid_argument("Text prompt texture dimensions do not match its payload.");
+        }
+        std::vector<std::string> rows;
+        rows.reserve(height);
+        for (std::size_t row = 0; row < height; ++row)
+        {
+            const auto* text = data + 4 + row * width;
+            if (text[0] >= width)
+            {
+                throw std::invalid_argument("Text prompt row length exceeds the texture width.");
+            }
+            rows.emplace_back(reinterpret_cast<const char*>(text + 1), text[0]);
+        }
+        textureMessages[slot] = std::move(rows);
+    }
+
+    InteractionResult GameContext::HandleTextPromptContact(RawGameObject& object)
+    {
+        if (WrapSignedWord(object.generalPurpose3) > 0)
+        {
+            const auto slot = object.generalPurpose3;
+            if (!level || slot >= level->textureMessages.size() ||
+                object.itemValue < 0 || static_cast<std::size_t>(object.itemValue) >= level->textureMessages[slot].size())
+            {
+                throw std::out_of_range("Text prompt references an unavailable texture or row.");
+            }
+            PromptUserMessage(level->textureMessages[slot][object.itemValue], WrapSignedWord(object.generalPurpose1));
+        }
+        if (behaviorDispatchEnabled && object.behaviorParameter > 0) { SetObjectHealth(object, 0); }
+        return { InteractionStatus::Applied };
     }
 
     void GameContext::PromptUserMessage(std::string_view, std::int16_t)
