@@ -1,0 +1,33 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 10AC:5556:48
+10AC:5556  C8 02 00 00              ENTER 0x2,0x0
+10AC:555A  8B 46 08                 MOV AX,word ptr [BP + 0x8]
+10AC:555D  F7 66 04                 MUL word ptr [BP + 0x4]
+10AC:5560  50                       PUSH AX
+10AC:5561  58                       POP AX
+10AC:5562  C1 F8 05                 SAR AX,0x5
+10AC:5565  03 06 D2 D4              ADD AX,word ptr [0xd4d2]
+10AC:5569  89 46 08                 MOV word ptr [BP + 0x8],AX
+10AC:556C  8B 46 06                 MOV AX,word ptr [BP + 0x6]
+10AC:556F  F7 66 04                 MUL word ptr [BP + 0x4]
+10AC:5572  50                       PUSH AX
+10AC:5573  58                       POP AX
+10AC:5574  C1 F8 05                 SAR AX,0x5
+10AC:5577  03 06 D6 D4              ADD AX,word ptr [0xd4d6]
+10AC:557B  89 46 06                 MOV word ptr [BP + 0x6],AX
+10AC:557E  FF 76 08                 PUSH word ptr [BP + 0x8]
+10AC:5581  FF 76 06                 PUSH word ptr [BP + 0x6]
+10AC:5584  6A 38                    PUSH 0x38
+10AC:5586  6A 00                    PUSH 0x0
+10AC:5588  9A 8B CF 48 2E           CALLF 0x3000:b40b ; encoded analysis target 2E48:CF8B, module 1E48:CF8B
+10AC:558D  08 C0                    OR AL,AL
+10AC:558F  B0 00                    MOV AL,0x0
+10AC:5591  75 01                    JNZ 0x2000:6054 ; logical module target 10AC:5594
+10AC:5593  40                       INC AX
+10AC:5594  88 46 FF                 MOV byte ptr [BP + -0x1],AL
+10AC:5597  8A 46 FF                 MOV AL,byte ptr [BP + -0x1]
+10AC:559A  C9                       LEAVE
+10AC:559B  C2 06 00                 RET 0x6

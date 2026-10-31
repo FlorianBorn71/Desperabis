@@ -415,6 +415,14 @@ Automatic activation volumes now wake matching groups: level 12's invisible
 slot-22 trigger wakes its three paused mummies without an interaction key. See
 [mummy behavior](BehaviorRecovery.md#mummie-and-mummieguard) for exact semantics
 and the remaining renderer disappearance-shading limitation.
+`SpiderLarge`, `Harvestman`, `Devil` and `Gorilla` are also implemented from
+their native helpers, including white-spider/harvestman ceiling release,
+contact damage, devil leap attacks, death poses and the spider's ballistic
+slime-to-puddle animation. Enemy state remains object-local, with context-owned
+RNG/player-life/collision services and no new mutable globals. All 64 original
+enemy records are tested; the shared mummy regression remains intact. See
+[four enemy behaviors](BehaviorRecovery.md#spiderlarge-harvestman-devil-and-gorilla).
+`FlyingArrow` is currently recovered only for slime variants 3/103.
 Pillar's case and point writer, plus the object-local IdleAnimation and
 SmokeFading cases, Flies, two switch behaviors, WaterDrop, LightSource, PulsatingLight, ordinary
 doors, RatAndSnake, FloatingDebris, LevelStartOverride, behavior 18, and the fireplace/crater particle paths are implemented

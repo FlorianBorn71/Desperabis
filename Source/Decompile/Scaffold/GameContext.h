@@ -427,6 +427,7 @@ namespace Desperabis
         // Original 1E48:2B33, one source-slot word; returns a slot or zero.
         std::uint16_t FindCollidingObject(std::int16_t sourceSlot) const;
         std::uint16_t FindCollidingObject(const RawGameObject& source) const;
+        int FindWorldObjectSlot(const RawGameObject& object) const;
         // Original 1E48:2D63: no player-health test.
         bool OverlapsPlayer(const RawGameObject& source) const;
         // Original 0000:CE9E, including its later-slot preference rule.
@@ -483,7 +484,6 @@ namespace Desperabis
         std::optional<InputKey> navigationRepeatKey;
         double navigationRepeatSeconds = 0;
         bool applicationPageChanged = false;
-        int FindWorldObjectSlot(const RawGameObject& object) const;
         void NotifyObjectCreated(const RawGameObject& object);
         void UpdateWeaponSelection();
         void CommitWeaponSelection();

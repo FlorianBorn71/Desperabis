@@ -139,6 +139,61 @@ namespace
             "Color controls must not leak into subsequent messages.");
     }
 
+    void CheckEnemyModels()
+    {
+        auto* gorillaLevel = FORCE_GET(AssetManager::Instance().LoadLevel(16));
+        const auto gorillaBytes = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS16.DAT")));
+        auto gorilla = Desperabis::DecodeGameObject(gorillaBytes.data(), 54);
+        Check(gorilla.behavior == Desperabis::BehaviorType::Gorilla, "Expected original gorilla fixture.");
+        gorilla.health = 1000;
+        gorilla.displayType = Desperabis::DisplayType::VectorNormal;
+        gorilla.modelFrame2 = 16;
+        gorilla.blendWeightOrSpriteOpacity = 50;
+        ::RawGameObject raw{};
+        Desperabis::EncodeGameObject(gorilla, raw.m_rawBytes, 54);
+        raw.m_level = gorillaLevel;
+        GamePlay::PropertyAccessorBase properties(raw);
+        Check(properties.GetModelAnim2() == 1 && properties.GetModelFrame2() == 0,
+            "Gorilla packed target 16 must decode to bank 1/frame 0, like mummy.");
+        auto instance = std::make_shared<RenderableInstance>(nullptr);
+        gorillaLevel->ApplyRenderProperties(instance, raw);
+        auto model = gorillaLevel->GetLevelInfo().GetModelAnim(gorilla.modelId - 30);
+        Check(instance->GetVisible() && instance->GetBlendTargetRenderable() == model->GetModelSafe(1, 0) &&
+            instance->GetBlendTargetRenderable() != nullptr && instance->m_blendWeight == 0.5f,
+            "Gorilla attack blending must resolve the real target-bank mesh.");
+
+        auto* spiderLevel = FORCE_GET(AssetManager::Instance().LoadLevel(50));
+        const auto spiderBytes = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS50.DAT")));
+        auto slime = Desperabis::DecodeGameObject(spiderBytes.data() + (44 - 2) * 54, 54);
+        Check(slime.behavior == Desperabis::BehaviorType::SpiderLarge, "Expected original white spider fixture.");
+        slime.behavior = Desperabis::BehaviorType::FlyingArrow;
+        slime.health = 100;
+        slime.modelAnim = 2;
+        slime.animFrame = 1;
+        slime.modelFrame2 = 0;
+        slime.blendWeightOrSpriteOpacity = 0;
+        slime.displayType = Desperabis::DisplayType::VectorNormal;
+        Desperabis::EncodeGameObject(slime, raw.m_rawBytes, 54);
+        raw.m_level = spiderLevel;
+        spiderLevel->ApplyRenderProperties(instance, raw);
+        model = spiderLevel->GetLevelInfo().GetModelAnim(slime.modelId - 30);
+        Check(instance->GetVisible() && instance->GetRenderable() == model->GetModelSafe(1, 0) &&
+            instance->GetRenderable() != nullptr, "Airborne slime must use the spider's real second animation bank.");
+        slime.animFrame = 3;
+        slime.modelFrame2 = 2;
+        slime.blendWeightOrSpriteOpacity = 60;
+        Desperabis::EncodeGameObject(slime, raw.m_rawBytes, 54);
+        spiderLevel->ApplyRenderProperties(instance, raw);
+        Check(instance->GetRenderable() == model->GetModelSafe(1, 2) &&
+            instance->GetBlendTargetRenderable() == model->GetModelSafe(1, 1) &&
+            instance->GetRenderable() != nullptr && instance->GetBlendTargetRenderable() != nullptr,
+            "Slime impact/dissolve must resolve both real puddle morph targets.");
+        Check(std::fabs(instance->m_blendWeight - 0.6f) < 0.00001f,
+            "Slime dissolve must forward the native blend weight.");
+    }
+
     void CheckTutorialFlames()
     {
         auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(50));
@@ -306,6 +361,7 @@ int main(int argc, char* argv[])
         const auto items = OriginalItems();
         CheckTextControls(font);
         CheckTutorialFlames();
+        CheckEnemyModels();
         const auto singleLine = font.CreateGlyphMesh("Nimm den Schl\x81ssel", Color4{ 204,102,0,255 },
             Font::HorizontalAlignment::Center, Font::VerticalAlignment::Center);
         const auto multiline = font.CreateGlyphMesh("Nimm den Schl\x81ssel\\Wechsle mit F2 ins \xfbInventar",

@@ -1,4 +1,5 @@
 #include "BehaviorDispatch.h"
+#include "GameMath.h"
 
 namespace Desperabis
 {
@@ -34,6 +35,23 @@ namespace Desperabis
         if (object.collisionType == CollisionType::Cockroach)
         {
             return context.HandleCockroachContact(object);
+        }
+        if (object.collisionType == CollisionType::SpiderLarge ||
+            object.collisionType == CollisionType::Harvestman)
+        {
+            object.velocityX = 0;
+            object.velocityZ = 0;
+            const auto angle = GetVectorAngle(WrapSignedWord(context.soundListenerX - object.posX),
+                WrapSignedWord(context.soundListenerZ - object.posZ));
+            object.generalPurpose2 = static_cast<std::uint16_t>(((angle + 256) & 511) - 512);
+            object.winY = WrapSignedWord(object.generalPurpose2);
+            context.ApplyPlayerLifeDelta(-29491 * object.behaviorParameter);
+            context.playerHitEffectTicks = 8;
+            return { InteractionStatus::Applied };
+        }
+        if (object.collisionType == CollisionType::Devil)
+        {
+            return context.HandleDamageObjectContact(object);
         }
         if (object.collisionType == CollisionType::Door)
         {

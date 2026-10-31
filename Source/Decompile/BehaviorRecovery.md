@@ -240,7 +240,8 @@ case BehaviorType::BatIndoor:
     return Function_BatIndoor(object, context);
 ```
 
-Pillar, LightSource, PulsatingLight, Door, Flies, RatAndSnake, BatIndoor, Mummie, MummieGuard, FloatingDebris, behavior 18, FireParticle, BurningFireplace,
+Pillar, LightSource, PulsatingLight, Door, Flies, RatAndSnake, BatIndoor, Mummie, MummieGuard,
+SpiderLarge, Harvestman, Devil, Gorilla, FloatingDebris, behavior 18, FireParticle, BurningFireplace,
 IdleAnimation, SmokeFading, SpawnInCrater, Switch1, SwitchGrouped, WaterDrop, LevelStartOverride,
 and DisabledSentinel return `ExecutedCase`. The other
 handlers return `UnimplementedHandler` without moving objects or writing
@@ -325,7 +326,8 @@ Ordinary mummy selector `35`, body `0000:1CE2`, calls the common mummy/gorilla
 helper `10AC:5FE0..6564` once per behavior tick, but only when signed `health`
 is below 1001. Its parameters are speed 3, animation increment 8, terrain-relative
 height 30, fading death enabled and random pausing enabled. See
-[native helper and wrappers](mummy-evidence.txt). Gorilla is not implemented here.
+[native helper and wrappers](mummy-evidence.txt). Gorilla reuses this implementation;
+its parameter differences are documented below.
 
 * **Alive (`generalPurpose1 == 0`):** restore hidden models and collision mask
   254; snap Y to the interpolated terrain floor plus 30. Toggle `spriteScale`
@@ -393,7 +395,7 @@ sound at full volume, and approaches blend 100 by wrapped `ticks * 17`. On
 completion, select the target frame and set behavior `None`. Zero-tick opening
 frames still request sound.
 
-The renderer bridge decodes ordinary mummies' packed target bank/frame and uses
+The renderer bridge decodes ordinary mummies' and gorillas' packed target bank/frame and uses
 that bank for both initial creation and live model blending. Other behaviors
 retain their existing target-frame interpretation. Native display-mode
 progression 30..35 is preserved; the renderer's existing generic treatment of
@@ -410,6 +412,89 @@ bounds, damage-before-wake ordering, wrapped group arithmetic and lifecycle
 callbacks. The actual level-12 object table verifies slot 22 waking all three
 original dormant mummies; a host-driven zero-tick frame verifies automatic
 activation before the subsequent movement frame.
+
+## SpiderLarge, Harvestman, Devil and Gorilla
+
+Selectors **36..39** are recovered from the
+[dispatch wrappers](four-enemy-dispatch-evidence.txt), using one native helper
+substep per behavior tick. Mutable state stays in each 54-byte object; RNG,
+player life, terrain, collision maps and audio belong to `GameContext`. There
+are no new mutable process globals or cross-context enemy caches.
+
+* **SpiderLarge (36):** [helper `10AC:6567..6BB0`](spider-large-evidence.txt)
+  runs only at health/state exactly 1000. Ground mode 0 uses the absolute
+  **pre-substep** `velocityY` as horizontal speed, terrain +10, random pauses,
+  wandering/pursuit, steering by 10..19, and a three-frame walk cycle. Wall
+  avoidance retries up to 16 neighborhood queries (mask `0x38`, correction
+  step 2), turning by 64 at speed 6; exhaustion uses `HandleBlockedObject`.
+  An aligned heading (signed difference /10 equals zero), zero cooldown and
+  `Random(30)==0` spawn slime and set cooldown 50. Heading within /20 accelerates
+  the next substep's speed; otherwise it decays toward 1. Contact stops X/Z,
+  installs the original negative retreat heading, and applies byte-52 damage
+  with hit ticks 8. Death mode 1 falls/rolls into its permanent corpse.
+  White ceiling spiders retain release modes 2/3 and falling mode 4 before
+  entering ground movement; dormant health >1000 is not force-woken.
+* **Harvestman (37):** [helper `10AC:6BB3..7146`](harvestman-evidence.txt)
+  uses speed 2, terrain +9, radii 8/5, random distinct walk targets 1..4,
+  pursuit draws and 16-query wall avoidance (step 4), then steering by 16.
+  Mode 2 keeps the ceiling pose oscillating until listener distance <140;
+  mode 3 falls, unfolds and settles, and mode 10 restores the walking bank.
+  Other nonstandard live modes release below distance 130. Contact shares
+  the large-spider retreat/damage path. Mode 1 collapses to a permanent corpse.
+  Unlike SpiderLarge/Gorilla, this wrapper has no health-1000 activation gate.
+* **Devil (38):** [helper `10AC:7149..7761`](devil-evidence.txt) and
+  [its final instructions/support](enemy-attack-support-evidence.txt) preserve
+  the full mode sequence: aim/idle (0), preparation (2/3), attack sound/pose
+  (4), accelerating windup (5), ballistic leap (6), landing recovery (7/8),
+  optional retreat/run (11), and line-of-sight release (10).
+  Aim steers by 17; floor height is +23. Windup sets upward velocity 14;
+  the leap decrements it and adds its arithmetic half to Y. Walls reverse
+  the relevant velocity to minus its sign and set a 10..29 retreat timer.
+  Distance <70 during the leap stops translation/ascent and applies byte-52
+  life damage with hit ticks 6; ordinary selected contact uses hit ticks 8.
+  Mode 10 uses the [native 2..30 /32 samples](enemy-sight-evidence.txt)
+  with wrapped word products and collision mask `0x38`. Death mode 1 settles
+  and fades the collapse blend to a permanent corpse.
+* **Gorilla (39):** shares `10AC:5FE0` with Mummie, with speed **5**,
+  animation increment **13**, floor offset **30**, and both random pausing
+  and death disappearance disabled. It retains the signed health <1001 gate,
+  alternating movement, pursuit, wall correction, distance-based attacks and
+  packed bank/frame targets 11/16. Death completes the shared bank-3 collapse,
+  then sets behavior `None`; health stays 1000 and no fading smoke is created.
+
+### Spider slime flight and puddle
+
+The [factory](enemy-attack-support-evidence.txt), `10AC:4106` variant 3,
+uses the existing **FlyingArrow (41)** behavior/collider, not a new selector.
+It copies the source model ID, selects one-based animation bank **2**, frame 1,
+sets life 100, collision mask 1, radii 7/7, upward velocity 7, horizontal speed
+7 from the clamped direction table, placement 1, byte-52 damage **95**, and
+`itemValue=3`. Spawn Y is at least interpolated terrain +8. The lowest-health
+allocator and `ReplaceWorldObject` preserve immediate renderer notifications;
+if fallback slot 165 aliases the source, stop the spider substep after replacement
+instead of overwriting the initialized projectile.
+
+[Flight helper `10AC:47BA..4D7A`](slime-flight-evidence.txt), reached through
+the [projectile wrapper](slime-projectile-dispatch-evidence.txt), moves X/Y/Z
+every substep and subtracts gravity **every second substep**. Wall contact
+stops horizontal movement and makes vertical velocity downward. Strictly below
+the floor, clamp Y, clear all velocities, set `itemValue=103`, and morph
+bank-2 frame **3 toward 2**. Dissolving advances blend by 6 per substep and
+removes the object on a later substep starting at blend >=100.
+Player overlap applies damage once, sets hit ticks 10 for nonzero strength,
+and clears byte 52; a puddle cannot continuously damage the player.
+Removal uses `SetObjectHealth` so its renderer instance disappears immediately.
+Other FlyingArrow factory variants remain explicitly unrecovered.
+
+`four-enemy-behaviors` covers all **37 large spiders, 7 harvestmen, 6 devils
+and 14 gorillas** from original object tables, activated/dormant dispatch,
+120 substeps per activated fixture on its actual terrain/collision map,
+zero/batched ticks, isolated contexts/RNG, contact/death, ceiling release,
+devil windup/leap/recovery, native Gorilla parameters, slime factory fields,
+independent half-rate-gravity reference, puddle morph/damage/expiration,
+creation/destruction hooks and fallback-source aliasing.
+DX11 UI tests resolve actual Gorilla target-bank and slime/puddle meshes.
+The existing full-record/RNG mummy regression tests remain unchanged.
 
 ## Globals and dependencies
 

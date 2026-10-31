@@ -239,6 +239,11 @@ The project links against `Desperabis-GameCore`. `GameAppContext` in
   Originally paused mummies retain their native health/state >1000 gate until
   an activation volume wakes them. Level 12's invisible trigger now activates
   its three group-1 mummies automatically on player overlap.
+  Large spiders (including white ceiling spiders), harvestmen, devils and gorillas
+  now use their native object-local movement/attack/death states. Spider spit uses
+  the original model's second animation bank, half-rate gravity and a dissolving
+  impact puddle; no substitute texture or global enemy state is needed.
+  Gorillas share mummy packed walk/attack-bank blending but leave permanent corpses.
   Disappearance display modes 30..35 are forwarded, but their original shading
   is not yet reproduced by the renderer's generic 30..37 handling.
   Skeleton death creates moving body parts and a pickable sword. `WeaponDamageCollider` (2)

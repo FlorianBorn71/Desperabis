@@ -24,6 +24,7 @@ add_library(behavior-recovery STATIC
     Scaffold/Door.cpp
     Scaffold/GameMath.cpp
     Scaffold/BehaviorHandlers.cpp
+    Scaffold/EnemyBehaviors.cpp
     Scaffold/ObjectInteraction.cpp
     Scaffold/PlayerInteraction.cpp
 )
@@ -42,6 +43,10 @@ foreach(target Continuous Experimental Nightly NightlyMemoryCheck)
     endif()
 endforeach()
 if(BUILD_TESTING)
+    add_executable(enemy-tests Scaffold/EnemyTests.cpp)
+    target_link_libraries(enemy-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME four-enemy-behaviors COMMAND enemy-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original/LEVEL")
     add_executable(tutorial-tests Scaffold/TutorialTests.cpp)
     target_link_libraries(tutorial-tests PRIVATE Desperabis::GameCore)
     add_test(NAME tutorial-prompts COMMAND tutorial-tests

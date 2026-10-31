@@ -1215,7 +1215,8 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::RollingRockSlope, 0x1CA6 };
     }
 
-    DispatchResult Function_Mummie(RawGameObject& object, GameContext& context)
+    static void UpdateMummyOrGorilla(RawGameObject& object, GameContext& context,
+        std::int16_t speed, std::int16_t animationIncrement, bool fadeDeath, bool randomPause)
     {
         for (int tick = 0; tick < context.tickCount; ++tick)
         {
@@ -1232,7 +1233,7 @@ namespace Desperabis
                     object.collisionMask = 254;
                 }
                 if (object.doorLockOrGroupBitmask < 10) { object.doorLockOrGroupBitmask = 11; }
-                if (context.Random(80) == 0) { object.velocityX = 0; object.velocityZ = 0; }
+                if (randomPause && context.Random(80) == 0) { object.velocityX = 0; object.velocityZ = 0; }
                 object.posY = WrapSignedWord(
                     context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ) + 30);
                 object.spriteScale = static_cast<std::uint8_t>((object.spriteScale + 1) & 1);
@@ -1247,11 +1248,11 @@ namespace Desperabis
                     object.generalPurpose2 = static_cast<std::uint16_t>(
                         WrapSignedWord(object.winY + context.RandomSigned(20)) & 511);
                     GetClampedDirectionDisplacement(object.velocityX, object.velocityZ,
-                        WrapSignedWord(object.generalPurpose2), 3);
+                        WrapSignedWord(object.generalPurpose2), speed);
                 }
                 if (object.velocityX != 0 || object.velocityZ != 0)
                 {
-                    object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity + 8);
+                    object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity + animationIncrement);
                 }
                 if (distance < 70)
                 {
@@ -1275,13 +1276,13 @@ namespace Desperabis
                     correctionZ = 0;
                     ++attempts;
                     context.QueryCollisionMapNeighborhood(WrapSignedWord(object.posX + object.velocityX),
-                        WrapSignedWord(object.posZ + object.velocityZ), 3, correctionX, correctionZ, center, 0x38);
+                        WrapSignedWord(object.posZ + object.velocityZ), speed, correctionX, correctionZ, center, 0x38);
                     if (correctionX != 0 || correctionZ != 0)
                     {
                         object.generalPurpose2 = static_cast<std::uint16_t>(
                             WrapSignedWord(object.generalPurpose2 + turn) & 511);
                         GetDirectionDisplacement(object.velocityX, object.velocityZ,
-                            WrapSignedWord(object.generalPurpose2), 3);
+                            WrapSignedWord(object.generalPurpose2), speed);
                         object.posX = WrapSignedWord(object.posX + 2 * correctionX);
                         object.posZ = WrapSignedWord(object.posZ + 2 * correctionZ);
                     }
@@ -1333,9 +1334,13 @@ namespace Desperabis
                     {
                         object.animFrame = 3;
                         object.modelFrame2 = 0;
-                        object.generalPurpose1 = 2;
-                        context.SetObjectHealth(object, 250);
-                        object.generalPurpose2 = 0;
+                        if (fadeDeath)
+                        {
+                            object.generalPurpose1 = 2;
+                            context.SetObjectHealth(object, 250);
+                            object.generalPurpose2 = 0;
+                        }
+                        else { object.behavior = BehaviorType::None; }
                     }
                 }
             }
@@ -1358,37 +1363,23 @@ namespace Desperabis
                 }
             }
         }
+    }
+
+    DispatchResult Function_Mummie(RawGameObject& object, GameContext& context)
+    {
+        UpdateMummyOrGorilla(object, context, 3, 8, true, true);
         return { DispatchStatus::ExecutedCase, BehaviorType::Mummie, 0x1CE2 };
     }
 
-    DispatchResult Function_SpiderLarge(RawGameObject&, GameContext&)
+    DispatchResult Function_Gorilla(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::SpiderLarge, 0x1D25 };
-    }
-
-    DispatchResult Function_Harvestman(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Harvestman, 0x1D62 };
-    }
-
-    DispatchResult Function_Devil(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Devil, 0x1D94 };
-    }
-
-    DispatchResult Function_Gorilla(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Gorilla, 0x1DC4 };
+        UpdateMummyOrGorilla(object, context, 5, 13, false, false);
+        return { DispatchStatus::ExecutedCase, BehaviorType::Gorilla, 0x1DC4 };
     }
 
     DispatchResult Function_ShootArrows(RawGameObject&, GameContext&)
     {
         return { DispatchStatus::UnimplementedHandler, BehaviorType::ShootArrows, 0x1E07 };
-    }
-
-    DispatchResult Function_FlyingArrow(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::FlyingArrow, 0x1E1A };
     }
 
     DispatchResult Function_MercuryLamp(RawGameObject&, GameContext&)

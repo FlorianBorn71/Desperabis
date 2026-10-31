@@ -171,7 +171,8 @@ namespace
             if (entry.type == BehaviorType::WaterDrop || entry.type == BehaviorType::FloatingDebris ||
                 entry.type == BehaviorType::SinkingObject || entry.type == BehaviorType::MetalPole ||
                 entry.type == BehaviorType::BearTrapAmmo || entry.type == BehaviorType::Mummie ||
-                entry.type == BehaviorType::MummieGuard)
+                entry.type == BehaviorType::MummieGuard || entry.type == BehaviorType::Gorilla ||
+                entry.type == BehaviorType::Harvestman || entry.type == BehaviorType::Devil)
             {
                 object.posX = 150;
                 object.posZ = 4050;
@@ -203,6 +204,8 @@ namespace
                 entry.type == BehaviorType::FloatingDebris || entry.type == BehaviorType::LevelStartOverride ||
                 entry.type == BehaviorType::RatAndSnake || entry.type == BehaviorType::Cockroach ||
                 entry.type == BehaviorType::BatIndoor || entry.type == BehaviorType::Mummie ||
+                entry.type == BehaviorType::SpiderLarge || entry.type == BehaviorType::Harvestman ||
+                entry.type == BehaviorType::Devil || entry.type == BehaviorType::Gorilla ||
                 entry.type == BehaviorType::MummieGuard ||
                 entry.type == BehaviorType::Skeleton || entry.type == BehaviorType::WaterImpact ||
                 entry.type == BehaviorType::SinkingObject ||
