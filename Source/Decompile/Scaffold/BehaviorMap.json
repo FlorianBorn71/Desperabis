@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "executableSha256": "219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318",
-  "rendererHeaderSha256": "64dd0ede9185311cf385f7477cd988f86cb2c77bf4ca72e29c08e0bf60e342c4",
+  "rendererHeaderSha256": "c80daabf6fb67558c20eb4892b8ac2ccc9a8d79cc5cc1406034827dd6a32f9cb",
   "functionEntry": "0000:1094",
   "selectorLoad": "0000:114D",
   "commonPostprocessing": "0000:5110",
@@ -1221,7 +1221,7 @@
     },
     {
       "value": 102,
-      "name": "Behavior_102",
+      "name": "LightningGenerator",
       "namedInRenderer": true,
       "hasSpecificCase": true,
       "entry": "0000:2ED3",
@@ -1299,7 +1299,7 @@
     },
     {
       "value": 108,
-      "name": "Behavior_108",
+      "name": "WindController",
       "namedInRenderer": true,
       "hasSpecificCase": true,
       "entry": "0000:3250",
@@ -1316,7 +1316,7 @@
     },
     {
       "value": 109,
-      "name": "LeafParticle1",
+      "name": "AirborneLeaf",
       "namedInRenderer": true,
       "hasSpecificCase": true,
       "entry": "0000:32B4",
@@ -1364,7 +1364,7 @@
     },
     {
       "value": 112,
-      "name": "LeafParticle2",
+      "name": "GroundLeaf",
       "namedInRenderer": true,
       "hasSpecificCase": true,
       "entry": "0000:32E5",
@@ -1382,7 +1382,7 @@
     },
     {
       "value": 113,
-      "name": "RoofDoorHandler",
+      "name": "RainEmitter",
       "namedInRenderer": true,
       "hasSpecificCase": true,
       "entry": "0000:350D",
@@ -1403,8 +1403,8 @@
     },
     {
       "value": 114,
-      "name": "Behavior_114",
-      "namedInRenderer": false,
+      "name": "RainDrop",
+      "namedInRenderer": true,
       "hasSpecificCase": true,
       "entry": "0000:35AB",
       "reachableInstructionCount": 39,

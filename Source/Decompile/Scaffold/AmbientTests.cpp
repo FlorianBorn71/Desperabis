@@ -176,6 +176,7 @@ namespace
     public:
         std::uint8_t selector = 0;
         std::filesystem::path original;
+        bool deferLoad = false;
     protected:
         std::vector<std::uint8_t> LoadFile(std::string_view filename) override
         {
@@ -185,6 +186,7 @@ namespace
         }
         void LoadLevel(const LevelLoadRequest& request) override
         {
+            if (deferLoad) { return; }
             LevelLoadData data;
             LoadLevelGeometry(request.levelNumber, data);
             Check(data.ambientSound == selector, "Geometry loader lost level-info ambient selector.");
@@ -205,12 +207,12 @@ namespace
             core.selector = selector;
             core.StartLevel(static_cast<std::int16_t>(level));
             ++count;
-            Check(audio.starts == count && audio.stops == count &&
+            Check(audio.starts == count && audio.stops == count - 1 &&
                 core.GetRuntimeState() == GameRuntimeState::Ready, "Level transition must replace/start ambient.");
         }
         core.soundEnabled = false;
         core.StartLevel(25);
-        Check(audio.starts == count && audio.stops == count + 1, "Disabled sound must stop, not generate/play ambient.");
+        Check(audio.starts == count && audio.stops == count, "Disabled sound must stop, not generate/play ambient.");
         core.soundEnabled = true;
         audio.failMix = true;
         Reject<std::runtime_error>([&] { core.StartLevel(25); });
@@ -219,6 +221,13 @@ namespace
         audio.failMix = false;
         core.StartLevel(25);
         Check(audio.starts == count + 1, "Ambient level load must recover after a failed creation pass.");
+        core.deferLoad = true;
+        const auto request = core.StartLevel(25);
+        Check(audio.starts == count + 1 && audio.stops == count + 1 &&
+            core.GetRuntimeState() == GameRuntimeState::Loading,
+            "The core must stop old ambient at request time, before an asynchronous provider completes.");
+        core.FailLevelLoad(request.id, "Deferred fixture load failed.");
+        Check(audio.starts == count + 1, "Failed asynchronous loading must not restart stale ambient.");
     }
 
     void TestPositionalMarkers(const std::filesystem::path& original)

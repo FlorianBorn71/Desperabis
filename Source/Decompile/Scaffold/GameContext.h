@@ -137,6 +137,7 @@ namespace Desperabis
         std::size_t geometryWidth = Width;
         std::size_t geometryHeight = Height;
         std::uint64_t geometryRevision = 0;
+        bool hasSky = false; // LEVELS.INF byte 96: a loaded sky bitmap enables native weather flashes.
 
         struct HeightSurface
         {
@@ -155,6 +156,23 @@ namespace Desperabis
     };
 
     Level CreateDummyLevel();
+
+    struct LightningLine
+    {
+        std::int16_t x1, y1, x2, y2;
+        float thickness1 = 0.f, thickness2 = 0.f; // Full width in native screen pixels; presentation enhancement.
+    };
+
+    struct LightningFlash
+    {
+        // Unclipped DOS screen coordinates, in the native 360x240 viewport.
+        std::vector<LightningLine> lines;
+        std::uint8_t paletteIndex = 250;
+        std::uint8_t renderTable = 16;
+        int sourceSlot = -1;
+        // Generator coordinates, not a recovered world-space lightning strike.
+        std::optional<std::array<std::int16_t, 3>> sourcePosition;
+    };
 
     struct LevelLoadData
     {
@@ -217,6 +235,8 @@ namespace Desperabis
         UiRightKey,
         UiConfirmKey,
         UiCancelKey,
+        DebugNextLevelKey,
+        DebugNextGamePartKey,
         Count
     };
 
@@ -239,6 +259,9 @@ namespace Desperabis
 
         // Host-driven API. All calls, including load completion, must run on the game thread.
         LevelLoadRequest StartLevel(std::int16_t levelNumber);
+        // Core-owned progression; game-thread calls only, never from lifecycle hooks.
+        void EndLevel(bool finishGamePart = false);
+        void StartNextGamePart();
         void CompleteLevelLoad(std::uint64_t requestId, LevelLoadData data);
         void FailLevelLoad(std::uint64_t requestId, std::string_view error);
         GameRuntimeState GetRuntimeState() const;
@@ -257,6 +280,9 @@ namespace Desperabis
         // Destruction sees the old record; creation sees the initialized replacement.
         // Hooks must not throw or mutate the world/reenter gameplay.
         virtual void OnObjectCreated(int slot);
+        // The flash reference is borrowed for this callback; copy it if retaining geometry.
+        virtual void OnLightningShown(const LightningFlash& flash);
+        virtual void OnLightningHidden();
         virtual void OnObjectDestroyed(int slot);
         // Immediate after clamping/depletion; both arguments are signed 16.16 life values.
         // Only actual changes through ApplyPlayerLifeDelta notify; do not mutate/reenter gameplay.
@@ -360,6 +386,7 @@ namespace Desperabis
         InteractionResult HandleCockroachContact(RawGameObject& object);
         InteractionResult HandleDamageObjectContact(const RawGameObject& object);
         InteractionResult HandleTeleporterContact(RawGameObject& object, bool interactionPressed);
+        InteractionResult HandleLevelEndContact(RawGameObject& object, bool interactionPressed);
         // Native 0EF0:0896 scans every matching live destination in slots 2..141.
         void TeleportPlayer(std::int16_t destinationId);
         // Native 10AC:3D30: automatic one-shot contact, not ordinary switch activation.
@@ -378,6 +405,14 @@ namespace Desperabis
         // Native offsetY + encoded height (pixel count minus one), before spriteScale / 64.
         virtual std::int16_t GetSpriteBottom(const RawGameObject& object) const;
         std::int16_t frameTickCount = 1; // DS:D4CA; burning uses this rather than the behavior argument.
+        std::int16_t windX = 0; // DS:2B0E; owned by this level/context, not a process global.
+        std::int16_t windZ = 0; // DS:2B10.
+        bool skyEnabled = false; // Native DS:D4C4 > 0.
+        const std::vector<LightningFlash>& GetLightningFlashes() const { return lightningFlashes; }
+        void ClearLightningFlashes();
+        void GenerateLightningFlash(std::int16_t x, const RawGameObject* source = nullptr);
+        void InitializeRainDrop(std::uint16_t slot, std::int16_t x, std::int16_t y, std::int16_t z);
+        bool HasCeilingAtPlayer() const;
         LightingCache lightingCache;
         std::uint16_t field_DC34 = 0; // Near lights add random values; also used as a timer RNG range.
         // The app owns prompt bytes, lifetime and presentation. Empty text requests a reset on level completion.
@@ -470,6 +505,7 @@ namespace Desperabis
         virtual void InitializeNewGame(std::int16_t chapter);
 
     private:
+        std::vector<LightningFlash> lightningFlashes;
         void UpdateInventoryInput(bool confirm);
         void SwapInventoryItems(std::size_t first, std::size_t second);
         std::uint8_t inventoryFocus = 0;
@@ -495,6 +531,8 @@ namespace Desperabis
         void SpawnActivationParticle(std::int16_t x, std::int16_t y, std::int16_t z,
             std::int16_t angle, std::int16_t speed);
         static RawGameObject InitializeLevelPlayer(const PlayerCamera& spawn);
+        void PrepareLevelProgression(bool changingLevel);
+        void FinishGamePart();
         BasicPlayerMovementResult UpdateBasicPlayerMovement(InputHandler& input);
         std::int16_t playerForwardSpeed = 0;
         std::int16_t playerSidewaysSpeed = 0;
@@ -509,6 +547,7 @@ namespace Desperabis
         std::optional<LevelLoadRequest> pendingLevelLoad;
         std::optional<std::int16_t> loadedLevelNumber;
         std::string levelLoadError;
+        bool ambientPlaybackActive = false;
         std::unique_ptr<Level> ownedLevel;
         bool paused = false;
     };

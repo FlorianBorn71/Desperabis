@@ -66,9 +66,10 @@ namespace Desperabis
 
     InteractionResult HandleLockedObjectInteraction(RawGameObject& object, GameContext& context)
     {
-        if (object.collisionType != CollisionType::Door && object.collisionType != CollisionType::Teleporter)
+        if (object.collisionType != CollisionType::Door && object.collisionType != CollisionType::Teleporter &&
+            object.collisionType != CollisionType::LevelEnd)
         {
-            throw std::invalid_argument("Key unlocking requires a door or teleporter.");
+            throw std::invalid_argument("Key unlocking requires a door, teleporter or level exit.");
         }
         if (object.health <= 0) { return { InteractionStatus::InactiveObject }; }
         if (object.generalPurpose2 != 0) { return { InteractionStatus::NoEffect }; }

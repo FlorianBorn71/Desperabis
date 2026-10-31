@@ -75,6 +75,7 @@ namespace Desperabis
         Loading,
         LoadFailed,
         Paused,
+        LevelEnded,
         Advanced
     };
 

@@ -874,8 +874,10 @@ implementation of the unresolved general activation system.
 Initial checks also explain why several plausible choices are **not yet
 in this tier**:
 
-- `LeafParticle1` reads DS:`2B0E/2B10` in its helper, apparently a shared
-  drift/wind vector whose meaning still needs author confirmation.
+- `AirborneLeaf` (formerly `LeafParticle1`) reads DS:`2B0E/2B10`: these are
+  the shared X/Z wind words driven by selector 108, now recovered and owned
+  by `GameContext`. Both leaf modes are implemented; see
+  [level-10 weather](BehaviorRecovery.md#level-10-wind-leaves-rain-and-lightning).
 - `AmbientSoundPosition`'s DS:`F6BF` gate has now been identified as the
   effects-enable setting: `0000:CB30..CB40` toggles it and mirrors it into
   settings byte DS:`311F`. Selector 190 is implemented using `soundEnabled`;

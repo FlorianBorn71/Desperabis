@@ -25,6 +25,7 @@ add_library(behavior-recovery STATIC
     Scaffold/GameMath.cpp
     Scaffold/BehaviorHandlers.cpp
     Scaffold/EnemyBehaviors.cpp
+    Scaffold/WeatherBehaviors.cpp
     Scaffold/ObjectInteraction.cpp
     Scaffold/PlayerInteraction.cpp
 )
@@ -43,6 +44,14 @@ foreach(target Continuous Experimental Nightly NightlyMemoryCheck)
     endif()
 endforeach()
 if(BUILD_TESTING)
+    add_executable(weather-tests Scaffold/WeatherTests.cpp)
+    target_link_libraries(weather-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME level-ten-weather COMMAND weather-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original")
+    add_executable(level-progression-tests Scaffold/LevelProgressionTests.cpp)
+    target_link_libraries(level-progression-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME level-progression COMMAND level-progression-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original")
     add_executable(enemy-tests Scaffold/EnemyTests.cpp)
     target_link_libraries(enemy-tests PRIVATE Desperabis::GameCore)
     add_test(NAME four-enemy-behaviors COMMAND enemy-tests

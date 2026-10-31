@@ -1,0 +1,35 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 1E48:CF8B:4D
+1E48:CF8B  C8 06 00 00              ENTER 0x6,0x0
+1E48:CF8F  8B 46 0C                 MOV AX,word ptr [BP + 0xc]
+1E48:CF92  2D 70 00                 SUB AX,0x70
+1E48:CF95  99                       CWD
+1E48:CF96  B9 19 00                 MOV CX,0x19
+1E48:CF99  F7 F9                    IDIV CX
+1E48:CF9B  89 46 FC                 MOV word ptr [BP + -0x4],AX
+1E48:CF9E  8B 46 0A                 MOV AX,word ptr [BP + 0xa]
+1E48:CFA1  2D 26 00                 SUB AX,0x26
+1E48:CFA4  99                       CWD
+1E48:CFA5  B9 19 00                 MOV CX,0x19
+1E48:CFA8  F7 F9                    IDIV CX
+1E48:CFAA  89 46 FA                 MOV word ptr [BP + -0x6],AX
+1E48:CFAD  FF 76 FC                 PUSH word ptr [BP + -0x4]
+1E48:CFB0  B8 A2 00                 MOV AX,0xa2
+1E48:CFB3  2B 46 FA                 SUB AX,word ptr [BP + -0x6]
+1E48:CFB6  50                       PUSH AX
+1E48:CFB7  FF 36 C6 69              PUSH word ptr [0x69c6]
+1E48:CFBB  FF 36 C4 69              PUSH word ptr [0x69c4]
+1E48:CFBF  0E                       PUSH CS
+1E48:CFC0  E8 CC 3E                 CALL 0x3000:f30f ; logical module target 1E48:0E8F
+1E48:CFC3  22 46 08                 AND AL,byte ptr [BP + 0x8]
+1E48:CFC6  3A 46 06                 CMP AL,byte ptr [BP + 0x6]
+1E48:CFC9  B0 00                    MOV AL,0x0
+1E48:CFCB  75 01                    JNZ 0x3000:b44e ; logical module target 1E48:CFCE
+1E48:CFCD  40                       INC AX
+1E48:CFCE  88 46 FF                 MOV byte ptr [BP + -0x1],AL
+1E48:CFD1  8A 46 FF                 MOV AL,byte ptr [BP + -0x1]
+1E48:CFD4  C9                       LEAVE
+1E48:CFD5  CA 08 00                 RETF 0x8

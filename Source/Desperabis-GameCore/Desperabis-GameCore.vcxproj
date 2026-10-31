@@ -49,6 +49,7 @@
     <ClCompile Include="..\Decompile\Scaffold\BehaviorDispatch.cpp" />
     <ClCompile Include="..\Decompile\Scaffold\BehaviorHandlers.cpp" />
     <ClCompile Include="..\Decompile\Scaffold\EnemyBehaviors.cpp" />
+    <ClCompile Include="..\Decompile\Scaffold\WeatherBehaviors.cpp" />
     <ClCompile Include="..\Decompile\Scaffold\CollisionMap.cpp" />
     <ClCompile Include="..\Decompile\Scaffold\Heightfield.cpp" />
     <ClCompile Include="..\Decompile\Scaffold\Lighting.cpp" />

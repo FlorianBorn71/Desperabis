@@ -65,6 +65,8 @@ namespace GamePlay
         case DisplayType::SpriteTorchlightTransparent:
         case DisplayType::DepthSprite:
         case DisplayType::SpriteScissorRect:
+        // Native rain and splashes use mode 13; its exact DOS shading is still unrecovered.
+        case static_cast<DisplayType>(13):
             return true;
         }
 
@@ -158,9 +160,10 @@ namespace GamePlay
         BT_ENUM2STRING(Cockroach);
         BT_ENUM2STRING(IdleAnimation);
         BT_ENUM2STRING(Mummie);
-        BT_ENUM2STRING(Behavior_108);
-        BT_ENUM2STRING(LeafParticle1);
-        BT_ENUM2STRING(LeafParticle2);
+        BT_ENUM2STRING(WindController);
+        BT_ENUM2STRING(AirborneLeaf);
+        BT_ENUM2STRING(GroundLeaf);
+        BT_ENUM2STRING(RainDrop);
         BT_ENUM2STRING(Behavior_201);
         BT_ENUM2STRING(BearTrapAmmo);
         BT_ENUM2STRING(Moon);
@@ -267,7 +270,7 @@ namespace GamePlay
         BT_ENUM2STRING(CurtainOpens);
         BT_ENUM2STRING(SkullInCutScene);
         BT_ENUM2STRING(CrystalBallTableInCutScene);
-        BT_ENUM2STRING(Behavior_102);
+        BT_ENUM2STRING(LightningGenerator);
         BT_ENUM2STRING(Behavior_170);
         BT_ENUM2STRING(Behavior_111);
         BT_ENUM2STRING(Behavior_161);
@@ -284,7 +287,7 @@ namespace GamePlay
         BT_ENUM2STRING(FlushingFishes);
         BT_ENUM2STRING(SomethingWithTheFishes);
         BT_ENUM2STRING(RotateKnightsInClock);
-        BT_ENUM2STRING(RoofDoorHandler);
+        BT_ENUM2STRING(RainEmitter);
         BT_ENUM2STRING(RoofTopThunderHandler1);
         BT_ENUM2STRING(RoofTopThunderHandler2);
         BT_ENUM2STRING(RoofTopThunderHandler3);

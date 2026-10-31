@@ -1888,11 +1888,6 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::WaterDrop, 0x2EBD };
     }
 
-    DispatchResult Function_Behavior_102(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_102, 0x2ED3 };
-    }
-
     DispatchResult Function_Behavior_103(RawGameObject&, GameContext&)
     {
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_103, 0x2FE2 };
@@ -1913,16 +1908,6 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_106, 0x31FD };
     }
 
-    DispatchResult Function_Behavior_108(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_108, 0x3250 };
-    }
-
-    DispatchResult Function_LeafParticle1(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::LeafParticle1, 0x32B4 };
-    }
-
     DispatchResult Function_FogParticle(RawGameObject&, GameContext&)
     {
         return { DispatchStatus::UnimplementedHandler, BehaviorType::FogParticle, 0x3405 };
@@ -1931,21 +1916,6 @@ namespace Desperabis
     DispatchResult Function_Behavior_111(RawGameObject&, GameContext&)
     {
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_111, 0x349A };
-    }
-
-    DispatchResult Function_LeafParticle2(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::LeafParticle2, 0x32E5 };
-    }
-
-    DispatchResult Function_RoofDoorHandler(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::RoofDoorHandler, 0x350D };
-    }
-
-    DispatchResult Function_Behavior_114(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_114, 0x35AB };
     }
 
     DispatchResult Function_NeonLights(RawGameObject&, GameContext&)

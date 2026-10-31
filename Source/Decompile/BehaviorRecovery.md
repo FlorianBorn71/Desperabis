@@ -567,6 +567,161 @@ object-local motion. Per the requested boundary, selector **104 remains an
 unchanged `UnimplementedHandler`**, with no movement, RNG or lighting side effects.
 Tests verify that boundary on the three original fixtures.
 
+## Level-10 wind, leaves, rain and lightning
+
+The six selectors below are implemented in
+[WeatherBehaviors.cpp](Scaffold/WeatherBehaviors.cpp), with the user-approved
+names shared by core, renderer catalog and dependency metadata. The previous
+`RoofDoorHandler` name was misleading: selector 113 is rain emission, and
+selector 102 is lightning, not another door controller.
+
+| Selector | Name | Native entry | Role |
+| --- | --- | --- | --- |
+| 102 | `LightningGenerator` | `0000:2ED3` | Flash-band timer and later thunder |
+| 108 | `WindController` | `0000:3250` | Shared wind approaching random targets |
+| 109 | `AirborneLeaf` | `0000:32B4`, helper `10AC:9B99` | Tumbling, bouncing and obstacle response |
+| 112 | `GroundLeaf` | `0000:32E5` | Ground skittering, then airborne transition |
+| 113 | `RainEmitter` | `0000:350D` | Fixed-point pooled drop emission |
+| 114 | `RainDrop` | `0000:35AB`, initializer `10AC:D682` | Falling drop and short-lived splash |
+
+Evidence: [dispatch](level-ten-weather-dispatch-evidence.txt),
+[helpers and recursive lightning](level-ten-weather-helpers-evidence.txt),
+[rain admission](level-ten-raindrop-tail-evidence.txt),
+[render-table request](level-ten-weather-flash-rain-tail-evidence.txt),
+[load-time wind/sky/viewport state](level-ten-weather-context-evidence.txt),
+and [masked collision lookup](level-ten-weather-map-query-evidence.txt).
+`1E48:CF8B` uses the same world-to-map conversion as the existing pixel helper
+and returns `(pixel & mask) == value`.
+
+### Wind and the two leaf modes
+
+`GameContext::windX/windZ` own DS:`2B0E/2B10`, reset to zero on level install
+and unload. Wind runs once per dispatched object batch, including zero-tick
+batches: `Random(30)==0` replaces the object's target X/Z velocities with
+`RandomSigned(8)`, then `Random(5)==0` approaches both targets one signed step.
+
+Airborne leaves run per tick. They sample terrain before vertical movement,
+bounce upward at the floor, tumble their X/Z angles above it, and probabilistically
+approach shared wind. Material mask 7/value 1 changes them to ground leaves
+with a 100-tick grace counter. Blocking mask 56 causes retreat/reflected
+horizontal velocity and shortens persistent leaves to health 100.
+
+Ground leaves snap to the effective floor, occasionally take wind's signs as
+horizontal velocity, and independently move X/Z one quarter of the time on
+the matching material. Leaving that material counts down `itemValue`, then
+switches to airborne mode. Both cases preserve the native RNG and remaining
+substeps after frame-based death or a mid-batch behavior change.
+
+### Individual raindrops and splashes
+
+Emission is batched: low-word `itemValue*ticks + generalPurpose1`, with one
+drop per 256 units and the remainder retained. Original level-10 slot 79 uses
+rate 2000 and remainder 168 (roughly 7-8 drops per tick). Its first allocator
+call merely clears a slot; the second usually selects that same unreserved
+slot. Both calls and fallback-165 lifecycle behavior are preserved.
+
+Drops spawn 100-349 units around the listener, biased by player heading, at
+eye Y + 100 + `Random(70)`. The factory uses health 60, sprite model 1/bank 4/
+frame 1, scale 29, display 13, blend 4, vertical velocity -19..-15, signed
+wind/3 horizontally and random Y orientation. Spawn mask 8 rejects rain.
+Separately, a ceiling over the **player's** tile rejects it while player-map
+collisions are enabled; it is not a spawn-tile ceiling test.
+
+Each drop is a native pooled object, not an emitter-only renderer particle.
+Vertical movement is multiplied by tick count; horizontal movement happens
+once per batch, even with zero ticks. Floor impact changes it to frame 2,
+behavior None and health `Random(4)+1`; common lifetime processing removes
+the splash. No rain contact-damage behavior was added.
+Renderer display mode 13 was missing from sprite classification, initially
+making both drops and splashes invisible despite successful simulation.
+It is now presented through the existing unlit sprite path using the original
+bank-4 frames and scale 29/64. Exact DOS mode-13 shading remains unrecovered;
+this does not claim to reproduce its palette-table treatment.
+
+### Native lightning geometry and later thunder
+
+The native sky gate is loaded from the sky bitmap (height plus one); normal
+successful asset loading is represented by `Level::hasSky` from `LEVELS.INF`
+byte 96. Level 10 selects `GRAFIK\TUR60.256`. `GameContext::skyEnabled`
+owns the gate. The unrelated distance-based sky toggle (178) remains unrecovered.
+No sky freezes selector 102's timer and RNG. A player-tile ceiling suppresses
+flash geometry after the native admission draw.
+
+The generator decrements signed `generalPurpose2` each tick. At resulting
+81/83/85/87/89, `Random(2)==0` may flash. At 2..80, `Random(3)==0`
+decrements the timer an extra step. When the timer is already nonpositive,
+the next tick resets it to `Random(1000)+200`, picks screen X
+`Random(400)-80`, and requests sound effect 102 with randomized native volume
+and per-source limit 2. Its original samples are 102, 25 and 103.
+Thus thunder follows the preceding flash band and accelerated tail; this is
+not a fresh independent delayed-sound timer. Original slot 82 starts at 461.
+
+`10AC:BBD2` generates **screen-space**, not world-space, lightning:
+next X = wrapped X + `RandomSigned(20)`, next Y = Y + 6 + `Random(15)`.
+An endpoint below the player's screen horizon stops the call after both RNG
+draws. Otherwise it emits palette-250 line X/Y -> next X/Y, recurses from
+the endpoint, then draws `Random(5)` and may recurse into a second branch.
+The implementation uses an explicit DFS stack, retaining complete line order
+and postorder branch RNG without arbitrary geometry caps. Horizons that
+would wrap native vertical coordinates fail explicitly.
+
+`GetLightningFlashes()` exposes all native unclipped segments in the normal
+360x240 viewport, plus palette index 250 and render-table request 16.
+Native palette/light-table application is not implemented; DX11 now supplies
+a deliberately enhanced textured 3D bolt and distant dynamic light instead.
+The list clears at the next `UpdateObjects` batch and on load/unload; modal or
+paused presentation retains the last world-frame snapshot. Multiple flashes
+within catch-up ticks remain separate records.
+
+`OnLightningShown(const LightningFlash&)` notifies the host after each flash
+has been added to that snapshot. `OnLightningHidden()` fires once after clearing
+a nonempty batch, including immediate clearing at load request and unload.
+Several flashes can therefore receive separate show callbacks before one
+hide-all callback. No hide is emitted while gameplay is paused/modal.
+The show argument is borrowed for the callback; retained geometry must be copied.
+`sourceSlot` and optional native `sourcePosition` identify the generator,
+not a recovered physical strike. Direct standalone geometry has no source.
+
+The DX11 `GameAppContext` forwards show/hide to `LightningPresentation` to create
+and remove textured 3D bolt instances and distant dynamic lights.
+Host callback failures propagate rather than being silently swallowed.
+Core tests cover callback ordering, batched flashes, source metadata, pause,
+deferred loading, duplicate hides and part unload; DX11 WARP tests verify actual
+visible rain/splash billboard pixels from the original level-10 assets.
+
+Per-line `thickness1/thickness2` are a user-requested non-native enhancement:
+full screen-pixel widths begin at 2, decrease toward the horizon, and use 55%
+of the parent's branch weight on secondary recursion. Terminal segments have
+exactly zero endpoint width. Child counts are tracked by recursion parent,
+not inferred from possibly overlapping screen coordinates. No additional random
+draws or altered native endpoints/branch ordering are introduced.
+
+The host projects these lines into a camera-oriented plane 1800 native units
+away, using existing `SetTexturedLine` vertex stretching, an additive glow
+texture, and 128-segment chunks to respect byte-addressed second vertices.
+A radius-1700, intensity-80 cool-white light at the bolt's distant lower region
+brightens remote surfaces while excluding the immediate foreground. This
+placement is an artistic approximation, not recovered world-space lightning.
+Models and lights are removed in hide, including loading, unload and shutdown;
+only the reusable glow texture remains cached. WARP tests verify visible strips,
+actual distant illumination versus dark foreground, chunk completeness and
+multi-flash cleanup.
+
+### Locked building entrance and validation
+
+Original slots 37/38 are existing collision-120 teleporters, paired via IDs
+1/2. Entrance slot 37 requires key 99 (original slot 63), consumes that key
+through ordinary unlocking, and teleports to slot 38 on the next manual
+interaction. Destination velocity Z enables its interior presentation mode
+and its arrival cooldown resets. Ordinary door 85 requires key 1, so key 99
+is not a master key. No new teleporter path was necessary.
+
+[WeatherTests.cpp](Scaffold/WeatherTests.cpp) checks independent wind/leaf and
+recursive-lightning references across many seeds, exact RNG order and line
+shape, thunder timing/sample/source/volume, roof/sky admission, rain rate and
+overflow, slot lifecycle, floor splashes, zero-tick differences, snapshot
+reset/freeze behavior, and the original level-10 weather and locked entrance.
+
 ## Globals and dependencies
 
 [BehaviorMap.json](Scaffold/BehaviorMap.json) records, for every catalog entry:
@@ -1759,9 +1914,64 @@ shovel removal remain separate recovery questions.
 The level-loading routine at `0000:0427` separately clears `hasMap` and removes
 inventory records with collision type 45 (`PickableMap`) at `04AA..04E2`, only
 when the requested level differs from DS:D4BE. This is not a key filter.
-The host's `CompleteLevelLoad` currently preserves inventory; neither of these
-native cleanup loops is wired into the port yet. Save loading must remain
-distinct from ordinary level progression when implementing them.
+`EndLevel` now applies the weapon-only cleanup to the fourteen modeled usable
+inventory records. The native preview scratch record is not stored persistently
+by this port. When progressing to a different level, it also clears `hasMap` and
+map inventory records. Unused keys, ordinary weapons, ammo, gold and player life
+are retained. Explicit `StartLevel`/`CompleteLevelLoad` still preserve inventory;
+this keeps asset installation/save restoration distinct from progression.
+
+### Core-owned level progression and LevelEnd
+
+`ApplicationFlow.cpp` now owns the playable resource order formerly in the
+DX11 host: training `50`, then `30,31,32,33,36,34,35`, then
+`10,11,12,13,14,15,16,17,18,90,19,20,21,22,23,24,25,26`.
+This preserves the project's verified DesktopPlayer menu/resource ordering,
+including nonnumeric transitions; it is not a claim that native `CE0F` adds
+one to those resource IDs. The native routine increments its logical level
+and tests the chapter's final-level bound.
+
+`HandleLevelEndContact` implements the collision-100 branches in
+[the contact and interaction evidence](player-collision-evidence.txt):
+
+* Contact with signed word **44 = 1000** is a terminal-part exit, regardless
+  of word 46. Per the requested modern flow, it goes directly to the main menu
+  rather than invoking the native chapter-completion presentation.
+* Otherwise, contact advances only when signed word **46 = 0**.
+* Explicit interaction with **46 > 0** invokes the existing key-unlock helper
+  `10AC:3DCE`; a matching key is consumed and the lock cleared. Subsequent
+  automatic contact advances. Nonzero/negative gates do not become invented
+  automatic exits.
+
+`EndLevel` selects the next resource level within the current part; finishing
+`50`, `35` or `26` unloads gameplay and selects `MainMenu`, with no active/resumable
+game and no wrap into another part. `StartNextGamePart` is a separate development
+operation. Tab/Shift+Tab are sampled by `UpdateApplication`, with a single
+navigation edge even if Shift changes while Tab is held.
+
+The host's `LoadLevel(request)` hook constructs renderer assets and supplies
+owned `LevelLoadData` for that exact request; it no longer decides destinations
+or recursively starts a load while servicing one. Loading begins before the
+hook is invoked, stops effects/any active core-owned ambient loop, and freezes
+simulation until matching completion. Errors remain `LoadFailed` with a message;
+stale completion IDs are rejected. Effect-only audio providers are not forced
+to implement ambient operations when no ambient loop has been started.
+
+After contact changes the runtime/page or starts a new request, `Tick` returns
+`LevelEnded` immediately, without object or weapon updates. The application's
+transition frame has zero world delta/timing, discards fractional catch-up and
+blocks held inputs across completion. In-progress weapon animation is canceled
+so an old attack cannot execute in the newly installed world. These are explicit
+modern application-boundary policies, not additional claimed native instructions.
+Part unloading uses immediate world-object destruction hooks before releasing
+owned geometry. A renderer may retain its frozen scene as the opaque menu's
+background, but cannot resume or simulate it.
+
+`level-progression` tests every destination/part boundary, original level-10
+exit contact loading actual level-11 assets, key/terminal gates, zero/batched
+ticks, input edges, session cleanup, lifecycle unload, synchronous/deferred
+loading, explicit failures and retries. `ambient-sound` also verifies stopping
+the old loop at request time rather than waiting for completion.
 
 ### Inventory and explicit interaction
 

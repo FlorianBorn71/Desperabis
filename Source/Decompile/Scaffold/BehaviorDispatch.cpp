@@ -111,6 +111,7 @@ namespace Desperabis
             throw std::invalid_argument("Object updates require nonnegative behavior and frame tick counts.");
         }
         context.playerLadderMovement = false;
+        context.ClearLightningFlashes();
         std::array<DispatchResult, 163> results;
         for (std::size_t slot = 2; slot <= 164; ++slot)
         {

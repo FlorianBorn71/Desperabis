@@ -60,7 +60,7 @@ The following initial-record counts include every record, regardless of health.
 | 42 | `MercuryLamp` | Another branch of `10AC:4106`, store `10AC:4653` | 1 |
 | 103 | `Behavior_103` | Factory `10AC:056C`, store `10AC:061F` | 0 |
 | 106 | `Behavior_106` | Allocation inside `10AC:A467`, store `10AC:A862` | 0 |
-| 114 | `Behavior_114` | Shared initializer `10AC:D682`, store `10AC:D6F4` | 0 |
+| 114 | `RainDrop` | Shared initializer `10AC:D682`, store `10AC:D6F4` | 0 |
 | 143 | `Behavior_143` | `0000:A8F7`, store `0000:B154` | 0 |
 
 This supports investigating the low-numbered unknowns as runtime object
@@ -84,8 +84,8 @@ allocation sites are identified by their catalog case intervals.
 | Allocation site | Kind | Enclosing routine / context | Linked IDs or unresolved work |
 | --- | --- | --- | --- |
 | `0000:2456` | Z | `0000:1094`, `MetalPole` case | 24 via `10AC:044E` |
-| `0000:3527` | Z | `0000:1094`, `RoofDoorHandler` case | Unresolved; do not infer initialization from the neighboring allocation |
-| `0000:3562` | Z | `0000:1094`, `RoofDoorHandler` case | 114 via `10AC:D682` |
+| `0000:3527` | Z | `0000:1094`, `RainEmitter` case | Clears a slot; result unused and no object reserved |
+| `0000:3562` | Z | `0000:1094`, `RainEmitter` case | 114 via `10AC:D682`; usually selects that same still-free slot |
 | `0000:3CC7` | Z | `0000:1094`, `Meteor` case | 24 via `10AC:044E` |
 | `0000:3F0A` | Z | `0000:1094`, behavior 138 case | 24 via `10AC:044E` |
 | `0000:3FAA` | Z | `0000:1094`, `SpawnInCrater` case | 24 via `10AC:044E` |

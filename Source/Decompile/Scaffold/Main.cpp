@@ -127,6 +127,9 @@ namespace
                         entry.type == BehaviorType::BatIndoor || entry.type == BehaviorType::Mummie ||
                         entry.type == BehaviorType::MummieGuard ||
                         entry.type == BehaviorType::AmbientSoundPosition ||
+                        entry.type == BehaviorType::LightningGenerator || entry.type == BehaviorType::WindController ||
+                        entry.type == BehaviorType::AirborneLeaf || entry.type == BehaviorType::GroundLeaf ||
+                        entry.type == BehaviorType::RainEmitter || entry.type == BehaviorType::RainDrop ||
                         entry.type == BehaviorType::Skeleton || entry.type == BehaviorType::WaterImpact ||
                         entry.type == BehaviorType::SinkingObject ||
                         entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ?

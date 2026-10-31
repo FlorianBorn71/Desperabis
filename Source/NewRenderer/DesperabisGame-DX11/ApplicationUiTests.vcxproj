@@ -38,6 +38,7 @@
   <ItemGroup>
     <ClCompile Include="ApplicationUiTests.cpp" />
     <ClCompile Include="ApplicationUi.cpp" />
+    <ClCompile Include="LightningPresentation.cpp" />
     <ClCompile Include="..\SharedSource\DX11\BuiltInShaders_Release.cpp" />
     <ClCompile Include="..\SharedSource\DX11\NativeTextureDX11.cpp" />
     <ClCompile Include="..\SharedSource\DX11\RenderContextDX11.cpp" />

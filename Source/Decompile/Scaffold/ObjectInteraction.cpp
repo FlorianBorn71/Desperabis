@@ -82,6 +82,8 @@ namespace Desperabis
             return state.HandleTextPromptContact(object);
         case CollisionType::Teleporter:
             return state.HandleTeleporterContact(object, true);
+        case CollisionType::LevelEnd:
+            return state.HandleLevelEndContact(object, true);
         case CollisionType::Poison:
             if (state.arrowPoison < object.itemValue)
             {
@@ -206,7 +208,6 @@ namespace Desperabis
         case CollisionType::WheelToLiftRope:
         case CollisionType::VaseToGrab:
         case CollisionType::MirrorToGrab:
-        case CollisionType::LevelEnd:
         case CollisionType::SarcophagusWithBones:
         case CollisionType::PictureMap:
         case CollisionType::Lorry:

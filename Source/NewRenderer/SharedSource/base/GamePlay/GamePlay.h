@@ -134,10 +134,11 @@ namespace GamePlay
         Moon = 100,
         WaterDrop = 101,
         UnderwaterColorAnim = 104, // underwater vertex color animation
-        LeafParticle1 = 109,
+        AirborneLeaf = 109,
         FogParticle = 110,
-        LeafParticle2 = 112, // what is the difference? Both in Level 10
-        RoofDoorHandler = 113,
+        GroundLeaf = 112,
+        RainEmitter = 113,
+        RainDrop = 114,
         NeonLights = 116, // in museum
         SwimmingParticles = 117, // underwater with large Octopus
         BurriedVerticalDoor = 119, // level 23
@@ -197,9 +198,9 @@ namespace GamePlay
         CrystalBallTableInCutScene = 211, // for the crystal ball
         SkullInCutScene = 212, // the skull in the crystal ball
         // unknowns:
-        Behavior_102 = 102, // Something in the ending village cutscene. Multiple instances assigned to the trees
+        LightningGenerator = 102,
         Behavior_111 = 111, // Something in the ending village cutscene. One instance assigned to the shovel
-        Behavior_108 = 108, // could be thunder or leaf particles gen (assigned once to tree in level 10)
+        WindController = 108,
         Behavior_148 = 148, // something I could not locate in level 35
         Behavior_158 = 158, // Something in the cathedral outdoor (level 19), assigned to tree model
         Behavior_161 = 161, // Something in the ending merlin cutscene

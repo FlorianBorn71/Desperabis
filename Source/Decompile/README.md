@@ -263,6 +263,16 @@ Subclass `GameContext` and override only `LoadLevel(const LevelLoadRequest&)`
 to start loading host assets. Call `StartLevel(number)` to enter loading,
 then `CompleteLevelLoad(request.id, std::move(data))` with owned
 `LevelLoadData`, or `FailLevelLoad(request.id, message)` on failure.
+GameCore is authoritative for subsequent level selection: automatic
+`CollisionType::LevelEnd` contact calls `EndLevel()`, which requests the next
+level or unloads the finished game part and opens the main menu. The host must
+build its renderer scene **inside the requested load**, not select/load a scene
+first and then tell the core which level to install. Effect channels and the
+core-owned ambient loop stop when loading begins, including deferred loads.
+`GameTickStatus::LevelEnded` has no object/weapon update; application world delta
+and tick timing are zero for that transition frame. Synchronize new-level
+presentation after completion, and do not carry the old frame's simulation
+into the new scene. See [progression and exit recovery](BehaviorRecovery.md#core-owned-level-progression-and-levelend).
 Interactive hosts call `UpdateApplication(elapsedSeconds, input)` every frame,
 including paused, loading and zero-simulation-tick frames. GameCore checks
 F1/F2 input, dispatches gameplay/main-menu/inventory updates, and owns the
@@ -483,6 +493,26 @@ turn, and interaction actions through `IsKeyPressed(InputKey)`.
 case dispatch for slots 2..164; the console uses this path. Both native
 free-slot allocation methods are available on the context. There is no
 universal velocity or angular-speed integration in the original shared loop.
+Level-10 weather is implemented in `Scaffold/WeatherBehaviors.cpp`: context-owned
+wind, airborne/ground leaves, individual raindrops and splashes, and native
+lightning/thunder timing. `GetLightningFlashes()` exposes complete, unclipped
+360x240 screen-space line lists with palette index 250 and render-table request
+16. DX11 now renders tapered textured strips and a distant dynamic light as
+an intentional non-native enhancement; the native flash palette is not applied. Snapshots
+last until the next object-update batch, remain frozen while paused, and clear
+on loading/unload. `Scaffold/WeatherTests.cpp` checks native RNG/geometry,
+pooling, original fixtures and the existing key-99 building teleporter.
+The host can override `OnLightningShown(const LightningFlash&)` and
+`OnLightningHidden()` instead of polling: show fires after each complete flash,
+hide once when the active batch clears. The callback reference is borrowed;
+copy it to retain geometry. Flash metadata includes the generator's native
+slot and optional XYZ position, not an inferred 3D strike point.
+Each line also exposes full `thickness1/thickness2` in native screen pixels:
+2 at the trunk, progressively thinner along the bolt and side branches, exactly
+zero at terminal tips. These deterministic fields consume no additional RNG.
+Rain's native display mode 13 is recognized as an unlit sprite; the DX11 WARP
+tests render both original rain/splash frames, including in zero ambient light.
+See [weather recovery](BehaviorRecovery.md#level-10-wind-leaves-rain-and-lightning).
 Player movement and selected contact/interaction paths run through `Tick`,
 not this low-level loop. Vehicle controllers, several contact hazards and
 unsupported interactions remain incomplete; rendering belongs to the host. Follow

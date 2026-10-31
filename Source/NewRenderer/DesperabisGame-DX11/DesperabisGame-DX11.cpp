@@ -7,6 +7,7 @@
 #include <GameMath.h>
 #include "AudioPlayer.h"
 #include "ApplicationUi.h"
+#include "LightningPresentation.h"
 
 #include <DesperabisCommon.h>
 #include <Asset/AssetManager.h>
@@ -29,13 +30,7 @@
 
 namespace
 {
-	// Matches the DesktopPlayer's Level menu (training, part 1, part 2).
-	constexpr std::array<int, 26> g_playableLevels = {
-		50,
-		30, 31, 32, 33, 36, 34, 35,
-		10, 11, 12, 13, 14, 15, 16, 17, 18, 90, 19, 20, 21, 22, 23, 24, 25, 26
-	};
-	constexpr int g_startLevelIndex = g_playableLevels.front();
+	constexpr int g_startLevelIndex = 10;
 	bool g_cheatMode = true;
 
 	constexpr int g_numObjectSlots = static_cast<int>(std::tuple_size_v<decltype(Desperabis::GameContext::worldObjects)>);
@@ -99,10 +94,22 @@ namespace
 	}
 
 	std::vector<byte> ReadGameFile(const std::wstring& filename);
+	void ClearGameObjects();
 
 	class GameAppContext final : public Desperabis::GameContext
 	{
 	public:
+		void OnLightningShown(const Desperabis::LightningFlash& flash) override
+		{
+			if (!g_scene || !g_camera) { throw std::logic_error("Lightning requires an active scene and camera."); }
+			m_lightning.Show(*g_scene, flash, *g_camera);
+		}
+
+		void OnLightningHidden() override
+		{
+			m_lightning.Hide();
+		}
+
 		void OnPlayerHealthChanged(std::int32_t, std::int32_t) override
 		{
 			UpdateHealthBar();
@@ -295,11 +302,30 @@ namespace
 			LoadLevelGeometry(request.levelNumber, data);
 			LoadLevelObjects(request.levelNumber, data);
 			InitializeLevelPlayerSpawn(data, g_initialPlayerDirection);
-			CompleteLevelLoad(request.id, std::move(data));
+			auto scene = std::make_unique<LevelScene>(request.levelNumber);
+			scene->m_createGameObjects = false;
+			scene->m_createMapIcons = false;
+			FORCE_WAIT(scene->CreateScene());
+			ClearPrompt();
+			ClearHealthBar();
+			ClearGameObjects();
+			g_applicationUi.Clear();
+			g_scene = std::move(scene);
+			g_worldTime = 0;
+			g_freeCam->JumpTo(g_scene->GetInitialPosition());
 			if (g_cheatMode) { ApplyCheatLoadout(); }
+			const auto title = "Desperabis (DX11) - level " + std::to_string(request.levelNumber);
+			SetWindowTextA(g_hWnd, title.c_str());
+			if (g_initialized)
+			{
+				g_previousTime = std::chrono::duration<double>(
+					std::chrono::steady_clock::now() - g_startTime).count();
+			}
+			CompleteLevelLoad(request.id, std::move(data));
 		}
 
 	private:
+		LightningPresentation m_lightning;
 		void RemovePromptMesh()
 		{
 			if (m_promptInstance)
@@ -346,6 +372,8 @@ namespace
 		bool uiRight = false;
 		bool uiConfirm = false;
 		bool uiCancel = false;
+		bool debugNextLevel = false;
+		bool debugNextGamePart = false;
 
 		bool IsKeyPressed(Desperabis::InputKey key) override
 		{
@@ -382,6 +410,8 @@ namespace
 			case Desperabis::InputKey::UiRightKey: return uiRight;
 			case Desperabis::InputKey::UiConfirmKey: return uiConfirm;
 			case Desperabis::InputKey::UiCancelKey: return uiCancel;
+			case Desperabis::InputKey::DebugNextLevelKey: return debugNextLevel;
+			case Desperabis::InputKey::DebugNextGamePartKey: return debugNextGamePart;
 			case Desperabis::InputKey::Count: break;
 			}
 			throw std::invalid_argument("Unknown game input key.");
@@ -676,66 +706,6 @@ namespace
 		}
 	}
 
-	void LoadGameLevel(int levelIndex)
-	{
-		g_gameCore->StopAllSoundEffects();
-		g_audioPlayer->StopAmbientPlayback();
-
-		try
-		{
-			auto scene = std::make_unique<LevelScene>(levelIndex);
-			scene->m_createGameObjects = false;
-			scene->m_createMapIcons = false;
-			FORCE_WAIT(scene->CreateScene());
-			g_gameCore->ClearPrompt();
-			g_gameCore->ClearHealthBar();
-			ClearGameObjects();
-			g_applicationUi.Clear();
-			g_scene = std::move(scene);
-			g_worldTime = 0;
-			g_freeCam->JumpTo(g_scene->GetInitialPosition());
-			g_gameCore->StartLevel(static_cast<std::int16_t>(levelIndex));
-			if (g_gameCore->GetRuntimeState() != Desperabis::GameRuntimeState::Ready)
-			{
-				throw std::runtime_error(g_gameCore->GetLevelLoadError());
-			}
-			SyncGameObjects();
-			g_gameCore->UpdateHealthBar();
-			const auto title = "Desperabis (DX11) - level " + std::to_string(levelIndex);
-			SetWindowTextA(g_hWnd, title.c_str());
-		}
-		catch (const std::exception& error)
-		{
-			if (!g_scene) { throw; }
-			ReportGameCoreError("level load failed", error.what());
-			g_useFreeCam = true;
-			return;
-		}
-	}
-
-	void LoadNextLevel(bool nextPart = false)
-	{
-		const auto current = std::find(g_playableLevels.begin(), g_playableLevels.end(), g_scene->m_levelIndex);
-		if (current == g_playableLevels.end())
-		{
-			ReportGameCoreError("next level", "Current level is not in the playable level sequence.");
-			SetWindowTextA(g_hWnd, "Desperabis (DX11) - current level is not in the playable sequence");
-			return;
-		}
-		const auto next = nextPart ?
-			std::find_if(current + 1, g_playableLevels.end(), [](int level) { return level == 30 || level == 10; }) :
-			current + 1;
-		if (next == g_playableLevels.end())
-		{
-			SetWindowTextA(g_hWnd, nextPart ?
-				"Desperabis (DX11) - no next game part" : "Desperabis (DX11) - no next playable level");
-			return;
-		}
-		LoadGameLevel(*next);
-		g_previousTime = std::chrono::duration<double>(
-			std::chrono::steady_clock::now() - g_startTime).count();
-	}
-
 	void ApplyPlayerCamera()
 	{
 		const auto playerCam = g_gameCore->GetPlayerCamera();
@@ -838,7 +808,9 @@ namespace
 		g_camera = Renderer::Instance().GetOrCreateCamera();
 		UpdateProjection();
 
-		LoadGameLevel(g_startLevelIndex);
+		g_gameCore->StartLevel(g_startLevelIndex);
+		SyncGameObjects();
+		g_gameCore->UpdateHealthBar();
 
 		g_startTime = std::chrono::steady_clock::now();
 		g_initialized = true;
@@ -853,6 +825,7 @@ namespace
 		g_audioPlayer.reset();
 		g_gameCore->ClearPrompt();
 		g_gameCore->ClearHealthBar();
+		g_gameCore->ClearLightningFlashes();
 		g_applicationUi.Deinitialize();
 		ClearGameObjects();
 		g_scene.reset();
@@ -918,13 +891,29 @@ namespace
 		input.uiRight = IsKeyPressed(VK_RIGHT);
 		input.uiConfirm = IsKeyPressed(VK_RETURN);
 		input.uiCancel = IsKeyPressed(VK_ESCAPE);
+		input.debugNextLevel = IsKeyPressed(VK_TAB) && !IsKeyPressed(VK_SHIFT);
+		input.debugNextGamePart = IsKeyPressed(VK_TAB) && IsKeyPressed(VK_SHIFT);
 
 		Desperabis::ApplicationUpdateResult application;
+		const auto levelBeforeUpdate = g_gameCore->GetLoadedLevelNumber();
 		try
 		{
 			{
 				ProfilingScope _(g_profilingStats.m_duration_game);
 				application = g_gameCore->UpdateApplication(deltaTime, input);
+			}
+			if (g_gameCore->GetLoadedLevelNumber() != levelBeforeUpdate)
+			{
+				if (g_gameCore->GetRuntimeState() == Desperabis::GameRuntimeState::Ready)
+				{
+					SyncGameObjects();
+					g_gameCore->UpdateHealthBar();
+				}
+				else
+				{
+					g_gameCore->ClearPrompt();
+					g_gameCore->ClearHealthBar();
+				}
 			}
 			if (application.tick && application.tick->status == Desperabis::GameTickStatus::Advanced)
 			{
@@ -945,6 +934,7 @@ namespace
 		}
 		catch (const std::exception& error)
 		{
+			application = {};
 			ReportGameCoreError("application update failed", error.what());
 			const std::string title = std::string("Desperabis (DX11) - ") + error.what();
 			SetWindowTextA(g_hWnd, title.c_str());
@@ -952,7 +942,7 @@ namespace
 		g_worldTime += application.worldDeltaSeconds;
 		if (application.worldDeltaSeconds > 0) { g_scene->Update(application.worldDeltaSeconds); }
 
-		if (!g_useFreeCam)
+		if (!g_useFreeCam && g_gameCore->GetRuntimeState() == Desperabis::GameRuntimeState::Ready)
 		{
 			ApplyPlayerCamera();
 			return;
@@ -1047,12 +1037,6 @@ namespace
 				g_gameCore->DEBUG_noPlayerCollision = !g_gameCore->DEBUG_noPlayerCollision;
 				g_gameCore->PromptUserMessage(g_gameCore->DEBUG_noPlayerCollision ?
 					"Player collision: off" : "Player collision: on", 90);
-			}
-			else if (wParam == VK_TAB && (lParam & (1 << 30)) == 0 && g_initialized &&
-				g_gameCore->GetMenuPage() == Desperabis::MenuPage::Gameplay)
-			{
-			    // Shift TAB moves to the next part of the game
-				LoadNextLevel((GetKeyState(VK_SHIFT) & 0x8000) != 0);
 			}
 			return 0;
 		case WM_DESTROY:

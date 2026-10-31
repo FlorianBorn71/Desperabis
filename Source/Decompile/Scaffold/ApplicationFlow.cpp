@@ -1,4 +1,5 @@
 #include "GameContext.h"
+#include "BehaviorDispatch.h"
 
 #include <algorithm>
 #include <cmath>
@@ -12,6 +13,12 @@ namespace Desperabis
         constexpr double TicksPerSecond = 33;
         constexpr std::array<std::uint8_t, 16> InventoryPayloads{
             14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 100, 101, 1, 2 };
+        // Resource numbering follows the existing playable/menu order, not simple addition.
+        constexpr std::array<std::int16_t, 26> PlayableLevels{
+            50, 30, 31, 32, 33, 36, 34, 35,
+            10, 11, 12, 13, 14, 15, 16, 17, 18, 90, 19, 20, 21, 22, 23, 24, 25, 26 };
+
+        bool IsGamePartStart(std::int16_t level) { return level == 50 || level == 30 || level == 10; }
 
         class ApplicationInput final : public InputHandler
         {
@@ -21,6 +28,107 @@ namespace Desperabis
             bool IsKeyPressed(InputKey key) override { return keys.at(static_cast<std::size_t>(key)); }
             std::array<bool, static_cast<std::size_t>(InputKey::Count)> keys;
         };
+    }
+
+    void GameContext::PrepareLevelProgression(bool changingLevel)
+    {
+        for (auto& item : inventory)
+        {
+            if (item.collisionType == CollisionType::Weapon && item.doorLockOrGroupBitmask > 10)
+            {
+                item.health = 0;
+                selectedWeapon = requestedWeapon = WeaponType::None;
+            }
+            if (changingLevel && item.collisionType == CollisionType::PickableMap) { item.health = 0; }
+        }
+        if (changingLevel) { hasMap = false; }
+        weaponAnimationSpeed = weaponAnimationPosition = weaponAnimationRecoil = 0;
+        weaponReady = true;
+        RefreshWeaponInventory();
+    }
+
+    void GameContext::FinishGamePart()
+    {
+        StopAllSoundEffects();
+        if (audioHandler && ambientPlaybackActive) { audioHandler->StopAmbientPlayback(); }
+        ambientPlaybackActive = false;
+        windX = windZ = 0;
+        skyEnabled = false;
+        ClearLightningFlashes();
+        PromptUserMessage({}, 0);
+        for (std::size_t slot = 1; slot < worldObjects.size(); ++slot)
+        {
+            SetObjectHealth(worldObjects[slot], 0);
+        }
+        ownedLevel.reset();
+        level = nullptr;
+        collisionMap = nullptr;
+        loadedLevelNumber.reset();
+        playerCollisionSlot = 0;
+        hasActiveGame = false;
+        runtimeState = GameRuntimeState::NoLevel;
+        paused = false;
+        SetMenuPage(MenuPage::MainMenu);
+    }
+
+    void GameContext::EndLevel(bool finishGamePart)
+    {
+        if (runtimeState != GameRuntimeState::Ready || menuPage != MenuPage::Gameplay || !loadedLevelNumber)
+        {
+            throw std::logic_error("Ending a level requires ready gameplay.");
+        }
+        const auto current = std::find(PlayableLevels.begin(), PlayableLevels.end(), *loadedLevelNumber);
+        if (current == PlayableLevels.end())
+        {
+            throw std::logic_error("Current level is not in the playable level sequence.");
+        }
+        const auto next = current + 1;
+        const bool completed = finishGamePart || next == PlayableLevels.end() || IsGamePartStart(*next);
+        PrepareLevelProgression(!completed);
+        if (completed)
+        {
+            FinishGamePart();
+        }
+        else { StartLevel(*next); }
+    }
+
+    void GameContext::StartNextGamePart()
+    {
+        if (runtimeState != GameRuntimeState::Ready || menuPage != MenuPage::Gameplay || !loadedLevelNumber)
+        {
+            throw std::logic_error("Game-part navigation requires ready gameplay.");
+        }
+        const auto current = std::find(PlayableLevels.begin(), PlayableLevels.end(), *loadedLevelNumber);
+        if (current == PlayableLevels.end())
+        {
+            throw std::logic_error("Current level is not in the playable level sequence.");
+        }
+        const auto next = std::find_if(current + 1, PlayableLevels.end(), IsGamePartStart);
+        if (next == PlayableLevels.end()) { throw std::logic_error("No next game part is available."); }
+        PrepareLevelProgression(true);
+        StartLevel(*next);
+    }
+
+    InteractionResult GameContext::HandleLevelEndContact(RawGameObject& object, bool interactionPressed)
+    {
+        if (object.collisionType != CollisionType::LevelEnd)
+        {
+            throw std::invalid_argument("Level-end contact requires collision type 100.");
+        }
+        if (object.health <= 0) { return { InteractionStatus::InactiveObject }; }
+        if (object.groupIndexOrLock == 1000)
+        {
+            EndLevel(true);
+            return { InteractionStatus::Applied };
+        }
+        if (!interactionPressed)
+        {
+            if (object.doorLockOrGroupBitmask != 0) { return { InteractionStatus::NoEffect }; }
+            EndLevel();
+            return { InteractionStatus::Applied };
+        }
+        if (object.doorLockOrGroupBitmask > 0) { return HandleLockedObjectInteraction(object, *this); }
+        return { InteractionStatus::NoEffect };
     }
 
     ApplicationUpdateResult GameContext::UpdateApplication(double elapsedSeconds, InputHandler& input)
@@ -37,6 +145,10 @@ namespace Desperabis
             pressed[i] = snapshot.keys[i] && !applicationPreviousKeys[i];
             if (!snapshot.keys[i]) { applicationBlockedKeys[i] = false; }
         }
+        const auto nextLevelKey = static_cast<std::size_t>(InputKey::DebugNextLevelKey);
+        const auto nextPartKey = static_cast<std::size_t>(InputKey::DebugNextGamePartKey);
+        const bool levelNavigationPressed = (snapshot.keys[nextLevelKey] || snapshot.keys[nextPartKey]) &&
+            !applicationPreviousKeys[nextLevelKey] && !applicationPreviousKeys[nextPartKey];
         applicationPreviousKeys = snapshot.keys;
         const auto wasPressed = [&pressed](InputKey key) { return pressed[static_cast<std::size_t>(key)]; };
         const auto isDown = [&snapshot](InputKey key) { return snapshot.IsKeyPressed(key); };
@@ -74,6 +186,16 @@ namespace Desperabis
             else if (wasPressed(InputKey::InventoryKey) && runtimeState == GameRuntimeState::Ready)
             {
                 OpenInventory();
+            }
+            else if (runtimeState == GameRuntimeState::Ready && levelNavigationPressed &&
+                isDown(InputKey::DebugNextGamePartKey))
+            {
+                StartNextGamePart();
+            }
+            else if (runtimeState == GameRuntimeState::Ready && levelNavigationPressed &&
+                isDown(InputKey::DebugNextLevelKey))
+            {
+                EndLevel();
             }
             break;
         case MenuPage::Inventory:
@@ -153,6 +275,16 @@ namespace Desperabis
             snapshot.keys[i] = snapshot.keys[i] && !applicationBlockedKeys[i];
         }
         result.tick = Tick(result.timing, snapshot);
+        if (result.tick->status == GameTickStatus::LevelEnded)
+        {
+            result.worldDeltaSeconds = 0;
+            result.timing = { 0, 0 };
+            for (std::size_t i = 0; i < InputKeyCount; ++i)
+            {
+                applicationBlockedKeys[i] = applicationBlockedKeys[i] || snapshot.keys[i];
+            }
+            applicationTickAccumulator = 0;
+        }
         return result;
     }
 

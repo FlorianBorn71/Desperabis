@@ -172,6 +172,8 @@ namespace
                 entry.type == BehaviorType::SinkingObject || entry.type == BehaviorType::MetalPole ||
                 entry.type == BehaviorType::BearTrapAmmo || entry.type == BehaviorType::Mummie ||
                 entry.type == BehaviorType::MummieGuard || entry.type == BehaviorType::Gorilla ||
+                entry.type == BehaviorType::AirborneLeaf || entry.type == BehaviorType::GroundLeaf ||
+                entry.type == BehaviorType::RainDrop ||
                 entry.type == BehaviorType::Harvestman || entry.type == BehaviorType::Devil)
             {
                 object.posX = 150;
@@ -193,6 +195,9 @@ namespace
             const bool implemented = entry.type == BehaviorType::Pillar || entry.type == BehaviorType::LightSource ||
                 entry.type == BehaviorType::Door ||
                 entry.type == BehaviorType::TutorialTrigger ||
+                entry.type == BehaviorType::LightningGenerator || entry.type == BehaviorType::WindController ||
+                entry.type == BehaviorType::AirborneLeaf || entry.type == BehaviorType::GroundLeaf ||
+                entry.type == BehaviorType::RainEmitter || entry.type == BehaviorType::RainDrop ||
                 entry.type == BehaviorType::AmbientSoundPosition ||
                 entry.type == BehaviorType::Flies ||
                 entry.type == BehaviorType::WeaponDamageCollider ||
@@ -2026,7 +2031,7 @@ namespace
             "Host interaction requests must reject inactive selected objects.");
         for (const auto type : { CollisionType::BookWithCode, CollisionType::BuyItem,
             CollisionType::WheelToLiftRope, CollisionType::VaseToGrab, CollisionType::MirrorToGrab,
-            CollisionType::LevelEnd, CollisionType::SarcophagusWithBones,
+            CollisionType::SarcophagusWithBones,
             CollisionType::PictureMap, CollisionType::Lorry })
         {
             auto unsupported = pickup(type);

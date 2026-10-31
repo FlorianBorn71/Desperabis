@@ -76,6 +76,7 @@
 	<ClInclude Include="pch.h" />
 	<ClInclude Include="AudioPlayer.h" />
 	<ClInclude Include="ApplicationUi.h" />
+	<ClInclude Include="LightningPresentation.h" />
   </ItemGroup>
   <ItemGroup>
 	<ClCompile Include="..\SharedSource\DX11\BuiltInShaders_Release.cpp" />
@@ -95,6 +96,7 @@
 	<ClCompile Include="DesperabisGame-DX11.cpp" />
 	<ClCompile Include="AudioPlayer.cpp" />
 	<ClCompile Include="ApplicationUi.cpp" />
+	<ClCompile Include="LightningPresentation.cpp" />
 	<ClCompile Include="pch.cpp">
 	  <PrecompiledHeader>Create</PrecompiledHeader>
 	</ClCompile>

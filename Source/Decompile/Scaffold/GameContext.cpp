@@ -152,6 +152,8 @@ namespace Desperabis
     GameContext& GameContext::operator=(GameContext&&) noexcept = default;
 
     void GameContext::OnObjectCreated(int) {}
+    void GameContext::OnLightningShown(const LightningFlash&) {}
+    void GameContext::OnLightningHidden() {}
     void GameContext::OnObjectDestroyed(int) {}
     void GameContext::OnPlayerHealthChanged(std::int32_t, std::int32_t) {}
 
@@ -230,6 +232,11 @@ namespace Desperabis
         runtimeState = GameRuntimeState::Loading;
         try
         {
+            applicationTickAccumulator = 0;
+            StopAllSoundEffects();
+            if (audioHandler && ambientPlaybackActive) { audioHandler->StopAmbientPlayback(); }
+            ambientPlaybackActive = false;
+            ClearLightningFlashes();
             LoadLevel(request);
         }
         catch (const std::exception& error)
@@ -276,11 +283,11 @@ namespace Desperabis
 
         if (audioHandler && data.ambientSound)
         {
-            audioHandler->StopAmbientPlayback();
             if (soundEnabled)
             {
                 CreateAmbientLoop(*data.ambientSound);
                 audioHandler->StartAmbientPlayback();
+                ambientPlaybackActive = true;
             }
         }
 
@@ -301,6 +308,9 @@ namespace Desperabis
         playerMapCollisionsEnabled = true;
         playerLadderMovement = false;
         playerRenderTable = 0;
+        windX = windZ = 0;
+        skyEnabled = level->hasSky;
+        ClearLightningFlashes();
         field_D503 = false;
         playerLookHeight = 110;
         playerTargetLookHeight = 110;
@@ -328,6 +338,7 @@ namespace Desperabis
         hasActiveGame = true;
         runtimeState = GameRuntimeState::Ready;
         SetMenuPage(MenuPage::Gameplay);
+        applicationPageChanged = true;
         applicationTickAccumulator = 0;
         for (std::size_t slot = 1; slot < worldObjects.size(); ++slot)
         {
@@ -645,7 +656,13 @@ namespace Desperabis
         soundListenerZ = worldObjects[1].posZ;
         lightingCache.Reset(soundListenerX, soundListenerZ, lightingCache.activeRadius);
         field_DC34 = 0;
+        const auto loadIdBeforeInteraction = nextLoadRequestId;
         const auto interaction = UpdatePlayerInteraction(*this, input);
+        if (runtimeState != GameRuntimeState::Ready || menuPage != MenuPage::Gameplay ||
+            nextLoadRequestId != loadIdBeforeInteraction)
+        {
+            return { GameTickStatus::LevelEnded, interaction, {}, movement };
+        }
         soundListenerX = worldObjects[1].posX;
         soundListenerZ = worldObjects[1].posZ;
         UpdateWeaponSelection();
@@ -695,6 +712,7 @@ namespace Desperabis
         }
         const auto repeatHeight = static_cast<std::int16_t>(
             info[recordOffset + 116] > 0 ? info[recordOffset + 117] * 5 : 0);
+        loadedLevel->hasSky = info[recordOffset + 96] != 0;
         data.level = std::move(loadedLevel);
         data.floorRepeatHeight = repeatHeight;
         data.ambientSound = info[recordOffset + 100];
@@ -2542,6 +2560,14 @@ namespace Desperabis
         if (slot > 164) { slot = lowestSlot; }
         ReplaceWorldObject(slot, {});
         return slot;
+    }
+
+    bool GameContext::HasCeilingAtPlayer() const
+    {
+        if (!level) { throw std::logic_error("Player ceiling lookup requires a loaded level."); }
+        const auto& player = worldObjects[1];
+        const auto position = GetHeightPosition(player.posX, player.posZ);
+        return level->ceilingObjects[position.row][position.column] != 0;
     }
 
     std::uint8_t GameContext::GetCollisionMapPixelAtWorldXZ(std::int16_t x, std::int16_t z) const

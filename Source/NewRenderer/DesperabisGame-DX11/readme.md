@@ -1,7 +1,7 @@
 # Desperabis Game (DX11)
 
 Standalone DX11 host with core-owned nonblocking gameplay, inventory and a
-first-pass main menu. On startup it loads the training level (50).
+first-pass main menu. On startup it loads level 10.
 
 Flame markers (`TrackFireAnimation`, 202) load `FACKEL<n>.AN2` into reserved
 texture slots 13..15. Native sprite bank 6 uses its one-based animation row to
@@ -12,6 +12,45 @@ level wall textures. Animation bindings survive material-vector replacement,
 are refreshed after core-state presentation updates, and are removed with their
 renderable instances. The existing renderer supplies independent flame phases
 and its approximate animation speeds; this is not DOS-frame-exact timing.
+
+GameCore now drives level-10 wind, airborne/ground leaves and individual rain
+drops/splashes through ordinary object presentation. Thunder uses the existing
+effects backend. Native lightning geometry is available as
+`GameContext::GetLightningFlashes()` (360x240 screen-space segments, palette
+250, render-table request 16). Weather state is context-owned and resets across
+level loads. Native palette-table flashing is not applied; a modern textured
+bolt and distant dynamic light now provide the flash presentation instead.
+The locked building entrance is the existing key-99 paired teleporter, not
+the markers formerly labeled as possible door controllers.
+Native sprite display mode 13 is now recognized, so both rain and floor splashes
+use their original bank-4 frames through the unlit sprite path. Exact DOS shading
+for that mode remains unrecovered. WARP tests check visible pixels for both frames.
+
+`GameAppContext::OnLightningShown(const LightningFlash&)` and
+`OnLightningHidden()` are explicit renderer extension points; no polling is needed.
+Show receives each completed bolt; hide clears all bolts/lights at the next
+object-update batch or load/unload. Paused/modal gameplay keeps the current flash.
+Copy the borrowed show argument if retaining it. Its `sourceSlot` and optional
+`sourcePosition` give the generator's native XYZ (convert with `Level::DespToPos`),
+not a physical 3D strike.
+
+`LightningPresentation` maps the native screen lines through the current camera
+onto a world-space plane 1800 DOS units away. Per-endpoint full widths start at
+2 native pixels on the trunk, decrease with height, reduce to 55% on each side
+branch, and end at exactly zero at every tip. This is a deliberate visual
+enhancement; native endpoints, segment order, RNG and thunder timing are unchanged.
+The existing `SetTexturedLine` vertex stretch builds camera-facing tapered strips
+with a cached cool-white glow texture, additive blending and no lighting/fog.
+Models split at 128 segments to respect the byte-sized second-position index;
+no lines are dropped.
+
+Each flash adds a cool-white light near its distant lower endpoint, radius 1700
+DOS units and intensity multiplier 80. Its radius excludes the player's immediate
+area, so distant surfaces brighten more than the foreground. No corona is added.
+Show registers models/instances/lights with the scene; hide removes all of them
+and releases per-flash model buffers. The glow texture is reused. WARP tests check
+rendered bolt pixels, real distant-versus-foreground illumination, large-bolt
+chunking, multiple flashes and cleanup.
 
 Both standalone project and solution builds write to the repository's `Bin` folder:
 Release uses `Bin`, and Debug uses `Bin\Debug`.
@@ -195,8 +234,11 @@ An optional output BMP path captures the native-size inventory for inspection:
 The project links against `Desperabis-GameCore`. `GameAppContext` in
 `DesperabisGame-DX11.cpp` derives directly from `Desperabis::GameContext`:
 
-* Level loading goes through `GameContext::StartLevel` / `CompleteLevelLoad`. The host supplies only
-  level number and initial view direction. GameContext's `LoadLevelGeometry` reads `LEVEL\FELD<n>.256` and builds
+* GameCore is authoritative for level progression. `StartLevel` invokes the host's
+  `LoadLevel(request)` hook, which builds the renderer scene for that exact request
+  and completes it with owned data. Startup requests level 10; subsequent exits
+  and development navigation are decided by GameCore, not renderer scene state.
+  GameContext's `LoadLevelGeometry` reads `LEVEL\FELD<n>.256` and builds
   the static collision map from material bytes and embedded original 5x5 wall icons.
   `LoadLevelObjects` reads `LEVEL\OBJPOS<n>.DAT` and decodes the native object array (record `i` -> slot `i + 2`).
   GameCore also reads the level's 124-byte `LEVEL\LEVELS.INF` record for all four
@@ -204,6 +246,11 @@ The project links against `Desperabis-GameCore`. `GameAppContext` in
   failed mid-tick without this metadata, leaving camera rotation stale.
   These loaders use the app's `LoadFile` override. Malformed files fail loading explicitly.
   The renderer scene does not create game objects itself.
+  Core `LevelEnd` contact advances within the current game part; completing a
+  part unloads the core world and returns to a non-resumable main menu.
+  Old effects/ambient stop at request time, loading errors are explicit, and
+  transition frames do not simulate the new scene with old-frame delta/ticks.
+  Renderables and the health bar synchronize after core completion.
 * GameCore schedules game ticks (33 Hz, as in the original game).
   Changed slots update their `RenderableInstance` via `Level::ApplyRenderProperties`.
 * The camera comes from `GameContext::GetPlayerCamera()`: eye position via `Level::DespToPos`, with no extra offset,
@@ -380,14 +427,14 @@ Current assumptions/limitations:
   When enabled, player wall collisions and all player damage are suppressed;
   pickups/interactions and healing remain enabled. The HUD shows `Player collision: off/on`.
   The flag defaults to false and persists across level changes. Key repeat is ignored.
-* `Tab`: load the next playable level in DesktopPlayer menu order:
+* `Tab`: send a development next-level input to GameCore, using DesktopPlayer menu order:
   training `50`, part 1 `30, 31, 32, 33, 36, 34, 35`, then part 2
   `10, 11, 12, 13, 14, 15, 16, 17, 18, 90, 19, 20, 21, 22, 23, 24, 25, 26`.
   Reloads the renderer scene and gameplay state, reapplies the cheat loadout when enabled,
   and resets the camera to the new start. Holding the key does not skip multiple levels.
-  Startup is training (50), followed by part 1 and then part 2. At the final entry (26), navigation stops without
-  wrapping and the window title reports that no next level exists.
-* `Shift+Tab`: jump to the next game part: training -> part 1 (30) -> part 2 (10).
+  Startup is level 10. At a part's final entry (50, 35 or 26), the core returns
+  to the main menu instead of crossing into another part or wrapping.
+* `Shift+Tab`: ask GameCore to jump to the next game part: training -> part 1 (30) -> part 2 (10).
   From any level within a part, skips its remaining levels. In part 2, stops
   without wrapping and reports that no next game part exists. Key repeat is ignored.
 Development shortcuts `F`, `N`, `Tab` and `Shift+Tab` are available only in gameplay.

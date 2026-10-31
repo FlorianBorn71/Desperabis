@@ -11,6 +11,11 @@ namespace Desperabis
             return { InteractionStatus::NoEffect };
         }
         auto& object = context.worldObjects[context.playerCollisionSlot];
+        if (object.collisionType == CollisionType::LevelEnd)
+        {
+            const auto automatic = context.HandleLevelEndContact(object, false);
+            if (automatic.status != InteractionStatus::NoEffect) { return automatic; }
+        }
         if (object.collisionType == CollisionType::DestroyOnCollide)
         {
             if (!context.behaviorDispatchEnabled) { return { InteractionStatus::NoEffect }; }

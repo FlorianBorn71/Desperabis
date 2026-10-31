@@ -1,5 +1,6 @@
 #include "pch.h"
 #include "ApplicationUi.h"
+#include "LightningPresentation.h"
 
 #include <GameContext.h>
 #include <Asset/AssetManager.h>
@@ -112,6 +113,115 @@ namespace
         bool HasFlameSlot(int slot) const { return m_fireAnimations[slot].m_torchAnim != nullptr; }
     };
 
+    void CheckLightning(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        FlameScene scene;
+        Camera camera;
+        Matrix4 projection;
+        projection.CreateProjection(1.5f, 70.f * Math::Pi / 180.f, 0.05f, 100.f);
+        camera.SetProjectionMatrix(projection);
+        Desperabis::GameContext core;
+        core.randomSeed = 1;
+        core.GenerateLightningFlash(180);
+        const auto flash = core.GetLightningFlashes().front();
+        LightningPresentation presentation;
+        presentation.Show(scene, flash, camera);
+        Check(!scene.GetRenderableInstances().empty() && scene.GetLightSources().size() == 1,
+            "Lightning show must register a dynamic model and distant light.");
+        const auto light = scene.GetLightSources().front();
+        Check(light->GetPosition().GetLength() > light->GetRadius() && light->GetRadius() > 0.f,
+            "Lightning light must concentrate illumination in the distance, not at the player.");
+        PackedLightSourceParams packed;
+        Check(light->FillLightParams(packed) && packed.ColorAndPadding.x > 1.f && light->GetCoronaSize() == 0.f,
+            "Lightning must use a bright, cool dynamic light without an unrelated corona.");
+        Check(std::fabs(light->GetRadius() - 1700.f * DespToFloat) < 0.0001f &&
+            std::fabs(packed.ColorAndPadding.x - 80.f * 210.f / 255.f) < 0.0001f,
+            "Lightning must use the exaggerated 80x multiplier and increased 1700-unit radius.");
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        VisibilityResult visible;
+        visible.m_mainCamera = &camera;
+        visible.m_scene = &scene;
+        visible.m_fogFalloff = 0.f;
+        visible.m_lightmap = AssetManager::Instance().GetPlainWhiteTexture();
+        visible.m_visibileLights.push_back(packed);
+        for (const auto& instance : scene.GetRenderableInstances())
+        {
+            visible.m_visibleInstances.m_transparentInstances.push_back({instance.get(), 0});
+            visible.m_visibleInstances.m_visibleTransparencyTypes |= instance->GetUsedTransparencyMask();
+            Check(instance->IsValid() && instance->HasTransparentMaterials() &&
+                !instance->GetRenderable()->m_drawCalls[0].m_material.m_applyLighting,
+                "Lightning strips must be additive and self-lit.");
+        }
+        RenderingSettings settings;
+        ProfilingStats stats;
+        const float black[4]{0, 0, 0, 1};
+        context->ClearRenderTargetView(target.colorView.Get(), black);
+        context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+        renderer.RenderSceneElements(visible, settings, stats);
+        const auto pixels = target.Pixels(device, context);
+        const auto count = std::count_if(pixels.begin(), pixels.end(),
+            [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; });
+        Check(count >= 100, "Tapered textured lightning must render actual visible world-space pixels.");
+        const auto receiverModel = GeometryUtils::CreateCameraBillboardQuadMesh(2.f, 2.f);
+        auto receiver = std::make_shared<RenderableInstance>(receiverModel.get());
+        auto& material = receiver->GetOrCreateMaterialOverrides().front();
+        material.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
+        material.m_textureSlot = -1;
+        material.m_applyLighting = true;
+        material.ComputeHash();
+        receiver->ComputeTransparencyMask();
+        const auto litPixels = [&](const Vector& position, bool enabled)
+        {
+            Matrix4 transform;
+            transform.SetTranslation(position);
+            receiver->SetTransform(transform);
+            VisibilityResult lighting;
+            lighting.m_mainCamera = &camera;
+            lighting.m_ambientColor = {0.f, 0.f, 0.f};
+            lighting.m_ambientNrmlContribution = 0.f;
+            lighting.m_fogFalloff = 0.f;
+            lighting.m_lightmap = AssetManager::Instance().GetPlainWhiteTexture();
+            lighting.m_visibleInstances.m_opaqueInstances.push_back({receiver.get(), 0});
+            lighting.m_visibleInstances.m_visibleTransparencyTypes = receiver->GetUsedTransparencyMask();
+            if (enabled) { lighting.m_visibileLights.push_back(packed); }
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+            renderer.RenderSceneElements(lighting, settings, stats);
+            const auto result = target.Pixels(device, context);
+            return std::count_if(result.begin(), result.end(),
+                [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; });
+        };
+        const auto distantPosition = light->GetPosition() + Vector(0.f, 0.f, 1.f);
+        const auto unlitCount = litPixels(distantPosition, false);
+        const auto distantCount = litPixels(distantPosition, true);
+        const auto nearCount = litPixels(Vector(0.f, 0.f, -0.5f), true);
+        std::cout << "Lightning receiver pixels: baseline " << unlitCount << ", distant "
+            << distantCount << ", foreground " << nearCount << ".\n";
+        Check(unlitCount == 0 && distantCount >= 100 && nearCount == 0,
+            "The lightning light must illuminate distant surfaces while leaving the immediate foreground dark.");
+        std::weak_ptr<RenderableInstance> instance = scene.GetRenderableInstances().front();
+        presentation.Show(scene, flash, camera);
+        Check(scene.GetLightSources().size() == 2, "Multiple flashes in a batch must retain their own lights.");
+        presentation.Hide();
+        Check(scene.GetRenderableInstances().empty() && scene.GetLightSources().empty() && instance.expired(),
+            "Hide must remove every flash model and light and release its instances.");
+        presentation.Hide();
+        Desperabis::LightningFlash large;
+        large.lines.assign(260, {170, 20, 180, 40, 4.f, 0.f});
+        presentation.Show(scene, large, camera);
+        int segments = 0;
+        for (const auto& part : scene.GetRenderableInstances())
+        {
+            Check(part->GetRenderable()->m_numPositions <= 256, "Lightning chunks must fit byte-addressed second positions.");
+            segments += part->GetRenderable()->m_numPolygons;
+        }
+        Check(scene.GetRenderableInstances().size() == 3 && segments == 260,
+            "Large bolts must split into models without truncating segments.");
+        presentation.Hide();
+        std::cout << "Tapered world-space lightning: " << count << " visible pixels; distant light and batch cleanup passed.\n";
+    }
+
     void CheckTextControls(const Font& font)
     {
         const Color4 base{ 204,102,0,190 };
@@ -192,6 +302,75 @@ namespace
             "Slime impact/dissolve must resolve both real puddle morph targets.");
         Check(std::fabs(instance->m_blendWeight - 0.6f) < 0.00001f,
             "Slime dissolve must forward the native blend weight.");
+    }
+
+    void CheckRainSprites(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(10));
+        const auto animations = level->GetLevelInfo().GetTextureAnim(1);
+        Check(animations != nullptr && animations->IsValidFrame(3, 0) && animations->IsValidFrame(3, 1),
+            "Level 10 must supply the original rain and splash frames.");
+        Desperabis::GameContext core;
+        auto terrain = Desperabis::CreateDummyLevel();
+        core.level = &terrain;
+        core.collisionMap = terrain.collisionMap.get();
+        core.worldObjects[1].posX = core.worldObjects[1].posZ = 1500;
+        core.playerMapCollisionsEnabled = false;
+        std::fill(std::begin(core.collisionMap->data), std::end(core.collisionMap->data), 0);
+        const auto slot = core.FindFreeObjectIndex();
+        core.InitializeRainDrop(slot, 1500, 200, 1500);
+        const auto initial = core.worldObjects[slot];
+        Check(initial.health > 0, "Rain fixture must be admitted.");
+        auto instance = std::make_shared<RenderableInstance>(nullptr);
+        ::RawGameObject raw{};
+        raw.m_level = level;
+        raw.m_objectNumber = slot;
+        RenderingSettings settings;
+        ProfilingStats stats;
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        std::array<int, 2> visiblePixels{};
+        for (int frame = 0; frame < 2; ++frame)
+        {
+            auto rain = initial;
+            rain.animFrame = static_cast<std::uint8_t>(frame + 1);
+            rain.behavior = frame == 0 ? Desperabis::BehaviorType::RainDrop : Desperabis::BehaviorType::None;
+            rain.health = frame == 0 ? 60 : 3;
+            Desperabis::EncodeGameObject(rain, raw.m_rawBytes, 54);
+            level->ApplyRenderProperties(instance, raw);
+            Check(instance->IsValid() && instance->GetVisible() && instance->m_materialOverride.size() == 1 &&
+                instance->m_materialOverride[0].m_texture == animations->GetFrame(3, frame) &&
+                !instance->m_materialOverride[0].m_applyLighting &&
+                std::fabs(instance->m_uniformScale - 29.f / 64.f) < 0.00001f,
+                "Mode 13 must resolve the real rain/splash sprite, scale and unlit material.");
+            instance->UpdateGlobalBounds();
+            const auto& bounds = instance->GetGlobalBounds();
+            const auto center = bounds.GetCenter();
+            const float span = (std::max)(bounds.GetSphereRadius() * 3.f, 0.2f);
+            Matrix4 projection, transform;
+            projection.CreateOrthographic(span * 1.5f, span, 0.1f, 10.f);
+            transform.SetTranslation(Vector(center.GetX(), center.GetY(), center.GetZ() + 3.f));
+            Camera camera;
+            camera.SetProjectionMatrix(projection);
+            camera.SetCameraTransformMatrix(transform);
+            VisibilityResult visible;
+            visible.m_mainCamera = &camera;
+            visible.m_visibleInstances.m_opaqueInstances.push_back({instance.get(), 0});
+            visible.m_visibleInstances.m_visibleTransparencyTypes = instance->GetUsedTransparencyMask();
+            visible.m_ambientColor = {0.f, 0.f, 0.f};
+            visible.m_fogFalloff = 0.f;
+            visible.m_lightmap = AssetManager::Instance().GetPlainWhiteTexture();
+            const float black[4]{0, 0, 0, 1};
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            const auto pixels = target.Pixels(device, context);
+            visiblePixels[frame] = static_cast<int>(std::count_if(pixels.begin(), pixels.end(),
+                [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; }));
+            Check(visiblePixels[frame] >= 8, "Actual rain and splash sprites must draw visible pixels, even without ambient light.");
+        }
+        std::cout << "Mode-13 world sprites: " << visiblePixels[0] << " rain pixels, "
+            << visiblePixels[1] << " splash pixels (zero ambient light).\n";
     }
 
     void CheckTutorialFlames()
@@ -362,6 +541,8 @@ int main(int argc, char* argv[])
         CheckTextControls(font);
         CheckTutorialFlames();
         CheckEnemyModels();
+        CheckRainSprites(renderer, device.Get(), context.Get());
+        CheckLightning(renderer, device.Get(), context.Get());
         const auto singleLine = font.CreateGlyphMesh("Nimm den Schl\x81ssel", Color4{ 204,102,0,255 },
             Font::HorizontalAlignment::Center, Font::VerticalAlignment::Center);
         const auto multiline = font.CreateGlyphMesh("Nimm den Schl\x81ssel\\Wechsle mit F2 ins \xfbInventar",

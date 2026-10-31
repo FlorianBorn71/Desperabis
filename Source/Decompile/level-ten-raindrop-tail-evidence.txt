@@ -1,0 +1,34 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 10AC:D72A:0050
+10AC:D72A  6A 02                    PUSH 0x2
+10AC:D72C  9A 0A 17 E4 3C           CALLF 0x3000:e54a ; encoded analysis target 3CE4:170A, module 2CE4:170A
+10AC:D731  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:D734  26 89 45 1E              MOV word ptr ES:[DI + 0x1e],AX
+10AC:D738  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:D73B  26 FF 75 0C              PUSH word ptr ES:[DI + 0xc]
+10AC:D73F  C4 7E FC                 LES DI,[BP + -0x4]
+10AC:D742  26 FF 75 10              PUSH word ptr ES:[DI + 0x10]
+10AC:D746  6A 08                    PUSH 0x8
+10AC:D748  6A 08                    PUSH 0x8
+10AC:D74A  9A 8B CF 48 2E           CALLF 0x3000:b40b ; encoded analysis target 2E48:CF8B, module 1E48:CF8B
+10AC:D74F  08 C0                    OR AL,AL
+10AC:D751  75 2E                    JNZ 0x2000:e241 ; logical module target 10AC:D781
+10AC:D753  A1 D2 D4                 MOV AX,[0xd4d2]
+10AC:D756  99                       CWD
+10AC:D757  B9 64 00                 MOV CX,0x64
+10AC:D75A  F7 F9                    IDIV CX
+10AC:D75C  8B D8                    MOV BX,AX
+10AC:D75E  A1 D6 D4                 MOV AX,[0xd4d6]
+10AC:D761  99                       CWD
+10AC:D762  B9 64 00                 MOV CX,0x64
+10AC:D765  F7 F9                    IDIV CX
+10AC:D767  8B D0                    MOV DX,AX
+10AC:D769  B8 29 00                 MOV AX,0x29
+10AC:D76C  2B C2                    SUB AX,DX
+10AC:D76E  6B F8 32                 IMUL DI,AX,0x32
+10AC:D771  03 FB                    ADD DI,BX
+10AC:D773  80 BD 3D 42 00           CMP byte ptr [DI + 0x423d],0x0
+10AC:D778  76 10                    JBE 0x2000:e24a ; logical module target 10AC:D78A
