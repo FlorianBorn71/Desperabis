@@ -1472,8 +1472,8 @@ frame timing, drag, and independent map gates.
 **Remaining boundaries:** Lorry 78 and Submarine 141 attach the player but
 require substantial native vehicle controllers; neither is implemented by
 merely copying vehicle position. Radial contact separation, several other
-contact/hazard responses, oxygen depletion, bubbles and underwater audio
-remain unported. Behavior **178** compares horizontal player distance with
+contact/hazard responses remain unported. Oxygen depletion, bubbles and
+underwater audio are now implemented below. Behavior **178** compares horizontal player distance with
 `itemValue` and switches a DOS viewport-region height; it does not move the
 player. A connection to foil-revealed fire particles is the author's
 hypothesis, **not yet established**; keep `Behavior_178` unchanged.
@@ -1525,7 +1525,9 @@ Evidence: [posture helpers/controller](player-posture-evidence.txt),
 The author confirms underwater play is **walking/crouching along the bottom**,
 not free swimming; normal terrain gravity still applies. DS:`D4FF` is now
 identified and implemented as ladder control, not underwater buoyancy.
-Oxygen, underwater presentation and environmental damage remain unported.
+Oxygen, underwater sound/bubbles and the global underwater view are now implemented
+(see [underwater recovery](#underwater-oxygen-audio-and-bubbles)).
+Some other environmental damage modes remain unported.
 The native death animation
 also remains separate. `player-posture` tests cover the jump arc, input
 ordering/batching, posture boundaries, camera/radius coherence, clearance and
@@ -3068,6 +3070,57 @@ and RNG, native allocation side effects/fallbacks, inventory/hand priority,
 hotkey swaps, blocked input, unsupported weapon status, and pickup-to-enemy-hit
 sequences through `Tick`. These are static-instruction-derived host tests,
 not DOS-runtime comparisons.
+
+### Underwater oxygen, audio and bubbles
+
+Evidence: [controller tail](player-underwater-evidence.txt),
+[original meter initialization](weapon-selection-evidence.txt),
+[signed fixed-point meter helper](inventory-hands-render-evidence.txt),
+[bubble factory](spawn-initializer-evidence.txt), [bubble motion](underwater-bubble-behavior-evidence.txt)
+and [surface-pop animation](underwater-bubble-pop-evidence.txt).
+
+- `0000:0E76..0E84` initializes DS:`2DCE` with tag **200**, maximum **360**
+  and current **360**. Its signed 16.16 current value is DS:`2DD2`.
+  `DFB0..DFBA` subtracts **14625** per player-controller step, not per
+  object-update call. At the host's 33 Hz this takes **1614 steps** to empty.
+- `1E48:D614..D645` forwards an exhausted tag-2..200 meter's
+  `delta*tag >> 6` to player life. Oxygen therefore applies **-45704**
+  fixed-point life per step once empty, using `ApplyPlayerLifeDelta` so
+  suppression, clamping, health callbacks and native death state still apply.
+  Surfacing restores oxygen immediately; pauses/modal pages consume nothing.
+- `DF83..DF91` plays water-entry effect **43**; `DF96..DFAB` repeatedly
+  requests underwater effect **58** (original sample **58**, full volume).
+  DX11 uses a dedicated infinite-loop voice rather than restarting a sample
+  every controller call. It preserves level ambient audio and all four effect
+  channels; pause, sound disable, menus, loading and part completion stop it.
+- `DFC8..DFDA` emits when `Random((walkPhase & 127)+10) < 2`.
+  Position is eye minus 20 vertically, plus a quarter of horizontal view
+  direction and signed random jitter of radius 10. Native factory `10AC:056C`
+  creates model **31**, animation/frame **3/3**, health **200**, vector display,
+  random yaw and angular velocity, and 8.8 vertical speed **190..389**.
+  Its occasional sound is effect **56** (samples **56/57**).
+- Behavior **103**, now `Bubble`, accumulates angular motion and signed 8.8
+  rise, retaining the fractional byte. On water category 1, strict crossing
+  of surface slot 1 changes behavior to **105**, now `BubblePop`.
+  Pop morphs original frames **4/5**, advances blend weight by `2*ticks`,
+  fades through display types 30..36 and dies above weight 100. Creation,
+  replacement, timeout and pop completion use normal lifecycle notifications.
+
+`OnUnderwaterChanged` explicitly enables/disables the active gameplay view;
+`OnPlayerOxygenChanged` reports fixed-point meter changes. Both are context-owned.
+Loading/part completion reset oxygen, the underwater flag, tint and loop.
+Disabling basic movement requires the host to maintain `playerUnderwater`;
+the core still updates oxygen/audio/bubbles using frame-controller ticks.
+
+The renderer's global blue multiplication and compact blue/white oxygen HUD
+are presentation adaptations, not an exact DOS palette recreation. Water
+reflection buckets switch to refraction below each surface; receiver rendering
+disables backface culling temporarily and restores it afterward. Above-water
+reflection and explicitly refracting materials retain their previous behavior.
+The separate moving brightness patches of behavior **104** remain deliberately
+unimplemented. `player-underwater` and WARP tests cover meter thresholds,
+drowning, audio/view lifecycle, real movement, native bubbles/pops, half-height
+HUD bounds, multiplicative pixels, viewport resizing and underside refraction.
 
 ### First-person weapon presentation
 

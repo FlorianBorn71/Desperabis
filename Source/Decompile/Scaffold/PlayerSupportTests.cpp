@@ -37,6 +37,7 @@ namespace
         std::vector<Playback> plays;
         std::array<bool, SoundChannelCount> busy{};
         bool keepPlaying = false;
+        std::uint8_t underwaterSample = 0;
         std::uint16_t GetSampleCount() const override { return 129; }
         bool IsChannelPlaying(std::size_t channel) const override { return busy.at(channel); }
         void PlaySample(std::size_t channel, std::uint8_t sample, std::uint8_t volume) override
@@ -46,6 +47,8 @@ namespace
         }
         void StopAllSamples() override { busy.fill(false); }
         void StopAmbientPlayback() override {}
+        void StartUnderwaterPlayback(std::uint8_t sample, std::uint8_t) override { underwaterSample = sample; }
+        void StopUnderwaterPlayback() override { underwaterSample = 0; }
     };
 
     struct Host final : GameContext
@@ -358,8 +361,9 @@ namespace
         water.SetCollisionMapPixelAtWorldXZ(1500, 2500, 1);
         water.playerWalkPhase = 257;
         Step(water, idle);
-        Check(water.playerUnderwater && waterAudio.plays.empty() && water.randomSeed == 1,
-            "Submerged contact must suppress the step and draw only the native underwater phase increment.");
+        Check(water.playerUnderwater && water.playerWalkPhase == 3 && waterAudio.plays.size() == 1 &&
+            waterAudio.plays[0].sample == 43 && waterAudio.underwaterSample == 58,
+            "Submerged contact must suppress footsteps while requesting water entry and the original underwater loop.");
 
         Audio batchAudio;
         Host batch;

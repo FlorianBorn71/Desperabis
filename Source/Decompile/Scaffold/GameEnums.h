@@ -104,9 +104,9 @@ namespace Desperabis
         Moon = 100,
         WaterDrop = 101,
         LightningGenerator = 102,
-        Behavior_103 = 103,
+        Bubble = 103,
         UnderwaterColorAnim = 104, // underwater vertex color animation
-        Behavior_105 = 105,
+        BubblePop = 105,
         Behavior_106 = 106,
         WindController = 108,
         AirborneLeaf = 109,

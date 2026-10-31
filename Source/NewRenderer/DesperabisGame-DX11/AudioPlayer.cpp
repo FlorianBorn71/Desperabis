@@ -111,6 +111,25 @@ void AudioPlayer::StopAllSamples()
     for (auto& voice : m_channels) { voice.reset(); }
 }
 
+void AudioPlayer::StartUnderwaterPlayback(std::uint8_t sample, std::uint8_t volume)
+{
+    const auto& pcm = GetSamplePcm(sample);
+    auto voice = CreateChannel();
+    XAUDIO2_BUFFER buffer{};
+    buffer.AudioBytes = static_cast<UINT32>(pcm.size());
+    buffer.pAudioData = pcm.data();
+    buffer.LoopCount = XAUDIO2_LOOP_INFINITE;
+    CheckAudioResult(voice->SetVolume(static_cast<float>(volume) / 255.f), "Underwater volume update");
+    CheckAudioResult(voice->SubmitSourceBuffer(&buffer), "Underwater loop submission");
+    CheckAudioResult(voice->Start(), "Underwater playback");
+    m_underwaterVoice = std::move(voice);
+}
+
+void AudioPlayer::StopUnderwaterPlayback()
+{
+    m_underwaterVoice.reset();
+}
+
 const std::vector<byte>& AudioPlayer::GetSamplePcm(std::uint8_t sample) const
 {
     if (sample == 0 || sample > m_samples.size())

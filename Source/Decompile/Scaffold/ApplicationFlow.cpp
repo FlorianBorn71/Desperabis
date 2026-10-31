@@ -49,6 +49,7 @@ namespace Desperabis
 
     void GameContext::FinishGamePart()
     {
+        ResetUnderwater();
         StopAllSoundEffects();
         if (audioHandler && ambientPlaybackActive) { audioHandler->StopAmbientPlayback(); }
         ambientPlaybackActive = false;

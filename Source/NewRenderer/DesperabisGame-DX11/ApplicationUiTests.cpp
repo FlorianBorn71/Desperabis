@@ -7,6 +7,7 @@
 #include <Asset/Font.h>
 #include <Asset/Level.h>
 #include <DX11/RendererDX11.h>
+#include <DX11/RenderContextDX11.h>
 #include <DX11/NativeTextureDX11.h>
 #include <IO/FileManagerBuiltIn.h>
 #include <Physics/PhysicsInterface.h>
@@ -192,6 +193,189 @@ namespace
         std::size_t BindingCount() const { return m_fireAnimationInstances.size(); }
         bool HasFlameSlot(int slot) const { return m_fireAnimations[slot].m_torchAnim != nullptr; }
     };
+
+    void CheckUnderwater(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        const auto& white = *AssetManager::Instance().GetPlainWhiteTexture();
+        RenderingSettings settings;
+        ProfilingStats stats;
+        Camera camera;
+        for (const auto size : {std::pair<UINT, UINT>{360,240}, {240,360}, {720,480}})
+        {
+            Target target(device, size.first, size.second);
+            renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+            TextMeshInstance view(TextMesh::CreateTexturedQuad(white, static_cast<float>(size.first),
+                static_cast<float>(size.second)));
+            view.SetScale(1.f);
+            view.SetTintColor(Color4{200,100,50,255});
+            VisibilityResult visible;
+            visible.m_mainCamera = &camera;
+            const auto render = [&]
+            {
+                renderer.SetWeaponDraw([&](const RenderingSettings& drawSettings, ProfilingStats& drawStats)
+                {
+                    VisibilityResult empty;
+                    RenderContextDX11 draw(renderer, empty, drawSettings, drawStats);
+                    draw.RenderTextMeshes({&view});
+                });
+                renderer.RenderSceneElements(visible, settings, stats);
+                return target.Pixels(device, context);
+            };
+            const auto pixelAt = [&](const auto& pixels, UINT x, UINT y)
+                { return pixels[static_cast<std::size_t>(y) * size.first + x] & 0xffffff; };
+            renderer.SetUnderwaterTint(false);
+            const auto normal = render();
+            Check(pixelAt(normal, 10, 10) == 0x3264c8, "Untinted view must preserve its original RGB.");
+            renderer.SetUnderwaterTint(true);
+            const auto tinted = render();
+            const auto rgb = pixelAt(tinted, 10, 10);
+            Check(std::abs(static_cast<int>(rgb & 255) - 75) <= 1 &&
+                std::abs(static_cast<int>((rgb >> 8) & 255) - 63) <= 1 && (rgb >> 16) == 50,
+                "Underwater must multiply the world/weapon RGB, not cover it with an alpha-blended blue sheet.");
+            Check(render() == tinted, "Underwater tint must remain active until the exit callback.");
+            const float height = 20.f;
+            auto meters = ApplicationUi::CreateVitalMeters(white,
+                {0.f, static_cast<float>(size.second) - height, static_cast<float>(size.first), height}, 0.5f, 0.25f);
+            Check(meters.size() == 4, "Submerged vitals must contain separate half-height health/oxygen strips.");
+            for (const auto& meter : meters)
+            {
+                Check(meter->GetMesh()->GetExtent().y == height * 0.5f,
+                    "Both submerged meters must use exactly half the normal health height.");
+                visible.m_visibleTextMeshInstances.push_back(meter.get());
+            }
+            const auto hud = render();
+            Check(pixelAt(hud, size.first / 8, size.second - 15) == 0xff8030 &&
+                pixelAt(hud, size.first / 2, size.second - 15) == 0xffffff &&
+                pixelAt(hud, size.first / 8, size.second - 5) == 0xffffff &&
+                pixelAt(hud, 3 * size.first / 4, size.second - 5) == 0x181818 &&
+                pixelAt(hud, size.first / 2, size.second - 21) == rgb,
+                "Blue/white oxygen must sit above health within its old bounds, with HUD colors unaffected by tint.");
+            visible.m_visibleTextMeshInstances.clear();
+            auto dry = ApplicationUi::CreateVitalMeters(white,
+                {0.f, static_cast<float>(size.second) - height, static_cast<float>(size.first), height}, 0.5f, std::nullopt);
+            Check(dry.size() == 2 && dry[0]->GetMesh()->GetExtent().y == height,
+                "Outside water the existing health meter must retain its full height.");
+            auto empty = ApplicationUi::CreateVitalMeters(white, {0,0,100,20}, 0.f, 0.f);
+            Check(empty.size() == 2, "Depleted meters must show backgrounds without zero-width geometry.");
+            renderer.SetUnderwaterTint(false);
+            Check(render() == normal, "Exit must remove the tint completely.");
+        }
+    }
+
+    void CheckUnderwaterSurface(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        ModelLoadingContext positions;
+        positions.m_vertexPos = {{-2,0,-2,1}, {2,0,-2,1}, {2,0,2,1}, {-2,0,2,1}};
+        ModelConversionContext mesh(positions);
+        mesh.m_numPositions = 4;
+        for (uint16_t i = 0; i < 4; ++i)
+        {
+            mesh.AddToBounds(positions.m_vertexPos[i], 0.f);
+            mesh.m_vertices.emplace_back().SetTextured(i, Color4{255,255,255,255}, {0,0});
+        }
+        mesh.m_sortedIndices = {0,2,1,0,3,2};
+        mesh.GeneratePerTriangleNormals(mesh.m_sortedIndices.data(), 6, 0);
+        Renderable model;
+        model.m_runtime = renderer.CreateModelBuffers(mesh);
+        model.m_numPositions = 4;
+        model.m_numPolygons = 1;
+        mesh.GenerateBoundingVolume(model.m_localBounds);
+        auto& draw = model.m_drawCalls.emplace_back();
+        draw.m_primitiveCount = 2;
+        draw.m_material.m_transparencyType = TransparencyMode::Water;
+        draw.m_material.m_reflectionType = WaterReflectionType::ReflectionBit | WaterReflectionType::Water;
+        draw.m_material.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
+        draw.m_material.m_applyLighting = false;
+        draw.m_material.m_useAlphaTest = false;
+        draw.m_material.ComputeHash();
+        auto instance = std::make_shared<RenderableInstance>(&model, 1);
+        instance->SetTransform(Vector(0,0,0), Vector(0,0,0));
+        instance->UpdateGlobalBounds();
+        FlameScene scene;
+        scene.AddRenderableInstance(instance);
+        class Visibility final : public DefaultVisibilityContext
+        {
+        public:
+            void Collect(VisibilityResult& result, const Scene& scene, float cameraY)
+            {
+                m_performFrustumClipping = false;
+                VisibilitySettings settings;
+                settings.filterMask = 1;
+                Frustum frustum;
+                DetermineVisibleInstances(result, result.m_visibleInstances, &scene,
+                    Vector(0,cameraY,0), frustum, nullptr, settings, true);
+            }
+        } visibility;
+        for (const float y : {1.f, 0.f, -1.f})
+        {
+            VisibilityResult result;
+            visibility.Collect(result, scene, y);
+            Check(result.m_visibleWater.size() == 1 && result.m_visibleWater[0].m_useReflection == (y >= 0.f),
+                "Reflecting water must use refraction only when the camera is below its surface.");
+        }
+        auto& override = instance->GetOrCreateMaterialOverrides().at(0);
+        override.m_reflectionType = WaterReflectionType::RefractionBit | WaterReflectionType::Water;
+        override.ComputeHash();
+        for (const float y : {-1.f, 1.f})
+        {
+            VisibilityResult result;
+            visibility.Collect(result, scene, y);
+            Check(!result.m_visibleWater.at(0).m_useReflection, "Explicit refraction must remain refraction on both sides.");
+        }
+        override = draw.m_material;
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        Camera camera;
+        Matrix4 projection;
+        projection.CreateProjection(1.5f, Math::Pi / 2.f, 0.05f, 10.f);
+        camera.SetProjectionMatrix(projection);
+        Matrix4 cameraTransform;
+        cameraTransform.Create(Vector(0,-1,0,1), Vector(1,0,0,0), Vector(0,0,1,0), Vector(0,-1,0,0));
+        camera.SetCameraTransformMatrix(cameraTransform);
+        VisibilityResult result;
+        visibility.Collect(result, scene, -1.f);
+        result.m_mainCamera = &camera;
+        result.m_scene = &scene;
+        result.m_fogColor = {0,0,0};
+        result.m_ambientColor = {1,1,1};
+        result.m_fogFalloff = 0;
+        result.m_lightmap = AssetManager::Instance().GetPlainWhiteTexture();
+        auto& water = result.m_visibleWater.at(0);
+        water.m_scrollParams1 = water.m_scrollParams2 = {0,0,0,0};
+        RenderingSettings settings;
+        ProfilingStats stats;
+        stats.ResetRenderStats();
+        RenderContextDX11 render(renderer, result, settings, stats);
+        render.BeginRendering();
+        render.BeginRenderTargetScope(RenderTargetPassType::MainView);
+        const float gray[]{0.8f,0.8f,0.8f,1.f};
+        context->ClearRenderTargetView(target.colorView.Get(), gray);
+        context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+        render.TrackGlobals();
+        render.BeginWaterRendering();
+        render.PrepareRefraction(true);
+        render.SetGeometryPassType(GeometryPassType::MirrorReceiver);
+        render.SetBlendState(TransparencyMode::Water);
+        ComPtr<ID3D11RasterizerState> before;
+        context->RSGetState(&before);
+        render.PrepareWaterRendering(water);
+        ComPtr<ID3D11RasterizerState> during;
+        context->RSGetState(&during);
+        D3D11_RASTERIZER_DESC state{};
+        during->GetDesc(&state);
+        Check(state.CullMode == D3D11_CULL_NONE, "Water receivers must actually draw their underwater backfaces.");
+        render.RenderInstance<GeometryPassType::MirrorReceiver>(instance.get(), TransparencyMode::Water);
+        render.EndWaterRendering();
+        ComPtr<ID3D11RasterizerState> after;
+        context->RSGetState(&after);
+        Check(after.Get() == before.Get(), "Water rendering must restore the original rasterizer state.");
+        render.EndRenderTargetScope();
+        render.EndRendering();
+        const auto pixels = target.Pixels(device, context);
+        Check(std::any_of(pixels.begin(), pixels.end(), [](auto pixel)
+            { return (pixel & 0xffffff) != 0xcccccc; }), "The underside water receiver must produce refraction pixels.");
+        scene.RemoveRenderableInstance(instance);
+    }
 
     void CheckLightning(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
@@ -623,6 +807,8 @@ int main(int argc, char* argv[])
         CheckEnemyModels();
         CheckRainSprites(renderer, device.Get(), context.Get());
         CheckLightning(renderer, device.Get(), context.Get());
+        CheckUnderwater(renderer, device.Get(), context.Get());
+        CheckUnderwaterSurface(renderer, device.Get(), context.Get());
         const auto singleLine = font.CreateGlyphMesh("Nimm den Schl\x81ssel", Color4{ 204,102,0,255 },
             Font::HorizontalAlignment::Center, Font::VerticalAlignment::Center);
         const auto multiline = font.CreateGlyphMesh("Nimm den Schl\x81ssel\\Wechsle mit F2 ins \xfbInventar",

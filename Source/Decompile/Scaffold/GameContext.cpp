@@ -156,6 +156,8 @@ namespace Desperabis
     void GameContext::OnLightningHidden() {}
     void GameContext::OnObjectDestroyed(int) {}
     void GameContext::OnPlayerHealthChanged(std::int32_t, std::int32_t) {}
+    void GameContext::OnUnderwaterChanged(bool) {}
+    void GameContext::OnPlayerOxygenChanged(std::int32_t, std::int32_t) {}
 
     int GameContext::FindWorldObjectSlot(const RawGameObject& object) const
     {
@@ -233,6 +235,7 @@ namespace Desperabis
         try
         {
             applicationTickAccumulator = 0;
+            ResetUnderwater();
             StopAllSoundEffects();
             if (audioHandler && ambientPlaybackActive) { audioHandler->StopAmbientPlayback(); }
             ambientPlaybackActive = false;
@@ -366,6 +369,7 @@ namespace Desperabis
     {
         paused = value;
         if (value) { applicationTickAccumulator = 0; }
+        RefreshUnderwaterPresentation();
     }
     bool GameContext::IsPaused() const { return paused; }
     const std::array<RawGameObject, 166>& GameContext::GetWorldObjects() const { return worldObjects; }
@@ -621,6 +625,7 @@ namespace Desperabis
             player.posY = WrapSignedWord(eyeY - player.collisionRadiusY - 2);
             player.velocityX = directionX;
             player.velocityZ = directionZ;
+            UpdatePlayerUnderwater();
             ++result.simulatedTicks;
         }
         // TODO: Port remaining damage/contact modes; selected interactions run in Tick after movement.
@@ -652,6 +657,11 @@ namespace Desperabis
         frameTickCount = timing.frameTicks;
         std::optional<BasicPlayerMovementResult> movement;
         if (basicPlayerMovementEnabled) { movement = UpdateBasicPlayerMovement(input); }
+        else
+        {
+            for (int step = 0; step < frameTickCount && playerLife > 0; ++step) { UpdatePlayerUnderwater(); }
+        }
+        RefreshUnderwaterPresentation();
         soundListenerX = worldObjects[1].posX;
         soundListenerZ = worldObjects[1].posZ;
         lightingCache.Reset(soundListenerX, soundListenerZ, lightingCache.activeRadius);
@@ -810,6 +820,7 @@ namespace Desperabis
     {
         if (page == menuPage) { return; }
         menuPage = page;
+        RefreshUnderwaterPresentation();
         applicationPageChanged = true;
         applicationTickAccumulator = 0;
         navigationRepeatKey.reset();
@@ -1161,6 +1172,98 @@ namespace Desperabis
     {
         if (audioHandler) { audioHandler->StopAllSamples(); }
         soundChannelSources.fill(0);
+    }
+
+    void GameContext::RefreshUnderwaterPresentation()
+    {
+        const bool visible = playerUnderwater && runtimeState == GameRuntimeState::Ready &&
+            menuPage == MenuPage::Gameplay;
+        if (visible != underwaterViewActive)
+        {
+            underwaterViewActive = visible;
+            OnUnderwaterChanged(visible);
+        }
+        const bool audible = visible && !paused && playerLife > 0 && soundEnabled && audioHandler;
+        if (!audible && underwaterPlaybackActive)
+        {
+            audioHandler->StopUnderwaterPlayback();
+            underwaterPlaybackActive = false;
+        }
+        else if (audible && !underwaterPlaybackActive)
+        {
+            if (!soundEffectsLoaded) { throw std::logic_error("Underwater audio requires S_TAB.PRB."); }
+            const auto& effect = soundEffects[static_cast<std::size_t>(SoundEffect::Underwater) - 1];
+            if (effect.sampleCount != 1 || effect.samples[0] == 0 ||
+                effect.samples[0] > audioHandler->GetSampleCount())
+            {
+                throw std::runtime_error("Underwater effect requires one valid looping sample.");
+            }
+            audioHandler->StartUnderwaterPlayback(effect.samples[0], 255);
+            underwaterPlaybackActive = true;
+        }
+    }
+
+    void GameContext::ResetUnderwater()
+    {
+        playerUnderwater = underwaterContactActive = false;
+        RefreshUnderwaterPresentation();
+        const auto previous = playerOxygen;
+        playerOxygen = PlayerOxygenMaximum;
+        if (previous != playerOxygen) { OnPlayerOxygenChanged(previous, playerOxygen); }
+    }
+
+    void GameContext::UpdatePlayerUnderwater()
+    {
+        if (playerLife <= 0) { RefreshUnderwaterPresentation(); return; }
+        if (playerUnderwater && !underwaterContactActive)
+        {
+            PlaySoundEffect(SoundEffect::WaterEntry, 255, -1, 1);
+        }
+        underwaterContactActive = playerUnderwater;
+        RefreshUnderwaterPresentation();
+        const auto previous = playerOxygen;
+        if (playerUnderwater && !DEBUG_noPlayerCollision)
+        {
+            // DFBA: -14625 per controller step; exhausted meter tag 200 forwards delta*200 >> 6.
+            playerOxygen = std::max(0, playerOxygen - 14625);
+            if (playerOxygen == 0) { ApplyPlayerLifeDelta(-45704); }
+            if (Random(static_cast<std::uint16_t>((playerWalkPhase & 127) + 10)) < 2)
+            {
+                const auto camera = GetPlayerCamera();
+                const auto& player = worldObjects[1];
+                const auto quarter = [](std::int16_t value)
+                { return value >= 0 ? value / 4 : -((-static_cast<int>(value) + 3) / 4); };
+                const auto x = WrapSignedWord(camera.position[0] + quarter(player.velocityX) + RandomSigned(10));
+                const auto z = WrapSignedWord(camera.position[2] + quarter(player.velocityZ) + RandomSigned(10));
+                SpawnBubble(x, WrapSignedWord(camera.position[1] - 20), z);
+            }
+        }
+        else { playerOxygen = PlayerOxygenMaximum; }
+        if (previous != playerOxygen) { OnPlayerOxygenChanged(previous, playerOxygen); }
+        RefreshUnderwaterPresentation();
+    }
+
+    std::uint16_t GameContext::SpawnBubble(std::int16_t x, std::int16_t y, std::int16_t z)
+    {
+        const auto slot = FindFreeObjectIndex();
+        auto& bubble = worldObjects[slot];
+        bubble.posX = x;
+        bubble.posY = y;
+        bubble.posZ = z;
+        if (Random(5) == 0)
+        {
+            PlaySoundEffect(SoundEffect::Bubble, GetSoundVolume(static_cast<std::int16_t>(Random(600))), -7, 1);
+        }
+        bubble.modelId = 31;
+        bubble.animFrame = bubble.modelAnim = 3;
+        bubble.health = 200;
+        bubble.displayType = DisplayType::VectorNormal;
+        bubble.winY = static_cast<std::int16_t>(Random(512));
+        bubble.velocityX = RandomSigned(4);
+        bubble.velocityY = static_cast<std::int16_t>(190 + Random(200));
+        bubble.behavior = BehaviorType::Bubble;
+        NotifyObjectCreated(bubble);
+        return slot;
     }
 
     void GameContext::ActivateObjectGroup(std::int16_t group)

@@ -1,0 +1,94 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 0000:DF68:00FF
+0000:DF68  80 3E FC D4 00           CMP byte ptr [0xd4fc],0x0
+0000:DF6D  75 03                    JNZ 0x1000:df72 ; logical module target 0000:DF72
+0000:DF6F  E9 A8 00                 JMP 0x1000:e01a ; logical module target 0000:E01A
+0000:DF72  80 3E CD 04 00           CMP byte ptr [0x4cd],0x0
+0000:DF77  75 03                    JNZ 0x1000:df7c ; logical module target 0000:DF7C
+0000:DF79  E9 9E 00                 JMP 0x1000:e01a ; logical module target 0000:E01A
+0000:DF7C  80 BE D2 FE 00           CMP byte ptr [BP + 0xfed2],0x0
+0000:DF81  75 13                    JNZ 0x1000:df96 ; logical module target 0000:DF96
+0000:DF83  6A 2B                    PUSH 0x2b
+0000:DF85  6A 00                    PUSH 0x0
+0000:DF87  9A 01 D0 48 2E           CALLF 0x3000:b481 ; encoded analysis target 2E48:D001, module 1E48:D001
+0000:DF8C  50                       PUSH AX
+0000:DF8D  6A FF                    PUSH -0x1
+0000:DF8F  6A 01                    PUSH 0x1
+0000:DF91  9A 5C D1 48 2E           CALLF 0x3000:b5dc ; encoded analysis target 2E48:D15C, module 1E48:D15C
+0000:DF96  6A 3A                    PUSH 0x3a
+0000:DF98  68 C8 00                 PUSH 0xc8
+0000:DF9B  9A 0A 17 E4 3C           CALLF 0x3000:e54a ; encoded analysis target 3CE4:170A, module 2CE4:170A
+0000:DFA0  50                       PUSH AX
+0000:DFA1  9A 01 D0 48 2E           CALLF 0x3000:b481 ; encoded analysis target 2E48:D001, module 1E48:D001
+0000:DFA6  50                       PUSH AX
+0000:DFA7  6A FB                    PUSH -0x5
+0000:DFA9  6A 01                    PUSH 0x1
+0000:DFAB  9A 5C D1 48 2E           CALLF 0x3000:b5dc ; encoded analysis target 2E48:D15C, module 1E48:D15C
+0000:DFB0  BF CE 2D                 MOV DI,0x2dce
+0000:DFB3  1E                       PUSH DS
+0000:DFB4  57                       PUSH DI
+0000:DFB5  6A FF                    PUSH -0x1
+0000:DFB7  68 DF C6                 PUSH -0x3921
+0000:DFBA  9A 79 D5 48 2E           CALLF 0x3000:b9f9 ; encoded analysis target 2E48:D579, module 1E48:D579
+0000:DFBF  A0 B5 2D                 MOV AL,[0x2db5]
+0000:DFC2  50                       PUSH AX
+0000:DFC3  9A FE CA 48 2E           CALLF 0x3000:af7e ; encoded analysis target 2E48:CAFE, module 1E48:CAFE
+0000:DFC8  A1 6C DC                 MOV AX,[0xdc6c]
+0000:DFCB  25 7F 00                 AND AX,0x7f
+0000:DFCE  05 0A 00                 ADD AX,0xa
+0000:DFD1  50                       PUSH AX
+0000:DFD2  9A 0A 17 E4 3C           CALLF 0x3000:e54a ; encoded analysis target 3CE4:170A, module 2CE4:170A
+0000:DFD7  3D 02 00                 CMP AX,0x2
+0000:DFDA  73 3C                    JNC 0x1000:e018 ; logical module target 0000:E018
+0000:DFDC  6A 0A                    PUSH 0xa
+0000:DFDE  9A A0 0A 48 2E           CALLF 0x2000:ef20 ; encoded analysis target 2E48:0AA0, module 1E48:0AA0
+0000:DFE3  50                       PUSH AX
+0000:DFE4  FF 36 84 82              PUSH word ptr [0x8284]
+0000:DFE8  58                       POP AX
+0000:DFE9  C1 F8 02                 SAR AX,0x2
+0000:DFEC  03 06 D2 D4              ADD AX,word ptr [0xd4d2]
+0000:DFF0  5A                       POP DX
+0000:DFF1  03 C2                    ADD AX,DX
+0000:DFF3  50                       PUSH AX
+0000:DFF4  A1 D4 D4                 MOV AX,[0xd4d4]
+0000:DFF7  2D 14 00                 SUB AX,0x14
+0000:DFFA  50                       PUSH AX
+0000:DFFB  6A 0A                    PUSH 0xa
+0000:DFFD  9A A0 0A 48 2E           CALLF 0x2000:ef20 ; encoded analysis target 2E48:0AA0, module 1E48:0AA0
+0000:E002  50                       PUSH AX
+0000:E003  FF 36 88 82              PUSH word ptr [0x8288]
+0000:E007  58                       POP AX
+0000:E008  C1 F8 02                 SAR AX,0x2
+0000:E00B  03 06 D6 D4              ADD AX,word ptr [0xd4d6]
+0000:E00F  5A                       POP DX
+0000:E010  03 C2                    ADD AX,DX
+0000:E012  50                       PUSH AX
+0000:E013  9A 6C 05 AC 20           CALLF 0x2000:102c ; encoded analysis target 20AC:056C, module 10AC:056C
+0000:E018  EB 06                    JMP 0x1000:e020 ; logical module target 0000:E020
+0000:E01A  C7 06 D4 2D 68 01        MOV word ptr [0x2dd4],0x168
+0000:E020  80 BE D2 FE 00           CMP byte ptr [BP + 0xfed2],0x0
+0000:E025  74 17                    JZ 0x1000:e03e ; logical module target 0000:E03E
+0000:E027  80 3E FC D4 00           CMP byte ptr [0xd4fc],0x0
+0000:E02C  75 10                    JNZ 0x1000:e03e ; logical module target 0000:E03E
+0000:E02E  A0 B5 2D                 MOV AL,[0x2db5]
+0000:E031  50                       PUSH AX
+0000:E032  9A FE CA 48 2E           CALLF 0x3000:af7e ; encoded analysis target 2E48:CAFE, module 1E48:CAFE
+0000:E037  6A 3A                    PUSH 0x3a
+0000:E039  9A 3F D0 48 2E           CALLF 0x3000:b4bf ; encoded analysis target 2E48:D03F, module 1E48:D03F
+0000:E03E  80 BE D5 FE 00           CMP byte ptr [BP + 0xfed5],0x0
+0000:E043  74 1E                    JZ 0x1000:e063 ; logical module target 0000:E063
+0000:E045  FF 76 D8                 PUSH word ptr [BP + -0x28]
+0000:E048  68 96 00                 PUSH 0x96
+0000:E04B  9A 0A 17 E4 3C           CALLF 0x3000:e54a ; encoded analysis target 3CE4:170A, module 2CE4:170A
+0000:E050  05 AE 01                 ADD AX,0x1ae
+0000:E053  50                       PUSH AX
+0000:E054  9A 01 D0 48 2E           CALLF 0x3000:b481 ; encoded analysis target 2E48:D001, module 1E48:D001
+0000:E059  50                       PUSH AX
+0000:E05A  6A FA                    PUSH -0x6
+0000:E05C  6A 02                    PUSH 0x2
+0000:E05E  9A 5C D1 48 2E           CALLF 0x3000:b5dc ; encoded analysis target 2E48:D15C, module 1E48:D15C
+0000:E063  C9                       LEAVE
+0000:E064  C2 02 00                 RET 0x2

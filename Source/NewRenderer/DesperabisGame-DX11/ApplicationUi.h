@@ -21,6 +21,9 @@ public:
     FUTURE(void) Initialize();
     void Deinitialize();
     void Clear();
+    static std::vector<std::shared_ptr<TextMeshInstance>> CreateVitalMeters(
+        const Texture& healthTexture, const Desperabis::UiRectangle& bounds,
+        float healthFraction, std::optional<float> oxygenFraction);
     void DrawWeapon(const Desperabis::WeaponView& view, RendererDX11& renderer, const Level& level,
         const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
         ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView);

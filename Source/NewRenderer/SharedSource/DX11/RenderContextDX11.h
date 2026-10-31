@@ -22,7 +22,7 @@ public:
     void RenderHudGeometry();
     void SetBlendState(TransparencyMode mode);
     void SetGeometryPassType(GeometryPassType pass);
-    void RenderTextMeshes(const std::vector<const TextMeshInstance*>& instances);
+    void RenderTextMeshes(const std::vector<const TextMeshInstance*>& instances, bool multiply = false);
 #ifdef ENABLE_ADVANCED_RENDERING
     void RenderPostEffects();
     void BeginWaterRendering();
@@ -44,6 +44,8 @@ public:
     uint32_t m_lastMaterialHash = 0xffffffff;
 
     NativeTextureObjectDX11* m_debugTexture = nullptr;
+    ComPtr<ID3D11RasterizerState> m_savedWaterRasterizer;
+    bool m_waterCullDisabled = false;
 };
 
 #include <DX11/RenderContextDX11.inl>

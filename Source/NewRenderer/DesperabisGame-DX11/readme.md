@@ -84,6 +84,32 @@ not emulated. See [recovery details](../../Decompile/BehaviorRecovery.md#first-p
 for native formulas and the scythe bitmap selector. WARP tests render every
 named weapon using original level-10/11/50 assets and occluding world depth.
 
+## Underwater view
+
+GameCore emits `OnUnderwaterChanged` for the active underwater gameplay view and
+`OnPlayerOxygenChanged` when its fixed-point oxygen changes. The host enables a
+cached fullscreen quad with multiplicative RGB `(96,160,255)/255` after world
+effects and the first-person weapon, before pickup previews and HUD text.
+The tint survives pause and viewport resizing; menus, surfacing and level/part
+transitions clear it without polling. This blue multiplier is a visual
+adaptation, not an exact reproduction of DOS palette cycling.
+
+Underwater, the existing bottom health strip becomes two half-height rows:
+blue/white oxygen above health, using exactly the old total screen area. Outside
+water, health keeps its previous full height. HUD colors are not tinted.
+The original underwater sound (effect 58/sample 58) loops on its own XAudio2
+voice; it does not replace level ambient sound or occupy an effect channel.
+Pause, menus, sound disable, death and loading stop that loop.
+
+Water visibility preserves the material's reflection/refraction choice above
+the surface, but a reflecting surface seen from below uses refraction instead.
+DX11/OpenGL water receivers temporarily disable backface culling, then restore
+the prior state. WARP tests check actual tint multiplication, wide/portrait
+coverage, oxygen/health layout and underside refraction pixels.
+Native bubbles use the original model/animation bank; no new artwork is added.
+The separately deferred localized underwater brightness behavior 104 remains
+unimplemented. See [native recovery](../../Decompile/BehaviorRecovery.md#underwater-oxygen-audio-and-bubbles).
+
 ## CPU profiling
 
 The game exposes `g_profilingStats` alongside the renderer's existing visibility

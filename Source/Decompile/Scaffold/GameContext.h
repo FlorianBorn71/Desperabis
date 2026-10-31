@@ -301,6 +301,9 @@ namespace Desperabis
         // Immediate after clamping/depletion; both arguments are signed 16.16 life values.
         // Only actual changes through ApplyPlayerLifeDelta notify; do not mutate/reenter gameplay.
         virtual void OnPlayerHealthChanged(std::int32_t previousLife, std::int32_t currentLife);
+        // Active underwater gameplay view; menus/loading clear it, pausing retains the tint.
+        virtual void OnUnderwaterChanged(bool underwater);
+        virtual void OnPlayerOxygenChanged(std::int32_t previousOxygen, std::int32_t currentOxygen);
         // Use these for external lifecycle changes; raw worldObjects writes bypass notifications.
         void ReplaceWorldObject(int slot, RawGameObject object);
         void SetObjectHealth(RawGameObject& object, std::int16_t health);
@@ -363,6 +366,8 @@ namespace Desperabis
         // DS:2DBA meter: maximum at +2, signed 16.16 current value at +4.
         std::int16_t playerLifeMaximum = 360;
         std::int32_t playerLife = 360 * 65536;
+        static constexpr std::int32_t PlayerOxygenMaximum = 360 * 65536;
+        std::int32_t playerOxygen = PlayerOxygenMaximum; // DS:2DD2, signed 16.16.
         std::int16_t playerLifeDeltaSuppressed = 0; // DS:2DDD.
         std::int16_t playerHitEffectTicks = 0; // DS:D514; presentation consumer not yet ported.
         std::int16_t playerBodyHeight = 45; // DS:D4B2: standing 45, crouching 28.
@@ -382,7 +387,7 @@ namespace Desperabis
         bool weaponElectricityFiring = false; // Native draw branch latches the command before phase normalization.
         std::int16_t playerLookHeight = 110; // DS:D4A4, screen horizon rather than an angle.
         std::int16_t playerTargetLookHeight = 110; // DS:D4B6, keyboard-requested horizon.
-        bool playerUnderwater = false; // DS:D4FC; swimming controller remains separate.
+        bool playerUnderwater = false; // DS:D4FC; movement follows the submerged floor.
         bool field_D500 = true; // Native body-mode gate, also used by the unarmed weapon branch.
         bool playerMapCollisionsEnabled = true; // DS:2DDC; independently controlled by behavior 184.
         bool playerLadderMovement = false; // DS:D4FF; refreshed by the active-object loop.
@@ -441,6 +446,7 @@ namespace Desperabis
         std::int16_t RandomSigned(std::uint16_t radius);
         void LoadSoundEffects(const std::uint8_t* data, std::size_t size);
         void CreateAmbientLoop(std::uint8_t environment);
+        std::uint16_t SpawnBubble(std::int16_t x, std::int16_t y, std::int16_t z);
         std::int16_t GetSoundDistanceAt(std::int16_t x, std::int16_t z) const;
         static std::uint8_t GetSoundVolume(std::int16_t distance);
         std::uint8_t GetSoundVolumeAt(std::int16_t x, std::int16_t z, std::int16_t distanceScale = 1) const;
@@ -550,6 +556,9 @@ namespace Desperabis
         void PrepareLevelProgression(bool changingLevel);
         void FinishGamePart();
         BasicPlayerMovementResult UpdateBasicPlayerMovement(InputHandler& input);
+        void UpdatePlayerUnderwater();
+        void RefreshUnderwaterPresentation();
+        void ResetUnderwater();
         std::int16_t playerForwardSpeed = 0;
         std::int16_t playerSidewaysSpeed = 0;
         std::int16_t playerTurnSpeed = 0;
@@ -564,6 +573,9 @@ namespace Desperabis
         std::optional<std::int16_t> loadedLevelNumber;
         std::string levelLoadError;
         bool ambientPlaybackActive = false;
+        bool underwaterPlaybackActive = false;
+        bool underwaterViewActive = false;
+        bool underwaterContactActive = false;
         std::unique_ptr<Level> ownedLevel;
         bool paused = false;
     };

@@ -305,6 +305,24 @@ public:
         audio.m_ambientVoice->GetState(&state);
         Check(state.BuffersQueued == 1 && state.SamplesPlayed > 1024,
             "Ambient must keep looping beyond its first logical-length buffer.");
+        Reject<std::out_of_range>([&] { audio.StartUnderwaterPlayback(0, 255); });
+        Reject<std::out_of_range>([&] { audio.StartUnderwaterPlayback(5, 255); });
+        audio.StartUnderwaterPlayback(1, 64);
+        float underwaterVolume = 0.f;
+        audio.m_underwaterVoice->GetVolume(&underwaterVolume);
+        Check(std::fabs(underwaterVolume - 64.f / 255.f) < 0.0001f,
+            "Underwater playback must apply the requested voice volume.");
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        audio.m_underwaterVoice->GetState(&state);
+        Check(state.BuffersQueued == 1 && state.SamplesPlayed > 4,
+            "Underwater must loop beyond its original sample length without per-frame restarts.");
+        audio.StopAmbientPlayback();
+        Check(audio.m_underwaterVoice != nullptr, "Ambient stop must preserve the independent underwater voice.");
+        audio.StartAmbientPlayback();
+        audio.StopUnderwaterPlayback();
+        audio.StopUnderwaterPlayback();
+        Check(!audio.m_underwaterVoice && audio.m_ambientVoice,
+            "Underwater stop must immediately release its loop without touching the level ambient voice.");
         audio.StopAllSamples();
         Check(audio.m_ambientVoice != nullptr, "Effect cleanup must not consume the dedicated ambient voice.");
         audio.PlaySample(0, 4, 0);

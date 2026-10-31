@@ -396,7 +396,10 @@ Behavior 184 supplies the native wall-collision bypass gate. See the
 [special movement contract](BehaviorRecovery.md#teleporters-ladders-and-collision-bypass-volumes)
 and `player-special-*-evidence.txt`; `player-support` also tests original
 level 10/23/36 teleporter records. Vehicle attachment/controllers, several
-contact hazards, oxygen and underwater effects remain deferred. Teleport
+contact hazards remain deferred. Oxygen, drowning, looping underwater audio and
+exhaled bubbles are implemented; see the
+[underwater contract](BehaviorRecovery.md#underwater-oxygen-audio-and-bubbles).
+Teleport
 render-table and lighting flags are recorded, not yet rendered; behavior 178's
 possible foil/viewport relationship remains unproven.
 Supply a valid starting

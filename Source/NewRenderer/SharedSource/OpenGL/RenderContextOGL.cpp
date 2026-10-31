@@ -76,6 +76,11 @@ void RenderContextOGL::SetBlendState(TransparencyMode mode)
 
 void RenderContextOGL::SetGeometryPassType(GeometryPassType pass)
 {
+    if (m_waterCullDisabled && pass != GeometryPassType::MirrorReceiver)
+    {
+        if (m_savedWaterCullEnabled) { glEnable(GL_CULL_FACE); }
+        m_waterCullDisabled = false;
+    }
     // vertex and pixel shader
     if (pass != GeometryPassType::MirrorReceiver)
     {
@@ -199,6 +204,11 @@ void RenderContextOGL::BeginWaterRendering()
 
 void RenderContextOGL::EndWaterRendering()
 {
+    if (m_waterCullDisabled)
+    {
+        if (m_savedWaterCullEnabled) { glEnable(GL_CULL_FACE); }
+        m_waterCullDisabled = false;
+    }
     // unbind mirror rt
 }
 
@@ -213,6 +223,12 @@ void RenderContextOGL::PrepareRefraction(bool firstTimeRefraction)
 
 void RenderContextOGL::PrepareWaterRendering(const VisibilityResult::VisibleWaterLevel& water)
 {
+    if (!m_waterCullDisabled)
+    {
+        m_savedWaterCullEnabled = glIsEnabled(GL_CULL_FACE) == GL_TRUE;
+        glDisable(GL_CULL_FACE);
+        m_waterCullDisabled = true;
+    }
     RendererOGL::WaterShaderConstants& waterData(m_rendererOGL.m_waterConstants);
 
     // bind the correct texture
@@ -259,4 +275,3 @@ void RenderContextOGL::RenderPostEffects()
     }
 }
 #endif // ENABLE_ADVANCED_RENDERING
-

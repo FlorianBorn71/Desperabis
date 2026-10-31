@@ -17,6 +17,7 @@
 
 void RendererDX11::ReleaseWindowSizeDependentResources()
 {
+    m_underwaterTint.reset();
     if (m_mainRT != nullptr)
     {
         static_cast<RenderTargetDX11*>(m_mainRT.get())->Reset();
@@ -28,6 +29,7 @@ void RendererDX11::ReleaseWindowSizeDependentResources()
 
 void RendererDX11::ReInitialize(ID3D11RenderTargetView1* colorView, ID3D11DepthStencilView* dsView, const D3D11_VIEWPORT& viewport)
 {
+    m_underwaterTint.reset();
 	RenderTargetDX11* mainRT = (RenderTargetDX11*)m_mainRT.get();
 #ifdef ENABLE_ADVANCED_RENDERING
 	if (mainRT->m_width != static_cast<int>(viewport.Width) || mainRT->m_height != static_cast<int>(viewport.Height))
@@ -191,6 +193,15 @@ FUTURE(void) RendererDX11::Initialize(ID3D11Device3* device, ID3D11DeviceContext
     // they are all opaque:
     m_blendState[(int)TransparencyMode::Water] = m_blendState[(int)TransparencyMode::Opaque];
 
+    rt.SrcBlend = D3D11_BLEND_DEST_COLOR;
+    rt.DestBlend = D3D11_BLEND_ZERO;
+    rt.SrcBlendAlpha = D3D11_BLEND_ZERO;
+    rt.DestBlendAlpha = D3D11_BLEND_ONE;
+    ThrowIfFailed(device->CreateBlendState(&blendDesc, &m_multiplyBlendState));
+    CD3D11_RASTERIZER_DESC waterRasterizer(D3D11_DEFAULT);
+    waterRasterizer.CullMode = D3D11_CULL_NONE;
+    ThrowIfFailed(device->CreateRasterizerState(&waterRasterizer, &m_waterRasterizerState));
+
     // create depth write states:
     for (int i = 0; i < (int)DepthWriteMode::DepthModeCount; i++)
     {
@@ -216,6 +227,10 @@ FUTURE(void) RendererDX11::Initialize(ID3D11Device3* device, ID3D11DeviceContext
 
 void RendererDX11::Deinitialize()
 {
+    m_underwaterTintEnabled = false;
+    m_underwaterTint.reset();
+    m_multiplyBlendState.Reset();
+    m_waterRasterizerState.Reset();
     m_itemPreview.reset();
     m_weaponDraw = {};
     m_d3dDevice.Reset();
@@ -281,6 +296,20 @@ void RendererDX11::RenderHudGeometry(const RenderingSettings& settings, Profilin
     const auto weaponDraw = std::move(m_weaponDraw);
     m_weaponDraw = {};
     if (weaponDraw) { weaponDraw(settings, stats); }
+    if (m_underwaterTintEnabled)
+    {
+        if (!m_underwaterTint)
+        {
+            m_underwaterTint = std::make_shared<TextMeshInstance>(TextMesh::CreateTexturedQuad(
+                *AssetManager::Instance().GetPlainWhiteTexture(), m_mainViewport.Width, m_mainViewport.Height));
+            m_underwaterTint->SetScale(1.f);
+            m_underwaterTint->SetPosition(m_mainViewport.TopLeftX, m_mainViewport.TopLeftY);
+            m_underwaterTint->SetTintColor(Color4{ 96,160,255,255 });
+        }
+        VisibilityResult elements;
+        RenderContextDX11 context(*this, elements, settings, stats);
+        context.RenderTextMeshes({ m_underwaterTint.get() }, true);
+    }
     const auto item = std::move(m_itemPreview);
     if (item == nullptr) { return; }
     const auto& viewport = m_itemPreviewViewport;

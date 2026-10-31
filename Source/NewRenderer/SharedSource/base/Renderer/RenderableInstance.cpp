@@ -180,10 +180,7 @@ bool RenderableInstance::RetrieveWaterProperties(bool& useReflection, float& wat
             continue;
         assert(material.m_transparencyType == TransparencyMode::Water);
         useReflection = (material.m_reflectionType & WaterReflectionType::ReflectionBit) != 0;
-        if (useReflection)
-        {
-            waterHeight = material.m_mirrorHeight + this->m_transform.GetTranslation().GetY(); // TODO real transform
-        }
+        waterHeight = material.m_mirrorHeight + this->m_transform.GetTranslation().GetY();
         return true;
     }
 

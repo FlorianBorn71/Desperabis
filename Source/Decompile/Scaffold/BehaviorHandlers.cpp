@@ -1888,9 +1888,19 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::WaterDrop, 0x2EBD };
     }
 
-    DispatchResult Function_Behavior_103(RawGameObject&, GameContext&)
+    DispatchResult Function_Bubble(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_103, 0x2FE2 };
+        object.winY = WrapSignedWord(object.winY + object.velocityX * static_cast<std::int32_t>(context.tickCount));
+        const auto fraction = WrapSignedWord(object.itemValue + object.velocityY * static_cast<std::int32_t>(context.tickCount));
+        const auto high = static_cast<std::int8_t>(static_cast<std::uint16_t>(fraction) >> 8);
+        object.posY = WrapSignedWord(object.posY + high);
+        object.itemValue = static_cast<std::uint8_t>(fraction);
+        if ((context.GetCollisionMapPixelAtWorldXZ(object.posX, object.posZ) & 7) == 1 &&
+            WrapSignedWord(object.posY + context.GetHeightSurfaceDepth(1)) > 0)
+        {
+            object.behavior = BehaviorType::BubblePop;
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::Bubble, 0x2FE2 };
     }
 
     DispatchResult Function_UnderwaterColorAnim(RawGameObject&, GameContext&)
@@ -1898,9 +1908,16 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::UnderwaterColorAnim, 0x3064 };
     }
 
-    DispatchResult Function_Behavior_105(RawGameObject&, GameContext&)
+    DispatchResult Function_BubblePop(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_105, 0x319B };
+        object.animFrame = 4;
+        object.modelFrame2 = 5;
+        object.blendWeightOrSpriteOpacity = WrapSignedWord(
+            object.blendWeightOrSpriteOpacity + 2 * static_cast<std::int32_t>(context.tickCount));
+        if (object.blendWeightOrSpriteOpacity > 100) { context.SetObjectHealth(object, 0); }
+        object.displayType = static_cast<DisplayType>(std::clamp(
+            object.blendWeightOrSpriteOpacity / 8 + 27, 30, 36));
+        return { DispatchStatus::ExecutedCase, BehaviorType::BubblePop, 0x319B };
     }
 
     DispatchResult Function_Behavior_106(RawGameObject&, GameContext&)

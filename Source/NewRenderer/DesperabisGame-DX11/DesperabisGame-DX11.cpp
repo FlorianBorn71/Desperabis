@@ -115,6 +115,18 @@ namespace
 			UpdateHealthBar();
 		}
 
+		void OnUnderwaterChanged(bool underwater) override
+		{
+			m_underwaterView = underwater;
+			g_renderer.SetUnderwaterTint(underwater);
+			UpdateHealthBar();
+		}
+
+		void OnPlayerOxygenChanged(std::int32_t previous, std::int32_t current) override
+		{
+			if (previous / 65536 != current / 65536) { UpdateHealthBar(); }
+		}
+
 		float GetHealthBarHeight() const
 		{
 			const auto* frame = g_hudAnimations->GetFrame(1, 0);
@@ -125,38 +137,25 @@ namespace
 		void UpdateHealthBar()
 		{
 			if (!g_scene || GetRuntimeState() != Desperabis::GameRuntimeState::Ready) { return; }
+			if (GetMenuPage() != Desperabis::MenuPage::Gameplay) { ClearHealthBar(); return; }
 			if (playerLifeMaximum <= 0) { throw std::logic_error("Health bar requires a positive player-life maximum."); }
 			const auto* frame = g_hudAnimations->GetFrame(1, 0);
 			const float height = GetHealthBarHeight();
 			const float fraction = std::clamp(
 				static_cast<float>(playerLife) / (static_cast<float>(playerLifeMaximum) * 65536.f), 0.f, 1.f);
-			auto background = std::make_shared<TextMeshInstance>(TextMesh::CreateTexturedQuad(
-				*AssetManager::Instance().GetPlainWhiteTexture(), g_viewport.Width, height));
-			background->SetScale(1.f);
-			background->SetPosition(0.f, g_viewport.Height - height);
-			background->SetTintColor(Color4{ 24,24,24,255 });
-			std::shared_ptr<TextMeshInstance> fill;
-			if (fraction > 0.f)
-			{
-				fill = std::make_shared<TextMeshInstance>(TextMesh::CreateTexturedQuad(
-					*frame, g_viewport.Width * fraction, height, fraction, 0.5f));
-				fill->SetScale(1.f);
-				fill->SetPosition(0.f, g_viewport.Height - height);
-			}
+			const auto oxygen = m_underwaterView ? std::optional<float>{
+				std::clamp(static_cast<float>(playerOxygen) / PlayerOxygenMaximum, 0.f, 1.f) } : std::nullopt;
+			auto meters = ApplicationUi::CreateVitalMeters(*frame,
+				{ 0.f, g_viewport.Height - height, g_viewport.Width, height }, fraction, oxygen);
 			ClearHealthBar();
-			g_scene->AddTextMeshInstance(background);
-			m_healthBackground = std::move(background);
-			if (fill)
-			{
-				g_scene->AddTextMeshInstance(fill);
-				m_healthFill = std::move(fill);
-			}
+			for (const auto& meter : meters) { g_scene->AddTextMeshInstance(meter); }
+			m_healthMeters = std::move(meters);
 		}
 
 		void ClearHealthBar()
 		{
-			if (m_healthBackground) { g_scene->RemoveTextMeshInstance(m_healthBackground); m_healthBackground.reset(); }
-			if (m_healthFill) { g_scene->RemoveTextMeshInstance(m_healthFill); m_healthFill.reset(); }
+			for (const auto& meter : m_healthMeters) { g_scene->RemoveTextMeshInstance(meter); }
+			m_healthMeters.clear();
 		}
 
 		void PromptUserMessage(std::string_view text, std::int16_t duration) override
@@ -336,8 +335,8 @@ namespace
 		}
 
 		std::shared_ptr<TextMeshInstance> m_promptInstance;
-		std::shared_ptr<TextMeshInstance> m_healthBackground;
-		std::shared_ptr<TextMeshInstance> m_healthFill;
+		std::vector<std::shared_ptr<TextMeshInstance>> m_healthMeters;
+		bool m_underwaterView = false;
 		std::string m_promptText;
 		std::int16_t m_promptTicks = 0;
 		bool m_promptBottomAnchored = false;

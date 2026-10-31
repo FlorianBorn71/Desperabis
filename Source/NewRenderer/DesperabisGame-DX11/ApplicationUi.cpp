@@ -15,6 +15,49 @@
 #include <cmath>
 #include <stdexcept>
 
+std::vector<std::shared_ptr<TextMeshInstance>> ApplicationUi::CreateVitalMeters(
+    const Texture& healthTexture, const Desperabis::UiRectangle& bounds,
+    float healthFraction, std::optional<float> oxygenFraction)
+{
+    if (!std::isfinite(bounds.x) || !std::isfinite(bounds.y) ||
+        !std::isfinite(bounds.width) || !std::isfinite(bounds.height) ||
+        bounds.width <= 0.f || bounds.height <= 0.f ||
+        !std::isfinite(healthFraction) || healthFraction < 0.f || healthFraction > 1.f ||
+        (oxygenFraction && (!std::isfinite(*oxygenFraction) || *oxygenFraction < 0.f || *oxygenFraction > 1.f)))
+    {
+        throw std::invalid_argument("Vital meters require positive bounds and fractions in 0..1.");
+    }
+    std::vector<std::shared_ptr<TextMeshInstance>> meters;
+    const auto& white = *AssetManager::Instance().GetPlainWhiteTexture();
+    const float height = oxygenFraction ? bounds.height * 0.5f : bounds.height;
+    const float healthY = bounds.y + bounds.height - height;
+    const auto quad = [&](const Texture& texture, float width, float y, Color4 tint,
+        float uMax = 1.f, float vMax = 1.f)
+    {
+        auto instance = std::make_shared<TextMeshInstance>(
+            TextMesh::CreateTexturedQuad(texture, width, height, uMax, vMax));
+        instance->SetScale(1.f);
+        instance->SetPosition(bounds.x, y);
+        instance->SetTintColor(tint);
+        meters.push_back(std::move(instance));
+    };
+    quad(white, bounds.width, healthY, Color4{ 24,24,24,255 });
+    if (healthFraction > 0.f)
+    {
+        quad(healthTexture, bounds.width * healthFraction, healthY,
+            Color4{ 255,255,255,255 }, healthFraction, 0.5f);
+    }
+    if (oxygenFraction)
+    {
+        quad(white, bounds.width, bounds.y, Color4{ 255,255,255,255 });
+        if (*oxygenFraction > 0.f)
+        {
+            quad(white, bounds.width * *oxygenFraction, bounds.y, Color4{ 48,128,255,255 });
+        }
+    }
+    return meters;
+}
+
 namespace
 {
     class InventoryPalette final : public Palette

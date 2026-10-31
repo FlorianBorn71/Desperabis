@@ -152,6 +152,7 @@ void DefaultVisibilityContext::DetermineVisibleInstances(VisibilityResult& resul
 
 		if (collectWaterReceiver && inst->RetrieveWaterProperties(useReflection, waterHeight))
 		{
+            if (useReflection && cameraPos.GetY() < waterHeight) { useReflection = false; }
 			VisibilityResult::VisibleWaterLevel& level = result.CreateWaterReceiver(useReflection, waterHeight);
 			VisibilityResult::InstanceAndHash& entry = level.m_waterReceiver.emplace_back();
 			entry.m_instance = inst;

@@ -223,6 +223,7 @@ namespace
                 entry.type == BehaviorType::Teleporter || entry.type == BehaviorType::ActivatableLadder ||
                 entry.type == BehaviorType::ClimbableLadder || entry.type == BehaviorType::RoofTopThunderHandler3 ||
                 entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ||
+                entry.type == BehaviorType::Bubble || entry.type == BehaviorType::BubblePop ||
                 entry.type == BehaviorType::DisabledSentinel;
             Check(result.status == (implemented ?
                 DispatchStatus::ExecutedCase : entry.hasSpecificCase ?

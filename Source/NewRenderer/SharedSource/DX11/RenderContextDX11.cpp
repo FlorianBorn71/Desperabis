@@ -12,6 +12,7 @@
 #include <Asset/ModelGeometry.h>
 #include <Asset/ModelAnim.h>
 #include <Scene/Scene.h>
+#include <cstring>
 
 static const DepthWriteMode BlendModeToDepthMode[(int)TransparencyMode::TransparencyModeCount] =
 {
@@ -82,7 +83,7 @@ void RenderContextDX11::SetBlendState(TransparencyMode mode)
     m_d3dContext->OMSetDepthStencilState(m_rendererDX11.m_depthState[(int)dsMode].Get(), 0);
 }
 
-void RenderContextDX11::RenderTextMeshes(const std::vector<const TextMeshInstance*>& instances)
+void RenderContextDX11::RenderTextMeshes(const std::vector<const TextMeshInstance*>& instances, bool multiply)
 {
     if (instances.empty())
     {
@@ -92,7 +93,8 @@ void RenderContextDX11::RenderTextMeshes(const std::vector<const TextMeshInstanc
     RenderTargetDX11* renderTarget = m_rendererDX11.GetRenderTarget<RenderTargetDX11>(RenderTargetPassType::MainView);
     assert(renderTarget != nullptr);
     renderTarget->BindAsTarget(false);
-    m_d3dContext->OMSetBlendState(m_rendererDX11.m_blendState[(int)TransparencyMode::AlphaBlended].Get(), nullptr, 0xFFFFFFFFu);
+    m_d3dContext->OMSetBlendState(multiply ? m_rendererDX11.m_multiplyBlendState.Get() :
+        m_rendererDX11.m_blendState[(int)TransparencyMode::AlphaBlended].Get(), nullptr, 0xFFFFFFFFu);
     m_d3dContext->OMSetDepthStencilState(m_rendererDX11.m_depthState[(int)DepthWriteMode::None].Get(), 0);
     m_rendererDX11.m_textShader.Bind(m_d3dContext.Get());
     m_d3dContext->PSSetSamplers(0, 1, m_rendererDX11.m_samplerStateClamp.GetAddressOf());
@@ -138,6 +140,11 @@ void RenderContextDX11::RenderTextMeshes(const std::vector<const TextMeshInstanc
 
 void RenderContextDX11::SetGeometryPassType(GeometryPassType pass)
 {
+    if (m_waterCullDisabled && pass != GeometryPassType::MirrorReceiver)
+    {
+        m_d3dContext->RSSetState(m_savedWaterRasterizer.Get());
+        m_waterCullDisabled = false;
+    }
     // vertex and pixel shader
     if (pass == GeometryPassType::InstancesInFlames)
     {
@@ -331,6 +338,11 @@ void RenderContextDX11::BeginWaterRendering()
 
 void RenderContextDX11::EndWaterRendering()
 {
+    if (m_waterCullDisabled)
+    {
+        m_d3dContext->RSSetState(m_savedWaterRasterizer.Get());
+        m_waterCullDisabled = false;
+    }
     // unbind mirror rt
     ID3D11ShaderResourceView* nullView = nullptr;
 	m_d3dContext->PSSetShaderResources(0, 1, &nullView);
@@ -347,6 +359,22 @@ void RenderContextDX11::PrepareRefraction(bool firstTimeRefraction)
 
 void RenderContextDX11::PrepareWaterRendering(const VisibilityResult::VisibleWaterLevel& water)
 {
+    if (!m_waterCullDisabled)
+    {
+        m_d3dContext->RSGetState(m_savedWaterRasterizer.ReleaseAndGetAddressOf());
+        CD3D11_RASTERIZER_DESC desired(D3D11_DEFAULT);
+        if (m_savedWaterRasterizer) { m_savedWaterRasterizer->GetDesc(&desired); }
+        desired.CullMode = D3D11_CULL_NONE;
+        D3D11_RASTERIZER_DESC cached{};
+        m_rendererDX11.m_waterRasterizerState->GetDesc(&cached);
+        if (std::memcmp(&desired, &cached, sizeof(cached)) != 0)
+        {
+            ThrowIfFailed(m_rendererDX11.m_d3dDevice->CreateRasterizerState(
+                &desired, m_rendererDX11.m_waterRasterizerState.ReleaseAndGetAddressOf()));
+        }
+        m_d3dContext->RSSetState(m_rendererDX11.m_waterRasterizerState.Get());
+        m_waterCullDisabled = true;
+    }
     RendererDX11::WaterShaderConstants& waterData(m_rendererDX11.m_waterConstants);
 
     // bind the correct texture

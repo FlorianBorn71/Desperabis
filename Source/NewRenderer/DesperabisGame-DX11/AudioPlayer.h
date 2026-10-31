@@ -24,6 +24,8 @@ public:
     void EndAmbientLoopCreation(std::size_t loopLengthFrames) override;
     void StartAmbientPlayback() override;
     void StopAmbientPlayback() override;
+    void StartUnderwaterPlayback(std::uint8_t sample, std::uint8_t volume) override;
+    void StopUnderwaterPlayback() override;
 
 private:
     friend class AudioPlayerVolumeTest;
@@ -55,5 +57,6 @@ private:
     std::size_t m_ambientLoopLength = 0;
     bool m_buildingAmbient = false;
     std::unique_ptr<IXAudio2SourceVoice, DestroyVoice> m_ambientVoice;
+    std::unique_ptr<IXAudio2SourceVoice, DestroyVoice> m_underwaterVoice;
     std::array<std::unique_ptr<IXAudio2SourceVoice, DestroyVoice>, Desperabis::SoundChannelCount> m_channels;
 };

@@ -12,6 +12,9 @@ namespace Desperabis
         Drop = 5,
         DoorClosed = 8,
         RatAndSnake = 17,
+        WaterEntry = 43,
+        Bubble = 56,
+        Underwater = 58,
         Burning = 62,
         Flies = 74
     };
@@ -44,6 +47,9 @@ namespace Desperabis
         virtual void EndAmbientLoopCreation(std::size_t) { throw std::logic_error("Ambient audio is unsupported."); }
         virtual void StartAmbientPlayback() { throw std::logic_error("Ambient audio is unsupported."); }
         virtual void StopAmbientPlayback() { throw std::logic_error("Ambient audio is unsupported."); }
+        virtual void StartUnderwaterPlayback(std::uint8_t, std::uint8_t)
+        { throw std::logic_error("Underwater audio is unsupported."); }
+        virtual void StopUnderwaterPlayback() { throw std::logic_error("Underwater audio is unsupported."); }
     };
 
     enum class SoundPlaybackStatus

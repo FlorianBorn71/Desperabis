@@ -45,6 +45,8 @@ public:
     uint32_t m_lastMaterialHash = 0xffffffff;
 
     NativeTextureObjectOGL* m_debugTexture = nullptr;
+    bool m_waterCullDisabled = false;
+    bool m_savedWaterCullEnabled = false;
 };
 
 #include <OpenGL/RenderContextOGL.inl>
