@@ -120,6 +120,8 @@ namespace Desperabis
         std::int16_t depth;
         float focalLength = 128;
         UiColor color;
+        std::optional<std::array<std::int16_t, 3>> cameraSpacePosition;
+        std::optional<float> projectionCenterY;
     };
 
     using UiDrawCommand = std::variant<UiFill, UiText, UiBitmap, UiHealthMeter, UiModel>;

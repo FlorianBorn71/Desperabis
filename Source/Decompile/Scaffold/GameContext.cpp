@@ -2291,6 +2291,8 @@ namespace Desperabis
     {
         if (ticks < 0) { throw std::invalid_argument("Weapon animation ticks must be nonnegative."); }
         if (worldObjects[1].itemValue > 0) { return WeaponActionStatus::NoEffect; }
+        weaponElectricityFiring = selectedWeapon == WeaponType::Electricity &&
+            weaponAnimationSpeed < -2 && weaponAmounts[7] > 0;
         const auto decay = [&]
         {
             if (weaponAnimationSpeed > 0)

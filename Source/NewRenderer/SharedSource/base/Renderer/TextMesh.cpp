@@ -5,7 +5,7 @@
 #include <stdexcept>
 
 std::shared_ptr<TextMesh> TextMesh::CreateTexturedQuad(
-	const Texture& texture, float width, float height, float sourceWidthFraction, float sourceHeightFraction)
+	const Texture& texture, float width, float height, float sourceWidthFraction, float sourceHeightFraction, bool flipHorizontal)
 {
 	if (texture.m_width == 0 || texture.m_height == 0 ||
 		!std::isfinite(width) || !std::isfinite(height) || width <= 0.f || height <= 0.f ||
@@ -32,6 +32,11 @@ std::shared_ptr<TextMesh> TextMesh::CreateTexturedQuad(
 		{ {0.f,height}, {uvTopLeft.x,uvBottomRight.y}, white },
 		{ {width,height}, uvBottomRight, white } };
 	batch.m_indices = { 0,1,2,2,1,3 };
+	if (flipHorizontal)
+	{
+		std::swap(batch.m_vertices[0].m_texCoord, batch.m_vertices[1].m_texCoord);
+		std::swap(batch.m_vertices[2].m_texCoord, batch.m_vertices[3].m_texCoord);
+	}
 	return mesh;
 }
 

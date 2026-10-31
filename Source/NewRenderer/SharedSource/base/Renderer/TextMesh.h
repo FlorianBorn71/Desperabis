@@ -26,7 +26,7 @@ public:
 	// The caller must retain the texture (or its owning animation) while the mesh is used.
 	static std::shared_ptr<TextMesh> CreateTexturedQuad(
 	    const Texture& texture, float width, float height,
-	    float sourceWidthFraction = 1.f, float sourceHeightFraction = 1.f);
+	    float sourceWidthFraction = 1.f, float sourceHeightFraction = 1.f, bool flipHorizontal = false);
 	const Vector2& GetExtent() const { return m_extent; }
 	const std::vector<TextMeshBatch>& GetBatches() const { return m_batches; }
 	bool IsValid() const { return !m_batches.empty(); }

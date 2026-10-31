@@ -1,0 +1,32 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 1E48:0000:51
+1E48:0000  C8 04 00 00              ENTER 0x4,0x0
+1E48:0004  8B 46 06                 MOV AX,word ptr [BP + 0x6]
+1E48:0007  25 FF 01                 AND AX,0x1ff
+1E48:000A  8B F8                    MOV DI,AX
+1E48:000C  C1 E7 02                 SHL DI,0x2
+1E48:000F  8B 85 00 1B              MOV AX,word ptr [DI + 0x1b00]
+1E48:0013  8B 95 02 1B              MOV DX,word ptr [DI + 0x1b02]
+1E48:0017  89 46 FC                 MOV word ptr [BP + -0x4],AX
+1E48:001A  89 56 FE                 MOV word ptr [BP + -0x2],DX
+1E48:001D  8B 46 FC                 MOV AX,word ptr [BP + -0x4]
+1E48:0020  8B 56 FE                 MOV DX,word ptr [BP + -0x2]
+1E48:0023  C9                       LEAVE
+1E48:0024  CA 02 00                 RETF 0x2
+1E48:0027  C8 04 00 00              ENTER 0x4,0x0
+1E48:002B  8B 46 06                 MOV AX,word ptr [BP + 0x6]
+1E48:002E  05 80 00                 ADD AX,0x80
+1E48:0031  25 FF 01                 AND AX,0x1ff
+1E48:0034  8B F8                    MOV DI,AX
+1E48:0036  C1 E7 02                 SHL DI,0x2
+1E48:0039  8B 85 00 1B              MOV AX,word ptr [DI + 0x1b00]
+1E48:003D  8B 95 02 1B              MOV DX,word ptr [DI + 0x1b02]
+1E48:0041  89 46 FC                 MOV word ptr [BP + -0x4],AX
+1E48:0044  89 56 FE                 MOV word ptr [BP + -0x2],DX
+1E48:0047  8B 46 FC                 MOV AX,word ptr [BP + -0x4]
+1E48:004A  8B 56 FE                 MOV DX,word ptr [BP + -0x2]
+1E48:004D  C9                       LEAVE
+1E48:004E  CA 02 00                 RETF 0x2

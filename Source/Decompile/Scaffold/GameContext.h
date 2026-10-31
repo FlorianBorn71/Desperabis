@@ -98,6 +98,20 @@ namespace Desperabis
 
     static_assert(std::is_trivially_copyable_v<RawGameObject>);
 
+    struct WeaponView
+    {
+        enum class Kind { Sprite, HeldBitmap, Model };
+        static constexpr float Width = 320, Height = 220;
+        Kind kind = Kind::Sprite;
+        RawGameObject object{};
+        std::uint8_t bitmapFrame = 0; // Linear, zero-based WAFFEN.AN2 frame.
+        float anchorX = 0.5f; // Fraction of viewport width.
+        float anchorY = Height, offsetX = 0, offsetY = 0, scale = 1;
+        bool useBitmapOffsetX = false, centerBitmapX = false, flipHorizontal = false;
+        bool bindWeaponBitmap = false;
+        float projectionCenterY = Height / 2;
+    };
+
     // Copy only the native payload, never a renderer wrapper or an aliased struct.
     RawGameObject DecodeGameObject(const std::uint8_t* bytes, std::size_t size);
     void EncodeGameObject(const RawGameObject& object, std::uint8_t* bytes, std::size_t size);
@@ -365,6 +379,7 @@ namespace Desperabis
         std::int16_t weaponAnimationSpeed = 0; // DS:DDBB.
         std::int16_t weaponAnimationPosition = 0; // DS:DDBD.
         std::int16_t weaponAnimationRecoil = 0; // DS:DDBF, set by digging contacts.
+        bool weaponElectricityFiring = false; // Native draw branch latches the command before phase normalization.
         std::int16_t playerLookHeight = 110; // DS:D4A4, screen horizon rather than an angle.
         std::int16_t playerTargetLookHeight = 110; // DS:D4B6, keyboard-requested horizon.
         bool playerUnderwater = false; // DS:D4FC; swimming controller remains separate.
@@ -378,6 +393,7 @@ namespace Desperabis
         bool SelectWeapon(WeaponType weapon);
         WeaponActionStatus AttackWithSelectedWeapon();
         WeaponActionStatus UpdateWeaponAnimation(std::int16_t ticks);
+        std::optional<WeaponView> GetWeaponView() const;
         std::int16_t GetPlayerHeading() const;
         // Native 10AC:CF23/CF4B; raising from crouch precedes jumping.
         void RequestPlayerJump();

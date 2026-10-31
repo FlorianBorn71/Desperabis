@@ -994,9 +994,21 @@ namespace
 
 		Renderer::Instance().SetCamera(g_camera);
 		Renderer::Instance().SetCurrentTime(g_worldTime);
+		g_renderer.SetWeaponDraw({});
 		if (presentation.commands.empty())
 		{
 			UpdateItemPreview();
+			if (g_scene->IsReady())
+			{
+				if (const auto weapon = g_gameCore->GetWeaponView())
+				{
+					g_renderer.SetWeaponDraw([view = *weapon](const RenderingSettings& settings, ProfilingStats& stats)
+					{
+						g_applicationUi.DrawWeapon(view, g_renderer, *g_scene->m_level, settings,
+							stats, g_viewport, g_d3dContext.Get(), g_renderTargetView.Get(), g_depthStencilView.Get());
+					});
+				}
+			}
 			Renderer::Instance().RenderScene(g_scene.get(), g_renderSettings, g_visSettings, &g_profilingStats);
 		}
 		else

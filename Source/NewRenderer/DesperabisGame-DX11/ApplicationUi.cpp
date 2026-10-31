@@ -69,7 +69,8 @@ namespace
 
     void DrawModel(const Desperabis::UiModel& command, const Level& level, RendererDX11& renderer,
         const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
-        ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView)
+        ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView,
+        Texture* weaponTexture = nullptr, bool faceSwordCamera = false)
     {
         Desperabis::RawGameObject object;
         object.health = 1000;
@@ -96,29 +97,62 @@ namespace
         centering.SetTranslation(Vector(-center.GetX(), -center.GetY(), -center.GetZ()));
         auto transform = GamePlay::PropertyAccessorBase(raw).GetTransform();
         transform.SetTranslation(Vector(0, 0, -command.depth * DespToFloat));
-        instance->SetTransform(centering * transform);
+        if (command.cameraSpacePosition)
+        {
+            const auto& position = *command.cameraSpacePosition;
+            transform.SetTranslation(Vector(position[0] * DespToFloat, -position[1] * DespToFloat, -position[2] * DespToFloat));
+            if (faceSwordCamera)
+            {
+                auto axis = transform.GetDirection();
+                axis.Normalize();
+                auto toCamera = Vector(0,0,0) - transform.TransformPosition(center);
+                auto right = toCamera.GetCross(axis);
+                // An end-on sword has no preferred axial rotation.
+                if (right.GetLength() > 0.000001f)
+                {
+                    right.Normalize();
+                    const auto up = axis.GetCross(right);
+                    transform.Create(transform.GetTranslation(), right, up, axis);
+                }
+            }
+            instance->SetTransform(transform);
+        }
+        else { instance->SetTransform(centering * transform); }
         instance->PrepareSubInstancesForRendering();
-        const auto unlit = [&command](RenderableInstance& item)
+        const auto configureMaterials = [&command, weaponTexture](RenderableInstance& item)
         {
             item.m_tintColor = { command.color.r,command.color.g,command.color.b,item.m_tintColor.a };
             for (auto& material : item.GetOrCreateMaterialOverrides())
             {
+                if (weaponTexture && material.m_textureSlot == 9)
+                {
+                    material.m_texture = weaponTexture;
+                }
                 material.m_applyLighting = false;
                 material.ComputeHash();
             }
         };
-        unlit(*instance);
-        for (auto& sub : instance->m_subInstances) { unlit(sub); }
+        configureMaterials(*instance);
+        for (auto& sub : instance->m_subInstances) { configureMaterials(sub); }
         instance->ComputeTransparencyMask();
         Camera camera;
         Matrix4 projection;
         projection.CreateProjection(command.bounds.width / command.bounds.height,
             2.f * std::atan(command.bounds.height / (2.f * command.focalLength)), 0.001f, 100.f);
+        if (command.projectionCenterY)
+        {
+            float matrix[16];
+            projection.Store(matrix);
+            matrix[9] = 2.f * *command.projectionCenterY / command.bounds.height - 1.f;
+            projection.Load(matrix);
+        }
         camera.SetProjectionMatrix(projection);
         VisibilityResult elements;
         elements.m_mainCamera = &camera;
         elements.m_ambientColor = { 1,1,1 };
         elements.m_lightmap = AssetManager::Instance().GetPlainWhiteTexture();
+        elements.m_fogFalloff = 0.f;
+        elements.m_fogColor = {0,0,0};
         RenderContextDX11 context(renderer, elements, settings, stats);
         context.BeginRendering();
         context.BeginRenderTargetScope(RenderTargetPassType::MainView);
@@ -152,6 +186,11 @@ FUTURE(void) ApplicationUi::Initialize()
     };
     const auto shades = CO_AWAIT read(L"LEVEL\\OPSET10.256");
     const auto hudData = CO_AWAIT read(L"ANIMS\\AMA_ANI.AN2");
+    m_weapons = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\WAFFEN.AN2");
+    if (m_weapons->m_countX != 4 || m_weapons->m_countY != 3)
+    {
+        throw std::runtime_error("Expected the original 4x3 first-person weapon bitmap bank.");
+    }
     if (shades.size() != 2052 || shades[0] != 255 || shades[1] != 0 || shades[2] != 7 || shades[3] != 0 ||
         hudData.size() < 2 || hudData[0] != 2 || hudData[1] != 5)
     {
@@ -232,6 +271,104 @@ FUTURE(void) ApplicationUi::Initialize()
     CO_RETURN;
 }
 
+void ApplicationUi::DrawWeapon(const Desperabis::WeaponView& view, RendererDX11& renderer, const Level& level,
+    const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
+    ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView)
+{
+    using Desperabis::WeaponView;
+    if (!m_weapons) { throw std::logic_error("First-person weapon assets have not been initialized."); }
+    const float scale = (std::min)(viewport.Width / WeaponView::Width, viewport.Height / WeaponView::Height);
+    const float bottom = viewport.TopLeftY + viewport.Height;
+    if (view.kind == WeaponView::Kind::Model)
+    {
+        const auto& object = view.object;
+        Desperabis::UiModel command{ { 0,0,WeaponView::Width,WeaponView::Height },
+            object.modelId, static_cast<byte>(object.modelAnim - 1), static_cast<byte>(object.animFrame - 1),
+            object.modelFrame2, object.blendWeightOrSpriteOpacity, object.displayType,
+            { object.winX,object.winY,object.winZ }, object.posZ };
+        command.cameraSpacePosition = { object.posX,object.posY,object.posZ };
+        command.projectionCenterY = view.projectionCenterY;
+        const bool faceSwordCamera = view.bindWeaponBitmap && object.modelAnim == 2 && object.animFrame == 1;
+        if (faceSwordCamera) { (*command.cameraSpacePosition)[1] += 6; }
+        const D3D11_VIEWPORT modelViewport{ viewport.TopLeftX + (viewport.Width - WeaponView::Width * scale) * 0.5f,
+            bottom - WeaponView::Height * scale, WeaponView::Width * scale, WeaponView::Height * scale, 0,1 };
+        auto* weaponTexture = view.bindWeaponBitmap ?
+            &m_weapons->m_frames.at(view.bitmapFrame) : nullptr;
+        DrawModel(command, level, renderer, settings, stats, modelViewport, deviceContext, colorView, depthView,
+            weaponTexture, faceSwordCamera);
+        return;
+    }
+    const Texture* texture = nullptr;
+    float offsetX = view.offsetX, offsetY = view.offsetY;
+    std::shared_ptr<TextMesh>* mesh = nullptr;
+    if (view.kind == WeaponView::Kind::Sprite)
+    {
+        if (!m_weapons || view.bitmapFrame >= m_weaponMeshes.size())
+        {
+            throw std::runtime_error("Missing first-person weapon bitmap.");
+        }
+        const auto& frame = m_weapons->m_frames.at(view.bitmapFrame);
+        texture = &frame;
+        if (view.useBitmapOffsetX) { offsetX += frame.m_relX; }
+        if (view.centerBitmapX) { offsetX -= static_cast<float>((frame.m_width - 1) / 2); }
+        if (view.flipHorizontal) { offsetX = -static_cast<float>(frame.m_width - 1) - offsetX; }
+        mesh = &m_weaponMeshes[view.bitmapFrame][view.flipHorizontal ? 1 : 0];
+    }
+    else
+    {
+        const auto& object = view.object;
+        if (object.modelId < 30)
+        {
+            const auto animation = level.GetLevelInfo().GetTextureAnim(object.modelId);
+            if (!animation || !animation->IsValidFrame(object.modelAnim - 1, object.animFrame - 1))
+            {
+                throw std::runtime_error("Held stone references an unavailable level sprite.");
+            }
+            const auto* frame = animation->GetFrame(object.modelAnim - 1, object.animFrame - 1);
+            texture = frame;
+            offsetX += frame->m_relX;
+            offsetY += frame->m_relY;
+        }
+        else
+        {
+            const auto animation = level.GetLevelInfo().GetModelAnim(object.modelId - 30);
+            const auto slot = static_cast<unsigned int>(object.pickupType);
+            if (!animation || slot < 1 || slot > 14 || !(animation->m_textureUsedMask & (1u << slot)))
+            {
+                throw std::runtime_error("Held stone requires its original model bitmap slot in 1..14.");
+            }
+            texture = &animation->m_ownTextures[slot];
+            offsetX -= static_cast<float>((texture->m_width - 1) / 2);
+            offsetY -= static_cast<float>(texture->m_height - 1);
+        }
+        if (m_heldWeaponTexture != texture || m_heldWeaponMesh.mesh == nullptr)
+        {
+            m_heldWeaponTexture = texture;
+            m_heldWeaponMesh.mesh = TextMesh::CreateTexturedQuad(*texture, static_cast<float>(texture->m_width),
+                static_cast<float>(texture->m_height));
+        }
+        mesh = &m_heldWeaponMesh.mesh;
+    }
+    if (!*mesh)
+    {
+        *mesh = TextMesh::CreateTexturedQuad(*texture, static_cast<float>(texture->m_width),
+            static_cast<float>(texture->m_height), 1, 1, view.flipHorizontal);
+    }
+    const float bitmapScale = scale * view.scale;
+    float anchorY = bottom + (view.anchorY - WeaponView::Height) * scale;
+    if (view.kind == WeaponView::Kind::Sprite)
+    {
+        anchorY = (std::max)(anchorY, bottom - (texture->m_height - 1 + offsetY) * bitmapScale);
+    }
+    TextMeshInstance instance(*mesh);
+    instance.SetScale(bitmapScale);
+    instance.SetPosition(viewport.TopLeftX + view.anchorX * viewport.Width + offsetX * bitmapScale,
+        anchorY + offsetY * bitmapScale);
+    VisibilityResult elements;
+    RenderContextDX11 context(renderer, elements, settings, stats);
+    context.RenderTextMeshes({ &instance });
+}
+
 void ApplicationUi::Deinitialize()
 {
     Clear();
@@ -239,6 +376,10 @@ void ApplicationUi::Deinitialize()
     m_mirroredHud = {};
     m_inventoryIcons = {};
     m_nativeGlyphs.clear();
+    m_weaponMeshes = {};
+    m_heldWeaponMesh = {};
+    m_heldWeaponTexture = nullptr;
+    m_weapons.reset();
 }
 
 void ApplicationUi::Clear()

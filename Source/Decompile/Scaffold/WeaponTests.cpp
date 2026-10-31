@@ -526,6 +526,75 @@ namespace
     }
 }
 
+void TestWeaponPresentation()
+{
+    GameContext context;
+    context.SetMenuPage(MenuPage::Gameplay);
+    context.weaponHand = 2;
+    context.requestedWeaponHand = 2;
+    context.weaponSpriteFrame = 1;
+    context.weaponAnimationPosition = 20;
+    context.playerWalkPhase = 128;
+    context.selectedWeapon = WeaponType::Sword;
+    const auto idle = context.GetWeaponView();
+    Check(idle && idle->kind == WeaponView::Kind::Model && idle->object.modelId == 31 &&
+        idle->object.modelAnim == 2 && idle->object.animFrame == 1 &&
+        idle->object.posX == 19 && idle->object.posY == 19 && idle->object.posZ == 30 &&
+        idle->object.winX == 9 && idle->object.winY == -4 && idle->object.winZ == -27 &&
+        idle->projectionCenterY == 100, "Sword rest must match the native mirrored DS:039E pose.");
+    context.playerWalkPhase = 0;
+    Check(context.GetWeaponView()->object.posY == 24, "Native walking cosine must add exactly five units of sword bounce.");
+    context.weaponAnimationPosition = 25;
+    const auto swing = context.GetWeaponView();
+    Check(swing->object.posX == 20 && swing->object.posY == 23 && swing->object.winX == 30 &&
+        swing->object.winY == -40 && swing->object.winZ == -13,
+        "Sword swing must use signed high-word interpolation, not interpolated/truncated angles.");
+    const auto seed = context.randomSeed;
+    for (int phase = 0; phase < 512; ++phase)
+    {
+        context.playerWalkPhase = static_cast<std::int16_t>(phase);
+        context.weaponAnimationPosition = 20;
+        const int bob = static_cast<int>((static_cast<std::int64_t>(SineTable[(phase + 128) & 511]) * 5) >> 16);
+        Check(context.GetWeaponView()->object.posY == 19 + std::abs(bob),
+            "Every walking phase must use native ordinary cosine, including signed negative high words.");
+    }
+    for (const auto type : { WeaponType::None, WeaponType::Dagger, WeaponType::Sword, WeaponType::Crossbow,
+        WeaponType::Fireball, WeaponType::Stone, WeaponType::TrapOrPole, WeaponType::Electricity,
+        WeaponType::Showel, WeaponType::Lentils, WeaponType::Scythe })
+    {
+        context.selectedWeapon = type;
+        context.inventory[1].health = 1000;
+        context.weaponAnimationSpeed = 0;
+        const auto view = context.GetWeaponView();
+        Check(view.has_value(), "Every supported weapon requires a first-person recipe.");
+        context.weaponAnimationSpeed = -3;
+        Check(context.GetWeaponView().has_value(), "Queued attacks must retain the last rendered pose until the next animation update.");
+        context.weaponAnimationSpeed = -2;
+        Check(!context.GetWeaponView(), "Selection commits must hide the stale weapon until its draw animation begins.");
+    }
+    Check(context.randomSeed == seed, "Presentation must not consume gameplay RNG.");
+    context.selectedWeapon = WeaponType::Electricity;
+    context.requestedWeapon = WeaponType::Electricity;
+    context.weaponAnimationSpeed = -3;
+    context.weaponAmounts[7] = 100;
+    context.UpdateWeaponAnimation(1);
+    const auto firing = context.GetWeaponView();
+    Check(firing && firing->object.modelAnim == 2 && firing->object.animFrame == 4 &&
+        firing->object.modelFrame2 == 5 && firing->object.blendWeightOrSpriteOpacity == -100,
+        "Electricity must retain its firing branch after the native command normalizes to zero.");
+    context.UpdateWeaponAnimation(1);
+    Check(context.GetWeaponView()->object.animFrame == 3, "Electricity must return to its charged idle model on the next frame.");
+    context.weaponAmounts[7] = 0;
+    Check(context.GetWeaponView()->object.modelAnim == 5 && context.GetWeaponView()->object.animFrame == 4,
+        "Depleted electricity must use the native alternate model bank frame.");
+    context.weaponAnimationSpeed = 0;
+    context.SetMenuPage(MenuPage::Inventory);
+    Check(!context.GetWeaponView(), "Inventory must suppress the first-person weapon.");
+    context.SetMenuPage(MenuPage::Gameplay);
+    context.worldObjects[1].itemValue = 1;
+    Check(!context.GetWeaponView(), "The native player-item gate must suppress weapon presentation.");
+}
+
 int main()
 {
     try
@@ -539,6 +608,7 @@ int main()
         TestSelectionAndWorldIntegration();
         TestSwordAudio();
         TestSelectionGatesAndUnarmedTransition();
+        TestWeaponPresentation();
         std::cout << "Weapon sequence tests passed.\n";
         return 0;
     }

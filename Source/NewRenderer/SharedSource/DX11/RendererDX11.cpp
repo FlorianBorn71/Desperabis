@@ -217,6 +217,7 @@ FUTURE(void) RendererDX11::Initialize(ID3D11Device3* device, ID3D11DeviceContext
 void RendererDX11::Deinitialize()
 {
     m_itemPreview.reset();
+    m_weaponDraw = {};
     m_d3dDevice.Reset();
     m_d3dContext.Reset();
     m_inputLayout.Reset();
@@ -277,6 +278,9 @@ void RendererDX11::SetItemPreview(std::shared_ptr<const RenderableInstance> inst
 
 void RendererDX11::RenderHudGeometry(const RenderingSettings& settings, ProfilingStats& stats)
 {
+    const auto weaponDraw = std::move(m_weaponDraw);
+    m_weaponDraw = {};
+    if (weaponDraw) { weaponDraw(settings, stats); }
     const auto item = std::move(m_itemPreview);
     if (item == nullptr) { return; }
     const auto& viewport = m_itemPreviewViewport;

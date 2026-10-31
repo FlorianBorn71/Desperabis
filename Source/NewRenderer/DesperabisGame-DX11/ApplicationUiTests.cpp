@@ -7,6 +7,7 @@
 #include <Asset/Font.h>
 #include <Asset/Level.h>
 #include <DX11/RendererDX11.h>
+#include <DX11/NativeTextureDX11.h>
 #include <IO/FileManagerBuiltIn.h>
 #include <Physics/PhysicsInterface.h>
 #include <Renderer/Camera.h>
@@ -28,6 +29,85 @@ namespace
     void CheckHr(HRESULT result)
     {
         if (FAILED(result)) { throw std::runtime_error("D3D11 test setup failed: " + std::to_string(result)); }
+    }
+
+    template<typename T>
+    std::vector<T> ReadBuffer(ID3D11Device3* device, ID3D11DeviceContext3* context, ID3D11Buffer* buffer)
+    {
+        Check(buffer != nullptr, "Sword geometry must bind an actual GPU buffer.");
+        D3D11_BUFFER_DESC desc{};
+        buffer->GetDesc(&desc);
+        Check(desc.ByteWidth % sizeof(T) == 0, "Geometry buffer has an unexpected element stride.");
+        desc.BindFlags = desc.MiscFlags = desc.StructureByteStride = 0;
+        desc.Usage = D3D11_USAGE_STAGING;
+        desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        ComPtr<ID3D11Buffer> copy;
+        CheckHr(device->CreateBuffer(&desc, nullptr, &copy));
+        context->CopyResource(copy.Get(), buffer);
+        D3D11_MAPPED_SUBRESOURCE mapped{};
+        CheckHr(context->Map(copy.Get(), 0, D3D11_MAP_READ, 0, &mapped));
+        std::vector<T> result(desc.ByteWidth / sizeof(T));
+        std::memcpy(result.data(), mapped.pData, desc.ByteWidth);
+        context->Unmap(copy.Get(), 0);
+        return result;
+    }
+
+    void CheckSwordFacing(ID3D11Device3* device, ID3D11DeviceContext3* context,
+        const Desperabis::WeaponView& view, const Model& model, bool checkGripClipping = false)
+    {
+        ComPtr<ID3D11Buffer> buffer;
+        context->VSGetConstantBuffers(2, 1, &buffer);
+        Check(buffer.Get() == model.GetNativeRuntimeObj<NativeModelMeshObjectDX11>()->m_positionBuffer.Get(),
+            "The sword must use its original shared geometry, not a generated replacement.");
+        const auto positions = ReadBuffer<VertexPosition>(device, context, buffer.Get());
+        Check(positions.size() >= static_cast<std::size_t>(model.m_vertexOfs) + model.m_numPositions,
+            "Native sword positions must be available.");
+        for (int i = 0; i < model.m_numPositions; ++i)
+        {
+            Check(positions[model.m_vertexOfs + i].y == 0, "The original sword must remain a flat polygon.");
+        }
+        buffer.Reset();
+        context->VSGetConstantBuffers(1, 1, &buffer);
+        const auto instance = ReadBuffer<float>(device, context, buffer.Get());
+        Check(instance.size() >= 16, "Sword instance buffer must contain its transform.");
+        Matrix4 rendered;
+        rendered.Load(instance.data());
+        rendered = rendered.GetTransposed();
+        RawGameObject raw;
+        Desperabis::EncodeGameObject(view.object, raw.m_rawBytes, sizeof(raw.m_rawBytes));
+        auto native = GamePlay::PropertyAccessorBase(raw).GetTransform();
+        native.SetTranslation(Vector(view.object.posX * DespToFloat, -(view.object.posY + 6) * DespToFloat,
+            -view.object.posZ * DespToFloat));
+        Check((rendered.GetTranslation() - native.GetTranslation()).GetLength() < 0.000001f &&
+            (rendered.GetDirection() - native.GetDirection()).GetLength() < 0.00001f,
+            "The sword must retain its six-unit downward offset and native long-axis direction.");
+        auto ray = Vector(0,0,0) - rendered.TransformPosition(model.m_localBounds.GetCenter());
+        ray.Normalize();
+        const auto axis = rendered.GetDirection();
+        const auto normal = rendered.GetUpDir();
+        const auto dot = [](const Vector& a, const Vector& b)
+        {
+            return a.GetX()*b.GetX() + a.GetY()*b.GetY() + a.GetZ()*b.GetZ();
+        };
+        const float along = dot(axis, ray);
+        const float maximumFacing = std::sqrt((std::max)(0.f, 1.f - along*along));
+        Check(std::fabs(dot(normal, ray) - maximumFacing) < 0.0001f,
+            "The flat sword must attain the maximum camera-facing angle allowed by its long axis.");
+        if (checkGripClipping)
+        {
+            buffer.Reset();
+            context->VSGetConstantBuffers(0, 1, &buffer);
+            const auto globals = ReadBuffer<float>(device, context, buffer.Get());
+            Check(globals.size() >= 80, "Weapon globals must contain the projection matrix.");
+            Matrix4 projection;
+            // Two view matrices and two inverse-view matrices precede the projection.
+            projection.Load(globals.data() + 64);
+            projection = projection.GetTransposed();
+            const auto& box = model.m_localBounds.m_box;
+            const auto pommel = (rendered * projection).TransformPosition(
+                Vector(model.m_localBounds.GetCenter().GetX(), 0, box.m_min.GetZ()));
+            Check(pommel.GetY() < -1.05f, "The idle sword's pommel must lie below the screen with clipping margin.");
+        }
     }
 
     struct Target
@@ -759,7 +839,7 @@ int main(int argc, char* argv[])
                     ++changed;
                 }
                 Check(changed > 500, "Native health fill and dimming must visibly cover the original gradient.");
-                if (argc == 2)
+                if (argc >= 2)
                 {
                     core.gold = 42;
                     core.weaponAmounts[3] = 12;
@@ -809,6 +889,197 @@ int main(int argc, char* argv[])
             }
             previousMap = std::move(map);
         }
+        for (const auto levelNumber : { 10, 11, 50 })
+        {
+            const auto* weaponLevel = FORCE_GET(AssetManager::Instance().LoadLevel(levelNumber));
+            const auto* swordModel = weaponLevel->GetLevelInfo().GetModelAnim(1)->GetModel(1, 0);
+            const auto originalMaterial = swordModel->m_drawCalls[0].m_material;
+            const auto placeableData = FORCE_GET(FileManager::Instance().ReadDataFuture(
+                FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS10.DAT")));
+            const auto placeable = Desperabis::DecodeGameObject(placeableData.data() + 73 * 54, 54);
+            Check(placeable.behavior == Desperabis::BehaviorType::BearTrapAmmo, "Weapon view needs the original bear-trap fixture.");
+            for (const auto size : { std::pair<UINT, UINT>{ 360,240 }, { 1280,720 }, { 480,800 } })
+            {
+                Target target(device.Get(), size.first, size.second);
+                renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+                Desperabis::GameContext weaponCore;
+                weaponCore.SetMenuPage(Desperabis::MenuPage::Gameplay);
+                weaponCore.weaponHand = 2;
+                weaponCore.weaponSpriteFrame = 1;
+                weaponCore.playerWalkPhase = 128;
+                weaponCore.inventory[1] = items[6];
+                for (const auto type : { Desperabis::WeaponType::None, Desperabis::WeaponType::Dagger,
+                    Desperabis::WeaponType::Sword, Desperabis::WeaponType::Crossbow, Desperabis::WeaponType::Fireball,
+                    Desperabis::WeaponType::Stone, Desperabis::WeaponType::TrapOrPole, Desperabis::WeaponType::Electricity,
+                    Desperabis::WeaponType::Showel, Desperabis::WeaponType::Lentils, Desperabis::WeaponType::Scythe })
+                {
+                    weaponCore.selectedWeapon = type;
+                    switch (type)
+                    {
+                    case Desperabis::WeaponType::Sword: weaponCore.weaponAnimationPosition = 20; break;
+                    case Desperabis::WeaponType::Crossbow: weaponCore.weaponAnimationPosition = 30; break;
+                    case Desperabis::WeaponType::Fireball:
+                    case Desperabis::WeaponType::Lentils: weaponCore.weaponAnimationPosition = 60; break;
+                    case Desperabis::WeaponType::Electricity: weaponCore.weaponAnimationPosition = 15; break;
+                    default: weaponCore.weaponAnimationPosition = 10; break;
+                    }
+                    if (type == Desperabis::WeaponType::TrapOrPole) { weaponCore.inventory[1] = placeable; }
+                    else { weaponCore.inventory[1] = items[6]; }
+                    const auto weapon = weaponCore.GetWeaponView();
+                    Check(weapon.has_value(), "Every weapon must produce a render recipe.");
+                    const float black[4]{ 0,0,0,1 };
+                    context->ClearRenderTargetView(target.colorView.Get(), black);
+                    context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 0, 0);
+                    ui.DrawWeapon(*weapon, renderer, *weaponLevel, settings, stats, target.viewport,
+                        context.Get(), target.colorView.Get(), target.depthView.Get());
+                    const auto pixels = target.Pixels(device.Get(), context.Get());
+                    ComPtr<ID3D11Buffer> swordBuffer;
+                    if (type == Desperabis::WeaponType::Sword)
+                    {
+                        CheckSwordFacing(device.Get(), context.Get(), *weapon, *swordModel, true);
+                        context->VSGetConstantBuffers(2, 1, &swordBuffer);
+                        if (argc >= 3 && levelNumber == 10 && size.first == 1280)
+                        {
+                            target.SaveBitmap(argv[2], pixels);
+                        }
+                    }
+                    int count = 0;
+                    for (const auto pixel : pixels) { if ((pixel & 0xffffff) != 0) { ++count; } }
+                    std::cout << "Weapon " << static_cast<int>(type) << " at " << size.first << "x" << size.second
+                        << ": " << count << " pixels\n";
+                    Check(count > 5, "Every original weapon must render actual pixels despite occluding world depth.");
+                    context->ClearRenderTargetView(target.colorView.Get(), black);
+                    ui.DrawWeapon(*weapon, renderer, *weaponLevel, settings, stats, target.viewport,
+                        context.Get(), target.colorView.Get(), target.depthView.Get());
+                    const auto repeated = target.Pixels(device.Get(), context.Get());
+                    Check(pixels == repeated, "Cached weapon meshes must render identically without rebuilding assets.");
+                    if (type == Desperabis::WeaponType::Sword)
+                    {
+                        ComPtr<ID3D11Buffer> repeatedBuffer;
+                        context->VSGetConstantBuffers(2, 1, &repeatedBuffer);
+                        Check(swordBuffer.Get() == repeatedBuffer.Get(), "The flat sword must reuse its original GPU geometry.");
+                        for (const int hand : {1,2})
+                        {
+                            weaponCore.weaponHand = static_cast<std::uint8_t>(hand);
+                            context->ClearRenderTargetView(target.colorView.Get(), black);
+                            ui.DrawWeapon(*weaponCore.GetWeaponView(), renderer, *weaponLevel, settings, stats, target.viewport,
+                                context.Get(), target.colorView.Get(), target.depthView.Get());
+                            const auto handed = target.Pixels(device.Get(), context.Get());
+                            int visible = 0, correctSide = 0;
+                            for (std::size_t i = 0; i < handed.size(); ++i)
+                            {
+                                if ((handed[i] & 0xffffff) == 0) { continue; }
+                                ++visible;
+                                if ((i % size.first < size.first / 2) == (hand == 1)) { ++correctSide; }
+                            }
+                            Check(visible > 100 && correctSide > visible * 0.8f,
+                                "The camera-facing sword must remain visible on the selected hand's side.");
+                            CheckSwordFacing(device.Get(), context.Get(), *weaponCore.GetWeaponView(), *swordModel, true);
+                            context->VSGetConstantBuffers(2, 1, &repeatedBuffer);
+                            Check(swordBuffer.Get() == repeatedBuffer.Get(), "Changing sword hands must not rebuild the mesh.");
+                            if (levelNumber == 10 && size.first == 360)
+                            {
+                                for (const int pose : {-10,0,10,20,25,30,35,40})
+                                {
+                                    weaponCore.weaponAnimationPosition = static_cast<std::int16_t>(pose);
+                                    const auto animated = *weaponCore.GetWeaponView();
+                                    ui.DrawWeapon(animated, renderer, *weaponLevel, settings, stats, target.viewport,
+                                        context.Get(), target.colorView.Get(), target.depthView.Get());
+                                    CheckSwordFacing(device.Get(), context.Get(), animated, *swordModel);
+                                }
+                                weaponCore.weaponAnimationPosition = 20;
+                                auto endOn = *weaponCore.GetWeaponView();
+                                endOn.object.posX = endOn.object.posY = 0;
+                                endOn.object.posY = -6;
+                                endOn.object.winX = endOn.object.winY = endOn.object.winZ = 0;
+                                ui.DrawWeapon(endOn, renderer, *weaponLevel, settings, stats, target.viewport,
+                                    context.Get(), target.colorView.Get(), target.depthView.Get());
+                                CheckSwordFacing(device.Get(), context.Get(), endOn, *swordModel);
+                            }
+                        }
+                        weaponCore.weaponHand = 2;
+                    }
+                    weaponCore.playerWalkPhase = 0;
+                    context->ClearRenderTargetView(target.colorView.Get(), black);
+                    ui.DrawWeapon(*weaponCore.GetWeaponView(), renderer, *weaponLevel, settings, stats, target.viewport,
+                        context.Get(), target.colorView.Get(), target.depthView.Get());
+                    const auto walking = target.Pixels(device.Get(), context.Get());
+                    if (type == Desperabis::WeaponType::Sword)
+                    {
+                        CheckSwordFacing(device.Get(), context.Get(), *weaponCore.GetWeaponView(), *swordModel, true);
+                    }
+                    Check((walking == pixels) == (type == Desperabis::WeaponType::Dagger),
+                        "Walking must visibly move every native bobbing weapon, but not the dagger.");
+                    weaponCore.playerWalkPhase = 128;
+                    if (type != Desperabis::WeaponType::Stone)
+                    {
+                        weaponCore.weaponAnimationPosition += 5;
+                        if (type == Desperabis::WeaponType::Fireball || type == Desperabis::WeaponType::Lentils)
+                        {
+                            weaponCore.weaponSpriteFrame = 3;
+                        }
+                        context->ClearRenderTargetView(target.colorView.Get(), black);
+                        ui.DrawWeapon(*weaponCore.GetWeaponView(), renderer, *weaponLevel, settings, stats, target.viewport,
+                            context.Get(), target.colorView.Get(), target.depthView.Get());
+                        Check(pixels != target.Pixels(device.Get(), context.Get()),
+                            "Attack/draw poses and casting frames must visibly differ from rest.");
+                        weaponCore.weaponSpriteFrame = 1;
+                    }
+                    if (type == Desperabis::WeaponType::Electricity)
+                    {
+                        weaponCore.weaponAnimationPosition = 15;
+                        weaponCore.weaponAmounts[7] = 100;
+                        std::vector<std::uint32_t> chargedPixels;
+                        for (const bool firing : { false, true })
+                        {
+                            weaponCore.weaponElectricityFiring = firing;
+                            context->ClearRenderTargetView(target.colorView.Get(), black);
+                            ui.DrawWeapon(*weaponCore.GetWeaponView(), renderer, *weaponLevel, settings, stats, target.viewport,
+                                context.Get(), target.colorView.Get(), target.depthView.Get());
+                            const auto energyPixels = target.Pixels(device.Get(), context.Get());
+                            Check(energyPixels != pixels, "Charged electricity must differ from its depleted view.");
+                            if (!firing) { chargedPixels = energyPixels; }
+                            else { Check(energyPixels != chargedPixels, "Electricity firing must render its animated alternate model."); }
+                        }
+                        weaponCore.weaponElectricityFiring = false;
+                        weaponCore.weaponAmounts[7] = 0;
+                    }
+                }
+                Check(swordModel->m_drawCalls[0].m_material.m_texture == originalMaterial.m_texture &&
+                    swordModel->m_drawCalls[0].m_material.m_materialHash == originalMaterial.m_materialHash,
+                    "Weapon texture-slot rebinding must not mutate the shared model material.");
+            }
+            {
+                Target target(device.Get(), 360, 240);
+                renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+                Desperabis::GameContext weaponCore;
+                weaponCore.SetMenuPage(Desperabis::MenuPage::Gameplay);
+                weaponCore.selectedWeapon = Desperabis::WeaponType::Fireball;
+                weaponCore.weaponHand = 2;
+                weaponCore.weaponSpriteFrame = 1;
+                weaponCore.weaponAnimationPosition = 60;
+                weaponCore.playerWalkPhase = 128;
+                int weaponCalls = 0;
+                renderer.SetWeaponDraw([&](const RenderingSettings& drawSettings, ProfilingStats& drawStats)
+                {
+                    ++weaponCalls;
+                    ui.DrawWeapon(*weaponCore.GetWeaponView(), renderer, *level, drawSettings, drawStats, target.viewport,
+                        context.Get(), target.colorView.Get(), target.depthView.Get());
+                });
+                TextMeshInstance hudOverlay(TextMesh::CreateTexturedQuad(*AssetManager::Instance().GetPlainWhiteTexture(), 360,240));
+                hudOverlay.SetScale(1);
+                VisibilityResult visible;
+                visible.m_mainCamera = &camera;
+                visible.m_visibleTextMeshInstances.push_back(&hudOverlay);
+                renderer.RenderSceneElements(visible, settings, stats);
+                const auto pixels = target.Pixels(device.Get(), context.Get());
+                Check(weaponCalls == 1 && std::all_of(pixels.begin(), pixels.end(), [](std::uint32_t pixel)
+                    { return (pixel & 0xffffff) == 0xffffff; }),
+                    "HUD must render after the one-shot weapon callback.");
+                renderer.RenderSceneElements(visible, settings, stats);
+                Check(weaponCalls == 1, "Weapon callbacks must be consumed, not retained across renders or menu pages.");
+            }
+        }
         const auto messageCount = info->GetNumStoredMessages();
         for (UINT64 i = 0; i < messageCount; ++i)
         {
@@ -830,7 +1101,7 @@ int main(int argc, char* argv[])
         std::cout << "PASS: WARP inventory/main-menu presentation, original key/medicine and six cheat weapons, "
             "both chapter resource/model banks, native text metrics and nonoverlapping health label, "
             "native-size artwork, hand mirroring, palette shading, health gradient, "
-            "wide/portrait scaling, cache stability and no D3D11 errors.\n";
+            "wide/portrait scaling, all named first-person weapon poses, cached art, HUD ordering and no D3D11 errors.\n";
         return 0;
     }
     catch (const std::exception& error)

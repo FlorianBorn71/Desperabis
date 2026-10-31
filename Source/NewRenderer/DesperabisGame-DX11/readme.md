@@ -55,6 +55,35 @@ chunking, multiple flashes and cleanup.
 Both standalone project and solution builds write to the repository's `Bin` folder:
 Release uses `Bin`, and Debug uses `Bin\Debug`.
 
+## First-person weapons
+
+The core's `GetWeaponView()` now drives all named weapon views: walking bob,
+draw/holster, attacks, crossbow reload and casting frames. Fist, dagger,
+crossbow and casting use cached original WAFFEN bitmaps; stone uses its held
+item art. Sword, shovel, scythe and electricity use the original level weapon
+model bank with recovered pose tables and per-instance texture-slot-9 binding.
+Placeables retain their own geometry. The model pass has private depth, and
+does not recenter/normalize weapon geometry as inventory pictures do.
+
+The sword retains its original flat geometry and original artwork. Its instance
+rotates only around the animated long axis to maximize camera-facing width,
+including during swings and walking. No replacement mesh, new artwork, added
+lighting or fixed pitch/yaw offsets are used. A six-native-unit downward
+presentation offset keeps the grip end below the bottom edge at rest; depth and
+the animated long-axis direction are unchanged. This facing/placement adjustment
+is a renderer adaptation, not recovered DOS ground truth. Other weapons and
+inventory pictures are unchanged. WARP tests verify original GPU geometry reuse,
+unchanged long-axis direction/depth, grip-end clipping and optimal facing throughout both hands'
+draw/attack poses. The test executable optionally
+accepts a HUD bitmap output path followed by a sword bitmap output path.
+
+Weapon rendering is independent of the pickup preview and suppressed on menu
+pages. Native art proportions are preserved and the view remains attached to
+the bottom edge on wide/portrait targets. Exact DOS weapon palette shading is
+not emulated. See [recovery details](../../Decompile/BehaviorRecovery.md#first-person-weapon-presentation)
+for native formulas and the scythe bitmap selector. WARP tests render every
+named weapon using original level-10/11/50 assets and occluding world depth.
+
 ## CPU profiling
 
 The game exposes `g_profilingStats` alongside the renderer's existing visibility

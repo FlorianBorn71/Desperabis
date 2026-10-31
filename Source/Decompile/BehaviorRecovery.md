@@ -3056,12 +3056,10 @@ unrecovered placeable behaviors report `UnimplementedWeapon` before consuming
 resources or allocating a projectile. The renderer reports an attempted
 unsupported attack in its window title.
 
-**Presentation boundary:** DOS held-weapon bitmap loading/drawing and the
-weapon HUD are not reproduced here. The timing/hand/pose fields are available
-to a future presenter; DX11 currently shows world hits/particles, not a held
-dagger/sword overlay. Swimming/look control also remains partial; the recovered
-environment fields are explicit rather than silently inferred from incomplete
-movement code.
+**Presentation boundary:** `GetWeaponView()` now supplies the held-weapon
+recipe described below. DX11 executes the bitmap and camera-space model paths.
+The additional native weapon HUD and exact DOS environmental palette shading
+remain outside this implementation.
 
 [WeaponTests.cpp](Scaffold/WeaponTests.cpp) tests full contact records,
 all 65,536 signed phase words for each weapon, dagger batching, sword strike/
@@ -3070,6 +3068,80 @@ and RNG, native allocation side effects/fallbacks, inventory/hand priority,
 hotkey swaps, blocked input, unsupported weapon status, and pickup-to-enemy-hit
 sequences through `Tick`. These are static-instruction-derived host tests,
 not DOS-runtime comparisons.
+
+### First-person weapon presentation
+
+Evidence: [native update/draw cascade](weapon-sequence-evidence.txt),
+[pose interpolation and bitmap selection](first-person-weapon-helper-evidence.txt),
+[model transforms](first-person-weapon-transform-evidence.txt), and
+[sprite placement/mirroring](first-person-sprite-position-evidence.txt).
+`GetWeaponView()` is read-only and uses existing context-owned phase, pose,
+hand, frame, walk phase and look height; it draws no RNG and changes no attack
+timing. The electricity draw branch alone needs a context-owned latch, sampled
+before its negative attack command is normalized to phase zero.
+
+The walking term is the signed high word of
+`5 * SineTable[(playerWalkPhase+128) & 511]` (native cosine helper
+[`1E48:0027`](first-person-walk-table-evidence.txt) reads this ordinary table).
+Model bounce and crossbow/stone bounce use its
+absolute value. Dagger placement deliberately has no walking bob. Fist/casting
+use `abs(2*bob)` in their bitmap offsets.
+
+| Weapon | Native presentation |
+|---|---|
+| Fist (`None`) | WAFFEN linear frame 0, quarter-screen hand anchor, pose/bob offsets |
+| Dagger | WAFFEN frame 1, opposite sprite mirror sense, offsets `-pose,-pose` |
+| Sword | Model 31, animation 2/frame 1, five interpolated poses at DS:039E |
+| Crossbow | WAFFEN frames 3/4 for unloaded/loaded, horizontally centered, reload slide and bounce |
+| Fireball / Lentils | WAFFEN frames 6..8, casting hand sequence, look-height shift |
+| Stone | Held level sprite/model bitmap at half scale, eighth-screen hand anchor and countdown slide |
+| Trap / pole | Held object's own model/frame, fixed `10,30,0` orientation, depth `35+abs(bob)/2` |
+| Electricity | Model 31, 2/3 charged, 2/4 firing with blend target 5, 5/4 depleted; WAFFEN frame 5 |
+| Shovel (`Showel`) | Model 31, 2/2, DS:03DA pose table and WAFFEN frames 9/10 |
+| Scythe | Model 31, 2/2, DS:0416 pose table and forced mirrored transform |
+
+The scythe selector retains the inspected executable's zero byte at
+DS:`0452+24`; no speculative replacement picture is substituted for that native
+bitmap base. Shovel recoil chooses its second bitmap using existing core state.
+The model texture copy at DS:71F0 resolves to material slot **9** in the loaded
+bank. DX11 binds the cached selected WAFFEN frame as an **instance material
+override**; it never edits the shared level model or atlas.
+
+The loaded sword frame has six positions, all with local Y zero: it is two
+mirrored textured half-planes. DX11 retains this exact shared geometry and
+original bitmap, with no generated artwork, extrusion or added lighting.
+At the user's request, its instance transform rotates only about the local
+long axis (Z) so the plane faces the camera as directly as that axis permits.
+The transverse basis is derived from the sword midpoint's camera ray and the
+unchanged animated long axis; end-on views retain their original axial rotation.
+The native pitch/yaw direction, depth, walking bob, projection and combat timing
+are unchanged. A six-native-unit downward presentation offset hides the grip
+end below the screen at rest, while retaining axial camera facing. The earlier
+experimental beveled replacement and pitch/yaw offsets have been removed.
+Other weapons and inventory pictures are unaffected.
+
+The three tables contain five six-word poses `(x,y,z,pitch,yaw,roll)`.
+`0000:B345` computes `segment=clamp(pose/10+1,1,4)`, a signed 16.16 fraction
+`(pose%10)/10`, and the high word of the weighted neighboring poses. Sword
+uses signed pose; shovel/scythe use `abs(pose)`. Mirroring negates X/yaw/roll,
+not pitch; vertical bounce is added after interpolation. Sword projection
+center is `max(95,210-lookHeight)`; shovel/scythe use `max(95,lookHeight)`.
+
+Bitmap mirroring changes **both** UVs and offset X:
+`offsetX = -(imageWidth-1)-offsetX`. The native helper clamps the sprite anchor
+so its bottom reaches the viewport bottom; it does not center or fit the art.
+The presenter keeps native proportions, scales against a 320x220 reference
+view, and bottom-aligns on wide/portrait windows. This viewport adaptation and
+the existing UI model pass's 128-pixel focal length are renderer choices,
+not a claim of pixel-identical DOS rasterization. Pictures use original palette
+colors; exact underwater/tile-dependent weapon shading is not reproduced.
+
+Selection-commit/draw sentinels hide stale art. Late queued attack/holster
+commands retain the current pose until the next simulation update. Menus and
+the positive player-item gate suppress the weapon; pause repeats the same
+recipe. World depth cannot clip it: sprites use the screen-space pass, and
+models reuse the UI model pass with camera-space transforms and fresh depth.
+Pickup preview state remains independent.
 
 ### Ranged weapons, shovel and placement
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ApplicationFlow.h>
+#include <GameContext.h>
 #include <Renderer/TextMesh.h>
 #include <Renderer/RenderingSettings.h>
 #include <DX11/DX11Decls.h>
@@ -20,6 +21,9 @@ public:
     FUTURE(void) Initialize();
     void Deinitialize();
     void Clear();
+    void DrawWeapon(const Desperabis::WeaponView& view, RendererDX11& renderer, const Level& level,
+        const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
+        ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView);
     void Draw(const Desperabis::ApplicationPresentation& presentation, RendererDX11& renderer,
         const Level& level, const Font& font, const TextureAnim& hud,
         const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
@@ -44,4 +48,8 @@ private:
     std::map<int, std::array<std::shared_ptr<TextureAnim>, 7>> m_inventoryIcons;
     std::array<std::array<byte, 256>, 8> m_shades{};
     std::array<byte, 90> m_healthGradient{};
+    std::shared_ptr<TextureAnim> m_weapons;
+    std::array<std::array<std::shared_ptr<TextMesh>, 2>, 12> m_weaponMeshes;
+    CachedMesh m_heldWeaponMesh;
+    const Texture* m_heldWeaponTexture = nullptr;
 };

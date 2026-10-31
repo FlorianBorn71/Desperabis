@@ -104,6 +104,11 @@ For the first explained case and shared collision-map pointer, see
   `weapon-selection-evidence.txt`, `weapon-selection-tail-evidence.txt`,
   `weapon-environment-evidence.txt`: dagger/sword attack input, shared state,
   equip/holster selection, exact contacts and gameplay update order.
+- `Scaffold/WeaponPresentation.cpp`: read-only `GetWeaponView()` recipes for all
+  named weapons, native walking bob, mirrored bitmap offsets, interpolated model
+  poses, casting/reload frames and draw/holster motion. DX11 executes these after
+  the world pass using cached art and private model depth, independently of the
+  pickup preview. See [first-person weapon presentation](BehaviorRecovery.md#first-person-weapon-presentation).
 - `Scaffold/WeaponTests.cpp`: exhaustive phase-word tests, swing/recovery
   timelines, contact records, hand/registry selection, audio and live `Tick`
   pickup-to-hit integration. See [melee attack sequence](BehaviorRecovery.md#player-melee-attack-sequence).

@@ -4,6 +4,7 @@
 #include <DX11/DX11Decls.h>
 #include <DX11/NativeTextureDX11.h>
 #include <DX11/TextShaderDX11.h>
+#include <functional>
 
 
 inline void ThrowIfFailed(HRESULT hr)
@@ -27,6 +28,8 @@ public:
 	void ReInitialize(ID3D11RenderTargetView1* colorView, ID3D11DepthStencilView* dsView, const D3D11_VIEWPORT& viewport);
     // Retained for one render; nullptr hides the preview. World depth is discarded after post-effects.
     void SetItemPreview(std::shared_ptr<const RenderableInstance> instance, bool isSprite, const D3D11_VIEWPORT& viewport);
+    // One-shot camera-space presentation after world effects, before pickup preview and HUD text.
+    void SetWeaponDraw(std::function<void(const RenderingSettings&, ProfilingStats&)> draw) { m_weaponDraw = std::move(draw); }
 
 	virtual void RenderSceneElements(const VisibilityResult& elements, const RenderingSettings& renderSettings, ProfilingStats& stats) override final;
 
@@ -91,6 +94,7 @@ private:
     std::atomic_int32_t m_runtimeIdCounter = 0;
     bool m_isStereo = false;
     std::shared_ptr<const RenderableInstance> m_itemPreview;
+    std::function<void(const RenderingSettings&, ProfilingStats&)> m_weaponDraw;
     bool m_itemPreviewIsSprite = false;
     D3D11_VIEWPORT m_itemPreviewViewport = {};
 };

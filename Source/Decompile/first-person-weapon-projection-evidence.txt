@@ -1,0 +1,67 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 1E48:A3B0:BC
+1E48:A3B0  66 8B F8                 MOV EDI,EAX
+1E48:A3B3  C1 E7 03                 SHL DI,0x3
+1E48:A3B6  58                       POP AX
+1E48:A3B7  03 F8                    ADD DI,AX
+1E48:A3B9  8B 85 84 D4              MOV AX,word ptr [DI + 0xd484]
+1E48:A3BD  8B 95 86 D4              MOV DX,word ptr [DI + 0xd486]
+1E48:A3C1  C4 BE 0A F5              LES DI,[BP + 0xf50a]
+1E48:A3C5  26 89 45 09              MOV word ptr ES:[DI + 0x9],AX
+1E48:A3C9  26 89 55 0B              MOV word ptr ES:[DI + 0xb],DX
+1E48:A3CD  C4 BE 0A F5              LES DI,[BP + 0xf50a]
+1E48:A3D1  26 83 7D 0B 00           CMP word ptr ES:[DI + 0xb],0x0
+1E48:A3D6  7F 09                    JG 0x3000:8861 ; logical module target 1E48:A3E1
+1E48:A3D8  7C 1F                    JL 0x3000:8879 ; logical module target 1E48:A3F9
+1E48:A3DA  26 83 7D 09 00           CMP word ptr ES:[DI + 0x9],0x0
+1E48:A3DF  76 18                    JBE 0x3000:8879 ; logical module target 1E48:A3F9
+1E48:A3E1  C4 BE 0A F5              LES DI,[BP + 0xf50a]
+1E48:A3E5  26 8B 45 05              MOV AX,word ptr ES:[DI + 0x5]
+1E48:A3E9  26 8B 55 07              MOV DX,word ptr ES:[DI + 0x7]
+1E48:A3ED  C4 BE 0A F5              LES DI,[BP + 0xf50a]
+1E48:A3F1  26 01 45 09              ADD word ptr ES:[DI + 0x9],AX
+1E48:A3F5  26 11 55 0B              ADC word ptr ES:[DI + 0xb],DX
+1E48:A3F9  EB 0E                    JMP 0x3000:8889 ; logical module target 1E48:A409
+1E48:A3FB  C4 BE 0A F5              LES DI,[BP + 0xf50a]
+1E48:A3FF  31 C0                    XOR AX,AX
+1E48:A401  26 89 45 09              MOV word ptr ES:[DI + 0x9],AX
+1E48:A405  26 89 45 0B              MOV word ptr ES:[DI + 0xb],AX
+1E48:A409  FF 76 BA                 PUSH word ptr [BP + -0x46]
+1E48:A40C  FF 76 B8                 PUSH word ptr [BP + -0x48]
+1E48:A40F  C4 BE 0A F5              LES DI,[BP + 0xf50a]
+1E48:A413  26 FF 75 07              PUSH word ptr ES:[DI + 0x7]
+1E48:A417  26 FF 75 05              PUSH word ptr ES:[DI + 0x5]
+1E48:A41B  66 59                    POP ECX
+1E48:A41D  66 58                    POP EAX
+1E48:A41F  66 F7 E9                 IMUL ECX
+1E48:A422  66 C1 E8 10              SHR EAX,0x10
+1E48:A426  52                       PUSH DX
+1E48:A427  50                       PUSH AX
+1E48:A428  58                       POP AX
+1E48:A429  58                       POP AX
+1E48:A42A  03 46 0A                 ADD AX,word ptr [BP + 0xa]
+1E48:A42D  C4 BE 0A F5              LES DI,[BP + 0xf50a]
+1E48:A431  26 89 05                 MOV word ptr ES:[DI],AX
+1E48:A434  FF 76 B6                 PUSH word ptr [BP + -0x4a]
+1E48:A437  FF 76 B4                 PUSH word ptr [BP + -0x4c]
+1E48:A43A  C4 BE 0A F5              LES DI,[BP + 0xf50a]
+1E48:A43E  26 FF 75 07              PUSH word ptr ES:[DI + 0x7]
+1E48:A442  26 FF 75 05              PUSH word ptr ES:[DI + 0x5]
+1E48:A446  66 59                    POP ECX
+1E48:A448  66 58                    POP EAX
+1E48:A44A  66 F7 E9                 IMUL ECX
+1E48:A44D  66 C1 E8 10              SHR EAX,0x10
+1E48:A451  52                       PUSH DX
+1E48:A452  50                       PUSH AX
+1E48:A453  58                       POP AX
+1E48:A454  58                       POP AX
+1E48:A455  03 46 08                 ADD AX,word ptr [BP + 0x8]
+1E48:A458  C4 BE 0A F5              LES DI,[BP + 0xf50a]
+1E48:A45C  26 89 45 02              MOV word ptr ES:[DI + 0x2],AX
+1E48:A460  8B 46 FC                 MOV AX,word ptr [BP + -0x4]
+1E48:A463  3B 86 0E F5              CMP AX,word ptr [BP + 0xf50e]
+1E48:A467  74 03                    JZ 0x3000:88ec ; logical module target 1E48:A46C
+1E48:A469  E9 59 F9                 JMP 0x3000:8245 ; logical module target 1E48:9DC5

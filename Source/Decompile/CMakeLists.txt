@@ -26,6 +26,7 @@ add_library(behavior-recovery STATIC
     Scaffold/BehaviorHandlers.cpp
     Scaffold/EnemyBehaviors.cpp
     Scaffold/WeatherBehaviors.cpp
+    Scaffold/WeaponPresentation.cpp
     Scaffold/ObjectInteraction.cpp
     Scaffold/PlayerInteraction.cpp
 )
