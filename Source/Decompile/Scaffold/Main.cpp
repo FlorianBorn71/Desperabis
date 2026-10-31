@@ -126,6 +126,7 @@ namespace
                         entry.type == BehaviorType::RatAndSnake || entry.type == BehaviorType::Cockroach ||
                         entry.type == BehaviorType::BatIndoor || entry.type == BehaviorType::Mummie ||
                         entry.type == BehaviorType::MummieGuard ||
+                        entry.type == BehaviorType::AmbientSoundPosition ||
                         entry.type == BehaviorType::Skeleton || entry.type == BehaviorType::WaterImpact ||
                         entry.type == BehaviorType::SinkingObject ||
                         entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ?

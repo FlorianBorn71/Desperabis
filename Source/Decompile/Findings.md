@@ -876,8 +876,10 @@ in this tier**:
 
 - `LeafParticle1` reads DS:`2B0E/2B10` in its helper, apparently a shared
   drift/wind vector whose meaning still needs author confirmation.
-- `AmbientSoundPosition` is gated by DS:`F6BF`, an additional unresolved
-  audio setting, even though random selection/playback are now understood.
+- `AmbientSoundPosition`'s DS:`F6BF` gate has now been identified as the
+  effects-enable setting: `0000:CB30..CB40` toggles it and mirrors it into
+  settings byte DS:`311F`. Selector 190 is implemented using `soundEnabled`;
+  see [tutorial marker recovery](BehaviorRecovery.md#tutorial-positional-sound-and-underwater-lighting-markers).
 - `DirtFromAbove` reads DS:`D4D4` and calls the unresolved cross-object
   activation helper `10AC:10F5`; it is not just a falling particle.
 - `RollingRock` also calls `10AC:10F5`, as well as movement/collision helpers

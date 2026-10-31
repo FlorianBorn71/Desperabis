@@ -50,6 +50,12 @@ the actual loop length separately. Silence gaps are initialized to 128.
 Generation uses the same prepared/faded samples as effects, without changing
 the entire-file PCM policy below; it is not claimed to be DOS-byte-identical.
 Music/cutscene selectors 100..150 are explicitly unsupported.
+Positional `AmbientSoundPosition` markers (190) are separate from that loop:
+GameCore owns their probability, effect selection, attenuation and per-source
+limits, while the existing four-channel effects backend plays them. Tutorial
+slots 100/101 request effects 87/88 with probability 9/1000 per enabled update.
+Underwater brightness markers (104) have been recovered, but remain disabled
+pending renderer lighting integration; no underwater rendering was changed.
 
 All 129 `SAMP\SOUND<n>.SMP` files are `SoundSample` resources loaded and cached
 through `AssetManager`. Match the browser's original loader: **the entire file**

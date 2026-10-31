@@ -193,6 +193,7 @@ namespace
             const bool implemented = entry.type == BehaviorType::Pillar || entry.type == BehaviorType::LightSource ||
                 entry.type == BehaviorType::Door ||
                 entry.type == BehaviorType::TutorialTrigger ||
+                entry.type == BehaviorType::AmbientSoundPosition ||
                 entry.type == BehaviorType::Flies ||
                 entry.type == BehaviorType::WeaponDamageCollider ||
                 entry.type == BehaviorType::CrossbowBolt || entry.type == BehaviorType::FireballProjectile ||

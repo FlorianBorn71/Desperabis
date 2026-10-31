@@ -1,6 +1,7 @@
-#include "GameContext.h"
+#include "BehaviorDispatch.h"
 
 #include <array>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -219,6 +220,145 @@ namespace
         core.StartLevel(25);
         Check(audio.starts == count + 1, "Ambient level load must recover after a failed creation pass.");
     }
+
+    void TestPositionalMarkers(const std::filesystem::path& original)
+    {
+        struct MarkerAudio final : AudioHandler
+        {
+            struct Playback { std::size_t channel; std::uint8_t sample; std::uint8_t volume; };
+            std::vector<Playback> plays;
+            std::array<bool, SoundChannelCount> playing{};
+            std::uint16_t GetSampleCount() const override { return 129; }
+            bool IsChannelPlaying(std::size_t channel) const override { return playing.at(channel); }
+            void PlaySample(std::size_t channel, std::uint8_t sample, std::uint8_t volume) override
+            {
+                plays.push_back({ channel, sample, volume });
+                playing.at(channel) = true;
+            }
+            void StopAllSamples() override { playing.fill(false); }
+        } audio;
+        std::ifstream objects(original / "LEVEL" / "OBJPOS50.DAT", std::ios::binary);
+        Check(static_cast<bool>(objects), "Cannot open tutorial ambient object fixtures.");
+        const std::vector<std::uint8_t> objectBytes((std::istreambuf_iterator<char>(objects)), {});
+        Check(objectBytes.size() >= 133 * 54, "Tutorial marker object table is truncated.");
+        std::ifstream table(original / "SAMP" / "S_TAB.PRB", std::ios::binary);
+        Check(static_cast<bool>(table), "Cannot open original ambient sound definitions.");
+        const std::vector<std::uint8_t> definitions((std::istreambuf_iterator<char>(table)), {});
+        GameContext core;
+        core.LoadSoundEffects(definitions.data(), definitions.size());
+        core.audioHandler = &audio;
+        for (const int slot : { 100, 101 })
+        {
+            const auto originalMarker = DecodeGameObject(objectBytes.data() + (slot - 2) * 54, 54);
+            Check(originalMarker.behavior == BehaviorType::AmbientSoundPosition &&
+                originalMarker.soundEffectId == slot - 13 && originalMarker.generalPurpose3 == 9 &&
+                originalMarker.doorLockOrGroupBitmask == 2,
+                "Tutorial positional marker fields differ from native fixture.");
+            core.soundListenerX = originalMarker.posX;
+            core.soundListenerZ = originalMarker.posZ;
+            const auto& definition = core.soundEffects[originalMarker.soundEffectId - 1];
+            Check(definition.sampleCount > 0, "Original positional marker must reference playable samples.");
+            for (const int threshold : { -32768, -1, 0, 9, 999, 1000, 32767 })
+            {
+                for (const int ticks : { 0, 1, 77 })
+                {
+                    for (std::uint32_t initialSeed = 0; initialSeed < 256; ++initialSeed)
+                    {
+                        auto& marker = core.worldObjects[slot];
+                        marker = originalMarker;
+                        marker.generalPurpose3 = static_cast<std::uint16_t>(threshold);
+                        const auto before = marker;
+                        core.tickCount = static_cast<std::int16_t>(ticks);
+                        core.randomSeed = initialSeed;
+                        audio.plays.clear();
+                        audio.playing.fill(false);
+                        auto seed = initialSeed;
+                        const bool attempt = threshold > static_cast<int>((Next(seed) >> 16) % 1000);
+                        const auto sample = attempt ? definition.samples[(Next(seed) >> 16) % definition.sampleCount] : 0;
+                        const auto result = DispatchObjectCase(marker, core);
+                        Check(result.status == DispatchStatus::ExecutedCase && result.moduleOffset == 0x4EAF &&
+                            core.randomSeed == seed && std::memcmp(&marker, &before, sizeof(marker)) == 0,
+                            "Ambient marker must use one signed-threshold RNG attempt per frame, without mutating its record.");
+                        Check(audio.plays.size() == (attempt ? 1u : 0u),
+                            "Ambient marker probability/zero-tick behavior differs from native reference.");
+                        if (attempt)
+                        {
+                            Check(audio.plays[0].sample == sample && audio.plays[0].volume == 255 &&
+                                audio.plays[0].channel == SoundChannelCount - 1 &&
+                                core.soundChannelSources[audio.plays[0].channel] == slot,
+                                "Ambient marker must preserve sample RNG, volume, source slot and channel admission.");
+                        }
+                    }
+                }
+            }
+            auto& marker = core.worldObjects[slot];
+            marker = originalMarker;
+            marker.generalPurpose3 = 1000;
+            core.tickCount = 0;
+            core.randomSeed = 17;
+            core.soundEnabled = false;
+            audio.plays.clear();
+            const auto seedBeforeMute = core.randomSeed;
+            DispatchObjectCase(marker, core);
+            Check(core.randomSeed == seedBeforeMute && audio.plays.empty(),
+                "Native sound-enable gate must suppress marker RNG as well as playback.");
+            core.soundEnabled = true;
+            core.behaviorDispatchEnabled = false;
+            DispatchObjectCase(marker, core);
+            Check(core.randomSeed == seedBeforeMute && audio.plays.empty(), "Disabled dispatch must not update ambient markers.");
+            core.behaviorDispatchEnabled = true;
+            marker.health = 0;
+            DispatchObjectCase(marker, core);
+            Check(core.randomSeed == seedBeforeMute && audio.plays.empty(), "Inactive marker must not consume RNG.");
+            marker.health = 1000;
+            audio.playing.fill(false);
+            core.soundListenerX = static_cast<std::int16_t>(marker.posX + 708);
+            DispatchObjectCase(marker, core);
+            Check(audio.plays.size() == 1 && audio.plays[0].volume == 1, "Marker volume must use native positional attenuation.");
+            audio.plays.clear();
+            core.soundListenerX = static_cast<std::int16_t>(marker.posX + 710);
+            auto inaudibleSeed = core.randomSeed;
+            Next(inaudibleSeed);
+            Next(inaudibleSeed);
+            DispatchObjectCase(marker, core);
+            Check(audio.plays.empty() && core.randomSeed == inaudibleSeed,
+                "Inaudible marker must retain probability and sample RNG draws.");
+            core.soundListenerX = marker.posX;
+            audio.playing.fill(false);
+            audio.plays.clear();
+            DispatchObjectCase(marker, core);
+            DispatchObjectCase(marker, core);
+            DispatchObjectCase(marker, core);
+            Check(audio.plays.size() == 2, "Marker field 46 must enforce its native per-source instance limit.");
+            audio.plays.clear();
+            core.audioHandler = nullptr;
+            auto unavailableSeed = core.randomSeed;
+            Next(unavailableSeed);
+            Next(unavailableSeed);
+            DispatchObjectCase(marker, core);
+            Check(core.randomSeed == unavailableSeed && audio.plays.empty(),
+                "Enabled markers must preserve RNG with an unavailable modern audio backend.");
+            core.audioHandler = &audio;
+            marker.soundEffectId = 0;
+            Reject<std::out_of_range>([&] { DispatchObjectCase(marker, core); });
+        }
+        for (const int slot : { 132, 133, 134 })
+        {
+            auto& marker = core.worldObjects[slot];
+            marker = DecodeGameObject(objectBytes.data() + (slot - 2) * 54, 54);
+            Check(marker.behavior == BehaviorType::UnderwaterColorAnim, "Expected original underwater marker.");
+            const auto before = marker;
+            const auto seed = core.randomSeed;
+            core.tickCount = 77;
+            core.playerUnderwater = true;
+            const auto lighting = core.lightingCache.contributions;
+            const auto result = DispatchObjectCase(marker, core);
+            Check(result.status == DispatchStatus::UnimplementedHandler &&
+                std::memcmp(&marker, &before, sizeof(marker)) == 0 &&
+                core.randomSeed == seed && core.lightingCache.contributions == lighting,
+                "Underwater marker must remain entirely unimplemented pending renderer integration.");
+        }
+    }
 }
 
 int main(int argc, char** argv)
@@ -235,7 +375,8 @@ int main(int argc, char** argv)
         }
         TestRecipes(audio);
         TestLevelLoading(audio, original);
-        std::cout << "Ambient tests passed: all recipes, RNG, bounds, original metadata and level lifecycle.\n";
+        TestPositionalMarkers(original);
+        std::cout << "Ambient tests passed: recipes, positional markers, RNG, bounds, original metadata and level lifecycle.\n";
         return 0;
     }
     catch (const std::exception& error)

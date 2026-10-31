@@ -455,6 +455,13 @@ port; missing required geometry metadata is an explicit error. See
 [Level heights and WaterDrop](BehaviorRecovery.md#level-heights-and-waterdrop).
 See [Sound effects](BehaviorRecovery.md#sound-effects-attenuation-and-four-channel-admission)
 for the actual four-argument playback contract and integration.
+`AmbientSoundPosition` (190) now implements occasional positional effects:
+one enabled-update probability draw, byte-5 effect ID, X/Z attenuation and
+field-46 instance limit. Tutorial slots 100/101 use IDs 87/88 and probability
+9/1000. This does not alter the separate environmental ambient loop.
+`UnderwaterColorAnim` (104) is recovered as moving underwater brightness patches,
+but deliberately remains unimplemented until a renderer lighting path is agreed.
+See [tutorial marker recovery](BehaviorRecovery.md#tutorial-positional-sound-and-underwater-lighting-markers).
 Explicit pickup interactions now populate fourteen inventory objects and
 update the known counters in the game context; grouped-switch interaction
 arms its return timer. Doors support automatic closing, obstruction reopening,

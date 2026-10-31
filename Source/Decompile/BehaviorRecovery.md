@@ -242,7 +242,7 @@ case BehaviorType::BatIndoor:
 
 Pillar, LightSource, PulsatingLight, Door, Flies, RatAndSnake, BatIndoor, Mummie, MummieGuard,
 SpiderLarge, Harvestman, Devil, Gorilla, FloatingDebris, behavior 18, FireParticle, BurningFireplace,
-IdleAnimation, SmokeFading, SpawnInCrater, Switch1, SwitchGrouped, WaterDrop, LevelStartOverride,
+IdleAnimation, SmokeFading, SpawnInCrater, Switch1, SwitchGrouped, WaterDrop, LevelStartOverride, AmbientSoundPosition,
 and DisabledSentinel return `ExecutedCase`. The other
 handlers return `UnimplementedHandler` without moving objects or writing
 globals. Every handler returns its enum identity, for example:
@@ -495,6 +495,77 @@ independent half-rate-gravity reference, puddle morph/damage/expiration,
 creation/destruction hooks and fallback-source aliasing.
 DX11 UI tests resolve actual Gorilla target-bank and slime/puddle meshes.
 The existing full-record/RNG mummy regression tests remain unchanged.
+
+## Tutorial positional sound and underwater lighting markers
+
+[Native dispatch evidence](tutorial-ambient-underwater-evidence.txt) covers
+`AmbientSoundPosition` (190), `0000:4EAF..4EF3`, and `UnderwaterColorAnim` (104),
+`0000:3064..3193`. Level 50 contains two sound markers, native slots **100/101**,
+and three underwater markers, slots **132..134**.
+
+### AmbientSoundPosition (implemented)
+
+This is a positional **effect-channel** sound source, independent of the
+preconstructed environmental ambient loop.
+
+* Once per active-object dispatch, including **zero-tick** frames, test
+  DS:`F6BF`. The [native sound-toggle path](weapon-selection-tail-evidence.txt),
+  `0000:CB30..CB40`, flips this byte and mirrors it into settings byte DS:`311F`.
+  It is the effects-enable setting, modeled by existing `GameContext::soundEnabled`,
+  not a new global timer or an independent ambient setting.
+* When enabled, consume exactly one `Random(1000)` and play only when the
+  **signed** word at offset 40 (`generalPurpose3`) is strictly greater than it.
+  Zero/negative values still consume the draw but never attempt playback;
+  1000..32767 always attempt playback. Disabling sound consumes no marker RNG.
+* The four native playback arguments are sound-effect ID from byte **5**,
+  cached positional volume DS:`05D0`, source **slot**, and signed word at
+  offset **46** (`doorLockOrGroupBitmask`) as the per-source instance limit.
+  Reuse `GetSoundVolumeAt` and `PlaySoundEffect` without new mutable state.
+  This preserves random sample selection, inaudible requests and channel limits.
+  The modern no-backend case retains RNG when sound is enabled and reports
+  audio unavailability through the existing playback API.
+* There is no cooldown, movement, lifetime reset or per-behavior-tick loop.
+  The original two records use sound IDs **87/88**, probability **9/1000**
+  per enabled update, and instance limit **2**, at `(1750,-87,2050)` and
+  `(1760,-87,2050)`.
+
+`ambient-sound` now also verifies both original markers against independent
+LCG probability/sample draws across signed thresholds and zero/single/batched
+tick counts. Tests cover exact source IDs, native attenuation, admission limits,
+muting, inactive/disabled dispatch, unavailable audio and explicit invalid-ID errors.
+
+### UnderwaterColorAnim (discovered only; deliberately not implemented)
+
+The native routine animates **moving brightness patches**, not object glyphs,
+texture frames or direct per-vertex colour writes:
+
+1. Each behavior substep checks `(collisionPixel & 0x3F) == 1` at candidate
+   `(posX + velocityX, posZ)`. If rejected, negate X velocity without moving;
+   otherwise advance X. Then do the same for Z, using the updated X.
+2. If both horizontal velocities are zero, initialize each with `RandomSigned(3)`.
+   The existing native signed RNG replaces zero with +3.
+3. On the **last substep only**, when DS:`D4FC` (`playerUnderwater`) is nonzero
+   and the **pre-update cached** listener distance DS:`05D2` is **greater than
+   100**, invoke `10AC:0000(x,z,1)` for all 25 X/Z sample positions with offsets
+   `-60,-30,0,30,60`. Zero-tick dispatch does not move or add lighting.
+
+The [shared light helper](lighting-evidence.txt), `10AC:0000`, rounds those
+world samples to 100-unit tile corners and accumulates dynamic brightness.
+Its gameplay word is represented by `LightingCache::AddAtWorldXZ`; the native
+helper also updates the corner's renderer-side fixed-point shade accumulator.
+The 25 calls are **world samples**, not necessarily 25 distinct tiles.
+
+All three level-50 records are hidden helper objects, with initial X/Z velocities
+`(-2,2)`, `(-1,1)` and `(-3,1)`. Their Y coordinates and model animation fields
+are not updated by this handler. No process-global wind/color phase is involved;
+dependencies are the context-owned underwater flag, cached distance, map and
+per-frame lighting cache.
+
+A future port needs a renderer path that makes these corner-light contributions
+visible as underwater brightness/caustic-like modulation, in addition to the
+object-local motion. Per the requested boundary, selector **104 remains an
+unchanged `UnimplementedHandler`**, with no movement, RNG or lighting side effects.
+Tests verify that boundary on the three original fixtures.
 
 ## Globals and dependencies
 

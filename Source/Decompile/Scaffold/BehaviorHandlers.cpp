@@ -2386,9 +2386,14 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::RoofTopThunderHandler3, 0x4E85 };
     }
 
-    DispatchResult Function_AmbientSoundPosition(RawGameObject&, GameContext&)
+    DispatchResult Function_AmbientSoundPosition(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::AmbientSoundPosition, 0x4EAF };
+        if (context.soundEnabled && WrapSignedWord(object.generalPurpose3) > context.Random(1000))
+        {
+            context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+                context.GetSoundVolumeAt(object.posX, object.posZ), object, object.doorLockOrGroupBitmask);
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::AmbientSoundPosition, 0x4EAF };
     }
 
     DispatchResult Function_LavaSmoke(RawGameObject&, GameContext&)
