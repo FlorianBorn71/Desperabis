@@ -174,7 +174,7 @@ namespace
             expected.animFrame = frame;
             expected.modelFrame2 = 1;
             expected.blendWeightOrSpriteOpacity = 100;
-            expected.displayType = DisplayType::Type30;
+            expected.displayType = DisplayType::VectorBrightness0;
             expected.behavior = BehaviorType::DriftingParticle;
             expected.collisionType = CollisionType::None;
             expected.velocityY = 1;

@@ -309,24 +309,22 @@ namespace Desperabis
         SpriteTorchlightTransparent,
         DepthSprite,
 
-        // vector shaded?
-        VectorBrightness0 = 20,
-        VectorBrightness1 = 21,
-        VectorBrightness2 = 22, // after burning
-        VectorBrightness3 = 23,
-        VectorBrightness4 = 24,
-        VectorBrightness5 = 25,
-        VectorBrightness6 = 26,
-        VectorBrightness7 = 27,
+        VectorWaterTint = 20,
+        VectorLavaTint = 21,
+        VectorOilTint = 22, // also the post-burning state
+        VectorFullbright = 23,
+        VectorBlueTint = 24,
+        VectorRedLavaTint = 25,
+        Type26 = 26,
+        Type27 = 27,
 
-        // vector shaded?
-        Type30 = 30,
-        Type31 = 31,
-        Type32 = 32,
-        Type33 = 33,
-        Type34 = 34,
-        Type35 = 35,
-        Type36 = 36,
+        VectorBrightness0 = 30,
+        VectorBrightness1 = 31,
+        VectorBrightness2 = 32,
+        VectorBrightness3 = 33,
+        VectorBrightness4 = 34,
+        VectorBrightness5 = 35,
+        VectorBrightness6 = 36,
         Type37 = 37, // submarine window
 
 		FirstVectorBurning = 50,

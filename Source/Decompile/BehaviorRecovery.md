@@ -451,9 +451,35 @@ frames still request sound.
 
 The renderer bridge decodes ordinary mummies' and gorillas' packed target bank/frame and uses
 that bank for both initial creation and live model blending. Other behaviors
-retain their existing target-frame interpretation. Native display-mode
-progression 30..35 is preserved; the renderer's existing generic treatment of
-30..37 does not yet reproduce the original disappearance shading.
+retain their existing target-frame interpretation. Display modes **30..36**
+are now named `VectorBrightness0..VectorBrightness6` in both core and renderer enums.
+The [native model-display export](model-fade-display-evidence.txt) confirms
+that `1E48:A660` maps these modes to shade arguments 7..13; the model draw
+routine subtracts one, and `1E48:4C1C` selects the eight 256-entry palette
+maps starting at DS:`0A00`. Thus modes 30..36 select maps 0..6. Mode 37 is
+not part of this family and retains its separate renderer treatment.
+
+Both families ultimately use indexed-colour lookup tables: 30..36 are
+consecutive brightness/shade levels, whereas 20..25 choose distinct
+water/fire/oil/identity/blue-white/red material remaps. Their exact file-row
+ordering and the cathedral/museum triangle selector are documented in
+[model-colour-remap-evidence.txt](model-colour-remap-evidence.txt).
+Modes 20..25 are named `VectorWaterTint`, `VectorLavaTint`, `VectorOilTint`,
+`VectorFullbright`, `VectorBlueTint` and `VectorRedLavaTint`. They reuse the
+existing material RGB approximations, with alpha forced opaque; WARP checks
+all six on the same real mesh. Unrecovered modes 26/27 retain their former
+RGB approximations under `Type26`/`Type27`, and fire-overlay rendering retains
+its previous base tint and intensity independently of the brightness family.
+
+`GamePlay::IsVectorDisplayType` uses `TintColorForBrightness` to supply progressively darker RGB tints
+for that range instead of white for every stage. This approximates the eight
+palette shades with `(8 - stage) / 8` modulation of the model's existing
+lighting, not an exact indexed-color remap. Alpha stays opaque; death timing,
+geometry and smoke emission are unchanged. Ordinary mummies use stages 0..5
+before removal, while other fading model particles can reach stage 6.
+WARP renders a real level-12 corpse through all six core-driven stages,
+asserts decreasing pixel brightness with an unchanged mesh, verifies smoke
+and terminal removal, and checks the seventh shade and mode-37 boundary.
 
 `mummy-behavior` covers 4096 full-record/RNG/player-life reference cases,
 all nine ordinary objects and both guards on real level geometry/collision maps,
@@ -821,7 +847,7 @@ Native order, from `0000:1094`:
 2. For display values **50..120 inclusive**, request effect 62 (`Burning`),
    at distance scale 3, shared source 451, concurrency limit 2.
    Subtract `Random(frameTickCount + 1)` from the display value; a result
-   below 50 becomes `VectorBrightness2` (22).
+   below 50 becomes `VectorOilTint` (22).
 3. When `objectCollisionsEnabled` (DS:`D500`) is true and health is < 1000,
    approach zero by `tickCount`, without overshooting.
 4. Respect `behaviorDispatchEnabled` (DS:`04CD`), then execute the case.
@@ -2258,7 +2284,7 @@ no additional mutable state or rendering code.
 
 Each update, in original order:
 
-1. Display type `VectorBrightness2` (22, the post-burning state) sets health
+1. Display type `VectorOilTint` (22, the post-burning state) sets health
    to zero. The handler still finishes this update; subsequent dispatch skips
    the inactive object.
 2. Draw `Random(5)` once. Add
@@ -2438,8 +2464,9 @@ There is no horizontal motion and no health decrement inside this handler.
 The shared update prefix supplies lifetime countdown when object collisions
 are enabled, including the final update at health zero. A newly spawned
 particle in a later world slot updates during the same world pass; fallback
-slot 165 does not. Physical up/down interpretation and visual meanings of
-display modes 30..36 are not inferred merely from these integer operations.
+slot 165 does not. Physical up/down interpretation is not inferred merely
+from these integer operations. Display modes 30..36 are the separately
+recovered [model fade shades](#mummie-and-mummieguard).
 This is distinct from behavior 24, `SmokeFading`.
 
 All six extracted fireplace records corroborate the source collision type:

@@ -687,7 +687,7 @@ namespace Desperabis
     DispatchResult Function_Flies(RawGameObject& object, GameContext& context)
     {
         // Burned flies disappear but still finish this update's animation and sound request.
-        if (object.displayType == DisplayType::VectorBrightness2) { context.SetObjectHealth(object, 0); }
+        if (object.displayType == DisplayType::VectorOilTint) { context.SetObjectHealth(object, 0); }
 
         const auto rate = static_cast<std::int32_t>(object.itemValue) + context.Random(5);
         object.blendWeightOrSpriteOpacity = WrapSignedWord(
@@ -2140,7 +2140,7 @@ namespace Desperabis
                     }
                 }
             }
-            else if (object.displayType == DisplayType::VectorBrightness2)
+            else if (object.displayType == DisplayType::VectorOilTint)
             {
                 context.SetObjectHealth(object, 0);
             }

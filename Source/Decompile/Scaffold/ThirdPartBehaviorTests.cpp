@@ -273,7 +273,7 @@ namespace
         neighbor.collisionType = CollisionType::Weapon;
         neighbor.posX = 1500;
         host.ReplaceWorldObject(4, neighbor);
-        neighbor.displayType = DisplayType::VectorBrightness1;
+        neighbor.displayType = DisplayType::VectorLavaTint;
         neighbor.collisionType = CollisionType::BurnableOilPuddle;
         host.ReplaceWorldObject(5, neighbor);
         neighbor = oil;
@@ -289,7 +289,7 @@ namespace
         Check(host.worldObjects[3].displayType == DisplayType::LastVectorBurning &&
             host.worldObjects[165].displayType == DisplayType::LastVectorBurning &&
             host.worldObjects[4].displayType == DisplayType::VectorNormal &&
-            host.worldObjects[5].displayType == DisplayType::VectorBrightness1 &&
+            host.worldObjects[5].displayType == DisplayType::VectorLavaTint &&
             host.worldObjects[6].displayType == DisplayType::VectorNormal,
             "Oil must collect pre-shrink contacts including slot 165, while excluding weapons and masked/bright objects.");
         host.objectCollisionsEnabled = true;
@@ -318,7 +318,7 @@ namespace
         burning.displayType = DisplayType::VectorNormal;
         UpdatePlayerInteraction(host, input);
         Check(host.playerLife == life - 5 * 29491, "Unlit oil must not retain a contact hazard.");
-        burning.displayType = DisplayType::VectorBrightness2;
+        burning.displayType = DisplayType::VectorOilTint;
         host.tickCount = 8;
         DispatchObjectCase(burning, host);
         Check(burning.health == 0 && host.destroyed == 1, "Burnout must notify destruction exactly once.");

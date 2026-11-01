@@ -695,7 +695,7 @@ namespace
         };
         const auto reference = [&](RawGameObject object, std::int16_t ticks, std::uint32_t& seed)
         {
-            if (object.displayType == DisplayType::VectorBrightness2) { object.health = 0; }
+            if (object.displayType == DisplayType::VectorOilTint) { object.health = 0; }
             const auto increment = (static_cast<std::int64_t>(object.itemValue) + nextRandom(seed, 5)) * ticks;
             object.blendWeightOrSpriteOpacity = ReferenceSignedWord(object.blendWeightOrSpriteOpacity + increment);
             object.winX = static_cast<std::int16_t>((static_cast<std::uint16_t>(object.winX) + 5u) % 512);
@@ -859,7 +859,7 @@ namespace
         expectedSeed = state.randomSeed;
         Check(nextRandom(expectedSeed, 2) == 1, "Burning fixture must reach the burned display state.");
         expected = initial;
-        expected.displayType = DisplayType::VectorBrightness2;
+        expected.displayType = DisplayType::VectorOilTint;
         expected = reference(expected, state.tickCount, expectedSeed);
         nextRandom(expectedSeed, 3);
         const auto beforeBurnedSound = audio.calls;

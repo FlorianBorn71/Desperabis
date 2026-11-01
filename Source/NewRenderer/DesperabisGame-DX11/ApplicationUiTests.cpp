@@ -3,6 +3,7 @@
 #include "LightningPresentation.h"
 
 #include <GameContext.h>
+#include <BehaviorDispatch.h>
 #include <Asset/AssetManager.h>
 #include <Asset/Font.h>
 #include <Asset/Level.h>
@@ -568,6 +569,212 @@ namespace
             "Slime dissolve must forward the native blend weight.");
     }
 
+    void CheckMummyFade(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        const struct
+        {
+            GamePlay::DisplayType display;
+            Desperabis::DisplayType coreDisplay;
+            Color4 tint;
+            const char* name;
+        } materials[]{
+            { GamePlay::DisplayType::VectorWaterTint, Desperabis::DisplayType::VectorWaterTint,
+                { 200, 180, 140, 255 }, "VectorWaterTint" },
+            { GamePlay::DisplayType::VectorLavaTint, Desperabis::DisplayType::VectorLavaTint,
+                { 220, 130, 30, 255 }, "VectorLavaTint" },
+            { GamePlay::DisplayType::VectorOilTint, Desperabis::DisplayType::VectorOilTint,
+                { 30, 50, 80, 255 }, "VectorOilTint" },
+            { GamePlay::DisplayType::VectorFullbright, Desperabis::DisplayType::VectorFullbright,
+                { 255, 255, 255, 255 }, "VectorFullbright" },
+            { GamePlay::DisplayType::VectorBlueTint, Desperabis::DisplayType::VectorBlueTint,
+                { 220, 240, 255, 255 }, "VectorBlueTint" },
+            { GamePlay::DisplayType::VectorRedLavaTint, Desperabis::DisplayType::VectorRedLavaTint,
+                { 255, 80, 40, 255 }, "VectorRedLavaTint" },
+        };
+        for (int index = 0; index < 6; ++index)
+        {
+            const auto& material = materials[index];
+            Color4 tint;
+            float fire = 1.f;
+            Check(static_cast<int>(material.display) == 20 + index &&
+                static_cast<int>(material.coreDisplay) == 20 + index &&
+                GamePlay::IsVectorDisplayType(material.display, tint, fire) &&
+                tint.r == material.tint.r && tint.g == material.tint.g &&
+                tint.b == material.tint.b && tint.a == 255 && fire == 0.f &&
+                !GamePlay::IsSpriteDisplayType(material.display) &&
+                std::string(GamePlay::DisplayTypeToString(material.display)) == material.name,
+                "Special model modes must preserve native IDs and expose named opaque material tints.");
+        }
+        const GamePlay::DisplayType shadeModes[]{
+            GamePlay::DisplayType::VectorBrightness0, GamePlay::DisplayType::VectorBrightness1,
+            GamePlay::DisplayType::VectorBrightness2, GamePlay::DisplayType::VectorBrightness3,
+            GamePlay::DisplayType::VectorBrightness4, GamePlay::DisplayType::VectorBrightness5,
+            GamePlay::DisplayType::VectorBrightness6,
+        };
+        const Desperabis::DisplayType coreShadeModes[]{
+            Desperabis::DisplayType::VectorBrightness0, Desperabis::DisplayType::VectorBrightness1,
+            Desperabis::DisplayType::VectorBrightness2, Desperabis::DisplayType::VectorBrightness3,
+            Desperabis::DisplayType::VectorBrightness4, Desperabis::DisplayType::VectorBrightness5,
+            Desperabis::DisplayType::VectorBrightness6,
+        };
+        const byte brightness[]{ 255, 223, 191, 159, 127, 95, 63 };
+        for (int shade = 0; shade < 7; ++shade)
+        {
+            const auto mode = shadeModes[shade];
+            Color4 tint;
+            float fire = 1.f;
+            Check(static_cast<int>(mode) == 30 + shade && static_cast<int>(coreShadeModes[shade]) == 30 + shade &&
+                std::string(GamePlay::DisplayTypeToString(mode)) == "VectorBrightness" + std::to_string(shade) &&
+                GamePlay::IsVectorDisplayType(mode, tint, fire) &&
+                tint.r == brightness[shade] && tint.g == tint.r && tint.b == tint.r &&
+                tint.a == 255 && fire == 0.f && !GamePlay::IsSpriteDisplayType(mode),
+                "Vector brightness modes must progressively darken opaque models without flames.");
+        }
+        for (const auto mode : { GamePlay::DisplayType::VectorNormal,
+            GamePlay::DisplayType::Type27, GamePlay::DisplayType::Type37 })
+        {
+            Color4 tint;
+            float fire = 1.f;
+            Check(GamePlay::IsVectorDisplayType(mode, tint, fire) && tint.r == 255 &&
+                tint.g == 255 && tint.b == 255 && tint.a == 255 && fire == 0.f,
+                "Ordinary models and the separate mode 37 must retain their original tint.");
+        }
+        {
+            Color4 tint;
+            float fire = 1.f;
+            Check(GamePlay::IsVectorDisplayType(GamePlay::DisplayType::Type26, tint, fire) &&
+                tint.r == 218 && tint.g == 218 && tint.b == 218 && tint.a == 255 && fire == 0.f,
+                "Unrecovered mode 26 must retain its previous RGB approximation.");
+        }
+        for (const int mode : { 50, 85, 120 })
+        {
+            Color4 tint;
+            float fire = -1.f;
+            Check(GamePlay::IsVectorDisplayType(static_cast<GamePlay::DisplayType>(mode), tint, fire) &&
+                tint.r == 72 && tint.g == 72 && tint.b == 72 && tint.a == 255 &&
+                std::fabs(fire - (mode - 50) / 70.f) < 0.00001f,
+                "Renaming shade modes must not alter the existing fire-overlay tint or intensity.");
+        }
+
+        auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(12));
+        const auto records = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS12.DAT")));
+        auto terrain = Desperabis::CreateDummyLevel();
+        Desperabis::GameContext core;
+        core.level = &terrain;
+        core.collisionMap = terrain.collisionMap.get();
+        core.objectCollisionsEnabled = true;
+        core.tickCount = 1;
+        auto& mummy = core.worldObjects[2];
+        for (std::size_t offset = 0; offset + 54 <= records.size(); offset += 54)
+        {
+            const auto object = Desperabis::DecodeGameObject(records.data() + offset, 54);
+            if (object.behavior == Desperabis::BehaviorType::Mummie) { mummy = object; break; }
+        }
+        Check(mummy.behavior == Desperabis::BehaviorType::Mummie, "Expected an original level-12 mummy.");
+        mummy.health = 250;
+        mummy.generalPurpose1 = 2;
+        mummy.generalPurpose2 = 0;
+        mummy.modelAnim = mummy.animFrame = 3;
+        mummy.modelFrame2 = 0;
+        mummy.blendWeightOrSpriteOpacity = 0;
+        mummy.collisionMask = 0;
+        mummy.posX = 150; mummy.posY = 0; mummy.posZ = 4050;
+        mummy.displayType = Desperabis::DisplayType::VectorBrightness0;
+        ::RawGameObject raw{};
+        raw.m_level = level;
+        auto instance = std::make_shared<RenderableInstance>(nullptr);
+        Desperabis::EncodeGameObject(mummy, raw.m_rawBytes, 54);
+        level->ApplyRenderProperties(instance, raw);
+        Check(instance->IsValid() && instance->GetVisible(), "The original mummy corpse must resolve a real mesh.");
+        const auto* corpseMesh = instance->GetRenderable();
+        instance->UpdateGlobalBounds();
+        const auto center = instance->GetGlobalBounds().GetCenter();
+        const float span = (std::max)(instance->GetGlobalBounds().GetSphereRadius() * 3.f, 0.2f);
+        Matrix4 projection, transform;
+        projection.CreateOrthographic(span * 1.5f, span, 0.1f, 20.f);
+        transform.SetTranslation(Vector(center.GetX(), center.GetY(), center.GetZ() + 10.f));
+        Camera camera;
+        camera.SetProjectionMatrix(projection);
+        camera.SetCameraTransformMatrix(transform);
+        Texture lightmap;
+        lightmap.CreatePlainWhite();
+        lightmap.m_atlasData = { 0, 0, 0.5f, 0.5f };
+        VisibilityResult visible;
+        visible.m_mainCamera = &camera;
+        visible.m_visibleInstances.m_opaqueInstances.push_back({ instance.get(), 0 });
+        visible.m_visibleInstances.m_visibleTransparencyTypes = instance->GetUsedTransparencyMask();
+        visible.m_ambientColor = { 1.f, 1.f, 1.f };
+        visible.m_fogColor = { 0.f, 0.f, 0.f };
+        visible.m_fogFalloff = 0.f;
+        visible.m_lightmap = &lightmap;
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        RenderingSettings settings;
+        ProfilingStats stats;
+        const auto renderEnergy = [&](const Desperabis::RawGameObject& object)
+        {
+            Desperabis::EncodeGameObject(object, raw.m_rawBytes, 54);
+            level->ApplyRenderProperties(instance, raw);
+            Check(instance->GetRenderable() == corpseMesh && instance->GetBlendTargetRenderable() == nullptr &&
+                instance->m_tintColor.a == 255 && !instance->HasTransparentMaterials(),
+                "Corpse darkening must update tint even when the opaque model mesh is unchanged.");
+            const float black[]{ 0, 0, 0, 1 };
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            std::uint64_t energy = 0;
+            int pixels = 0;
+            for (const auto pixel : target.Pixels(device, context))
+            {
+                energy += (pixel & 255) + ((pixel >> 8) & 255) + ((pixel >> 16) & 255);
+                if ((pixel & 0xffffff) != 0) { ++pixels; }
+            }
+            Check(pixels >= 100, "Every mummy fade shade must render actual visible corpse pixels.");
+            return energy;
+        };
+        auto previousEnergy = renderEnergy(mummy);
+        for (const auto& material : materials)
+        {
+            auto tinted = mummy;
+            tinted.displayType = material.coreDisplay;
+            const auto energy = renderEnergy(tinted);
+            Check(instance->m_tintColor.r == material.tint.r &&
+                instance->m_tintColor.g == material.tint.g && instance->m_tintColor.b == material.tint.b &&
+                (material.display == GamePlay::DisplayType::VectorFullbright ?
+                    energy == previousEnergy : energy < previousEnergy),
+                "Every special tint must reach and visibly modulate the same real opaque model.");
+        }
+        previousEnergy = renderEnergy(mummy);
+        int previousMode = 30;
+        bool smoke = false;
+        for (int tick = 0; tick < 250; ++tick)
+        {
+            Desperabis::UpdateObjects(core);
+            smoke |= std::any_of(core.worldObjects.begin() + 3, core.worldObjects.end(),
+                [](const auto& object) { return object.behavior == Desperabis::BehaviorType::SmokeFading; });
+            if (mummy.health == 0) { break; }
+            const int mode = static_cast<int>(mummy.displayType);
+            if (mode != previousMode)
+            {
+                const auto energy = renderEnergy(mummy);
+                Check(mode == previousMode + 1 && energy < previousEnergy * 0.97,
+                    "Core-driven mummy fade stages must visibly darken before removal.");
+                previousEnergy = energy;
+                previousMode = mode;
+            }
+        }
+        Check(previousMode == 35 && mummy.health == 0 && smoke,
+            "Mummy lifetime and smoke emission must remain intact through all six native corpse shades.");
+        auto darkest = mummy;
+        darkest.health = 1000;
+        darkest.displayType = Desperabis::DisplayType::VectorBrightness6;
+        Check(renderEnergy(darkest) < previousEnergy * 0.97,
+            "The seventh fade mode used by other model particles must also darken.");
+        std::cout << "Mummy: six core-driven corpse fade shades, smoke/removal and seventh model shade passed.\n";
+        std::cout << "Model display: six named material tints, seven brightness shades and unchanged fire/unknown modes passed.\n";
+    }
+
     void CheckDragon(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
         auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(15));
@@ -1007,6 +1214,7 @@ int main(int argc, char* argv[])
         CheckTextControls(font);
         CheckTutorialFlames();
         CheckEnemyModels();
+        CheckMummyFade(renderer, device.Get(), context.Get());
         CheckDragon(renderer, device.Get(), context.Get());
         CheckRainSprites(renderer, device.Get(), context.Get());
         CheckLightning(renderer, device.Get(), context.Get());

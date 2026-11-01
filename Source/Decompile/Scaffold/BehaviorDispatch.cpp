@@ -92,7 +92,7 @@ namespace Desperabis
                 context.GetSoundVolumeAt(object.posX, object.posZ, 3), 451, 2);
             const auto remaining = static_cast<int>(display) -
                 context.Random(static_cast<std::uint16_t>(context.frameTickCount + 1));
-            object.displayType = remaining < 50 ? DisplayType::VectorBrightness2 :
+            object.displayType = remaining < 50 ? DisplayType::VectorOilTint :
                 static_cast<DisplayType>(remaining);
         }
         if (context.objectCollisionsEnabled && object.health < 1000)

@@ -450,8 +450,25 @@ and guard opening. Tests exercise all nine original mummies and both guards.
 The four records with health/state above 1000 retain their native paused gate.
 Automatic activation volumes now wake matching groups: level 12's invisible
 slot-22 trigger wakes its three paused mummies without an interaction key. See
-[mummy behavior](BehaviorRecovery.md#mummie-and-mummieguard) for exact semantics
-and the remaining renderer disappearance-shading limitation.
+[mummy behavior](BehaviorRecovery.md#mummie-and-mummieguard) for exact semantics.
+The shared renderer now darkens model display modes 30..36
+(`VectorBrightness0..VectorBrightness6`); WARP verifies the real mummy's fade, smoke and
+removal. RGB modulation approximates the original indexed palette maps;
+mode 37 remains separate. Native selection is preserved in
+[model-fade-display-evidence.txt](model-fade-display-evidence.txt).
+The separately recovered [special model-colour tables](model-colour-remap-evidence.txt)
+show that modes 20..25 select water, orange/fire, dark/oil, identity,
+blue-white glass/fog and red-lava remaps, not an ascending brightness ramp.
+The cathedral light rays and museum aquarium encode triangle selector 4,
+currently called `WhiteFog`, independently of their whole-object display mode.
+The export records the exact `OPGSET.256` row ordering and its seven-row
+payload despite a six-row header. This recovery does not change the current
+native palette shader. Modes 20..25 are named `VectorWaterTint`,
+`VectorLavaTint`, `VectorOilTint`, `VectorFullbright`, `VectorBlueTint` and
+`VectorRedLavaTint`; the renderer reuses the corresponding material RGB
+approximations with opaque alpha. WARP verifies all six tints on the same
+real model. Modes 26/27 retain their prior approximations as `Type26`/`Type27`,
+and fire-overlay tint/intensity remain unchanged.
 `SpiderLarge`, `Harvestman`, `Devil` and `Gorilla` are also implemented from
 their native helpers, including white-spider/harvestman ceiling release,
 contact damage, devil leap attacks, death poses and the spider's ballistic

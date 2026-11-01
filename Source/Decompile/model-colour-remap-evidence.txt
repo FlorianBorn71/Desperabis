@@ -1,0 +1,404 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Recovered model-colour table selection
+-------------------------------------
+These are indexed-colour remaps, not ascending grayscale brightness levels.
+For display modes 20..25, A660 returns mode - 19. The fixed-table model draw
+path subtracts one before calling 4C1C, giving selectors 0..5.
+
+Display  Selector  DS table  OPGSET row  Colour/material family
+20       0         1200      0           Water/colour-reduced remap
+21       1         1400      1           Orange/fire/lava
+22       2         1300      2           Very dark/oil/charred
+23       3         1900      identity    Identity/fullbright
+24       4         1700      4           Blue-white glass/fog
+25       5         1600      3           Red lava
+
+The loader at DCCB..DE35 explicitly constructs DS:1900[i] = i.
+The Pascal strings immediately before it are LEVEL\OPREDU.256 at CS:DCA9
+and LEVEL\OPGSet.256 at CS:DCBA. They are data, not instruction ranges.
+After skipping each file's four-byte header, it reads OPREDU into DS:1500
+and seven OPGSET rows, in order, into DS:1200, 1400, 1300, 1600, 1700,
+1800 and 1A00. Rows 5 and 6 are not selected by model display modes 20..25;
+their colour semantics are not inferred here.
+
+Data\SourceAssets\Original\LEVEL\OPGSET.256 contains 1796 bytes:
+four header bytes FF 00 05 00, then seven complete 256-byte remaps.
+The ordinary width/height-minus-one interpretation says 256 by 6, but the
+native loader ignores those dimensions and explicitly reads all seven rows.
+Unique output counts for rows 0..6 are 118, 16, 18, 6, 44, 119 and 29.
+Row 1 maps exclusively into palette indices 240..255; row 3 into 0..5;
+row 4 into 146..221. Sampling BACKGR1.PAL corroborates the orange, dark
+and red families, but is not proof of the active DOS palette in every level.
+The colour-family labels also correspond to the existing renderer material
+selectors Water, Lava, Oil, Identity, WhiteFog and RedLava.
+Their current GetWaterTintColor RGB/alpha values are modern approximations,
+not a byte-for-byte implementation of these native lookup tables.
+The matching model enum names are VectorWaterTint, VectorLavaTint,
+VectorOilTint, VectorFullbright, VectorBlueTint and VectorRedLavaTint.
+Whole-model rendering reuses the material RGB approximations but sets alpha
+to 255. Numeric IDs and core post-burning/impact behavior remain unchanged.
+
+The blue-glass/light-ray identification is supported by real primitives:
+* Level 20's behavior-73 ray object resolves to VEKT33.3DA. Bank 1, frame 5
+  has five type-3 triangles with colour byte D4 and fill byte 1.
+* Level 95 model ID 35 resolves to VEKT48.3DA (not VEKT47). Bank 1, frames
+  1 and 2 each have six type-3 triangles with colour byte F4 and fill byte 1.
+Both colour bytes have low nibble 4, matching the existing WhiteFog material.
+The 3DA parsers consumed all 26377 and 5825 bytes respectively.
+
+In normal model drawing, 8587..85B9 reads polygon byte 1 and byte 5.
+For nonzero fill byte it constructs:
+  colourArgument = 0200h + (colourByte AND 0Fh) + 16 * (fillByte - 1).
+Thus both examples pass 0204h to the triangle rasterizer at 52A0.
+This confirms that the glass/ray effect is a per-triangle selector, not a
+requirement for the whole object to have display mode 24. The exported
+triangle branch proves the selector/fill encoding, not every inner-raster
+operation or its exact final RGB appearance.
+
+Modes 30..36 instead select consecutive shade maps 0..6 at DS:0A00.
+They are brightness/shade levels: stage 0 is brightest, later stages darken.
+These are named VectorBrightness0..6 and use TintColorForBrightness with
+the existing descending RGB shades 255, 223, 191, 159, 127, 95 and 63.
+The former VectorFade names and the ascending grayscale ramp for 20..25
+have been replaced; this is still an RGB approximation, not palette remapping.
+Modes 26, 27 and 37 have no explicit case in A660 and must not be assigned
+new fixed-table semantics by extending the neighbouring numeric ranges.
+
+Range 1E48:A660:0078
+1E48:A660  C8 04 00 00              ENTER 0x4,0x0
+1E48:A664  8B 46 06                 MOV AX,word ptr [BP + 0x6]
+1E48:A667  3D 04 00                 CMP AX,0x4
+1E48:A66A  75 07                    JNZ 0x3000:8af3 ; logical module target 1E48:A673
+1E48:A66C  C7 46 FE FF FF           MOV word ptr [BP + -0x2],0xffff
+1E48:A671  EB 5E                    JMP 0x3000:8b51 ; logical module target 1E48:A6D1
+1E48:A673  3D 05 00                 CMP AX,0x5
+1E48:A676  75 07                    JNZ 0x3000:8aff ; logical module target 1E48:A67F
+1E48:A678  C7 46 FE 04 00           MOV word ptr [BP + -0x2],0x4
+1E48:A67D  EB 52                    JMP 0x3000:8b51 ; logical module target 1E48:A6D1
+1E48:A67F  3D 14 00                 CMP AX,0x14
+1E48:A682  7C 10                    JL 0x3000:8b14 ; logical module target 1E48:A694
+1E48:A684  3D 19 00                 CMP AX,0x19
+1E48:A687  7F 0B                    JG 0x3000:8b14 ; logical module target 1E48:A694
+1E48:A689  8B 46 06                 MOV AX,word ptr [BP + 0x6]
+1E48:A68C  2D 13 00                 SUB AX,0x13
+1E48:A68F  89 46 FE                 MOV word ptr [BP + -0x2],AX
+1E48:A692  EB 3D                    JMP 0x3000:8b51 ; logical module target 1E48:A6D1
+1E48:A694  3D 1E 00                 CMP AX,0x1e
+1E48:A697  7C 10                    JL 0x3000:8b29 ; logical module target 1E48:A6A9
+1E48:A699  3D 24 00                 CMP AX,0x24
+1E48:A69C  7F 0B                    JG 0x3000:8b29 ; logical module target 1E48:A6A9
+1E48:A69E  8B 46 06                 MOV AX,word ptr [BP + 0x6]
+1E48:A6A1  2D 17 00                 SUB AX,0x17
+1E48:A6A4  89 46 FE                 MOV word ptr [BP + -0x2],AX
+1E48:A6A7  EB 28                    JMP 0x3000:8b51 ; logical module target 1E48:A6D1
+1E48:A6A9  3D 32 00                 CMP AX,0x32
+1E48:A6AC  7C 1E                    JL 0x3000:8b4c ; logical module target 1E48:A6CC
+1E48:A6AE  3D 78 00                 CMP AX,0x78
+1E48:A6B1  7F 19                    JG 0x3000:8b4c ; logical module target 1E48:A6CC
+1E48:A6B3  8B 46 06                 MOV AX,word ptr [BP + 0x6]
+1E48:A6B6  89 46 FC                 MOV word ptr [BP + -0x4],AX
+1E48:A6B9  83 7E FC 77              CMP word ptr [BP + -0x4],0x77
+1E48:A6BD  7E 05                    JLE 0x3000:8b44 ; logical module target 1E48:A6C4
+1E48:A6BF  C7 46 FC 02 00           MOV word ptr [BP + -0x4],0x2
+1E48:A6C4  8B 46 FC                 MOV AX,word ptr [BP + -0x4]
+1E48:A6C7  89 46 FE                 MOV word ptr [BP + -0x2],AX
+1E48:A6CA  EB 05                    JMP 0x3000:8b51 ; logical module target 1E48:A6D1
+1E48:A6CC  31 C0                    XOR AX,AX
+1E48:A6CE  89 46 FE                 MOV word ptr [BP + -0x2],AX
+1E48:A6D1  8B 46 FE                 MOV AX,word ptr [BP + -0x2]
+1E48:A6D4  C9                       LEAVE
+1E48:A6D5  CA 02 00                 RETF 0x2
+
+Range 1E48:4C1C:0076
+1E48:4C1C  C8 02 00 00              ENTER 0x2,0x0
+1E48:4C20  8B 46 06                 MOV AX,word ptr [BP + 0x6]
+1E48:4C23  3D 00 00                 CMP AX,0x0
+1E48:4C26  75 08                    JNZ 0x3000:30b0 ; logical module target 1E48:4C30
+1E48:4C28  B8 00 12                 MOV AX,0x1200
+1E48:4C2B  89 46 FE                 MOV word ptr [BP + -0x2],AX
+1E48:4C2E  EB 5B                    JMP 0x3000:310b ; logical module target 1E48:4C8B
+1E48:4C30  3D 01 00                 CMP AX,0x1
+1E48:4C33  75 08                    JNZ 0x3000:30bd ; logical module target 1E48:4C3D
+1E48:4C35  B8 00 14                 MOV AX,0x1400
+1E48:4C38  89 46 FE                 MOV word ptr [BP + -0x2],AX
+1E48:4C3B  EB 4E                    JMP 0x3000:310b ; logical module target 1E48:4C8B
+1E48:4C3D  3D 03 00                 CMP AX,0x3
+1E48:4C40  75 08                    JNZ 0x3000:30ca ; logical module target 1E48:4C4A
+1E48:4C42  B8 00 19                 MOV AX,0x1900
+1E48:4C45  89 46 FE                 MOV word ptr [BP + -0x2],AX
+1E48:4C48  EB 41                    JMP 0x3000:310b ; logical module target 1E48:4C8B
+1E48:4C4A  3D 04 00                 CMP AX,0x4
+1E48:4C4D  75 08                    JNZ 0x3000:30d7 ; logical module target 1E48:4C57
+1E48:4C4F  B8 00 17                 MOV AX,0x1700
+1E48:4C52  89 46 FE                 MOV word ptr [BP + -0x2],AX
+1E48:4C55  EB 34                    JMP 0x3000:310b ; logical module target 1E48:4C8B
+1E48:4C57  3D 05 00                 CMP AX,0x5
+1E48:4C5A  75 08                    JNZ 0x3000:30e4 ; logical module target 1E48:4C64
+1E48:4C5C  B8 00 16                 MOV AX,0x1600
+1E48:4C5F  89 46 FE                 MOV word ptr [BP + -0x2],AX
+1E48:4C62  EB 27                    JMP 0x3000:310b ; logical module target 1E48:4C8B
+1E48:4C64  3D 06 00                 CMP AX,0x6
+1E48:4C67  7C 1C                    JL 0x3000:3105 ; logical module target 1E48:4C85
+1E48:4C69  3D 0D 00                 CMP AX,0xd
+1E48:4C6C  7F 17                    JG 0x3000:3105 ; logical module target 1E48:4C85
+1E48:4C6E  8B 46 06                 MOV AX,word ptr [BP + 0x6]
+1E48:4C71  25 0F 00                 AND AX,0xf
+1E48:4C74  2D 06 00                 SUB AX,0x6
+1E48:4C77  8B F8                    MOV DI,AX
+1E48:4C79  C1 E7 08                 SHL DI,0x8
+1E48:4C7C  8D 85 00 0A              LEA AX,[DI + 0xa00]
+1E48:4C80  89 46 FE                 MOV word ptr [BP + -0x2],AX
+1E48:4C83  EB 06                    JMP 0x3000:310b ; logical module target 1E48:4C8B
+1E48:4C85  B8 00 13                 MOV AX,0x1300
+1E48:4C88  89 46 FE                 MOV word ptr [BP + -0x2],AX
+1E48:4C8B  8B 46 FE                 MOV AX,word ptr [BP + -0x2]
+1E48:4C8E  C9                       LEAVE
+1E48:4C8F  CA 02 00                 RETF 0x2
+
+Range 1E48:DCCB:016B
+1E48:DCCB  C8 A0 03 00              ENTER 0x3a0,0x0
+1E48:DCCF  31 C0                    XOR AX,AX
+1E48:DCD1  A3 E4 EC                 MOV [0xece4],AX
+1E48:DCD4  A3 E6 EC                 MOV [0xece6],AX
+1E48:DCD7  BF DC EC                 MOV DI,0xecdc
+1E48:DCDA  1E                       PUSH DS
+1E48:DCDB  57                       PUSH DI
+1E48:DCDC  6A 01                    PUSH 0x1
+1E48:DCDE  68 00 F4                 PUSH -0xc00
+1E48:DCE1  0E                       PUSH CS
+1E48:DCE2  E8 32 26                 CALL 0x3000:e797 ; logical module target 1E48:0317
+1E48:DCE5  50                       PUSH AX
+1E48:DCE6  0E                       PUSH CS
+1E48:DCE7  E8 B4 5A                 CALL 0x3000:1c1e ; logical module target 1E48:379E
+1E48:DCEA  31 C0                    XOR AX,AX
+1E48:DCEC  89 46 FE                 MOV word ptr [BP + -0x2],AX
+1E48:DCEF  EB 03                    JMP 0x3000:c174 ; logical module target 1E48:DCF4
+1E48:DCF1  FF 46 FE                 INC word ptr [BP + -0x2]
+1E48:DCF4  8A 46 FE                 MOV AL,byte ptr [BP + -0x2]
+1E48:DCF7  8B 7E FE                 MOV DI,word ptr [BP + -0x2]
+1E48:DCFA  88 85 00 19              MOV byte ptr [DI + 0x1900],AL
+1E48:DCFE  81 7E FE FF 00           CMP word ptr [BP + -0x2],0xff
+1E48:DD03  75 EC                    JNZ 0x3000:c171 ; logical module target 1E48:DCF1
+1E48:DD05  31 C0                    XOR AX,AX
+1E48:DD07  89 46 FC                 MOV word ptr [BP + -0x4],AX
+1E48:DD0A  EB 03                    JMP 0x3000:c18f ; logical module target 1E48:DD0F
+1E48:DD0C  FF 46 FC                 INC word ptr [BP + -0x4]
+1E48:DD0F  FF 76 FC                 PUSH word ptr [BP + -0x4]
+1E48:DD12  0E                       PUSH CS
+1E48:DD13  E8 B3 FE                 CALL 0x3000:c049 ; logical module target 1E48:DBC9
+1E48:DD16  83 7E FC 15              CMP word ptr [BP + -0x4],0x15
+1E48:DD1A  75 F0                    JNZ 0x3000:c18c ; logical module target 1E48:DD0C
+1E48:DD1C  8D BE 60 FC              LEA DI,[BP + 0xfc60]
+1E48:DD20  16                       PUSH SS
+1E48:DD21  57                       PUSH DI
+1E48:DD22  BF A9 DC                 MOV DI,0xdca9
+1E48:DD25  0E                       PUSH CS
+1E48:DD26  57                       PUSH DI
+1E48:DD27  0E                       PUSH CS
+1E48:DD28  E8 98 29                 CALL 0x3000:eb43 ; logical module target 1E48:06C3
+1E48:DD2B  8D BE 60 FC              LEA DI,[BP + 0xfc60]
+1E48:DD2F  16                       PUSH SS
+1E48:DD30  57                       PUSH DI
+1E48:DD31  8D 7E E6                 LEA DI,[BP + -0x1a]
+1E48:DD34  16                       PUSH SS
+1E48:DD35  57                       PUSH DI
+1E48:DD36  6A 04                    PUSH 0x4
+1E48:DD38  31 C0                    XOR AX,AX
+1E48:DD3A  50                       PUSH AX
+1E48:DD3B  50                       PUSH AX
+1E48:DD3C  9A 45 1A E4 3C           CALLF 0x3000:e885 ; encoded analysis target 3CE4:1A45, module 2CE4:1A45
+1E48:DD41  8D BE 60 FC              LEA DI,[BP + 0xfc60]
+1E48:DD45  16                       PUSH SS
+1E48:DD46  57                       PUSH DI
+1E48:DD47  BF 00 15                 MOV DI,0x1500
+1E48:DD4A  1E                       PUSH DS
+1E48:DD4B  57                       PUSH DI
+1E48:DD4C  68 00 01                 PUSH 0x100
+1E48:DD4F  31 C0                    XOR AX,AX
+1E48:DD51  50                       PUSH AX
+1E48:DD52  50                       PUSH AX
+1E48:DD53  9A 45 1A E4 3C           CALLF 0x3000:e885 ; encoded analysis target 3CE4:1A45, module 2CE4:1A45
+1E48:DD58  8D BE 60 FC              LEA DI,[BP + 0xfc60]
+1E48:DD5C  16                       PUSH SS
+1E48:DD5D  57                       PUSH DI
+1E48:DD5E  9A DB 19 E4 3C           CALLF 0x3000:e81b ; encoded analysis target 3CE4:19DB, module 2CE4:19DB
+1E48:DD63  8D BE 60 FC              LEA DI,[BP + 0xfc60]
+1E48:DD67  16                       PUSH SS
+1E48:DD68  57                       PUSH DI
+1E48:DD69  BF BA DC                 MOV DI,0xdcba
+1E48:DD6C  0E                       PUSH CS
+1E48:DD6D  57                       PUSH DI
+1E48:DD6E  0E                       PUSH CS
+1E48:DD6F  E8 51 29                 CALL 0x3000:eb43 ; logical module target 1E48:06C3
+1E48:DD72  8D BE 60 FC              LEA DI,[BP + 0xfc60]
+1E48:DD76  16                       PUSH SS
+1E48:DD77  57                       PUSH DI
+1E48:DD78  8D 7E E6                 LEA DI,[BP + -0x1a]
+1E48:DD7B  16                       PUSH SS
+1E48:DD7C  57                       PUSH DI
+1E48:DD7D  6A 04                    PUSH 0x4
+1E48:DD7F  31 C0                    XOR AX,AX
+1E48:DD81  50                       PUSH AX
+1E48:DD82  50                       PUSH AX
+1E48:DD83  9A 45 1A E4 3C           CALLF 0x3000:e885 ; encoded analysis target 3CE4:1A45, module 2CE4:1A45
+1E48:DD88  8D BE 60 FC              LEA DI,[BP + 0xfc60]
+1E48:DD8C  16                       PUSH SS
+1E48:DD8D  57                       PUSH DI
+1E48:DD8E  BF 00 12                 MOV DI,0x1200
+1E48:DD91  1E                       PUSH DS
+1E48:DD92  57                       PUSH DI
+1E48:DD93  68 00 01                 PUSH 0x100
+1E48:DD96  31 C0                    XOR AX,AX
+1E48:DD98  50                       PUSH AX
+1E48:DD99  50                       PUSH AX
+1E48:DD9A  9A 45 1A E4 3C           CALLF 0x3000:e885 ; encoded analysis target 3CE4:1A45, module 2CE4:1A45
+1E48:DD9F  8D BE 60 FC              LEA DI,[BP + 0xfc60]
+1E48:DDA3  16                       PUSH SS
+1E48:DDA4  57                       PUSH DI
+1E48:DDA5  BF 00 14                 MOV DI,0x1400
+1E48:DDA8  1E                       PUSH DS
+1E48:DDA9  57                       PUSH DI
+1E48:DDAA  68 00 01                 PUSH 0x100
+1E48:DDAD  31 C0                    XOR AX,AX
+1E48:DDAF  50                       PUSH AX
+1E48:DDB0  50                       PUSH AX
+1E48:DDB1  9A 45 1A E4 3C           CALLF 0x3000:e885 ; encoded analysis target 3CE4:1A45, module 2CE4:1A45
+1E48:DDB6  8D BE 60 FC              LEA DI,[BP + 0xfc60]
+1E48:DDBA  16                       PUSH SS
+1E48:DDBB  57                       PUSH DI
+1E48:DDBC  BF 00 13                 MOV DI,0x1300
+1E48:DDBF  1E                       PUSH DS
+1E48:DDC0  57                       PUSH DI
+1E48:DDC1  68 00 01                 PUSH 0x100
+1E48:DDC4  31 C0                    XOR AX,AX
+1E48:DDC6  50                       PUSH AX
+1E48:DDC7  50                       PUSH AX
+1E48:DDC8  9A 45 1A E4 3C           CALLF 0x3000:e885 ; encoded analysis target 3CE4:1A45, module 2CE4:1A45
+1E48:DDCD  8D BE 60 FC              LEA DI,[BP + 0xfc60]
+1E48:DDD1  16                       PUSH SS
+1E48:DDD2  57                       PUSH DI
+1E48:DDD3  BF 00 16                 MOV DI,0x1600
+1E48:DDD6  1E                       PUSH DS
+1E48:DDD7  57                       PUSH DI
+1E48:DDD8  68 00 01                 PUSH 0x100
+1E48:DDDB  31 C0                    XOR AX,AX
+1E48:DDDD  50                       PUSH AX
+1E48:DDDE  50                       PUSH AX
+1E48:DDDF  9A 45 1A E4 3C           CALLF 0x3000:e885 ; encoded analysis target 3CE4:1A45, module 2CE4:1A45
+1E48:DDE4  8D BE 60 FC              LEA DI,[BP + 0xfc60]
+1E48:DDE8  16                       PUSH SS
+1E48:DDE9  57                       PUSH DI
+1E48:DDEA  BF 00 17                 MOV DI,0x1700
+1E48:DDED  1E                       PUSH DS
+1E48:DDEE  57                       PUSH DI
+1E48:DDEF  68 00 01                 PUSH 0x100
+1E48:DDF2  31 C0                    XOR AX,AX
+1E48:DDF4  50                       PUSH AX
+1E48:DDF5  50                       PUSH AX
+1E48:DDF6  9A 45 1A E4 3C           CALLF 0x3000:e885 ; encoded analysis target 3CE4:1A45, module 2CE4:1A45
+1E48:DDFB  8D BE 60 FC              LEA DI,[BP + 0xfc60]
+1E48:DDFF  16                       PUSH SS
+1E48:DE00  57                       PUSH DI
+1E48:DE01  BF 00 18                 MOV DI,0x1800
+1E48:DE04  1E                       PUSH DS
+1E48:DE05  57                       PUSH DI
+1E48:DE06  68 00 01                 PUSH 0x100
+1E48:DE09  31 C0                    XOR AX,AX
+1E48:DE0B  50                       PUSH AX
+1E48:DE0C  50                       PUSH AX
+1E48:DE0D  9A 45 1A E4 3C           CALLF 0x3000:e885 ; encoded analysis target 3CE4:1A45, module 2CE4:1A45
+1E48:DE12  8D BE 60 FC              LEA DI,[BP + 0xfc60]
+1E48:DE16  16                       PUSH SS
+1E48:DE17  57                       PUSH DI
+1E48:DE18  BF 00 1A                 MOV DI,0x1a00
+1E48:DE1B  1E                       PUSH DS
+1E48:DE1C  57                       PUSH DI
+1E48:DE1D  68 00 01                 PUSH 0x100
+1E48:DE20  31 C0                    XOR AX,AX
+1E48:DE22  50                       PUSH AX
+1E48:DE23  50                       PUSH AX
+1E48:DE24  9A 45 1A E4 3C           CALLF 0x3000:e885 ; encoded analysis target 3CE4:1A45, module 2CE4:1A45
+1E48:DE29  8D BE 60 FC              LEA DI,[BP + 0xfc60]
+1E48:DE2D  16                       PUSH SS
+1E48:DE2E  57                       PUSH DI
+1E48:DE2F  9A DB 19 E4 3C           CALLF 0x3000:e81b ; encoded analysis target 3CE4:19DB, module 2CE4:19DB
+1E48:DE34  C9                       LEAVE
+1E48:DE35  CB                       RETF
+
+Range 1E48:8587:00E5
+1E48:8587  C4 7E C0                 LES DI,[BP + -0x40]
+1E48:858A  26 8A 45 01              MOV AL,byte ptr ES:[DI + 0x1]
+1E48:858E  30 E4                    XOR AH,AH
+1E48:8590  89 46 F6                 MOV word ptr [BP + -0xa],AX
+1E48:8593  C4 7E C0                 LES DI,[BP + -0x40]
+1E48:8596  26 80 7D 05 00           CMP byte ptr ES:[DI + 0x5],0x0
+1E48:859B  76 1F                    JBE 0x3000:6a3c ; logical module target 1E48:85BC
+1E48:859D  C4 7E C0                 LES DI,[BP + -0x40]
+1E48:85A0  26 8A 45 05              MOV AL,byte ptr ES:[DI + 0x5]
+1E48:85A4  30 E4                    XOR AH,AH
+1E48:85A6  C1 E0 04                 SHL AX,0x4
+1E48:85A9  8B D0                    MOV DX,AX
+1E48:85AB  8B 46 F6                 MOV AX,word ptr [BP + -0xa]
+1E48:85AE  25 0F 00                 AND AX,0xf
+1E48:85B1  05 00 02                 ADD AX,0x200
+1E48:85B4  03 C2                    ADD AX,DX
+1E48:85B6  2D 10 00                 SUB AX,0x10
+1E48:85B9  89 46 F6                 MOV word ptr [BP + -0xa],AX
+1E48:85BC  C4 7E BC                 LES DI,[BP + -0x44]
+1E48:85BF  26 FF 35                 PUSH word ptr ES:[DI]
+1E48:85C2  C4 7E BC                 LES DI,[BP + -0x44]
+1E48:85C5  26 FF 75 02              PUSH word ptr ES:[DI + 0x2]
+1E48:85C9  C4 7E C0                 LES DI,[BP + -0x40]
+1E48:85CC  26 8A 45 03              MOV AL,byte ptr ES:[DI + 0x3]
+1E48:85D0  30 E4                    XOR AH,AH
+1E48:85D2  6B C0 0D                 IMUL AX,AX,0xd
+1E48:85D5  8B 7E 04                 MOV DI,word ptr [BP + 0x4]
+1E48:85D8  03 F8                    ADD DI,AX
+1E48:85DA  36 FF B5 87 FA           PUSH word ptr SS:[DI + 0xfa87]
+1E48:85DF  C4 7E C0                 LES DI,[BP + -0x40]
+1E48:85E2  26 8A 45 03              MOV AL,byte ptr ES:[DI + 0x3]
+1E48:85E6  30 E4                    XOR AH,AH
+1E48:85E8  6B C0 0D                 IMUL AX,AX,0xd
+1E48:85EB  8B 7E 04                 MOV DI,word ptr [BP + 0x4]
+1E48:85EE  03 F8                    ADD DI,AX
+1E48:85F0  36 FF B5 89 FA           PUSH word ptr SS:[DI + 0xfa89]
+1E48:85F5  C4 7E C0                 LES DI,[BP + -0x40]
+1E48:85F8  26 8A 45 04              MOV AL,byte ptr ES:[DI + 0x4]
+1E48:85FC  30 E4                    XOR AH,AH
+1E48:85FE  6B C0 0D                 IMUL AX,AX,0xd
+1E48:8601  8B 7E 04                 MOV DI,word ptr [BP + 0x4]
+1E48:8604  03 F8                    ADD DI,AX
+1E48:8606  36 FF B5 87 FA           PUSH word ptr SS:[DI + 0xfa87]
+1E48:860B  C4 7E C0                 LES DI,[BP + -0x40]
+1E48:860E  26 8A 45 04              MOV AL,byte ptr ES:[DI + 0x4]
+1E48:8612  30 E4                    XOR AH,AH
+1E48:8614  6B C0 0D                 IMUL AX,AX,0xd
+1E48:8617  8B 7E 04                 MOV DI,word ptr [BP + 0x4]
+1E48:861A  03 F8                    ADD DI,AX
+1E48:861C  36 FF B5 89 FA           PUSH word ptr SS:[DI + 0xfa89]
+1E48:8621  FF 76 F6                 PUSH word ptr [BP + -0xa]
+1E48:8624  C4 7E BC                 LES DI,[BP + -0x44]
+1E48:8627  26 FF 75 0B              PUSH word ptr ES:[DI + 0xb]
+1E48:862B  26 FF 75 09              PUSH word ptr ES:[DI + 0x9]
+1E48:862F  C4 7E C0                 LES DI,[BP + -0x40]
+1E48:8632  26 8A 45 03              MOV AL,byte ptr ES:[DI + 0x3]
+1E48:8636  30 E4                    XOR AH,AH
+1E48:8638  6B C0 0D                 IMUL AX,AX,0xd
+1E48:863B  8B 7E 04                 MOV DI,word ptr [BP + 0x4]
+1E48:863E  03 F8                    ADD DI,AX
+1E48:8640  36 FF B5 92 FA           PUSH word ptr SS:[DI + 0xfa92]
+1E48:8645  36 FF B5 90 FA           PUSH word ptr SS:[DI + 0xfa90]
+1E48:864A  C4 7E C0                 LES DI,[BP + -0x40]
+1E48:864D  26 8A 45 04              MOV AL,byte ptr ES:[DI + 0x4]
+1E48:8651  30 E4                    XOR AH,AH
+1E48:8653  6B C0 0D                 IMUL AX,AX,0xd
+1E48:8656  8B 7E 04                 MOV DI,word ptr [BP + 0x4]
+1E48:8659  03 F8                    ADD DI,AX
+1E48:865B  36 FF B5 92 FA           PUSH word ptr SS:[DI + 0xfa92]
+1E48:8660  36 FF B5 90 FA           PUSH word ptr SS:[DI + 0xfa90]
+1E48:8665  0E                       PUSH CS
+1E48:8666  E8 37 CC                 CALL 0x3000:3720 ; logical module target 1E48:52A0
+1E48:8669  E9 2C 0A                 JMP 0x3000:7518 ; logical module target 1E48:9098

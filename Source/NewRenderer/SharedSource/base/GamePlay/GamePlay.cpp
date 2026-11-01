@@ -3,6 +3,7 @@
 #include <Asset/AssetManager.h>
 #include <Asset/Level.h>
 #include <GamePlay/SimpleBehavior.h>
+#include <Renderer/DrawCall.h>
 #include <algorithm>
 #include <stdexcept>
 
@@ -17,7 +18,9 @@ namespace GamePlay
     {
         auto TintColorForBrightness = [](DisplayType d) -> Color4
         {
-			byte lum = (byte)((int)d - (int)DisplayType::VectorBrightness0) * 255 / ((int)DisplayType::VectorBrightness7 - (int)DisplayType::VectorBrightness0);
+            // Native shade maps 0..6 are approximated by seven of eight opaque RGB shades.
+            const int shade = static_cast<int>(d) - static_cast<int>(DisplayType::VectorBrightness0);
+            const byte lum = static_cast<byte>((8 - shade) * 255 / 8);
             return { lum, lum, lum, 255 };
         };
 
@@ -27,18 +30,34 @@ namespace GamePlay
         case DisplayType::VectorUnlit:
         case DisplayType::VectorTorchlight:
         case DisplayType::VectorUnderWater:
+        case DisplayType::Type27:
             fireIntensity = 0.f;
             tintColor = { 255, 255,255, 255 };
             return true;
         }
 
-        if (display >= DisplayType::VectorBrightness0 && display <= DisplayType::VectorBrightness7)
+        if (display >= DisplayType::VectorWaterTint && display <= DisplayType::VectorRedLavaTint)
+        {
+            const auto material = static_cast<WaterReflectionType>(
+                static_cast<int>(display) - static_cast<int>(DisplayType::VectorWaterTint));
+            DrawCallMaterial::GetWaterTintColor(material, tintColor);
+            tintColor.a = 255;
+            fireIntensity = 0.f;
+            return true;
+        }
+        if (display >= DisplayType::VectorBrightness0 && display <= DisplayType::VectorBrightness6)
         {
             tintColor = TintColorForBrightness(display);
 			fireIntensity = 0.f;
 			return true;
         }
-        if (display >= DisplayType::Type30 && display <= DisplayType::Type37)
+        if (display == DisplayType::Type26)
+        {
+            fireIntensity = 0.f;
+            tintColor = { 218, 218, 218, 255 };
+            return true;
+        }
+        if (display == DisplayType::Type37)
         {
 			fireIntensity = 0.f;
 			tintColor = { 255, 255,255, 255 };
@@ -47,7 +66,8 @@ namespace GamePlay
 		if (display >= DisplayType::FirstVectorBurning && display <= DisplayType::LastVectorBurning)
 		{
 			fireIntensity = ((float)display - (float)DisplayType::FirstVectorBurning) / ((float)DisplayType::LastVectorBurning - (float)DisplayType::FirstVectorBurning);
-			tintColor = TintColorForBrightness(DisplayType::VectorBrightness2); // color during burning(?)
+            // Preserve the existing fire-overlay base tint independently of the renamed shade family.
+            tintColor = { 72, 72, 72, 255 };
 			return true;
 		}
 
@@ -109,6 +129,14 @@ namespace GamePlay
         DT_ENUM2STRING(SpritePulsate);
         DT_ENUM2STRING(SpriteTorchlightTransparent);
         DT_ENUM2STRING(DepthSprite);
+        DT_ENUM2STRING(VectorWaterTint);
+        DT_ENUM2STRING(VectorLavaTint);
+        DT_ENUM2STRING(VectorOilTint);
+        DT_ENUM2STRING(VectorFullbright);
+        DT_ENUM2STRING(VectorBlueTint);
+        DT_ENUM2STRING(VectorRedLavaTint);
+        DT_ENUM2STRING(Type26);
+        DT_ENUM2STRING(Type27);
         DT_ENUM2STRING(VectorBrightness0);
         DT_ENUM2STRING(VectorBrightness1);
         DT_ENUM2STRING(VectorBrightness2);
@@ -116,14 +144,6 @@ namespace GamePlay
         DT_ENUM2STRING(VectorBrightness4);
         DT_ENUM2STRING(VectorBrightness5);
         DT_ENUM2STRING(VectorBrightness6);
-        DT_ENUM2STRING(VectorBrightness7);
-        DT_ENUM2STRING(Type30);
-        DT_ENUM2STRING(Type31);
-        DT_ENUM2STRING(Type32);
-        DT_ENUM2STRING(Type33);
-        DT_ENUM2STRING(Type34);
-        DT_ENUM2STRING(Type35);
-        DT_ENUM2STRING(Type36);
         DT_ENUM2STRING(Type37);
         DT_ENUM2STRING(VectorUnderWater);
         DT_ENUM2STRING(Hidden);

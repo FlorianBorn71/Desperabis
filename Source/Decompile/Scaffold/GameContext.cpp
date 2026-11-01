@@ -1997,7 +1997,7 @@ namespace Desperabis
         impact.renderPlacementMode = 3;
         if ((GetCollisionMapPixelAtWorldXZ(impact.posX, impact.posZ) & 7) == 3)
         {
-            impact.displayType = DisplayType::VectorBrightness1;
+            impact.displayType = DisplayType::VectorLavaTint;
         }
         NotifyObjectCreated(impact);
     }
@@ -2051,7 +2051,7 @@ namespace Desperabis
         object.animFrame = frame;
         object.modelFrame2 = 1;
         object.blendWeightOrSpriteOpacity = 100;
-        object.displayType = DisplayType::Type30;
+        object.displayType = DisplayType::VectorBrightness0;
         object.behavior = BehaviorType::DriftingParticle;
         object.collisionType = CollisionType::None;
         object.velocityY = 1;

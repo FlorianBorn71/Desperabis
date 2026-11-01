@@ -117,7 +117,7 @@ namespace
                     expected.health = 50;
                     expected.modelId = 39; expected.modelAnim = 3; expected.animFrame = static_cast<std::uint8_t>(frame);
                     expected.modelFrame2 = 1; expected.blendWeightOrSpriteOpacity = 100;
-                    expected.displayType = DisplayType::Type30; expected.behavior = BehaviorType::DriftingParticle;
+                    expected.displayType = DisplayType::VectorBrightness0; expected.behavior = BehaviorType::DriftingParticle;
                     expected.velocityX = -1; expected.velocityY = 1; expected.velocityZ = 1;
                     expected.posX = 1500; expected.posZ = 2000;
                     expected.winX = static_cast<std::int16_t>(Next(seed, 512));
