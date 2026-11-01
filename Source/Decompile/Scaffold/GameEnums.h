@@ -65,7 +65,7 @@ namespace Desperabis
         MetalPole = 57, // the one to open door in submarine level 32. Also used for the torchlight that you can carry.
         KeyInBucket = 58, // level 33
         Dragon = 60, // only level 15?
-        Behavior_61 = 61,
+        DragonDying = 61,
         DragonHead = 62, // only level 15?
         DiggableGround = 63,
         Buried = 64,
@@ -185,7 +185,7 @@ namespace Desperabis
         LavaSmoke = 200, // Probably turns off itself when flooded
         Behavior_201 = 201, // could be thunder or leaf particles gen (assigned once to decoration in level 10)
         TrackFireAnimation = 202,
-        Behavior_204 = 204,
+        FireballImpact = 204,
         TriggerObject = 205, // inside Cathedral
         Behavior_206 = 206, // could be witch-manager
         WitchHead = 207,

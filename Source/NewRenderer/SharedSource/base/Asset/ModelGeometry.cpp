@@ -514,6 +514,7 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
         {
         case PolygonType::Points:
         {
+            if (p.something2 == 254) { break; } // Native invisible world-anchor marker.
             const Color4& solidColor = palette.GetEntryCustomAlpha(p.GetSolidColorIndex());
             dc.m_material.m_textureSlot = 2;
             dc.m_material.m_texture = AssetManager::Instance().GetPointTexture();
@@ -663,8 +664,7 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
         break;
 
         case PolygonType::AttachmentBillboard:
-            model.m_numUnsupportedPrimitives++;
-            // TODO
+            // Linked world sprites are positioned by GameCore, not drawn a second time in the model.
             break;
         case PolygonType::Attachment3DModel:
             // TODO

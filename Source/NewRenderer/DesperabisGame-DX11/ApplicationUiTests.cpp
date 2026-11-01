@@ -568,6 +568,208 @@ namespace
             "Slime dissolve must forward the native blend weight.");
     }
 
+    void CheckDragon(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(15));
+        const auto records = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS15.DAT")));
+        const auto bytes = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"VEKT\\VEKT19.3DA")));
+        auto terrain = Desperabis::CreateDummyLevel();
+        terrain.modelAnchors[6] = std::make_shared<Desperabis::ModelAnchorGeometry>();
+        terrain.modelAnchors[6]->Load(bytes.data(), bytes.size());
+        Desperabis::GameContext core;
+        core.level = &terrain;
+        core.collisionMap = terrain.collisionMap.get();
+        core.worldObjects[12] = Desperabis::DecodeGameObject(records.data() + 10 * 54, 54);
+        core.worldObjects[5] = Desperabis::DecodeGameObject(records.data() + 3 * 54, 54);
+        auto& dragon = core.worldObjects[12];
+        auto& head = core.worldObjects[5];
+        auto bodyInstance = std::make_shared<RenderableInstance>(nullptr);
+        auto headInstance = std::make_shared<RenderableInstance>(nullptr);
+        ::RawGameObject raw{};
+        raw.m_level = level;
+        int anchorComparisons = 0;
+        for (int bank = 1; bank <= 2; ++bank)
+        {
+            dragon.modelAnim = static_cast<std::uint8_t>(bank);
+            for (int frame = 1; frame <= 4; ++frame)
+            {
+                dragon.animFrame = static_cast<std::uint8_t>(frame);
+                dragon.modelFrame2 = static_cast<std::uint8_t>(frame % 4 + 1);
+                for (int weight : { 0, 50, 100, 150, 201 })
+                {
+                    dragon.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(weight);
+                    dragon.winX = static_cast<std::int16_t>(frame * 19);
+                    dragon.winY = static_cast<std::int16_t>(frame * 113);
+                    dragon.winZ = static_cast<std::int16_t>(frame * -17);
+                    core.UpdateModelAttachments();
+                    Desperabis::EncodeGameObject(dragon, raw.m_rawBytes, 54);
+                    level->ApplyRenderProperties(bodyInstance, raw);
+                    const auto& frames = terrain.modelAnchors[6]->animations[bank - 1];
+                    const auto& current = frames[frame - 1];
+                    const float blend = weight > 200 ? 0.f : (weight > 100 ? (200 - weight) * 0.01f : weight * 0.01f);
+                    for (bool muzzle : { false, true })
+                    {
+                        const auto anchor = muzzle ? current.muzzleVertex : current.billboardVertex;
+                        if (!anchor)
+                        {
+                            Check(muzzle && bank == 2, "Every live pose must contain both head and muzzle anchors.");
+                            continue;
+                        }
+                        const auto index = *anchor - 1;
+                        float vertex[3]{};
+                        for (int axis = 0; axis < 3; ++axis)
+                        {
+                            vertex[axis] = current.vertices[index][axis] +
+                                (frames[dragon.modelFrame2 - 1].vertices[index][axis] - current.vertices[index][axis]) * blend;
+                        }
+                        const auto rendered = bodyInstance->GetTransform().TransformPosition(
+                            Vector(-vertex[0] * DespVertToFloat, -vertex[1] * DespVertToFloat, vertex[2] * DespVertToFloat));
+                        const auto point = core.GetModelAnchor(dragon, muzzle);
+                        const auto anchored = ::Level::DespToPos((*point)[0], (*point)[1], (*point)[2]);
+                        Check(std::fabs(rendered.GetX() - anchored.GetX()) <= DespToFloat &&
+                            std::fabs(rendered.GetY() - anchored.GetY()) <= DespToFloat &&
+                            std::fabs(rendered.GetZ() - anchored.GetZ()) <= DespToFloat,
+                            "Core head/muzzle anchors must match the renderer's actual blended X/Z/Y matrix within one native unit.");
+                        ++anchorComparisons;
+                    }
+                    Check(bodyInstance->GetVisible() && bodyInstance->GetRenderable() != nullptr,
+                        "All live/dying dragon model frames must resolve real meshes.");
+                }
+            }
+        }
+        dragon.modelAnim = dragon.animFrame = 1; dragon.modelFrame2 = 2;
+        dragon.winX = dragon.winY = dragon.winZ = 0; dragon.blendWeightOrSpriteOpacity = 0;
+        const auto heads = level->GetLevelInfo().GetTextureAnim(5);
+        Check(heads != nullptr, "Dragon head and fire particles must resolve original ANIM5.");
+        RenderingSettings settings;
+        ProfilingStats stats;
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        int minimumPixels = 360 * 240;
+        Texture lightmap;
+        lightmap.CreatePlainWhite();
+        lightmap.m_atlasData = { 0, 0, 0.5f, 0.5f };
+        for (int bank = 1; bank <= 6; ++bank)
+        {
+            dragon.winY = static_cast<std::int16_t>((43 - (bank - 1) * 86) & 511);
+            for (int mouth = 1; mouth <= 2; ++mouth)
+            {
+                dragon.spriteScale = static_cast<std::uint8_t>(mouth);
+                core.UpdateModelAttachments();
+                Check(head.modelAnim == bank && head.animFrame == mouth, "Core must select all six view banks and both mouth phases.");
+                Desperabis::EncodeGameObject(head, raw.m_rawBytes, 54);
+                level->ApplyRenderProperties(headInstance, raw);
+                Check(headInstance->IsValid() && headInstance->GetVisible() && heads->IsValidFrame(bank - 1, mouth - 1) &&
+                    headInstance->m_materialOverride[0].m_texture == heads->GetFrame(bank - 1, mouth - 1) &&
+                    std::fabs(headInstance->m_uniformScale - 0.5f) < 0.00001f,
+                    "Attached head must use the original direction/mouth texture at native scale 32/64.");
+                Desperabis::EncodeGameObject(dragon, raw.m_rawBytes, 54);
+                level->ApplyRenderProperties(bodyInstance, raw);
+                bodyInstance->UpdateGlobalBounds();
+                headInstance->UpdateGlobalBounds();
+                const auto center = bodyInstance->GetGlobalBounds().GetCenter();
+                const float span = (std::max)(bodyInstance->GetGlobalBounds().GetSphereRadius() * 3.f, 0.2f);
+                Matrix4 projection, transform;
+                projection.CreateOrthographic(span * 1.5f, span, 0.1f, 20.f);
+                transform.SetTranslation(Vector(center.GetX(), center.GetY(), center.GetZ() + 10.f));
+                Camera camera;
+                camera.SetProjectionMatrix(projection);
+                camera.SetCameraTransformMatrix(transform);
+                VisibilityResult visible;
+                visible.m_mainCamera = &camera;
+                visible.m_visibleInstances.m_opaqueInstances.push_back({ bodyInstance.get(), 0 });
+                visible.m_visibleInstances.m_opaqueInstances.push_back({ headInstance.get(), 0 });
+                visible.m_visibleInstances.m_visibleTransparencyTypes =
+                    bodyInstance->GetUsedTransparencyMask() | headInstance->GetUsedTransparencyMask();
+                visible.m_ambientColor = { 1.f, 1.f, 1.f }; visible.m_fogFalloff = 0.f;
+                visible.m_fogColor = { 0.f, 0.f, 0.f };
+                visible.m_lightmap = &lightmap;
+                const float black[4]{ 0, 0, 0, 1 };
+                context->ClearRenderTargetView(target.colorView.Get(), black);
+                context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+                renderer.RenderSceneElements(visible, settings, stats);
+                const auto pixels = target.Pixels(device, context);
+                const auto count = static_cast<int>(std::count_if(pixels.begin(), pixels.end(),
+                    [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; }));
+                minimumPixels = (std::min)(minimumPixels, count);
+                Check(count >= 100, "Complete original dragon body/head must render visible pixels for all view/mouth phases.");
+                for (auto* part : { bodyInstance.get(), headInstance.get() })
+                {
+                    const auto partCenter = part->GetGlobalBounds().GetCenter();
+                    const float partSpan = (std::max)(part->GetGlobalBounds().GetSphereRadius() * 3.f, 0.2f);
+                    projection.CreateOrthographic(partSpan * 1.5f, partSpan, 0.1f, 20.f);
+                    transform.SetTranslation(Vector(partCenter.GetX(), partCenter.GetY(), partCenter.GetZ() + 3.f));
+                    camera.SetProjectionMatrix(projection);
+                    camera.SetCameraTransformMatrix(transform);
+                    visible.m_visibleInstances.m_opaqueInstances.clear();
+                    visible.m_visibleInstances.m_opaqueInstances.push_back({ part, 0 });
+                    context->ClearRenderTargetView(target.colorView.Get(), black);
+                    context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+                    renderer.RenderSceneElements(visible, settings, stats);
+                    const auto partPixels = target.Pixels(device, context);
+                    const auto partCount = static_cast<int>(std::count_if(partPixels.begin(), partPixels.end(),
+                        [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; }));
+                    Check(partCount >= 8, part == bodyInstance.get() ?
+                        "Real dragon body must draw independently of its head." :
+                        "Every original head direction/mouth frame must draw independently of the body.");
+                }
+            }
+            auto fireball = head;
+            fireball.animFrame = 3; fireball.health = 500; fireball.spriteScale = 40;
+            fireball.behavior = Desperabis::BehaviorType::FlyingArrow;
+            fireball.displayType = Desperabis::DisplayType::SpriteTorchlight;
+            Desperabis::EncodeGameObject(fireball, raw.m_rawBytes, 54);
+            level->ApplyRenderProperties(headInstance, raw);
+            Check(headInstance->GetVisible() && headInstance->m_materialOverride[0].m_texture == heads->GetFrame(bank - 1, 2) &&
+                !headInstance->m_materialOverride[0].m_applyLighting,
+                "Model-bank-5 fireballs must use ANIM5 frame three, not bank-six FACKEL slots.");
+            headInstance->UpdateGlobalBounds();
+            const auto center = headInstance->GetGlobalBounds().GetCenter();
+            const float span = (std::max)(headInstance->GetGlobalBounds().GetSphereRadius() * 3.f, 0.2f);
+            Matrix4 projection, transform;
+            projection.CreateOrthographic(span * 1.5f, span, 0.1f, 10.f);
+            transform.SetTranslation(Vector(center.GetX(), center.GetY(), center.GetZ() + 3.f));
+            Camera camera;
+            camera.SetProjectionMatrix(projection); camera.SetCameraTransformMatrix(transform);
+            VisibilityResult visible;
+            visible.m_mainCamera = &camera;
+            visible.m_visibleInstances.m_opaqueInstances.push_back({ headInstance.get(), 0 });
+            visible.m_visibleInstances.m_visibleTransparencyTypes = headInstance->GetUsedTransparencyMask();
+            visible.m_ambientColor = { 1, 1, 1 }; visible.m_fogColor = { 0, 0, 0 }; visible.m_fogFalloff = 0;
+            visible.m_lightmap = &lightmap;
+            const float black[4]{ 0, 0, 0, 1 };
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            const auto pixels = target.Pixels(device, context);
+            Check(std::count_if(pixels.begin(), pixels.end(),
+                [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; }) >= 8,
+                "All six original fireball sprites must draw actual pixels.");
+            fireball.behavior = Desperabis::BehaviorType::FireballImpact;
+            fireball.health = 10; fireball.displayType = Desperabis::DisplayType::SpriteTransparent;
+            fireball.blendWeightOrSpriteOpacity = 4;
+            Desperabis::EncodeGameObject(fireball, raw.m_rawBytes, 54);
+            level->ApplyRenderProperties(headInstance, raw);
+            Check(headInstance->GetUsedTransparencyMask() == TransparencyModeMask::AlphaBlendedBit &&
+                std::fabs(headInstance->m_materialOverride[0].m_opacity - 5.f / 6.f) < 0.00001f,
+                "Fireball impacts must refresh alpha-pass classification even when the sprite mesh is unchanged.");
+            visible.m_visibleInstances.m_opaqueInstances.clear();
+            visible.m_visibleInstances.m_transparentInstances.push_back({ headInstance.get(), 0 });
+            visible.m_visibleInstances.m_visibleTransparencyTypes = headInstance->GetUsedTransparencyMask();
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            const auto flashPixels = target.Pixels(device, context);
+            Check(std::count_if(flashPixels.begin(), flashPixels.end(),
+                [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; }) >= 8,
+                "Fading fireball impacts must remain visible in the alpha pass.");
+        }
+        std::cout << "Dragon: " << anchorComparisons << " head/muzzle matrix comparisons, 12 full body/head renders, minimum " <<
+            minimumPixels << " pixels; all fireball/impact textures and alpha transitions passed.\n";
+    }
+
     void CheckRainSprites(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
         auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(10));
@@ -805,6 +1007,7 @@ int main(int argc, char* argv[])
         CheckTextControls(font);
         CheckTutorialFlames();
         CheckEnemyModels();
+        CheckDragon(renderer, device.Get(), context.Get());
         CheckRainSprites(renderer, device.Get(), context.Get());
         CheckLightning(renderer, device.Get(), context.Get());
         CheckUnderwater(renderer, device.Get(), context.Get());

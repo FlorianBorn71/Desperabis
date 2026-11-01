@@ -180,6 +180,7 @@ namespace
                 object.posZ = 4050;
             }
             if (entry.type == BehaviorType::MummieGuard) { object.soundEffectId = 15; }
+            if (entry.type == BehaviorType::DragonHead) { object.doorLockOrGroupBitmask = 1; }
             const auto before = ObjectBytes(object);
             GameContext context;
             context.tickCount = 3;
@@ -187,6 +188,7 @@ namespace
             level.heightSurfaces[0] = Level::HeightSurface{ 0, 0 };
             context.collisionMap = level.collisionMap.get();
             context.level = &level;
+            context.worldObjects[1].spriteScale = 1;
             const auto result = DispatchObjectCase(object, context);
             Check(result.moduleOffset == entry.moduleOffset, "Wrong case entry.");
             Check(result.behavior == entry.type, "Wrong behavior enum from handler.");
@@ -224,6 +226,9 @@ namespace
                 entry.type == BehaviorType::ClimbableLadder || entry.type == BehaviorType::RoofTopThunderHandler3 ||
                 entry.type == BehaviorType::SwitchGrouped || entry.type == BehaviorType::WaterDrop ||
                 entry.type == BehaviorType::Bubble || entry.type == BehaviorType::BubblePop ||
+                entry.type == BehaviorType::Crab || entry.type == BehaviorType::BurnableOilPuddle ||
+                entry.type == BehaviorType::Dragon || entry.type == BehaviorType::DragonDying ||
+                entry.type == BehaviorType::DragonHead || entry.type == BehaviorType::FireballImpact ||
                 entry.type == BehaviorType::DisabledSentinel;
             Check(result.status == (implemented ?
                 DispatchStatus::ExecutedCase : entry.hasSpecificCase ?
@@ -3357,6 +3362,7 @@ namespace
         auto level = CreateDummyLevel();
         context.collisionMap = level.collisionMap.get();
         context.level = &level;
+        context.worldObjects[1].spriteScale = 1;
         for (int behavior = 0; behavior <= 65535; ++behavior)
         {
             // Each route needs a fresh active object; a previous handler can legitimately expire it.
@@ -3366,6 +3372,7 @@ namespace
             object.posZ = 4050;
             object.behavior = static_cast<BehaviorType>(behavior);
             if (object.behavior == BehaviorType::MummieGuard) { object.soundEffectId = 15; }
+            if (object.behavior == BehaviorType::DragonHead) { object.doorLockOrGroupBitmask = 1; }
             level.heightSurfaces[0] = Level::HeightSurface{ 0, 0 };
             const auto result = DispatchObjectCase(object, context);
             Check(result.moduleOffset == originalEntry(behavior) && result.behavior == static_cast<BehaviorType>(behavior),
@@ -3415,7 +3422,7 @@ int main(int argc, char** argv)
             "and exhaustive arithmetic checks verified.\n";
         return 0;
     }
-    catch (const std::runtime_error& error)
+    catch (const std::exception& error)
     {
         std::cerr << "FAIL: " << error.what() << '\n';
         return 1;

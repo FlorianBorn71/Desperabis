@@ -400,13 +400,13 @@ namespace
         Check(f.Target().generalPurpose1 == 10, "A living anaconda head must install its hit reaction.");
         f.Set(CollisionType::Dragon, 10);
         f.context.DamageObject(f.Target(), 20);
-        Check(f.Target().behavior == BehaviorType::Behavior_61 && f.Target().health == 1000 &&
+        Check(f.Target().behavior == BehaviorType::DragonDying && f.Target().health == 1000 &&
             f.Target().modelAnim == 2 && f.Target().animFrame == 1 && f.Target().modelFrame2 == 2 &&
             f.Target().generalPurpose1 == 250 && f.Target().generalPurpose2 == 0 && f.Target().itemValue == 4 &&
             f.Target().blendWeightOrSpriteOpacity == 0 && f.Target().doorLockOrGroupBitmask == 0,
             "Dragon death must install behavior 61 only once.");
         f.context.DamageObject(f.Target(), 20);
-        Check(f.Target().behavior == BehaviorType::Behavior_61 && f.Target().velocityY == 100,
+        Check(f.Target().behavior == BehaviorType::DragonDying && f.Target().velocityY == 100,
             "An already-dying dragon still follows the native non-initialization reaction.");
         for (std::uint32_t seed = 0; seed < 100; ++seed)
         {

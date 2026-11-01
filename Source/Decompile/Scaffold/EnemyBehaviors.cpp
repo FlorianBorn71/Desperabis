@@ -58,18 +58,7 @@ namespace Desperabis
 
         bool HasClearPlayerLine(const RawGameObject& object, const GameContext& context)
         {
-            if (context.GetSoundDistanceAt(object.posX, object.posZ) > 1000) { return false; }
-            const auto dx = WrapSignedWord(object.posX - context.soundListenerX);
-            const auto dz = WrapSignedWord(object.posZ - context.soundListenerZ);
-            for (int sample = 2; sample <= 30; ++sample)
-            {
-                const auto x = WrapSignedWord(context.soundListenerX +
-                    ArithmeticShiftRight(WrapSignedWord(dx * sample), 5));
-                const auto z = WrapSignedWord(context.soundListenerZ +
-                    ArithmeticShiftRight(WrapSignedWord(dz * sample), 5));
-                if ((context.GetCollisionMapPixelAtWorldXZ(x, z) & 0x38) != 0) { return false; }
-            }
-            return true;
+            return context.HasClearPlayerLine(object.posX, object.posZ);
         }
 
         bool SpawnSpiderSlime(RawGameObject& source, GameContext& context)
@@ -538,7 +527,8 @@ namespace Desperabis
 
     DispatchResult Function_FlyingArrow(RawGameObject& object, GameContext& context)
     {
-        if (object.itemValue != 3 && object.itemValue != 103)
+        if (object.itemValue != 3 && object.itemValue != 103 &&
+            object.itemValue != 4 && object.itemValue != 5 && object.itemValue != 6)
         {
             return { DispatchStatus::UnimplementedHandler, BehaviorType::FlyingArrow, 0x1E1A };
         }
@@ -549,8 +539,42 @@ namespace Desperabis
             object.posY = WrapSignedWord(object.posY + object.velocityY);
             object.posZ = WrapSignedWord(object.posZ + object.velocityZ);
             const bool wall = (context.GetCollisionMapPixelAtWorldXZ(object.posX, object.posZ) & 8) != 0;
-            const auto floor = context.GetFloorHeight(object.posX, object.posY, object.posZ);
-            if (object.itemValue == 3)
+            const auto floor = object.itemValue >= 4 && object.itemValue <= 6 ?
+                context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ) :
+                context.GetFloorHeight(object.posX, object.posY, object.posZ);
+            if (object.itemValue == 4)
+            {
+                if (object.spriteScale < 100)
+                {
+                    object.spriteScale = static_cast<std::uint8_t>(object.spriteScale + context.Random(4) + 2);
+                }
+                if (object.posY < floor || wall) { context.SetObjectHealth(object, 0); }
+                if (object.spriteScale > 40 && object.velocityY < 0 && context.Random(5) == 0) { ++object.velocityY; }
+                object.blendWeightOrSpriteOpacity = WrapSignedWord(object.health + 1);
+            }
+            else if (object.itemValue == 5)
+            {
+                object.modelAnim = static_cast<std::uint8_t>(object.modelAnim % 6 + 1);
+                if (object.spriteScale < 100) { ++object.spriteScale; }
+                if (object.posY < floor || wall)
+                {
+                    object.behavior = BehaviorType::FireballImpact;
+                    context.SetObjectHealth(object, 10);
+                    continue;
+                }
+            }
+            else if (object.itemValue == 6)
+            {
+                if (object.health == 1000) { context.SetObjectHealth(object, static_cast<std::int16_t>(context.Random(100) + 100)); }
+                if (object.spriteScale < 210) { object.spriteScale = static_cast<std::uint8_t>(object.spriteScale + 4); }
+                object.blendWeightOrSpriteOpacity = WrapSignedWord(ArithmeticShiftRight(object.health, 2) + 1);
+                if (wall) { context.SetObjectHealth(object, 0); }
+                object.collisionMask = 2;
+                const auto target = context.FindCollidingObject(object);
+                if (target > 1) { context.DamageObject(context.worldObjects[target], 200); }
+                object.collisionMask = 1;
+            }
+            else if (object.itemValue == 3)
             {
                 if (object.generalPurpose1 == 0) { object.velocityY = WrapSignedWord(object.velocityY - 1); }
                 object.generalPurpose1 = static_cast<std::uint16_t>((object.generalPurpose1 + 1) & 1);
@@ -573,11 +597,11 @@ namespace Desperabis
                     object.blendWeightOrSpriteOpacity = 0;
                 }
             }
-            else if (object.blendWeightOrSpriteOpacity < 100)
+            else if (object.itemValue == 103 && object.blendWeightOrSpriteOpacity < 100)
             {
                 object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity + 6);
             }
-            else { context.SetObjectHealth(object, 0); break; }
+            else if (object.itemValue == 103) { context.SetObjectHealth(object, 0); break; }
             if (context.OverlapsPlayer(object))
             {
                 context.ApplyPlayerLifeDelta(-29491 * object.behaviorParameter);

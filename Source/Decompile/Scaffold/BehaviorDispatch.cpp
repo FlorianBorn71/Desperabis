@@ -112,11 +112,13 @@ namespace Desperabis
         }
         context.playerLadderMovement = false;
         context.ClearLightningFlashes();
+        context.UpdateModelAttachments();
         std::array<DispatchResult, 163> results;
         for (std::size_t slot = 2; slot <= 164; ++slot)
         {
             results[slot - 2] = UpdateObject(context.worldObjects[slot], context);
         }
+        context.UpdateModelAttachments();
         return results;
     }
 }

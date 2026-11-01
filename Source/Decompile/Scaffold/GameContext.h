@@ -17,6 +17,8 @@
 
 namespace Desperabis
 {
+    struct ModelAnchorGeometry;
+
     struct RawGameObject
     {
         std::uint8_t modelId = 0;
@@ -161,6 +163,8 @@ namespace Desperabis
         // DS:D494..D49A and the byte lookup used by 1E48:1AF9; not in the geometry streams.
         std::array<std::optional<HeightSurface>, 4> heightSurfaces{};
         std::array<std::uint8_t, 16> textureFileIndices{};
+        std::array<std::uint8_t, 16> modelFileIndices{};
+        std::array<std::shared_ptr<ModelAnchorGeometry>, 16> modelAnchors{};
         std::array<std::vector<std::string>, 16> textureMessages;
 
         void LoadTextureMessages(std::size_t slot, const std::uint8_t* data, std::size_t size);
@@ -170,6 +174,18 @@ namespace Desperabis
     };
 
     Level CreateDummyLevel();
+
+    struct ModelAnchorGeometry
+    {
+        struct Frame
+        {
+            std::vector<std::array<std::int16_t, 3>> vertices;
+            std::optional<std::uint8_t> billboardVertex, muzzleVertex;
+        };
+        std::vector<std::vector<Frame>> animations;
+        void Load(const std::uint8_t* data, std::size_t size);
+        std::optional<std::array<std::int16_t, 3>> Sample(const RawGameObject& object, bool muzzle) const;
+    };
 
     struct LightningLine
     {
@@ -405,6 +421,7 @@ namespace Desperabis
         void RequestPlayerCrouch();
         // Native 0000:DA3C: selected cockroach contact uses forward speed, not an interaction key.
         InteractionResult HandleCockroachContact(RawGameObject& object);
+        InteractionResult HandleCrabContact(RawGameObject& object);
         InteractionResult HandleDamageObjectContact(const RawGameObject& object);
         InteractionResult HandleTeleporterContact(RawGameObject& object, bool interactionPressed);
         InteractionResult HandleLevelEndContact(RawGameObject& object, bool interactionPressed);
@@ -425,6 +442,9 @@ namespace Desperabis
         void SpawnWaterImpact(std::int16_t x, std::int16_t z);
         // Native offsetY + encoded height (pixel count minus one), before spriteScale / 64.
         virtual std::int16_t GetSpriteBottom(const RawGameObject& object) const;
+        // Asset-derived world anchors, independent of visibility and renderer timing.
+        std::optional<std::array<std::int16_t, 3>> GetModelAnchor(const RawGameObject& object, bool muzzle) const;
+        void UpdateModelAttachments();
         std::int16_t frameTickCount = 1; // DS:D4CA; burning uses this rather than the behavior argument.
         std::int16_t windX = 0; // DS:2B0E; owned by this level/context, not a process global.
         std::int16_t windZ = 0; // DS:2B10.
@@ -448,6 +468,7 @@ namespace Desperabis
         void CreateAmbientLoop(std::uint8_t environment);
         std::uint16_t SpawnBubble(std::int16_t x, std::int16_t y, std::int16_t z);
         std::int16_t GetSoundDistanceAt(std::int16_t x, std::int16_t z) const;
+        bool HasClearPlayerLine(std::int16_t x, std::int16_t z) const;
         static std::uint8_t GetSoundVolume(std::int16_t distance);
         std::uint8_t GetSoundVolumeAt(std::int16_t x, std::int16_t z, std::int16_t distanceScale = 1) const;
         SoundPlaybackStatus PlaySoundEffect(SoundEffect effect, std::uint8_t volume,
@@ -484,6 +505,8 @@ namespace Desperabis
         // Original 1E48:2B33, one source-slot word; returns a slot or zero.
         std::uint16_t FindCollidingObject(std::int16_t sourceSlot) const;
         std::uint16_t FindCollidingObject(const RawGameObject& source) const;
+        // Native 1E48:2C2E collects slots 2..165, gated by DS:D500 rather than DS:04CD.
+        std::vector<std::uint16_t> FindCollidingObjects(const RawGameObject& source) const;
         int FindWorldObjectSlot(const RawGameObject& object) const;
         // Original 1E48:2D63: no player-health test.
         bool OverlapsPlayer(const RawGameObject& source) const;

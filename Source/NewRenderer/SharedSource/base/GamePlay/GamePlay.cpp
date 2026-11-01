@@ -153,6 +153,7 @@ namespace GamePlay
         BT_ENUM2STRING(WaterDrop);
         BT_ENUM2STRING(FogParticle);
         BT_ENUM2STRING(TrackFireAnimation);
+        BT_ENUM2STRING(FireballImpact);
         BT_ENUM2STRING(Door);
         BT_ENUM2STRING(Switch1);
         BT_ENUM2STRING(SwitchGrouped);
@@ -177,6 +178,7 @@ namespace GamePlay
         BT_ENUM2STRING(Harvestman);
         BT_ENUM2STRING(ShootArrows);
         BT_ENUM2STRING(Dragon);
+        BT_ENUM2STRING(DragonDying);
         BT_ENUM2STRING(DragonHead);
         BT_ENUM2STRING(FlyingArrow);
         BT_ENUM2STRING(SpearOnGroundTrap);

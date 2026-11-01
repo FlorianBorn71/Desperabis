@@ -11,6 +11,19 @@ namespace Desperabis
             return { InteractionStatus::NoEffect };
         }
         auto& object = context.worldObjects[context.playerCollisionSlot];
+        if (object.collisionType == CollisionType::PushPlayer)
+        {
+            if (object.behaviorParameter == 0 || context.DEBUG_noPlayerCollision)
+            {
+                return { InteractionStatus::NoEffect };
+            }
+            context.ApplyPlayerLifeDelta(-context.playerLife);
+            return { InteractionStatus::Applied };
+        }
+        if (object.collisionType == CollisionType::Crab)
+        {
+            return context.HandleCrabContact(object);
+        }
         if (object.collisionType == CollisionType::LevelEnd)
         {
             const auto automatic = context.HandleLevelEndContact(object, false);

@@ -13,7 +13,8 @@ namespace Desperabis
     {
         if ((object.modelId < 30 && object.generalPurpose1 != 1 && object.generalPurpose1 != 6 && object.generalPurpose1 != 7) ||
             (object.generalPurpose1 != 0 && object.generalPurpose1 != 1 &&
-                object.generalPurpose1 != 6 && object.generalPurpose1 != 7 && object.generalPurpose1 != 8))
+                object.generalPurpose1 != 5 && object.generalPurpose1 != 6 && object.generalPurpose1 != 7 &&
+                object.generalPurpose1 != 8))
         {
             return { DispatchStatus::UnimplementedHandler, BehaviorType::BouncingObject, 0x1167 };
         }
@@ -101,6 +102,17 @@ namespace Desperabis
                     object.velocityX = WrapSignedWord(-SignWord(object.velocityX));
                     object.velocityZ = WrapSignedWord(-SignWord(object.velocityZ));
                     if (object.velocityY > 0) { object.velocityY = 0; }
+                }
+            }
+            else if (object.generalPurpose1 == 5)
+            {
+                object.winX = ArithmeticShiftRight(WrapSignedWord(object.winX * 3), 2);
+                object.winZ = ArithmeticShiftRight(WrapSignedWord(object.winZ * 3), 2);
+                if (object.blendWeightOrSpriteOpacity < 0)
+                {
+                    object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity +
+                        GetStepToward(object.blendWeightOrSpriteOpacity, 0,
+                            static_cast<std::int16_t>(context.Random(4) + 1)));
                 }
             }
             else if (object.generalPurpose1 == 7)
@@ -1578,21 +1590,6 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::KeyInBucket, 0x2484 };
     }
 
-    DispatchResult Function_Dragon(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Dragon, 0x24C3 };
-    }
-
-    DispatchResult Function_Behavior_61(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_61, 0x24F3 };
-    }
-
-    DispatchResult Function_DragonHead(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::DragonHead, 0x2506 };
-    }
-
     DispatchResult Function_DiggableGround(RawGameObject&, GameContext&)
     {
         return { DispatchStatus::UnimplementedHandler, BehaviorType::DiggableGround, 0x2516 };
@@ -1608,9 +1605,38 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Shark, 0x2540 };
     }
 
-    DispatchResult Function_Crab(RawGameObject&, GameContext&)
+    DispatchResult Function_Crab(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Crab, 0x256E };
+        for (int tick = 0; tick < context.tickCount; ++tick)
+        {
+            if (object.health != 1000) { continue; }
+            object.posY = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
+            if (context.Random(30) == 0) { object.itemValue = WrapSignedWord(context.Random(200) + 60); }
+            if (context.Random(50) == 0) { object.itemValue = 0; }
+            if (context.Random(20) == 0)
+            {
+                object.winY = WrapSignedWord(object.winY + context.RandomSigned(20)) & 511;
+            }
+            std::int16_t x, z;
+            GetClampedDirectionDisplacement(x, z, object.winY, object.itemValue);
+            const auto material = static_cast<std::uint8_t>(object.generalPurpose1);
+            const bool clearX = (context.GetCollisionMapPixelAtWorldXZ(
+                WrapSignedWord(object.posX + 30 * SignWord(x)), object.posZ) & 0x3f) == material;
+            const bool clearZ = (context.GetCollisionMapPixelAtWorldXZ(object.posX,
+                WrapSignedWord(object.posZ + 30 * SignWord(z))) & 0x3f) == material;
+            if (!clearX || !clearZ)
+            {
+                object.winY = WrapSignedWord(object.winY + 11 * SignWord(object.itemValue)) & 511;
+            }
+            else
+            {
+                AddFixedPoint8(object.posX, object.velocityX, x);
+                AddFixedPoint8(object.posZ, object.velocityZ, z);
+            }
+            object.blendWeightOrSpriteOpacity = WrapSignedWord(
+                object.blendWeightOrSpriteOpacity + object.itemValue / 20) % 200;
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::Crab, 0x256E };
     }
 
     DispatchResult Function_DecoFish(RawGameObject&, GameContext&)
@@ -2072,9 +2098,54 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::CeilingConcreteSlab, 0x388C };
     }
 
-    DispatchResult Function_BurnableOilPuddle(RawGameObject&, GameContext&)
+    DispatchResult Function_BurnableOilPuddle(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::BurnableOilPuddle, 0x38B5 };
+        for (int tick = 0; tick < context.tickCount; ++tick)
+        {
+            const auto display = static_cast<std::uint8_t>(object.displayType);
+            if (display > 40 && display < 115)
+            {
+                context.lightingCache.AddAtWorldXZ(object.posX, object.posZ,
+                    static_cast<std::int16_t>(context.Random(40)));
+                if (object.blendWeightOrSpriteOpacity < 100)
+                {
+                    object.blendWeightOrSpriteOpacity = WrapSignedWord(
+                        object.blendWeightOrSpriteOpacity + context.Random(2));
+                }
+                if (object.behaviorParameter < 7)
+                {
+                    object.behaviorParameter = static_cast<std::uint8_t>(
+                        5 - object.blendWeightOrSpriteOpacity / 20);
+                }
+                if (context.Random(5) < 2)
+                {
+                    object.displayType = static_cast<DisplayType>(display + 1);
+                }
+                // Native contact collection precedes the radius change.
+                const auto contacts = context.FindCollidingObjects(object);
+                if (object.collisionRadiusXZ < 31)
+                {
+                    object.collisionRadiusXZ = WrapSignedWord(
+                        (110 - object.blendWeightOrSpriteOpacity) / 4);
+                }
+                for (const auto slot : contacts)
+                {
+                    auto& target = context.worldObjects[slot];
+                    const auto targetDisplay = static_cast<std::uint8_t>(target.displayType);
+                    if (target.modelId > 29 && (targetDisplay < 20 || targetDisplay == 255) &&
+                        target.collisionType != CollisionType::Weapon)
+                    {
+                        context.DamageObject(target, 200);
+                        target.displayType = DisplayType::LastVectorBurning;
+                    }
+                }
+            }
+            else if (object.displayType == DisplayType::VectorBrightness2)
+            {
+                context.SetObjectHealth(object, 0);
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::BurnableOilPuddle, 0x38B5 };
     }
 
     DispatchResult Function_CeilingConcreteSlabStake(RawGameObject&, GameContext&)
@@ -2393,9 +2464,14 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::TrackFireAnimation, 0x4F34 };
     }
 
-    DispatchResult Function_Behavior_204(RawGameObject&, GameContext&)
+    DispatchResult Function_FireballImpact(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_204, 0x4F47 };
+        object.collisionMask = 0;
+        object.spriteScale = static_cast<std::uint8_t>(object.spriteScale + 15 * context.tickCount);
+        object.posY = WrapSignedWord(object.posY + 2 * context.tickCount);
+        object.displayType = DisplayType::SpriteTransparent;
+        object.blendWeightOrSpriteOpacity = object.health;
+        return { DispatchStatus::ExecutedCase, BehaviorType::FireballImpact, 0x4F47 };
     }
 
     DispatchResult Function_TriggerObject(RawGameObject&, GameContext&)

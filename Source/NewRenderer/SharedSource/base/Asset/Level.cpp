@@ -1086,8 +1086,7 @@ bool Level::CreateObjectRenderInstance(Scene& scene, std::shared_ptr<LevelGameOb
         bool flipped = prop.FlipSpriteU();
 
         // Native sprite bank 6 is populated by TrackFireAnimation, even for ordinary sprite display modes.
-        if (modelId == 6 || display == GamePlay::DisplayType::SpriteTorchlight ||
-            display == GamePlay::DisplayType::SpriteTorchlightTransparent)
+        if (modelId == 6)
         {
             textureSlot = prop.GetModelAnim() + 13; // it already subtracts 1, we need to add 12 to rawByte[1]
         }
@@ -1189,9 +1188,7 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
         float scale = prop.GetScale();
         bool flipped = prop.FlipSpriteU();
 
-        if (spriteOverride == nullptr &&
-            (modelId == 6 || display == GamePlay::DisplayType::SpriteTorchlight ||
-                display == GamePlay::DisplayType::SpriteTorchlightTransparent))
+        if (spriteOverride == nullptr && modelId == 6)
         {
             textureSlot = prop.GetModelAnim() + 13; // it already subtracts 1, we need to add 12 to rawByte[1]
         }
@@ -1238,6 +1235,9 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
         { 
             m_levelInfo.AssignLevelTextures(*inst);
         }
+    }
+    if (!assignLevelTextures || oldRenderable != inst->GetRenderable())
+    {
         inst->ComputeTransparencyMask();
     }
     // TODO: fire animations...

@@ -343,6 +343,7 @@ namespace Desperabis
         SetMenuPage(MenuPage::Gameplay);
         applicationPageChanged = true;
         applicationTickAccumulator = 0;
+        UpdateModelAttachments();
         for (std::size_t slot = 1; slot < worldObjects.size(); ++slot)
         {
             NotifyObjectCreated(worldObjects[slot]);
@@ -470,6 +471,44 @@ namespace Desperabis
                     if (candidate.collisionType == CollisionType::ClimbableLadder && candidate.health == 1000)
                     {
                         terrainSlopeEnabled = false;
+                    }
+                    if (!DEBUG_noPlayerCollision &&
+                        (candidate.collisionType == CollisionType::PushPlayer ||
+                            candidate.collisionType == CollisionType::TriggerDebris))
+                    {
+                        if (candidate.behaviorParameter > 1)
+                        {
+                            ApplyPlayerLifeDelta(-29491 * static_cast<std::int32_t>(candidate.behaviorParameter));
+                        }
+                        const auto dx = WrapSignedWord(player.posX - candidate.posX);
+                        const auto dz = WrapSignedWord(player.posZ - candidate.posZ);
+                        const auto distance = std::max(1.0, std::hypot(dx, dz));
+                        const auto separation = WrapSignedWord(radiusXZ + 5);
+                        if (distance < separation)
+                        {
+                            auto pushedX = WrapSignedWord(candidate.posX + static_cast<std::int32_t>(
+                                std::nearbyint(dx * separation / distance)));
+                            auto pushedZ = WrapSignedWord(candidate.posZ + static_cast<std::int32_t>(
+                                std::nearbyint(dz * separation / distance)));
+                            bool clear = false;
+                            // Bound the native wall-correction loop, as for ordinary movement.
+                            for (int attempt = 0; attempt < 16; ++attempt)
+                            {
+                                std::int16_t correctionX = 0, correctionZ = 0;
+                                std::uint16_t center = 0;
+                                QueryCollisionMapNeighborhood(pushedX, pushedZ, 2,
+                                    correctionX, correctionZ, center, 0x18);
+                                if (correctionX == 0 && correctionZ == 0)
+                                {
+                                    clear = center == 0;
+                                    break;
+                                }
+                                pushedX = WrapSignedWord(pushedX + correctionX);
+                                pushedZ = WrapSignedWord(pushedZ + correctionZ);
+                            }
+                            if (clear) { player.posX = pushedX; player.posZ = pushedZ; }
+                            else { ++result.blockedTicks; }
+                        }
                     }
                     if (candidate.collisionType != CollisionType::WalkablePlanks ||
                         candidate.blendWeightOrSpriteOpacity != 0 || eyeY <= candidate.posY) { continue; }
@@ -667,6 +706,7 @@ namespace Desperabis
         lightingCache.Reset(soundListenerX, soundListenerZ, lightingCache.activeRadius);
         field_DC34 = 0;
         const auto loadIdBeforeInteraction = nextLoadRequestId;
+        UpdateModelAttachments();
         const auto interaction = UpdatePlayerInteraction(*this, input);
         if (runtimeState != GameRuntimeState::Ready || menuPage != MenuPage::Gameplay ||
             nextLoadRequestId != loadIdBeforeInteraction)
@@ -740,6 +780,17 @@ namespace Desperabis
             }
             data.level->textureFileIndices[slot] = file;
         }
+        if (info[recordOffset + 2] > 15) { throw std::invalid_argument("LEVELS.INF has too many model slots."); }
+        for (std::size_t i = 0; i < info[recordOffset + 2]; ++i)
+        {
+            const auto file = info[recordOffset + 64 + 2 * i];
+            const auto slot = info[recordOffset + 65 + 2 * i];
+            if (slot >= data.level->modelFileIndices.size())
+            {
+                throw std::invalid_argument("LEVELS.INF has an invalid model slot.");
+            }
+            data.level->modelFileIndices[slot] = file;
+        }
     }
 
     void GameContext::LoadLevelObjects(std::int16_t levelNumber, LevelLoadData& data)
@@ -764,6 +815,23 @@ namespace Desperabis
         }
         if (data.level)
         {
+            for (const auto& object : data.objects)
+            {
+                if (object.health <= 0 || (object.behavior != BehaviorType::Dragon &&
+                    object.behavior != BehaviorType::DragonDying)) { continue; }
+                const int slot = object.modelId - 30;
+                if (slot < 0 || slot >= static_cast<int>(data.level->modelAnchors.size()) ||
+                    data.level->modelFileIndices[slot] == 0)
+                {
+                    throw std::invalid_argument("Attached model references an unavailable model slot.");
+                }
+                if (data.level->modelAnchors[slot]) { continue; }
+                const auto model = LoadFile("VEKT\\VEKT" +
+                    std::to_string(data.level->modelFileIndices[slot]) + ".3DA");
+                auto geometry = std::make_shared<ModelAnchorGeometry>();
+                geometry->Load(model.data(), model.size());
+                data.level->modelAnchors[slot] = std::move(geometry);
+            }
             for (const auto& object : data.objects)
             {
                 if (object.health <= 0 || (object.behavior != BehaviorType::TutorialTrigger &&
@@ -1138,6 +1206,17 @@ namespace Desperabis
         ApplyPlayerLifeDelta(-29491 * static_cast<std::int32_t>(object.behaviorParameter));
         playerHitEffectTicks = 8;
         return { InteractionStatus::Applied };
+    }
+
+    InteractionResult GameContext::HandleCrabContact(RawGameObject& object)
+    {
+        if (!behaviorDispatchEnabled) { return { InteractionStatus::NoEffect }; }
+        if (AbsoluteWord(playerForwardSpeed) > 1)
+        {
+            DamageObject(object, 1);
+            return { InteractionStatus::Applied };
+        }
+        return HandleDamageObjectContact(object);
     }
 
     void GameContext::ApplyPlayerLifeDelta(std::int32_t delta)
@@ -1600,9 +1679,9 @@ namespace Desperabis
             else if (amount > 1) { play(11, volume, 1); }
             return;
         case CollisionType::Dragon:
-            if (object.groupIndexOrLock < 1 && object.behavior != BehaviorType::Behavior_61)
+            if (object.groupIndexOrLock < 1 && object.behavior != BehaviorType::DragonDying)
             {
-                object.doorLockOrGroupBitmask = 0; object.behavior = BehaviorType::Behavior_61;
+                object.doorLockOrGroupBitmask = 0; object.behavior = BehaviorType::DragonDying;
                 object.blendWeightOrSpriteOpacity = 0; object.animFrame = 1; object.modelFrame2 = 2;
                 object.modelAnim = 2; object.generalPurpose2 = 0; object.itemValue = 4; object.generalPurpose1 = 250;
             }
@@ -2930,6 +3009,21 @@ namespace Desperabis
     bool GameContext::OverlapsPlayer(const RawGameObject& source) const
     {
         return objectCollisionsEnabled && ObjectsOverlap(source, worldObjects[1]);
+    }
+
+    std::vector<std::uint16_t> GameContext::FindCollidingObjects(const RawGameObject& source) const
+    {
+        std::vector<std::uint16_t> contacts;
+        if (!field_D500) { return contacts; }
+        for (std::uint16_t slot = 2; slot <= 165; ++slot)
+        {
+            const auto& candidate = worldObjects[slot];
+            if (&candidate != &source && candidate.health > 0 && ObjectsOverlap(source, candidate))
+            {
+                contacts.push_back(slot);
+            }
+        }
+        return contacts;
     }
 
     std::uint16_t GameContext::FindPlayerCollision() const

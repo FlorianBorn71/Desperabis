@@ -25,6 +25,8 @@ add_library(behavior-recovery STATIC
     Scaffold/GameMath.cpp
     Scaffold/BehaviorHandlers.cpp
     Scaffold/EnemyBehaviors.cpp
+    Scaffold/DragonBehaviors.cpp
+    Scaffold/ModelAnchors.cpp
     Scaffold/WeatherBehaviors.cpp
     Scaffold/WeaponPresentation.cpp
     Scaffold/ObjectInteraction.cpp
@@ -45,6 +47,14 @@ foreach(target Continuous Experimental Nightly NightlyMemoryCheck)
     endif()
 endforeach()
 if(BUILD_TESTING)
+    add_executable(dragon-tests Scaffold/DragonTests.cpp)
+    target_link_libraries(dragon-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME level-fifteen-dragon COMMAND dragon-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original")
+    add_executable(third-part-behavior-tests Scaffold/ThirdPartBehaviorTests.cpp)
+    target_link_libraries(third-part-behavior-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME third-part-colliders-crabs-oil COMMAND third-part-behavior-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original/LEVEL")
     add_executable(underwater-tests Scaffold/UnderwaterTests.cpp)
     target_link_libraries(underwater-tests PRIVATE Desperabis::GameCore)
     add_test(NAME player-underwater COMMAND underwater-tests)

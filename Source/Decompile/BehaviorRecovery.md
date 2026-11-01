@@ -6,6 +6,60 @@ each recovered case an editable, named home without hiding missing behavior.
 
 ## Game context and application flow
 
+### Third-part push contacts, crabs and oil
+
+[Dispatcher evidence](crab-oil-dispatch-evidence.txt) and
+[helper evidence](crab-oil-helper-evidence.txt) recover crab behavior 66 at
+`0000:256E -> 10AC:3BBD`, oil behavior 125 at `0000:38B5 -> 10AC:9DE1`,
+and player radial separation at `0000:D2D9..D4F1`.
+[Support evidence](crab-oil-support-evidence.txt) includes crab 8.8 movement
+and oil's all-contact collector. These are now implemented in
+[BehaviorHandlers.cpp](Scaffold/BehaviorHandlers.cpp),
+[GameContext.cpp](Scaffold/GameContext.cpp) and
+[PlayerInteraction.cpp](Scaffold/PlayerInteraction.cpp).
+
+- PushPlayer (collision 9) and TriggerDebris (collision 70) share radial
+  separation during controller steps: radius is
+  `((3*(playerRadius+objectRadius)) arithmetic-shifted right 1)+5`.
+  Only expanded live, mask-compatible contacts enter this branch.
+  Normalize the X/Z offset and round scaled coordinates to nearest/even,
+  matching the recovered x87 conversion; coincident centers use distance 1
+  without inventing a direction. Resolve walls with step 2/mask `18h`.
+  As with ordinary movement, bound native unbounded wall retries and reject
+  unresolved positions. Damage factors above 1 apply `-29491*factor`;
+  residual collision-9 contacts with any nonzero factor deplete player life.
+  Host damage suppression/cheats remain authoritative. Level 10's two
+  authored push colliders have factor 0.
+- Crabs run only at health exactly 1000. Each tick snaps Y to terrain,
+  independently randomizes speed (1/30, range 60..259), stops (1/50), and
+  perturbs yaw (1/20, signed radius 20). Clamped-sine displacement is 8.8
+  fixed point, with unsigned X/Z fractional remainders in velocityX/Z.
+  Probe 30 units along each movement sign: `(mapPixel & 63)` must equal
+  the low byte of generalPurpose1. Otherwise turn `11*sign(speed)` without
+  moving. Animation advances by signed `speed/20`, modulo 200.
+  Enabled contacts kill via DamageObject(1) when absolute forward speed
+  exceeds 1; slower contacts use the damage factor and hit feedback.
+  Level 12's three original crabs retain mask 0/material 1.
+- Oil's helper runs only for display 41..114, after the existing shared
+  burning prefix. Add `Random(40)` corner light, increment age toward 100
+  by `Random(2)`, set damage to `5-age/20` unless an authored factor is >=7,
+  and warm the display by one when `Random(5)<2`.
+  Collect overlapping objects **before** shrinking radius below 31 to
+  `(110-age)/4`. The native collector uses DS:D500, includes slot 165,
+  and does not use the separate object-collision gate.
+  Damage overlapping vector objects by 200 and ignite them at display 120
+  if their display is below 20 or invisible, excluding Weapon collision 21.
+  Burnout display 22 destroys oil through SetObjectHealth.
+  Existing fireball/activation ignition, shared burning sound and player
+  damage remain shared paths. The native oil helper emits light, not
+  additional flame-particle objects.
+
+[ThirdPartBehaviorTests.cpp](Scaffold/ThirdPartBehaviorTests.cpp) checks
+radial/camera/wall/cheat behavior, seeded byte-exact crab updates, contact
+responses, oil thresholds/spreading/burnout and every corresponding original
+level-10/12/13 object. PictureMap interactions and renderer updates for
+baked wall removals remain deferred.
+
 [GameContext.h](Scaffold/GameContext.h) now owns the `GameContext` class,
 formerly the `GameState` struct embedded in the dispatch header. Existing
 context-owned operations remain member functions: sound, random numbers,
@@ -4171,6 +4225,155 @@ arithmetic oracle checks every signed X and every signed Z at four strides,
 including coordinate subtraction, stride, and final address wrapping with
 a nonzero original pointer offset normalized to header-relative storage.
 These are host tests, not DOS runtime validation.
+
+## Level 15 dragon boss
+
+Implemented in [DragonBehaviors.cpp](Scaffold/DragonBehaviors.cpp) and
+[ModelAnchors.cpp](Scaffold/ModelAnchors.cpp). The numeric names `Behavior_61`
+and `Behavior_204` were renamed, with user approval, to `DragonDying` and
+`FireballImpact`; their IDs remain unchanged.
+
+### Original records and attachment
+
+Level 15's `OBJPOS15.DAT` file record 11 becomes native slot 12:
+`Dragon` (behavior/collision 60), vector model slot 6 (`modelId=36`), strength
+6630, health 1000, first animation bank. File record 4 becomes slot 5:
+`DragonHead` (62), sprite bank 5, scale 32, parent slot 12 in word 46.
+`LEVELS.INF` uses 124-byte records: model mapping pairs start at offset 64.
+Slot 6 resolves `VEKT19.3DA`, slot 9 resolves the dropped-key `VEKT42.3DA`,
+and sprite bank 5 resolves `ANIM5.AN2` (six banks, three frames).
+The texture-file map for `GRAFIK\\TUR*.256` is a different resource table.
+
+`VEKT19` has six animation banks and four frames. Both live/death banks
+contain a type-9 billboard primitive referencing vertex 13 (one-based).
+The live muzzle is a type-1 point with color 254, referencing vertex 37;
+native `1E48:83B0` records this point instead of drawing it.
+The body-fragment banks do not carry the head billboard.
+
+The native renderer positions/projects the linked sprite at the transformed
+head vertex (`1E48:8133`) and writes a camera-relative muzzle scratch point.
+The head behavior (`10AC:5964`) selects:
+
+```text
+modelAnim = (((-playerHeading - parent.winY + 43) & 511) / 86) + 1
+animFrame = parent.spriteScale
+```
+
+The result is six direction banks, with mouth frame 1 or 2, and updates even
+when the behavior tick count is zero. The parent's scale byte is a mouth
+selector, not a vector-model scale; the head keeps its own scale 32/64.
+
+GameCore reads checked original 3DA vertices/markers into level-owned geometry,
+samples the current frame and same-bank `modelFrame2` target, folds weights
+above 100 back toward zero (above 200 uses zero), and applies the renderer's
+coordinate conversion and X-pitch/Z-roll/Y-yaw order. Raw model coordinates
+have ten units per native world unit. World positions round to signed words;
+WARP compares head and muzzle samples with the actual renderer transform to
+within one native world unit.
+Attachments refresh on level installation, before player contact, and around
+object dispatch. A head stays present throughout death, then deactivates via
+`SetObjectHealth` when its parent becomes the key.
+
+**Intentional modern boundary:** attachment/muzzle positions are derived from
+the current model pose in the core, not stale renderer-owned camera scratch.
+Firing therefore no longer depends on whether a previous frame rendered the
+dragon. This is renderer-independent gameplay, not a bit-exact recreation of
+the DOS projection/visibility dependency. Only dragon head linkage is currently
+recovered; this does not claim generic support for every type-9 asset.
+
+### Live movement and attacks
+
+The dispatcher (`0000:24C3`) calls `10AC:5697(slot,50)` once per behavior tick,
+only doing work at health 1000. It samples the existing player sight line
+(`10AC:5556/559E`), refreshing the vertical-velocity word as a 40-tick alert
+timer. Every tick consumes `Random(40)`; zero arms attack phase 50 if idle.
+Steering toward the listener advances the heading by 3 below distance 200,
+otherwise 2, with native angle normalization. The alert decrements before
+walking; alignment can also arm phase 50.
+Native's alignment comparison can read an uninitialized target-angle local
+when not alerted. The core computes that target deterministically rather than
+reproducing undefined stack contents.
+
+`10AC:5334` sets Y to terrain floor +50 and takes clamped heading steps of
+speed 3. Zero velocity components fall back to the sign toward the listener.
+Only frames 2 and 4 move, independently checking X then Z room height >150.
+Animation advances by 6 per tick, minus 2 per blocked component; strict
+blend >100 wraps to the next of four frames and triggers footstep sound 23
+on frames 2/4. Ordinary sine-table high-word products produce the small roll
+and heading bob; the clamped table is used only for displacement.
+
+Positive attack phases >23 open the mouth; negative roar phases <-40 also
+open it. Below distance 200, phases 50..24 emit breath every tick from the
+muzzle: factory variant 4, speed 4, sound 22, downward velocity -2,
+damage 7, radius 25, initial scale 3, lifetime `phase/3+7`.
+At distance >=200, phase 24 emits variant 5 three times, headings
+`winY-10`, `winY`, `winY+10`, speed 8, sound 9, velocity Y -1,
+damage 50, radius 20, scale 40, health 500.
+Both choose `ANIM5` bank `Random(6)+1`, frame 3.
+Attack phases step toward zero; live zero-tick dispatch consumes no RNG.
+
+Flying-arrow variants 4/5/6 are implemented alongside existing spider slime:
+breath expands and fades, fireballs cycle banks and become a rising/expanding
+ten-tick `FireballImpact` on terrain/wall contact, and death clouds expand
+while fading at `(health>>2)+1`, damaging colliding mask-2 objects by 200.
+Common player contact applies `-29491 * damage` to signed 16.16 `playerLife`
+through `ApplyPlayerLifeDelta`, sets the hit effect and clears the damage byte
+so a lingering particle does not repeat its player hit.
+Fireball terrain impact bypasses common contact for that substep; the native
+flying-arrow dispatcher still finishes its remaining helper substeps before
+the next object dispatch selects `FireballImpact`.
+The shared factory clamps projectile Y to terrain floor +8.
+
+The renderer must select a reserved flame texture only for model/sprite bank 6;
+`SpriteTorchlight` alone does not make bank-5 fireballs into `FACKEL` sprites.
+Material changes from fireball to transparent impact must refresh the
+instance's transparency mask even when its sprite mesh is unchanged.
+
+### Damage, death, and key
+
+The existing weapon collider halves damage against collision 60. Lethal
+strength enters `DragonDying` (61), bank 2, frames 1->2, blend 0,
+death counter 250, terminal frame 4, and disables the body's group link.
+Surviving hits alert it for 100 ticks; strength-thousand crossings can trigger
+the existing -130 roar phase and sound 42.
+
+`10AC:59B8` runs once with the tick count, adding `6*ticks` to the blend and
+subtracting ticks from the counter. It advances/clamps the death animation
+to frame 4. At counter <1 it plays sounds 32/25 and creates two stationary
+corpse halves (bank 3) and twenty randomized shards (banks 4..6), using the
+free-slot-only fragment factory. Shard bouncing subtype 5 damps pitch/roll
+by signed `3/4` and brings the negative morph weight toward zero by
+`Random(4)+1`. Twenty factory-variant-6 clouds follow, preserving the native
+right-to-left argument RNG order (speed, angle, Z, Y, X, then bank/velocity/
+scale/lifetime).
+The original slot is replaced with the pickable unlit model-39 key:
+health 1000, behavior None, bank/frame 1, pickup bitmap selector 4, item value 1,
+radius 13/12, scale byte 25, at terrain floor.
+The core clears the obsolete morph target instead of retaining death frame 4.
+Factories snapshot their source before fallback slot 165 can overwrite it,
+and all world lifetime transitions use the existing lifecycle helpers.
+
+`level-fifteen-dragon` tests real assets, linkage/direction boundaries,
+zero/multitick attacks, the distance-200 boundary and volley RNG,
+frame/room movement gates, player damage, allocator fallback, death timing,
+fragment/cloud counts and RNG, key replacement, head removal and pickup into
+inventory with the original bitmap selector and lock ID.
+WARP checks actual body/head pixels for all twelve direction/mouth combinations,
+both live/death pose matrices, muzzle origins, and fireball/impact texture and
+alpha-pass transitions. These are host regressions, not DOS runtime capture.
+
+The consolidated [native evidence](dragon-native-evidence.txt) includes:
+
+| Module addresses | Recovered contract |
+| --- | --- |
+| `0000:24C3`, `1E1A`, `4F47` | Body/head/death dispatch, projectile substeps, impact flash |
+| `10AC:5334..5BCC` | Walking, sight sampling, steering, muzzle emission, head phase, death/key |
+| `10AC:4106..4457`, `4780..4B4A`, `4D14..4D7C` | Shared factory setup, breath/fireball/cloud variants, floor clamp and player contact |
+| `10AC:091C`, `0A64..0C1B`, `2CE9..2D4A` | Free-slot factory, corpse halves/shards and subtype-5 morphing |
+| `1E48:807C`, `8133`, `83B0` | Model-linked billboard projection and invisible muzzle marker |
+
+Exports stop before the data following `10AC:5BCC`; earlier scratch exports
+that linearly decoded those bytes as instructions were removed.
 
 ## Reproduction and safe refinement
 

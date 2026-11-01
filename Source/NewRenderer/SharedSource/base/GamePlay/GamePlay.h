@@ -101,6 +101,7 @@ namespace GamePlay
         MetalPole = 57, // the one to open door in submarine level 32. Also used for the torchlight that you can carry.
         KeyInBucket = 58, // level 33
         Dragon = 60, // only level 15?
+        DragonDying = 61,
         DragonHead = 62, // only level 15?
         DiggableGround = 63,
         Buried = 64,
@@ -191,6 +192,7 @@ namespace GamePlay
         AmbientSoundPosition = 190, // Used in various places for occasional 3d sound
         LavaSmoke = 200, // Probably turns off itself when flooded
         TrackFireAnimation = 202,
+        FireballImpact = 204,
         TriggerObject = 205, // inside Cathedral
         WitchHead = 207,
         BuyItem = 208,

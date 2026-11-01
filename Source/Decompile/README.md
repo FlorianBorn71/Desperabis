@@ -35,6 +35,11 @@ For the first explained case and shared collision-map pointer, see
   controls, and original-object-table cross-checks for the discovery report.
 - `original-executable.json`: generated identity and header baseline for the
   original executable. No timestamps or machine-specific paths.
+- `crab-oil-dispatch-evidence.txt`, `crab-oil-helper-evidence.txt`,
+  `crab-oil-support-evidence.txt`: native push-player radial separation,
+  crab wandering/material checks and burnable-oil aging, light and spreading.
+  `Scaffold/ThirdPartBehaviorTests.cpp` covers these mechanics and their
+  original third-part level objects; maps and baked-wall rendering remain deferred.
 - `initial-import.txt`: generated memory map and initial instruction report.
 - `high-level-evidence.txt`: focused instruction evidence for the control-flow map.
 - `ui-evidence.txt`: UI page dispatch, F2 inventory navigation, shared input/text
@@ -253,6 +258,20 @@ source separately if you want to rebuild the bridge; a working emulator
 integration is not currently reproduced by this repository.
 
 ### Host-driven renderer integration
+
+Level 15's dragon is implemented in
+[DragonBehaviors.cpp](Scaffold/DragonBehaviors.cpp), including pursuit, animated
+walking, six-direction head/mouth frames, close breath, distant three-fireball
+volleys, death fragments/clouds and the dropped key. `LoadLevelGeometry` resolves
+the `LEVELS.INF` model-slot mapping; `LoadLevelObjects` loads the relevant original
+3DA anchor geometry. GameCore positions the existing linked `DragonHead` world
+record before contact processing and after object updates. The host just
+synchronizes that sprite normally: no dragon-specific renderable fields or
+host-owned attachment callbacks are required. Invisible point-color-254 markers
+must not be drawn, and bank-5 fireballs resolve ordinary `ANIM5` frames even in
+torchlight display mode; only sprite bank 6 uses reserved `FACKEL` texture slots.
+See [dragon recovery](BehaviorRecovery.md#level-15-dragon-boss) and the
+`level-fifteen-dragon` core/WARP regressions.
 
 The renderer solution now contains the independent **Desperabis-GameCore** static
 library project at
