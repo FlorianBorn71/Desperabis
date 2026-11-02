@@ -803,12 +803,13 @@ void Level::CreateWallGeometry()
         mutableTiles[row * m_cellArray.m_sizeX + column] = true;
     }
 
-    for (int y = 0; y < m_cellArray.m_sizeZ - 1; y++)
+    for (int y = 0; y < m_cellArray.m_sizeZ; y++)
     {
-        for (int x = 0; x < m_cellArray.m_sizeX - 1; x++)
+        for (int x = 0; x < m_cellArray.m_sizeX; x++)
         {
             int i = y * m_cellArray.m_sizeX + x;
             const GridCell& cell(m_cellArray.m_cell[i]);
+            const bool hasFullCell = x + 1 < m_cellArray.m_sizeX && y + 1 < m_cellArray.m_sizeZ;
             if (perIslandConversion[cell.m_visibilityIsland] == nullptr)
             {
                 perIslandConversion[cell.m_visibilityIsland] = std::make_unique<IslandWallConversion>(this);
@@ -829,37 +830,47 @@ void Level::CreateWallGeometry()
                 if (texIndex > 0)
                 {
                     Color4 col = {255, 255, 255, 0};
+                    const auto addWall = [&](int x1, int y1, int x2, int y2, bool flipFace, bool flipU)
+                    {
+                        // Edge tiles can contribute a wall even when they have no complete floor quad.
+                        if (m_cellArray.IsInside(x1, y1) && m_cellArray.IsInside(x2, y2))
+                        {
+                            AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices,
+                                indices, x1, y1, x2, y2, flipFace, col, flipU);
+                        }
+                    };
                     switch (wallIndex)
                     {
                     case 0:
-                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x, y + 1, x, y, flippedFace, col, true); // UV correct
+                        addWall(x, y + 1, x, y, flippedFace, true); // UV correct
                         break;
                     case 1:
-                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x, y, x + 1, y, flippedFace, col, true);// UV correct
+                        addWall(x, y, x + 1, y, flippedFace, true);// UV correct
                         break;
                     case 2:
-                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x + 1, y, x + 1, y + 1, flippedFace, col, true);// UV correct
+                        addWall(x + 1, y, x + 1, y + 1, flippedFace, true);// UV correct
                         break;
                     case 3:
-                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x + 1, y + 1, x, y + 1, flippedFace, col, true);// UV correct
+                        addWall(x + 1, y + 1, x, y + 1, flippedFace, true);// UV correct
                         break;
                     case 4:
-                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x, y, x + 1, y, false, col, false);
-                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x + 1, y + 1, x, y + 1, false, col, false);
+                        addWall(x, y, x + 1, y, false, false);
+                        addWall(x + 1, y + 1, x, y + 1, false, false);
                         break;
                     case 5:
-                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x, y + 1, x, y, false, col, false);
-                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x + 1, y, x + 1, y + 1, false, col, false);
+                        addWall(x, y + 1, x, y, false, false);
+                        addWall(x + 1, y, x + 1, y + 1, false, false);
                         break;
                     case 6:
-                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x + 1, y, x, y, false, col, false);
-                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x, y + 1, x + 1, y + 1, false, col, false);
-                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x, y, x, y + 1, false, col, false);
-                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x + 1, y + 1, x + 1, y, false, col, false);
+                        addWall(x + 1, y, x, y, false, false);
+                        addWall(x, y + 1, x + 1, y + 1, false, false);
+                        addWall(x, y, x, y + 1, false, false);
+                        addWall(x + 1, y + 1, x + 1, y, false, false);
                         break;
                     case 7:
                         // marks player start position
                         {
+                            if (!hasFullCell) { break; }
                             Vector3 campos = m_cellArray.GetCenterPos(x, y, HeightLevel::Floor);
                             campos.y += 50.f * DespToFloat;
                             m_playerStartPos.Set(campos.x, campos.y, campos.z); 
@@ -888,6 +899,8 @@ void Level::CreateWallGeometry()
                 }
 
             } // add walls
+
+            if (!hasFullCell) { continue; }
 
             if (addFloor)
             {

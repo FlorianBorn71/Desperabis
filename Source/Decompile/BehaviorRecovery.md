@@ -190,6 +190,26 @@ pixels against a fresh build of the saved wall/object state. It also checks
 unchanged static geometry, duplicate targets, all seven wall shapes, padded
 row strides and islands containing only mutable wall geometry.
 
+### Boundary wall presentation
+
+The renderer processes wall bytes on every row and column, not just tiles
+with complete floor quads. Original tutorial `FELD50.256` is 36x31: byte 49
+at zero-based column 9, row 30 defines a shape-1 wall with reversed facing,
+using the two valid vertices (9,30) and (10,30). The former `size-1` loops
+silently omitted that wall.
+
+Each constituent wall face is emitted when both endpoint heights exist;
+this also preserves the valid faces of compound shapes on the final row
+or column. Floor/ceiling/water quads, static cell models and renderer-only
+spawn-center selection still require all four cell corners. No new height
+samples are fabricated beyond the loaded grid, and mutable boundary faces
+use the existing independently hideable wall ranges.
+
+WARP tests isolate the original tutorial wall and check its exact bounds,
+two triangles, visible pixel coverage and one-sided culling. Synthetic
+fixtures cover all seven wall shapes, both facing-bit settings, every edge
+and corner, and unchanged floor/ceiling extents.
+
 [GameContext.h](Scaffold/GameContext.h) now owns the `GameContext` class,
 formerly the `GameState` struct embedded in the dispatch header. Existing
 context-owned operations remain member functions: sound, random numbers,

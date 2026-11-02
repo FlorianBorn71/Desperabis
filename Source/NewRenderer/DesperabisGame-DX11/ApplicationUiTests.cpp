@@ -858,6 +858,13 @@ namespace
             const auto& Walls() const { return m_wallGeometry; }
             const auto& MutableWalls() const { return m_mutableWalls; }
             const Scene& WallScene() const { return m_scene; }
+            void BuildOriginal(const LevelInfo& info, const std::vector<byte>& geometry)
+            {
+                InitLevelInfo(info);
+                ReadLevelData(geometry.data(), static_cast<int>(geometry.size()), true);
+                CreateWallGeometry();
+                for (const auto& instance : m_wallGeometry) { m_scene.AddRenderableInstance(instance); }
+            }
         private:
             FlameScene m_scene;
         };
@@ -945,15 +952,15 @@ namespace
         const Vector center((20 - Level::tileCenterX) * 100.f * DespToFloat,
             (geometry.roomHeights[8][19] - 2 * geometry.floorHeights[8][19]) * DespToFloat,
             (8.5f - Level::tileCenterY) * 100.f * DespToFloat);
-        const auto render = [&](const WallLevel& drawn, int direction)
+        const auto render = [&](const WallLevel& drawn, int direction, const Vector& viewCenter)
         {
             Camera camera;
             Matrix4 projection, transform;
             projection.CreateOrthographic(150.f * DespToFloat, 100.f * DespToFloat, 0.01f, 30.f);
             const float yaw = direction * static_cast<float>(Math::Pi * 0.5);
             const float distance = 40.f * DespToFloat;
-            transform.Create(Vector(center.GetX() + std::sin(yaw) * distance, center.GetY(),
-                center.GetZ() + std::cos(yaw) * distance), Vector(yaw, 0, 0));
+            transform.Create(Vector(viewCenter.GetX() + std::sin(yaw) * distance, viewCenter.GetY(),
+                viewCenter.GetZ() + std::cos(yaw) * distance), Vector(yaw, 0, 0));
             camera.SetProjectionMatrix(projection);
             camera.SetCameraTransformMatrix(transform);
             VisibilityResult visible;
@@ -970,7 +977,7 @@ namespace
             return target.Pixels(device, context);
         };
         std::array<std::vector<std::uint32_t>, 4> before;
-        for (int direction = 0; direction < 4; ++direction) { before[direction] = render(level, direction); }
+        for (int direction = 0; direction < 4; ++direction) { before[direction] = render(level, direction, center); }
         core.DamageObject(core.worldObjects[49], 0);
         Check(synchronize() == 1 && !level.MutableWalls()[0].instance->GetVisible() &&
             level.MutableWalls()[1].instance->GetVisible() && synchronize() == 0,
@@ -1004,8 +1011,8 @@ namespace
         int changedPixels = 0;
         for (int direction = 0; direction < 4; ++direction)
         {
-            const auto after = render(level, direction);
-            const auto saved = render(restored, direction);
+            const auto after = render(level, direction, center);
+            const auto saved = render(restored, direction, center);
             Check(after == saved, "A fresh saved-geometry build must render identically to runtime wall removal.");
             for (std::size_t i = 0; i < after.size(); ++i) { changedPixels += before[direction][i] != after[i]; }
         }
@@ -1039,6 +1046,93 @@ namespace
                 onlyWall.Walls()[0]->GetVisible(),
                 "Restoring the original tile must restore its prebuilt range without rebuilding.");
         }
+        const auto tutorial = read(L"LEVEL\\FELD50.256");
+        Desperabis::Level tutorialGeometry;
+        tutorialGeometry.LoadGeometry(tutorial.data(), tutorial.size());
+        Check(tutorialGeometry.geometryWidth == 36 && tutorialGeometry.geometryHeight == 31 &&
+            tutorialGeometry.wallTextures[30][9] == 49,
+            "The original tutorial must retain its inward-facing wall on the final row.");
+        auto boundaryWall = tutorial;
+        constexpr int tutorialPlaneSize = 36 * 31;
+        for (const int plane : { 0, 1, 2, 5, 6 })
+        {
+            std::fill_n(boundaryWall.begin() + 4 + plane * tutorialPlaneSize, tutorialPlaneSize, byte(0));
+        }
+        boundaryWall[4 + 30 * 36 + 9] = tutorialGeometry.wallTextures[30][9];
+        WallLevel tutorialWall;
+        tutorialWall.BuildOriginal(assets->GetLevelInfo(), boundaryWall);
+        Check(tutorialWall.Walls().size() == 1 &&
+            tutorialWall.Walls()[0]->GetRenderable()->m_drawCalls[0].m_primitiveCount == 2,
+            "The tutorial's last-row inward-facing wall must generate its complete quad.");
+        const auto& tutorialBounds = tutorialWall.Walls()[0]->GetGlobalBounds().m_box;
+        const auto& tutorialGrid = tutorialWall.GetCellArray();
+        Check(std::abs(tutorialBounds.m_min.GetX() - tutorialGrid.GridPosX(9)) < 0.0001f &&
+            std::abs(tutorialBounds.m_max.GetX() - tutorialGrid.GridPosX(10)) < 0.0001f &&
+            std::abs(tutorialBounds.m_min.GetZ() - tutorialGrid.GridPosY(30)) < 0.0001f &&
+            std::abs(tutorialBounds.m_max.GetZ() - tutorialGrid.GridPosY(30)) < 0.0001f,
+            "The restored tutorial wall must lie on its original final-row segment, not a shifted or duplicated edge.");
+        const Vector tutorialCenter((tutorialBounds.m_min.GetX() + tutorialBounds.m_max.GetX()) * 0.5f,
+            (tutorialBounds.m_min.GetY() + tutorialBounds.m_max.GetY()) * 0.5f, tutorialGrid.GridPosY(30));
+        int tutorialPixels[2]{};
+        for (int side = 0; side < 2; ++side)
+        {
+            const auto pixels = render(tutorialWall, side * 2, tutorialCenter);
+            tutorialPixels[side] = static_cast<int>(std::count_if(pixels.begin(), pixels.end(),
+                [](std::uint32_t pixel) { return (pixel & 0x00ffffff) != 0; }));
+        }
+        Check((std::max)(tutorialPixels[0], tutorialPixels[1]) > 100 &&
+            (std::min)(tutorialPixels[0], tutorialPixels[1]) == 0,
+            "The original tutorial boundary wall must render visible pixels while retaining one-sided face culling.");
+        std::vector<byte> boundaryGeometry(4 + 7 * 9, 0);
+        boundaryGeometry[0] = boundaryGeometry[2] = 2;
+        std::fill_n(boundaryGeometry.begin() + 4 + 4 * 9, 9, byte(50));
+        for (int y = 0; y < 3; ++y)
+        {
+            for (int x = 0; x < 3; ++x)
+            {
+                for (int shape = 0; shape <= 6; ++shape)
+                {
+                    for (int flipped : { 0, 16 })
+                    {
+                        boundaryGeometry[4 + y * 3 + x] = static_cast<byte>((shape << 5) | flipped | 2);
+                        WallLevel edge;
+                        edge.BuildOriginal(assets->GetLevelInfo(), boundaryGeometry);
+                        const bool horizontal = x < 2;
+                        const bool vertical = y < 2;
+                        const bool full = horizontal && vertical;
+                        const int faces = shape == 0 ? vertical : shape == 1 ? horizontal :
+                            shape == 2 || shape == 3 ? full : shape == 4 ? horizontal + full :
+                            shape == 5 ? vertical + full : horizontal + vertical + 2 * full;
+                        std::size_t triangleCount = 0;
+                        for (const auto& instance : edge.Walls())
+                        {
+                            triangleCount += instance->GetRenderable()->m_drawCalls[0].m_primitiveCount;
+                            const auto& bounds = instance->GetGlobalBounds().m_box;
+                            Check(bounds.m_min.GetX() >= edge.GetCellArray().GridPosX(0) - 0.0001f &&
+                                bounds.m_max.GetX() <= edge.GetCellArray().GridPosX(2) + 0.0001f &&
+                                bounds.m_min.GetZ() >= edge.GetCellArray().GridPosY(0) - 0.0001f &&
+                                bounds.m_max.GetZ() <= edge.GetCellArray().GridPosY(2) + 0.0001f,
+                                "Boundary walls must not sample or extend beyond the defined height grid.");
+                        }
+                        Check(triangleCount == static_cast<std::size_t>(faces * 2),
+                            "Every wall shape and facing must retain exactly its in-bounds faces on all edges and corners.");
+                    }
+                }
+                boundaryGeometry[4 + y * 3 + x] = 0;
+            }
+        }
+        std::fill_n(boundaryGeometry.begin() + 4 + 9, 2 * 9, byte(2));
+        WallLevel boundarySurfaces;
+        boundarySurfaces.BuildOriginal(assets->GetLevelInfo(), boundaryGeometry);
+        std::size_t surfaceTriangles = 0;
+        for (const auto& instance : boundarySurfaces.Walls())
+        {
+            surfaceTriangles += instance->GetRenderable()->m_drawCalls[0].m_primitiveCount;
+        }
+        Check(surfaceTriangles == 16,
+            "Including boundary walls must not extend floor or ceiling quads beyond complete four-corner cells.");
+        std::cout << "Boundary walls: original tutorial last-row wall, all seven shapes, both facings, "
+            "all edges/corners and unchanged floor/ceiling extent passed.\n";
         std::cout << "Mutable walls: original level-11 triggers, shared immutable buffers, selective removal, "
             "identical saved-geometry rendering, duplicate targets and all seven shapes passed ("
             << changedPixels << " changed pixels).\n";
