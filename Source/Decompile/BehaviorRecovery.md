@@ -190,25 +190,52 @@ pixels against a fresh build of the saved wall/object state. It also checks
 unchanged static geometry, duplicate targets, all seven wall shapes, padded
 row strides and islands containing only mutable wall geometry.
 
-### Boundary wall presentation
+### Native padded rendering grid
 
-The renderer processes wall bytes on every row and column, not just tiles
-with complete floor quads. Original tutorial `FELD50.256` is 36x31: byte 49
+The renderer retains the original fixed **50x40 backing grid**, separately
+from each FELD file's authored width and height. File rows are copied using
+native stride 50. Unwritten cells retain native initialization: raw floor
+255, room height 50, all other geometry planes zero. Headerless saved
+geometry already contains all seven complete 50x40 planes and uses the
+same reader and mesh generation. Truncated or oversized inputs fail.
+Visibility and lightmaps use the backing grid; desktop overview framing
+uses the preserved authored extent. Live wall synchronization passes the
+full native backing dimensions, not the smaller file rectangle.
+
+Every native tile can contribute walls, floors, ceilings, water or static
+models, including the final row/column. Original tutorial `FELD50.256` is
+36x31: byte 49
 at zero-based column 9, row 30 defines a shape-1 wall with reversed facing,
-using the two valid vertices (9,30) and (10,30). The former `size-1` loops
-silently omitted that wall.
+using vertices (9,30) and (10,30). The former `size-1` loops omitted this
+wall; merely admitting two-endpoint walls still incorrectly dropped
+authored boundary floor/ceiling/water/model entries.
 
-Each constituent wall face is emitted when both endpoint heights exist;
-this also preserves the valid faces of compound shapes on the final row
-or column. Floor/ceiling/water quads, static cell models and renderer-only
-spawn-center selection still require all four cell corners. No new height
-samples are fabricated beyond the loaded grid, and mutable boundary faces
-use the existing independently hideable wall ranges.
+The native tile guard `0000:61C7..61DD` admits one-based coordinates
+1..50 and 1..40. The vertex helper `1E48:34E4..3559` tests the same physical
+grid, **not** the file dimensions. Inside it, world floor Y is
+`-2*floorByte` and ceiling Y is `2*(roomByte-floorByte)`. Outside it,
+the helper explicitly supplies world floor **0** and ceiling **80**.
+Thus full edge quads can use a 51st vertex column or 41st vertex row
+without C++ out-of-bounds reads or clamping.
+
+This render-only outside-grid rule is deliberately different from native
+gameplay height-query cross-plane aliases. Water vertices always retain
+their configured surface plane. Static floor/ceiling models retain the
+four-corner extrema placement (`1E48:3059..31CB`), including padded and
+outside-grid corners. Mutable faces still use independently hideable
+ranges, with no geometry rebuild on destruction.
 
 WARP tests isolate the original tutorial wall and check its exact bounds,
-two triangles, visible pixel coverage and one-sided culling. Synthetic
-fixtures cover all seven wall shapes, both facing-bit settings, every edge
-and corner, and unchanged floor/ceiling extents.
+two triangles, visible pixels and one-sided culling. Four original level
+files and their saved-plane equivalents verify every native cell and
+vertex, including padding and the outside-grid ring. Synthetic fixtures
+cover all seven wall shapes and both facings at authored and physical
+edges/corners, complete floor/ceiling/water footprints, static models and
+malformed data. Original level 11 renders identically from compact FELD
+data and saved native planes; selective wall removal remains immediate.
+Evidence: [render grid and loading](renderer-grid-boundary-evidence.txt),
+[native tile bounds](renderer-grid-tiles-evidence.txt), and
+[model corner-height selection](renderer-grid-placement-evidence.txt).
 
 [GameContext.h](Scaffold/GameContext.h) now owns the `GameContext` class,
 formerly the `GameState` struct embedded in the dispatch header. Existing

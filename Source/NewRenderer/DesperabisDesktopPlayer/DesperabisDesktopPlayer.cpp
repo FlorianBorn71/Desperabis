@@ -806,9 +806,9 @@ namespace // DX
         }
 
         const float worldMinX = grid->GridPosX(0);
-        const float worldMaxX = grid->GridPosX(grid->m_sizeX);
+        const float worldMaxX = grid->GridPosX(grid->m_authoredSizeX);
         const float worldMinZ = grid->GridPosY(0);
-        const float worldMaxZ = grid->GridPosY(grid->m_sizeZ);
+        const float worldMaxZ = grid->GridPosY(grid->m_authoredSizeZ);
 
         const float spanX = fabsf(worldMaxX - worldMinX);
         const float spanZ = fabsf(worldMaxZ - worldMinZ);

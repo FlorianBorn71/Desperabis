@@ -137,18 +137,18 @@ float GridCellArray::GetHeightAtPos(const Vector& pos) const
 	const float outside = 0.0f;
 	if (tileX0 < 0)
 		return outside;
-	else if (tileX0 > m_sizeX - 2)
+	else if (tileX0 >= m_sizeX)
 		return outside;
 	if (tileY0 < 0)
 		return outside;
-	else if (tileY0 > m_sizeZ - 2)
+	else if (tileY0 >= m_sizeZ)
 		return outside;
 
     // bilerp
-    const float h00 = GetCell(tileX0, tileY0).m_floorHeight;
-	const float h01 = GetCell(tileX0+1, tileY0).m_floorHeight;
-	const float h10 = GetCell(tileX0, tileY0+1).m_floorHeight;
-	const float h11 = GetCell(tileX0+1, tileY0+1).m_floorHeight;
+    const float h00 = GetGridHeight(tileX0, tileY0, HeightLevel::Floor);
+	const float h01 = GetGridHeight(tileX0+1, tileY0, HeightLevel::Floor);
+	const float h10 = GetGridHeight(tileX0, tileY0+1, HeightLevel::Floor);
+	const float h11 = GetGridHeight(tileX0+1, tileY0+1, HeightLevel::Floor);
 
 	float row0 = h00 * (1.0f - fx) + h01 * fx;
 	float row1 = h10 * (1.0f - fx) + h11 * fx;
@@ -156,26 +156,24 @@ float GridCellArray::GetHeightAtPos(const Vector& pos) const
 	return row0 * (1.0f - fy) + row1 * fy;
 }
 
+float GridCellArray::GetGridHeight(int tileX, int tileY, HeightLevel atHeight) const
+{
+    if (atHeight == HeightLevel::Floor || atHeight == HeightLevel::Ceiling)
+    {
+        if (const auto* cell = GetCellOrNull(tileX, tileY))
+        {
+            return atHeight == HeightLevel::Floor ? cell->m_floorHeight : cell->m_ceilingHeight;
+        }
+        // Native render helper 1E48:3542 uses world floor 0 and ceiling 80 outside the 50x40 planes.
+        return atHeight == HeightLevel::Floor ? 0.f : 80.f * DespToFloat;
+    }
+    assert((int)atHeight >= (int)HeightLevel::WaterLevel1 && (int)atHeight <= (int)HeightLevel::WaterLevel4);
+    return m_waterHeights[(int)atHeight - (int)HeightLevel::WaterLevel1];
+}
+
 Vector3 GridCellArray::GetGridPos(int tileX, int tileY, HeightLevel atHeight) const
 {
-    const GridCell& cell(GetCell(tileX, tileY));
-
-    float h;
-    if (atHeight == HeightLevel::Floor)
-    {
-        h = cell.m_floorHeight;
-    }
-    else if (atHeight == HeightLevel::Ceiling)
-    {
-        h = cell.m_ceilingHeight;
-    }
-    else
-    {
-        assert((int)atHeight >= (int)HeightLevel::WaterLevel1 && (int)atHeight <= (int)HeightLevel::WaterLevel4);
-        h = m_waterHeights[(int)atHeight - (int)HeightLevel::WaterLevel1];
-    }
-
-    Vector3 pos = { GridPosX(tileX), h, GridPosY(tileY) };
+    Vector3 pos = { GridPosX(tileX), GetGridHeight(tileX, tileY, atHeight), GridPosY(tileY) };
     return pos;
 }
 
@@ -183,24 +181,20 @@ Vector3 GridCellArray::GetCenterPos(int tileX, int tileY, HeightLevel atHeight) 
 {
     float cx = (GridPosX(tileX) + GridPosX(tileX + 1)) * 0.5f;
     float cy = (GridPosY(tileY) + GridPosY(tileY + 1)) * 0.5f;
-    const GridCell& c0(GetCell(tileX, tileY));
-    const GridCell& c1(GetCell(tileX + 1, tileY));
-    const GridCell& c2(GetCell(tileX + 1, tileY + 1));
-    const GridCell& c3(GetCell(tileX, tileY + 1));
     float h;
 
-    if (atHeight == HeightLevel::Floor)
+    if (atHeight == HeightLevel::Floor || atHeight == HeightLevel::Ceiling)
     {
-        h = __min(__min(c0.m_floorHeight, c1.m_floorHeight), __min(c2.m_floorHeight, c3.m_floorHeight));
-    }
-    else if (atHeight == HeightLevel::Ceiling)
-    {
-        h = __max(__max(c0.m_ceilingHeight, c1.m_ceilingHeight), __max(c2.m_ceilingHeight, c3.m_ceilingHeight));
+        const float h0 = GetGridHeight(tileX, tileY, atHeight);
+        const float h1 = GetGridHeight(tileX + 1, tileY, atHeight);
+        const float h2 = GetGridHeight(tileX + 1, tileY + 1, atHeight);
+        const float h3 = GetGridHeight(tileX, tileY + 1, atHeight);
+        h = atHeight == HeightLevel::Floor ? __min(__min(h0, h1), __min(h2, h3)) :
+            __max(__max(h0, h1), __max(h2, h3));
     }
     else
     {
-        assert((int)atHeight >= (int)HeightLevel::WaterLevel1 && (int)atHeight <= (int)HeightLevel::WaterLevel4);
-        h = m_waterHeights[(int)atHeight - (int)HeightLevel::WaterLevel1];
+        h = GetGridHeight(tileX, tileY, atHeight);
     }
 
     Vector3 pos = { cx, h, cy };

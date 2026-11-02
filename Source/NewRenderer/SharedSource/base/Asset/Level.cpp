@@ -211,17 +211,25 @@ void StoreChecksum(const byte* rawData, int dataSize, uint16_t val)
 
 void Level::ReadLevelData(const byte* rawData, int dataSize, bool readSize)
 {
+    const int headerSize = readSize ? 4 : 0;
+    if (!rawData || dataSize < headerSize)
+    {
+        throw std::invalid_argument("Level geometry requires complete dimensions and seven native planes.");
+    }
+    int width = GridCellArray::Width;
+    int height = GridCellArray::Height;
     if (readSize)
     {
-        m_cellArray.m_sizeX = ReadShort(rawData);
-        m_cellArray.m_sizeZ = ReadShort(rawData);
-        m_cellArray.m_sizeX++;
-        m_cellArray.m_sizeZ++;
+        width = ReadShort(rawData) + 1;
+        height = ReadShort(rawData) + 1;
     }
-    int count = m_cellArray.m_sizeX * m_cellArray.m_sizeZ;
+    if (width < 1 || height < 1 || width > GridCellArray::Width || height > GridCellArray::Height ||
+        dataSize - headerSize < 7 * width * height)
+    {
+        throw std::invalid_argument("Level geometry requires seven complete planes fitting the native 50x40 grid.");
+    }
+    const int count = width * height;
     
-    byte* baseData = (byte *)rawData;
-   // const byte* stuffBefore = Advance(rawData, count);
     const byte* wallTextures = Advance(rawData, count);
     const byte* rawDataFloor = Advance(rawData, count);
     const byte* rawDataCeiling = Advance(rawData, count);
@@ -230,14 +238,22 @@ void Level::ReadLevelData(const byte* rawData, int dataSize, bool readSize)
     const byte* rawDataWalls = Advance(rawData, count);
     const byte* rawDataMaterials = Advance(rawData, count);
 
-    m_cellArray.m_cell.resize(count);
     float scale = DespToFloat * -2.0f;
+    GridCell padding{};
+    padding.m_floorHeight = 255.f * scale;
+    padding.m_ceilingHeight = padding.m_floorHeight - 50.f * scale;
+    padding.m_brightness.Set(100, 100, 100, 0);
+    m_cellArray.m_sizeX = GridCellArray::Width;
+    m_cellArray.m_sizeZ = GridCellArray::Height;
+    m_cellArray.m_authoredSizeX = width;
+    m_cellArray.m_authoredSizeZ = height;
+    m_cellArray.m_cell.assign(GridCellArray::Width * GridCellArray::Height, padding);
     int i = 0;
-    for (int y = 0; y < m_cellArray.m_sizeZ; y++)
+    for (int y = 0; y < height; y++)
     {
-        for (int x = 0; x < m_cellArray.m_sizeX; x++, i++)
+        for (int x = 0; x < width; x++, i++)
         {
-            GridCell& cell(m_cellArray.m_cell[i]);
+            GridCell& cell(m_cellArray.GetCell(x, y));
             cell.m_floorHeight = (float)rawDataHeight[i] * scale;
             cell.m_ceilingHeight = cell.m_floorHeight - (float)rawDataCeilingHeight[i] * scale;
             cell.m_wallTextures = wallTextures[i];
@@ -809,7 +825,6 @@ void Level::CreateWallGeometry()
         {
             int i = y * m_cellArray.m_sizeX + x;
             const GridCell& cell(m_cellArray.m_cell[i]);
-            const bool hasFullCell = x + 1 < m_cellArray.m_sizeX && y + 1 < m_cellArray.m_sizeZ;
             if (perIslandConversion[cell.m_visibilityIsland] == nullptr)
             {
                 perIslandConversion[cell.m_visibilityIsland] = std::make_unique<IslandWallConversion>(this);
@@ -830,47 +845,37 @@ void Level::CreateWallGeometry()
                 if (texIndex > 0)
                 {
                     Color4 col = {255, 255, 255, 0};
-                    const auto addWall = [&](int x1, int y1, int x2, int y2, bool flipFace, bool flipU)
-                    {
-                        // Edge tiles can contribute a wall even when they have no complete floor quad.
-                        if (m_cellArray.IsInside(x1, y1) && m_cellArray.IsInside(x2, y2))
-                        {
-                            AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices,
-                                indices, x1, y1, x2, y2, flipFace, col, flipU);
-                        }
-                    };
                     switch (wallIndex)
                     {
                     case 0:
-                        addWall(x, y + 1, x, y, flippedFace, true); // UV correct
+                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x, y + 1, x, y, flippedFace, col, true); // UV correct
                         break;
                     case 1:
-                        addWall(x, y, x + 1, y, flippedFace, true);// UV correct
+                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x, y, x + 1, y, flippedFace, col, true);// UV correct
                         break;
                     case 2:
-                        addWall(x + 1, y, x + 1, y + 1, flippedFace, true);// UV correct
+                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x + 1, y, x + 1, y + 1, flippedFace, col, true);// UV correct
                         break;
                     case 3:
-                        addWall(x + 1, y + 1, x, y + 1, flippedFace, true);// UV correct
+                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x + 1, y + 1, x, y + 1, flippedFace, col, true);// UV correct
                         break;
                     case 4:
-                        addWall(x, y, x + 1, y, false, false);
-                        addWall(x + 1, y + 1, x, y + 1, false, false);
+                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x, y, x + 1, y, false, col, false);
+                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x + 1, y + 1, x, y + 1, false, col, false);
                         break;
                     case 5:
-                        addWall(x, y + 1, x, y, false, false);
-                        addWall(x + 1, y, x + 1, y + 1, false, false);
+                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x, y + 1, x, y, false, col, false);
+                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x + 1, y, x + 1, y + 1, false, col, false);
                         break;
                     case 6:
-                        addWall(x + 1, y, x, y, false, false);
-                        addWall(x, y + 1, x + 1, y + 1, false, false);
-                        addWall(x, y, x, y + 1, false, false);
-                        addWall(x + 1, y + 1, x + 1, y, false, false);
+                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x + 1, y, x, y, false, col, false);
+                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x, y + 1, x + 1, y + 1, false, col, false);
+                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x, y, x, y + 1, false, col, false);
+                        AddWall(islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x + 1, y + 1, x + 1, y, false, col, false);
                         break;
                     case 7:
                         // marks player start position
                         {
-                            if (!hasFullCell) { break; }
                             Vector3 campos = m_cellArray.GetCenterPos(x, y, HeightLevel::Floor);
                             campos.y += 50.f * DespToFloat;
                             m_playerStartPos.Set(campos.x, campos.y, campos.z); 
@@ -899,8 +904,6 @@ void Level::CreateWallGeometry()
                 }
 
             } // add walls
-
-            if (!hasFullCell) { continue; }
 
             if (addFloor)
             {
@@ -1643,9 +1646,7 @@ FUTURE(void) Level::ReadSaveGame(const byte* rawData, int dataSize, const std::v
 
 
     // read level data:
-    m_cellArray.m_sizeX = 50;
-    m_cellArray.m_sizeZ = 40;
-    int dataLayerSize = m_cellArray.m_sizeX * m_cellArray.m_sizeZ;
+    int dataLayerSize = GridCellArray::Width * GridCellArray::Height;
 
     int levelInfoStartsAt = 103;
     int objPosDataStartsAt = 299; //  0x12b;  // player pos is before that (0xf5), not counting here. object positions end at 0x26b7
@@ -1693,7 +1694,7 @@ FUTURE(void) Level::ReadSaveGame(const byte* rawData, int dataSize, const std::v
 
     // level
     {
-        ReadLevelData(&rawData[levelDataStartsAt], m_cellArray.m_sizeX * m_cellArray.m_sizeZ * dataLayerCount, false);
+        ReadLevelData(&rawData[levelDataStartsAt], dataLayerSize * dataLayerCount, false);
     }
 
     // collision:

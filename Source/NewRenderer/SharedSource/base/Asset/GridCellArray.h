@@ -60,8 +60,12 @@ struct GridCell
 
 struct GridCellArray
 {
+    static constexpr int Width = 50;
+    static constexpr int Height = 40;
+
     float GridPosX(int tileX) const;
     float GridPosY(int tileY) const;
+    float GetGridHeight(int tileX, int tileY, HeightLevel atHeight) const;
     Vector3 GetGridPos(int tileX, int tileY, HeightLevel atHeight) const;
     Vector3 GetCenterPos(int tileX, int tileY, HeightLevel atHeight) const;
     int GetCellX(float posX) const;
@@ -85,6 +89,7 @@ struct GridCellArray
 	void FloodFillWithIdRecursive(int x, int y, byte Id);
 
     std::vector<GridCell> m_cell;
-    int m_sizeX, m_sizeZ;
+    int m_sizeX = Width, m_sizeZ = Height;
+    int m_authoredSizeX = Width, m_authoredSizeZ = Height;
     float m_waterHeights[4] = {};
 };

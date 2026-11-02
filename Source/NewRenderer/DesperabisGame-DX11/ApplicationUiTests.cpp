@@ -840,8 +840,6 @@ namespace
             void Build(const LevelInfo& info, const Desperabis::Level& geometry, const std::vector<byte>& objects)
             {
                 InitLevelInfo(info);
-                m_cellArray.m_sizeX = 50;
-                m_cellArray.m_sizeZ = 40;
                 std::vector<byte> planes;
                 for (const auto* plane : { &geometry.wallTextures[0][0], &geometry.floorObjects[0][0],
                     &geometry.ceilingObjects[0][0], &geometry.floorHeights[0][0], &geometry.roomHeights[0][0],
@@ -858,10 +856,16 @@ namespace
             const auto& Walls() const { return m_wallGeometry; }
             const auto& MutableWalls() const { return m_mutableWalls; }
             const Scene& WallScene() const { return m_scene; }
-            void BuildOriginal(const LevelInfo& info, const std::vector<byte>& geometry)
+            void ReadGrid(const LevelInfo& info, const std::vector<byte>& geometry, bool readHeader)
             {
                 InitLevelInfo(info);
-                ReadLevelData(geometry.data(), static_cast<int>(geometry.size()), true);
+                ReadLevelData(geometry.data(), static_cast<int>(geometry.size()), readHeader);
+            }
+            void BuildOriginal(const LevelInfo& info, const std::vector<byte>& geometry,
+                const std::vector<byte>& objects = {})
+            {
+                ReadGrid(info, geometry, true);
+                if (!objects.empty()) { ReadGameObjects(objects.data(), static_cast<int>(objects.size())); }
                 CreateWallGeometry();
                 for (const auto& instance : m_wallGeometry) { m_scene.AddRenderableInstance(instance); }
             }
@@ -1097,25 +1101,20 @@ namespace
                         boundaryGeometry[4 + y * 3 + x] = static_cast<byte>((shape << 5) | flipped | 2);
                         WallLevel edge;
                         edge.BuildOriginal(assets->GetLevelInfo(), boundaryGeometry);
-                        const bool horizontal = x < 2;
-                        const bool vertical = y < 2;
-                        const bool full = horizontal && vertical;
-                        const int faces = shape == 0 ? vertical : shape == 1 ? horizontal :
-                            shape == 2 || shape == 3 ? full : shape == 4 ? horizontal + full :
-                            shape == 5 ? vertical + full : horizontal + vertical + 2 * full;
+                        const int faces = shape < 4 ? 1 : shape < 6 ? 2 : 4;
                         std::size_t triangleCount = 0;
                         for (const auto& instance : edge.Walls())
                         {
                             triangleCount += instance->GetRenderable()->m_drawCalls[0].m_primitiveCount;
                             const auto& bounds = instance->GetGlobalBounds().m_box;
                             Check(bounds.m_min.GetX() >= edge.GetCellArray().GridPosX(0) - 0.0001f &&
-                                bounds.m_max.GetX() <= edge.GetCellArray().GridPosX(2) + 0.0001f &&
+                                bounds.m_max.GetX() <= edge.GetCellArray().GridPosX(3) + 0.0001f &&
                                 bounds.m_min.GetZ() >= edge.GetCellArray().GridPosY(0) - 0.0001f &&
-                                bounds.m_max.GetZ() <= edge.GetCellArray().GridPosY(2) + 0.0001f,
-                                "Boundary walls must not sample or extend beyond the defined height grid.");
+                                bounds.m_max.GetZ() <= edge.GetCellArray().GridPosY(3) + 0.0001f,
+                                "Authored boundary walls must retain their original tile footprint using native padding.");
                         }
                         Check(triangleCount == static_cast<std::size_t>(faces * 2),
-                            "Every wall shape and facing must retain exactly its in-bounds faces on all edges and corners.");
+                            "Every wall shape and facing must retain every face on authored edges and corners.");
                     }
                 }
                 boundaryGeometry[4 + y * 3 + x] = 0;
@@ -1129,10 +1128,189 @@ namespace
         {
             surfaceTriangles += instance->GetRenderable()->m_drawCalls[0].m_primitiveCount;
         }
-        Check(surfaceTriangles == 16,
-            "Including boundary walls must not extend floor or ceiling quads beyond complete four-corner cells.");
-        std::cout << "Boundary walls: original tutorial last-row wall, all seven shapes, both facings, "
-            "all edges/corners and unchanged floor/ceiling extent passed.\n";
+        Check(surfaceTriangles == 36,
+            "All nine authored tiles must retain floor and ceiling quads, including the final row and column.");
+        for (const int number : { 10, 11, 17, 50 })
+        {
+            const auto original = read(L"LEVEL\\FELD" + std::to_wstring(number) + L".256");
+            Desperabis::Level native;
+            native.LoadGeometry(original.data(), original.size());
+            WallLevel originalGrid;
+            originalGrid.ReadGrid(assets->GetLevelInfo(), original, true);
+            const auto& grid = originalGrid.GetCellArray();
+            Check(grid.m_sizeX == 50 && grid.m_sizeZ == 40 && grid.m_cell.size() == 2000 &&
+                grid.m_authoredSizeX == static_cast<int>(native.geometryWidth) &&
+                grid.m_authoredSizeZ == static_cast<int>(native.geometryHeight),
+                "Original files must retain authored dimensions separately from the fixed native grid.");
+            for (int y = -1; y <= 40; ++y)
+            {
+                for (int x = -1; x <= 50; ++x)
+                {
+                    const bool inside = x >= 0 && x < 50 && y >= 0 && y < 40;
+                    const float floor = inside ? -2.f * native.floorHeights[y][x] * DespToFloat : 0.f;
+                    const float ceiling = inside ?
+                        2.f * (native.roomHeights[y][x] - native.floorHeights[y][x]) * DespToFloat :
+                        80.f * DespToFloat;
+                    Check(std::abs(grid.GetGridPos(x, y, HeightLevel::Floor).y - floor) < 0.0001f &&
+                        std::abs(grid.GetGridPos(x, y, HeightLevel::Ceiling).y - ceiling) < 0.0001f,
+                        "Render vertices must match native padding and the explicit outside-grid 0/80 rule, not gameplay aliases.");
+                    if (!inside) { continue; }
+                    const auto& cell = grid.GetCell(x, y);
+                    Check(cell.m_wallTextures == native.wallTextures[y][x] &&
+                        cell.m_floor == native.floorObjects[y][x] && cell.m_ceiling == native.ceilingObjects[y][x] &&
+                        cell.m_walls == native.surfaceFlags[y][x] && cell.m_rawMaterial == native.collisionMaterials[y][x],
+                        "All original geometry planes must use native stride 50 with cleared padding.");
+                }
+            }
+            std::vector<byte> saved(7 * 2000);
+            int planeIndex = 0;
+            for (const auto* plane : { &native.wallTextures, &native.floorObjects, &native.ceilingObjects,
+                &native.floorHeights, &native.roomHeights, &native.surfaceFlags, &native.collisionMaterials })
+            {
+                std::memcpy(saved.data() + planeIndex++ * 2000, plane, 2000);
+            }
+            WallLevel savedGrid;
+            savedGrid.ReadGrid(assets->GetLevelInfo(), saved, false);
+            Check(savedGrid.GetCellArray().m_authoredSizeX == 50 && savedGrid.GetCellArray().m_authoredSizeZ == 40,
+                "Headerless saved geometry must retain its full native dimensions.");
+            for (int y = 0; y <= 40; ++y)
+            {
+                for (int x = 0; x <= 50; ++x)
+                {
+                    for (const auto height : { HeightLevel::Floor, HeightLevel::Ceiling })
+                    {
+                        Check(savedGrid.GetCellArray().GetGridPos(x, y, height).y == grid.GetGridPos(x, y, height).y,
+                            "Original and saved geometry must produce identical padded and outside-grid vertex heights.");
+                    }
+                }
+            }
+            if (number == 11)
+            {
+                const auto originalObjects = read(L"LEVEL\\OBJPOS11.DAT");
+                WallLevel linked;
+                linked.BuildOriginal(assets->GetLevelInfo(), original, originalObjects);
+                WallLevel savedLevel;
+                savedLevel.Build(assets->GetLevelInfo(), native, originalObjects);
+                Check(linked.MutableWalls().size() == 2 &&
+                    linked.SynchronizeWallTiles(&native.wallTextures[0][0], 50, 40, 50) == 0,
+                    "Original-file mutable walls must accept the same native backing dimensions as live core synchronization.");
+                for (int direction = 0; direction < 4; ++direction)
+                {
+                    Check(render(linked, direction, center) == render(savedLevel, direction, center),
+                        "Original-file and saved native planes must render identical walls, floors and static models.");
+                }
+                native.wallTextures[8][19] = 0;
+                Check(linked.SynchronizeWallTiles(&native.wallTextures[0][0], 50, 40, 50) == 1,
+                    "A compact original file must retain immediate selective wall removal after native-grid expansion.");
+            }
+        }
+        std::vector<byte> nativeBoundary(4 + 7 * 2000, 0);
+        nativeBoundary[0] = 49;
+        nativeBoundary[2] = 39;
+        std::fill_n(nativeBoundary.begin() + 4 + 4 * 2000, 2000, byte(50));
+        for (const auto& cell : { std::pair<int, int>{ 49, 1 }, { 1, 39 }, { 49, 39 } })
+        {
+            for (int shape = 0; shape <= 6; ++shape)
+            {
+                for (const int flipped : { 0, 16 })
+                {
+                    nativeBoundary[4 + cell.second * 50 + cell.first] = static_cast<byte>((shape << 5) | flipped | 2);
+                    WallLevel edge;
+                    edge.BuildOriginal(assets->GetLevelInfo(), nativeBoundary);
+                    Check(edge.Walls().size() == 1 &&
+                        edge.Walls()[0]->GetRenderable()->m_drawCalls[0].m_primitiveCount ==
+                            (shape < 4 ? 2 : shape < 6 ? 4 : 8),
+                        "Physical 50x40 boundary tiles must retain all wall faces using the native outside-grid vertices.");
+                }
+            }
+            nativeBoundary[4 + cell.second * 50 + cell.first] = 0;
+        }
+        nativeBoundary[4 + 2000 + 1999] = nativeBoundary[4 + 2 * 2000 + 1999] = 2;
+        WallLevel physicalSurfaces;
+        physicalSurfaces.BuildOriginal(assets->GetLevelInfo(), nativeBoundary);
+        std::size_t physicalTriangles = 0;
+        for (const auto& instance : physicalSurfaces.Walls())
+        {
+            physicalTriangles += instance->GetRenderable()->m_drawCalls[0].m_primitiveCount;
+            const auto& bounds = instance->GetGlobalBounds().m_box;
+            Check(std::abs(bounds.m_max.GetX() - physicalSurfaces.GetCellArray().GridPosX(50)) < 0.0001f &&
+                std::abs(bounds.m_max.GetZ() - physicalSurfaces.GetCellArray().GridPosY(40)) < 0.0001f,
+                "The final physical tile must generate its complete footprint, not clip at the last stored height.");
+        }
+        Check(physicalTriangles == 4, "The final physical tile must retain both floor and ceiling quads.");
+        std::fill_n(nativeBoundary.begin() + 4 + 2000, 2 * 2000, byte(0));
+        auto waterInfo = assets->GetLevelInfo();
+        waterInfo.m_raw.m_data.water[0] = { WaterReflectionType::Water, 10 };
+        for (const auto& cell : { std::pair<int, int>{ 49, 1 }, { 1, 39 }, { 49, 39 } })
+        {
+            nativeBoundary[4 + 5 * 2000 + cell.second * 50 + cell.first] = 1;
+            WallLevel water;
+            water.BuildOriginal(waterInfo, nativeBoundary);
+            Check(water.Walls().size() == 1 &&
+                water.Walls()[0]->GetRenderable()->m_drawCalls[0].m_material.m_transparencyType == TransparencyMode::Water &&
+                water.Walls()[0]->GetRenderable()->m_drawCalls[0].m_primitiveCount == 2,
+                "Water must retain a complete quad on the last native row, column and corner.");
+            const auto& bounds = water.Walls()[0]->GetGlobalBounds().m_box;
+            Check(std::abs(bounds.m_min.GetY() + 100.f * DespToFloat) < 0.0001f &&
+                std::abs(bounds.m_max.GetY() + 100.f * DespToFloat) < 0.0001f &&
+                std::abs(bounds.m_max.GetX() - water.GetCellArray().GridPosX(cell.first + 1)) < 0.0001f &&
+                std::abs(bounds.m_max.GetZ() - water.GetCellArray().GridPosY(cell.second + 1)) < 0.0001f,
+                "Boundary water vertices must use the surface depth and full footprint, not the outside-grid floor/ceiling rule.");
+            nativeBoundary[4 + 5 * 2000 + cell.second * 50 + cell.first] = 0;
+        }
+        auto* shoreline = FORCE_GET(AssetManager::Instance().LoadLevel(17));
+        for (const bool physical : { false, true })
+        {
+            auto modelGeometry = physical ? nativeBoundary : boundaryGeometry;
+            const int width = physical ? 50 : 3;
+            const int height = physical ? 40 : 3;
+            const int count = width * height;
+            std::fill_n(modelGeometry.begin() + 4 + count, 2 * count, byte(0));
+            for (const bool ceiling : { false, true })
+            {
+                const int plane = ceiling ? 2 : 1;
+                modelGeometry[4 + plane * count + count - 1] = 172;
+                WallLevel model;
+                model.BuildOriginal(shoreline->GetLevelInfo(), modelGeometry);
+                Check(model.Walls().size() == 1, "The final authored/native tile must retain its static floor/ceiling model.");
+                const auto& position = model.Walls()[0]->GetTransform().GetTranslation();
+                const float expectedY = ceiling ? 100.f * DespToFloat : physical ? 0.f : -510.f * DespToFloat;
+                Check(std::abs(position.GetX() - (model.GetCellArray().GridPosX(width - 1) + 50.f * DespToFloat)) < 0.0001f &&
+                    std::abs(position.GetZ() - (model.GetCellArray().GridPosY(height - 1) + 50.f * DespToFloat)) < 0.0001f &&
+                    std::abs(position.GetY() - expectedY) < 0.0001f,
+                    "Edge static models must preserve native corner extrema using file padding or the physical-boundary 0/80 vertices.");
+                modelGeometry[4 + plane * count + count - 1] = 0;
+            }
+        }
+        for (const bool header : { false, true })
+        {
+            auto truncated = header ? boundaryGeometry : std::vector<byte>(7 * 2000, 0);
+            truncated.pop_back();
+            bool rejected = false;
+            try { WallLevel invalid; invalid.ReadGrid(assets->GetLevelInfo(), truncated, header); }
+            catch (const std::invalid_argument&) { rejected = true; }
+            Check(rejected, "Truncated original and saved geometry must fail explicitly.");
+        }
+        auto oversized = boundaryGeometry;
+        oversized[0] = 50;
+        bool rejected = false;
+        try { WallLevel invalid; invalid.ReadGrid(assets->GetLevelInfo(), oversized, true); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        Check(rejected, "Original dimensions exceeding the native grid must fail before copying plane data.");
+        auto stale = nativeBoundary;
+        for (const int plane : { 0, 1, 2, 5, 6 }) { stale[4 + plane * 2000 + 1999] = 7; }
+        WallLevel reloaded;
+        reloaded.ReadGrid(assets->GetLevelInfo(), stale, true);
+        reloaded.ReadGrid(assets->GetLevelInfo(), boundaryGeometry, true);
+        const auto& padding = reloaded.GetCellArray().GetCell(49, 39);
+        Check(padding.m_wallTextures == 0 && padding.m_floor == 0 && padding.m_ceiling == 0 &&
+            padding.m_walls == 0 && padding.m_rawMaterial == 0 &&
+            std::abs(padding.m_floorHeight + 510.f * DespToFloat) < 0.0001f &&
+            std::abs(padding.m_ceilingHeight + 410.f * DespToFloat) < 0.0001f,
+            "Loading a smaller file must reset all native padding instead of retaining the previous level's cells.");
+        std::cout << "Native grid: original tutorial pixels, four original padded grids/save planes, "
+            "all wall shapes/facings at authored and physical edges, full floor/ceiling/water/model footprints, "
+            "live wall sync and 0/80 vertices passed.\n";
         std::cout << "Mutable walls: original level-11 triggers, shared immutable buffers, selective removal, "
             "identical saved-geometry rendering, duplicate targets and all seven shapes passed ("
             << changedPixels << " changed pixels).\n";

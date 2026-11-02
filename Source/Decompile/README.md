@@ -198,6 +198,11 @@ For the first explained case and shared collision-map pointer, see
   Native floor/room queries and special surfaces are in `GameContext.cpp`.
 - `heightfield-evidence.txt`: exact WaterDrop, height lookup, and Pascal
   array-layout instruction ranges.
+- `renderer-grid-boundary-evidence.txt`, `renderer-grid-tiles-evidence.txt`,
+  `renderer-grid-placement-evidence.txt`: fixed 50x40 loading, native render
+  tile/vertex bounds, outside-grid floor 0/ceiling 80, and static-model
+  corner-height selection. Rendering does not use gameplay's cross-plane
+  height aliases. See [native padded rendering grid](BehaviorRecovery.md#native-padded-rendering-grid).
 - `Scaffold/ObjectInteraction.cpp`: explicit-input pickup/inventory gameplay,
   grouped-switch arming, and known object-local interactions.
 - `Scaffold/PlayerInteraction.cpp`: per-update collision-selection/input-interface/
