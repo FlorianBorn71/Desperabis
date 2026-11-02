@@ -639,6 +639,10 @@ namespace
 	void SyncGameObjects()
 	{
 		Level* level = g_scene->m_level;
+		const auto* geometry = g_gameCore->GetLevel();
+		if (!geometry) { throw std::logic_error("World presentation requires loaded core geometry."); }
+		level->SynchronizeWallTiles(&geometry->wallTextures[0][0],
+		    geometry->geometryWidth, geometry->geometryHeight, Desperabis::Level::Width);
 		for (int slot = 2; slot <= 164; slot++)
 		{
 			RawGameObject& state = g_objectState[slot];

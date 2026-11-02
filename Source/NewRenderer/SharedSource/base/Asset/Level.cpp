@@ -449,6 +449,12 @@ namespace
 		ModelConversionContext m_conversion;
 		LevelVertexCache m_vertexCache;
 		std::vector<DrawCall> m_dcs;
+        struct MutableDrawCall
+        {
+            int column, row;
+            DrawCall drawCall;
+        };
+        std::vector<MutableDrawCall> m_mutableWalls;
 	};
 
 
@@ -782,6 +788,20 @@ void Level::CreateWallGeometry()
 
     std::unique_ptr<IslandWallConversion> perIslandConversion[256];
     int maxIslands = 0;
+    std::vector<bool> mutableTiles(m_cellArray.m_cell.size(), false);
+    for (const auto& object : m_rawGameObject)
+    {
+        const GamePlay::PropertyAccessorBase props(object);
+        if (!props.Isvalid() || props.GetCollisionType() != GamePlay::CollisionType::WallDestruction) { continue; }
+        // Same one-based DOS tile conversion as GameCore's wall-destruction path.
+        const int column = object.m_rawShorts[6] / 100 - 1;
+        const int row = 40 - object.m_rawShorts[8] / 100;
+        if (!m_cellArray.IsInside(column, row))
+        {
+            throw std::runtime_error("Wall-destruction object is outside level geometry.");
+        }
+        mutableTiles[row * m_cellArray.m_sizeX + column] = true;
+    }
 
     for (int y = 0; y < m_cellArray.m_sizeZ - 1; y++)
     {
@@ -863,7 +883,8 @@ void Level::CreateWallGeometry()
                 {
                     dc.m_material.m_texture = m_levelInfo.GetLevelTexture(texIndex).get(); // prevent it from using the torchlight tex
                     //dc.m_material.m_texture = AssetManager::Instance().GetPlainWhiteTexture(); // REMOVE
-                    islandWalls.m_dcs.emplace_back(dc);
+                    if (mutableTiles[i]) { islandWalls.m_mutableWalls.push_back({ x, y, dc }); }
+                    else { islandWalls.m_dcs.emplace_back(dc); }
                 }
 
             } // add walls
@@ -968,7 +989,8 @@ void Level::CreateWallGeometry()
     // now convert
     for (int islandId = 0; islandId <= maxIslands; islandId++)
     {
-		if (perIslandConversion[islandId] == nullptr || perIslandConversion[islandId]->m_dcs.size() == 0)
+		if (perIslandConversion[islandId] == nullptr ||
+            (perIslandConversion[islandId]->m_dcs.empty() && perIslandConversion[islandId]->m_mutableWalls.empty()))
 		{
             continue;
 		}
@@ -978,6 +1000,16 @@ void Level::CreateWallGeometry()
         // turn everything into optimized mesh
         std::vector<DrawCall> newdcs;
         GeometryUtils::OptimizeDrawCalls(newdcs, islandWalls.m_conversion.m_sortedIndices, indices, islandWalls.m_dcs);
+        const auto staticDrawCallCount = newdcs.size();
+        for (const auto& wall : islandWalls.m_mutableWalls)
+        {
+            auto dc = wall.drawCall;
+            dc.m_firstIndex = static_cast<int>(islandWalls.m_conversion.m_sortedIndices.size());
+            const auto first = indices.begin() + wall.drawCall.m_firstIndex;
+            islandWalls.m_conversion.m_sortedIndices.insert(islandWalls.m_conversion.m_sortedIndices.end(),
+                first, first + wall.drawCall.m_primitiveCount * 3);
+            newdcs.push_back(dc);
+        }
         islandWalls.m_conversion.GeneratePerTriangleNormals(islandWalls.m_conversion.m_sortedIndices.data(), (int)islandWalls.m_conversion.m_sortedIndices.size(), 0);
         //GeometryUtils::SmoothNormals(conversion, newdcs, 0);
 
@@ -991,8 +1023,9 @@ void Level::CreateWallGeometry()
         }
 
         // one renderable instance per draw call for better visibility clipping:
-        for (const auto& dc : newdcs)
+        for (std::size_t drawCallIndex = 0; drawCallIndex < newdcs.size(); ++drawCallIndex)
         {
+            const auto& dc = newdcs[drawCallIndex];
             RenderablePtr r = std::make_shared<Renderable>();
             r->m_physicsShape = wallPhysics;
             wallPhysics = nullptr; // assign physics only to the first instance as it holds all draw calls
@@ -1011,6 +1044,12 @@ void Level::CreateWallGeometry()
             m_cellArray.GetTileAssignment(inst->GetTransform().GetTranslation(), bounds);
             bounds.m_visibilityIsland = islandId;
             m_wallGeometry.push_back(inst);
+            if (drawCallIndex >= staticDrawCallCount)
+            {
+                const auto& wall = islandWalls.m_mutableWalls[drawCallIndex - staticDrawCallCount];
+                m_mutableWalls.push_back({ wall.column, wall.row,
+                    m_cellArray.GetCell(wall.column, wall.row).m_wallTextures, inst });
+            }
 
             /*if (false) // visibility bounding boxes for wall geometry
             {
@@ -1024,6 +1063,33 @@ void Level::CreateWallGeometry()
             */
         }
     }
+}
+
+std::size_t Level::SynchronizeWallTiles(
+    const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride)
+{
+    if (!tiles || width != static_cast<std::size_t>(m_cellArray.m_sizeX) ||
+        height != static_cast<std::size_t>(m_cellArray.m_sizeZ) || rowStride < width)
+    {
+        throw std::invalid_argument("Wall synchronization requires matching level dimensions and tile storage.");
+    }
+    std::size_t changed = 0;
+    for (const auto& wall : m_mutableWalls)
+    {
+        const auto value = tiles[wall.row * rowStride + wall.column];
+        if (value != 0 && value != wall.originalWall)
+        {
+            throw std::runtime_error("Mutable wall synchronization supports removal or restoration, not replacement.");
+        }
+        const bool visible = value != 0;
+        if (wall.instance->GetVisible() != visible)
+        {
+            wall.instance->SetVisible(visible);
+            ++changed;
+        }
+        m_cellArray.GetCell(wall.column, wall.row).m_wallTextures = value;
+    }
+    return changed;
 }
 
 

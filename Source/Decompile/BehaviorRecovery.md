@@ -57,8 +57,43 @@ and oil's all-contact collector. These are now implemented in
 [ThirdPartBehaviorTests.cpp](Scaffold/ThirdPartBehaviorTests.cpp) checks
 radial/camera/wall/cheat behavior, seeded byte-exact crab updates, contact
 responses, oil thresholds/spreading/burnout and every corresponding original
-level-10/12/13 object. Renderer updates for baked wall removals remain deferred;
+level-10/12/13 object. Renderer wall removal is implemented as described below;
 PictureMap interactions are implemented by the modal flow described below.
+
+### Destructible wall presentation
+
+The renderer scans live `WallDestruction` (collision 8) raw objects before
+building level geometry. Their native tile coordinates are zero-based
+`column = posX / 100 - 1`, `row = 40 - posZ / 100`. Original level 11's slots
+49 and 50 target column 19, rows 8 and 9. Duplicate targets are coalesced.
+Only those tiles' wall faces are excluded from ordinary material merging;
+each complete tile becomes one independently visible render instance, sharing
+the island's immutable vertex/index buffers. Floors, ceilings and water retain
+their normal static batching. No whole-level rebuild or GPU upload occurs
+when a wall disappears.
+
+`SyncGameObjects` calls `Level::SynchronizeWallTiles` with GameCore's current
+wall plane and its native 50-byte row stride. A zero tile hides its range;
+the original byte restores it. A different nonzero replacement is rejected
+explicitly because this mechanism supports removal/restoration, not arbitrary
+geometry edits. The renderer's corresponding grid wall byte is updated too.
+Bindings are captured at build time, never recomputed from object coordinates:
+the native destruction handler kills the trigger and repurposes its position.
+GameCore remains responsible for collision-map clearing and geometry revision;
+the existing map-texture refresh therefore also reflects the missing walls.
+
+Fresh builds use the stored wall plane, including headerless 50x40 savegame
+planes: already-cleared tiles generate no wall faces, and dead/moved triggers
+do not require event replay. This does not add a new savegame UI/load flow.
+Visibility islands depend on floor/ceiling/water occupancy rather than wall
+separation, so no island rebuild is needed. Renderer-side physics is unchanged
+and unused by the core-driven DX11 game.
+
+`ApplicationUiTests` exercises both original triggers through core damage,
+selective visibility and stable shared GPU objects, then compares actual WARP
+pixels against a fresh build of the saved wall/object state. It also checks
+unchanged static geometry, duplicate targets, all seven wall shapes, padded
+row strides and islands containing only mutable wall geometry.
 
 [GameContext.h](Scaffold/GameContext.h) now owns the `GameContext` class,
 formerly the `GameState` struct embedded in the dispatch header. Existing

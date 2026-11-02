@@ -775,6 +775,218 @@ namespace
         std::cout << "Model display: six named material tints, seven brightness shades and unchanged fire/unknown modes passed.\n";
     }
 
+    void CheckMutableWalls(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        class WallLevel final : public Level
+        {
+        public:
+            void Build(const LevelInfo& info, const Desperabis::Level& geometry, const std::vector<byte>& objects)
+            {
+                InitLevelInfo(info);
+                m_cellArray.m_sizeX = 50;
+                m_cellArray.m_sizeZ = 40;
+                std::vector<byte> planes;
+                for (const auto* plane : { &geometry.wallTextures[0][0], &geometry.floorObjects[0][0],
+                    &geometry.ceilingObjects[0][0], &geometry.floorHeights[0][0], &geometry.roomHeights[0][0],
+                    &geometry.surfaceFlags[0][0], &geometry.collisionMaterials[0][0] })
+                {
+                    planes.insert(planes.end(), plane, plane + 50 * 40);
+                }
+                // Savegames store headerless 50x40 planes and the current object records.
+                ReadLevelData(planes.data(), static_cast<int>(planes.size()), false);
+                ReadGameObjects(objects.data(), static_cast<int>(objects.size()));
+                CreateWallGeometry();
+                for (const auto& instance : m_wallGeometry) { m_scene.AddRenderableInstance(instance); }
+            }
+            const auto& Walls() const { return m_wallGeometry; }
+            const auto& MutableWalls() const { return m_mutableWalls; }
+            const Scene& WallScene() const { return m_scene; }
+        private:
+            FlameScene m_scene;
+        };
+        class WallVisibility final : public DefaultVisibilityContext
+        {
+        public:
+            void Collect(VisibilityResult& result, const Scene& scene, const Vector& position)
+            {
+                m_performFrustumClipping = false;
+                VisibilitySettings settings;
+                settings.filterMask = static_cast<uint32_t>(GamePlay::VisibilityFilter::Walls);
+                Frustum frustum;
+                DetermineVisibleInstances(result, result.m_visibleInstances, &scene,
+                    position, frustum, nullptr, settings, true);
+            }
+        } visibility;
+        auto* assets = FORCE_GET(AssetManager::Instance().LoadLevel(11));
+        const auto read = [](std::wstring_view filename)
+        {
+            return FORCE_GET(FileManager::Instance().ReadDataFuture(
+                FileManager::Instance().FilenameToNative(filename)));
+        };
+        const auto feld = read(L"LEVEL\\FELD11.256");
+        auto objects = read(L"LEVEL\\OBJPOS11.DAT");
+        Desperabis::Level geometry;
+        geometry.LoadGeometry(feld.data(), feld.size());
+        geometry.BuildCollisionMap();
+        Desperabis::GameContext core;
+        core.level = &geometry;
+        core.collisionMap = geometry.collisionMap.get();
+        for (std::size_t offset = 0; offset < objects.size(); offset += 54)
+        {
+            core.worldObjects[offset / 54 + 2] = Desperabis::DecodeGameObject(objects.data() + offset, 54);
+        }
+        WallLevel level;
+        level.Build(assets->GetLevelInfo(), geometry, objects);
+        Check(level.MutableWalls().size() == 2 &&
+            level.MutableWalls()[0].column == 19 && level.MutableWalls()[0].row == 8 &&
+            level.MutableWalls()[1].column == 19 && level.MutableWalls()[1].row == 9,
+            "Original level 11 must isolate exactly its two authored wall-destruction tiles.");
+        const auto synchronize = [&]
+        {
+            return level.SynchronizeWallTiles(&geometry.wallTextures[0][0], 50, 40, 50);
+        };
+        Check(synchronize() == 0, "Intact wall synchronization must not change any render instance.");
+        const auto originalInstances = level.Walls();
+        std::vector<std::shared_ptr<IGraphicsRuntimeObject>> runtimes;
+        std::size_t triangles = 0, removableTriangles = 0;
+        for (const auto& instance : originalInstances)
+        {
+            const auto* renderable = instance->GetRenderable();
+            runtimes.push_back(renderable->m_runtime);
+            triangles += renderable->m_drawCalls[0].m_primitiveCount;
+        }
+        for (const auto& wall : level.MutableWalls())
+        {
+            removableTriangles += wall.instance->GetRenderable()->m_drawCalls[0].m_primitiveCount;
+            Check(std::count_if(originalInstances.begin(), originalInstances.end(), [&](const auto& other)
+                { return other != wall.instance &&
+                    other->GetRenderable()->m_runtime == wall.instance->GetRenderable()->m_runtime; }) > 0,
+                "Mutable wall ranges must share existing island GPU buffers with the static batches.");
+        }
+        auto staticObjects = objects;
+        for (std::size_t offset = 0; offset < staticObjects.size(); offset += 54)
+        {
+            if (staticObjects[offset + 6] == 8) { staticObjects[offset + 6] = 0; }
+        }
+        WallLevel unsplit;
+        unsplit.Build(assets->GetLevelInfo(), geometry, staticObjects);
+        std::size_t unsplitTriangles = 0;
+        for (const auto& instance : unsplit.Walls())
+        {
+            unsplitTriangles += instance->GetRenderable()->m_drawCalls[0].m_primitiveCount;
+        }
+        Check(unsplit.MutableWalls().empty() && triangles == unsplitTriangles,
+            "Extraction must neither duplicate nor omit any wall/floor/ceiling triangles.");
+
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        Texture lightmap;
+        lightmap.CreatePlainWhite();
+        lightmap.m_atlasData = { 0,0,0.5f,0.5f };
+        RenderingSettings settings;
+        ProfilingStats stats;
+        const Vector center((20 - Level::tileCenterX) * 100.f * DespToFloat,
+            (geometry.roomHeights[8][19] - 2 * geometry.floorHeights[8][19]) * DespToFloat,
+            (8.5f - Level::tileCenterY) * 100.f * DespToFloat);
+        const auto render = [&](const WallLevel& drawn, int direction)
+        {
+            Camera camera;
+            Matrix4 projection, transform;
+            projection.CreateOrthographic(150.f * DespToFloat, 100.f * DespToFloat, 0.01f, 30.f);
+            const float yaw = direction * static_cast<float>(Math::Pi * 0.5);
+            const float distance = 40.f * DespToFloat;
+            transform.Create(Vector(center.GetX() + std::sin(yaw) * distance, center.GetY(),
+                center.GetZ() + std::cos(yaw) * distance), Vector(yaw, 0, 0));
+            camera.SetProjectionMatrix(projection);
+            camera.SetCameraTransformMatrix(transform);
+            VisibilityResult visible;
+            visible.m_mainCamera = &camera;
+            visible.m_lightmap = &lightmap;
+            visible.m_ambientColor = { 1.f,1.f,1.f };
+            visible.m_fogColor = { 0,0,0 };
+            visible.m_fogFalloff = 0;
+            visibility.Collect(visible, drawn.WallScene(), camera.GetCameraPosition());
+            const float black[]{ 0,0,0,1 };
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            return target.Pixels(device, context);
+        };
+        std::array<std::vector<std::uint32_t>, 4> before;
+        for (int direction = 0; direction < 4; ++direction) { before[direction] = render(level, direction); }
+        core.DamageObject(core.worldObjects[49], 0);
+        Check(synchronize() == 1 && !level.MutableWalls()[0].instance->GetVisible() &&
+            level.MutableWalls()[1].instance->GetVisible() && synchronize() == 0,
+            "Core destruction must hide only its tile and remain idempotent after object coordinates change.");
+        core.DamageObject(core.worldObjects[50], 0);
+        Check(synchronize() == 1 && !level.MutableWalls()[1].instance->GetVisible(),
+            "The second trigger must independently remove the neighbouring wall.");
+        for (std::size_t i = 0; i < originalInstances.size(); ++i)
+        {
+            Check(level.Walls()[i] == originalInstances[i] &&
+                level.Walls()[i]->GetRenderable()->m_runtime == runtimes[i],
+                "Destruction must not recreate instances or upload/rebuild the level GPU meshes.");
+            const bool mutableWall = std::any_of(level.MutableWalls().begin(), level.MutableWalls().end(),
+                [&](const auto& wall) { return wall.instance == originalInstances[i]; });
+            Check(originalInstances[i]->GetVisible() != mutableWall,
+                "Static walls, floors and ceilings must remain visible after destruction.");
+        }
+        for (std::size_t offset = 0; offset < objects.size(); offset += 54)
+        {
+            Desperabis::EncodeGameObject(core.worldObjects[offset / 54 + 2], objects.data() + offset, 54);
+        }
+        WallLevel restored;
+        restored.Build(assets->GetLevelInfo(), geometry, objects);
+        std::size_t restoredTriangles = 0;
+        for (const auto& instance : restored.Walls())
+        {
+            restoredTriangles += instance->GetRenderable()->m_drawCalls[0].m_primitiveCount;
+        }
+        Check(restored.MutableWalls().empty() && restoredTriangles + removableTriangles == triangles,
+            "Saved cleared tiles and dead/repositioned triggers must never resurrect removed wall faces.");
+        int changedPixels = 0;
+        for (int direction = 0; direction < 4; ++direction)
+        {
+            const auto after = render(level, direction);
+            const auto saved = render(restored, direction);
+            Check(after == saved, "A fresh saved-geometry build must render identically to runtime wall removal.");
+            for (std::size_t i = 0; i < after.size(); ++i) { changedPixels += before[direction][i] != after[i]; }
+        }
+        Check(changedPixels > 100, "The original secret-room walls must visibly disappear from the rendered scene.");
+        Desperabis::Level isolated;
+        for (auto& row : isolated.roomHeights) { std::fill(std::begin(row), std::end(row), byte(50)); }
+        auto trigger = core.worldObjects[49];
+        trigger.health = 1000;
+        trigger.posX = 300;
+        trigger.posZ = 3800;
+        std::vector<byte> duplicateTriggers(108);
+        Desperabis::EncodeGameObject(trigger, duplicateTriggers.data(), 54);
+        Desperabis::EncodeGameObject(trigger, duplicateTriggers.data() + 54, 54);
+        for (int shape = 0; shape <= 6; ++shape)
+        {
+            const auto tile = static_cast<byte>((shape << 5) | 2);
+            isolated.wallTextures[2][2] = tile;
+            WallLevel onlyWall;
+            onlyWall.Build(assets->GetLevelInfo(), isolated, duplicateTriggers);
+            Check(onlyWall.Walls().size() == 1 && onlyWall.MutableWalls().size() == 1 &&
+                onlyWall.Walls()[0]->GetRenderable()->m_drawCalls[0].m_primitiveCount ==
+                    (shape < 4 ? 2 : shape < 6 ? 4 : 8),
+                "Duplicate triggers and all wall shapes must produce one complete range, even without static batches.");
+            std::vector<byte> stridedTiles(40 * 53, 0);
+            Check(onlyWall.SynchronizeWallTiles(stridedTiles.data(), 50, 40, 53) == 1 &&
+                !onlyWall.Walls()[0]->GetVisible() &&
+                onlyWall.GetCellArray().GetCell(2, 2).m_wallTextures == 0,
+                "Headerless saved planes and padded core strides must hide every face of a mutable-only island.");
+            stridedTiles[2 * 53 + 2] = tile;
+            Check(onlyWall.SynchronizeWallTiles(stridedTiles.data(), 50, 40, 53) == 1 &&
+                onlyWall.Walls()[0]->GetVisible(),
+                "Restoring the original tile must restore its prebuilt range without rebuilding.");
+        }
+        std::cout << "Mutable walls: original level-11 triggers, shared immutable buffers, selective removal, "
+            "identical saved-geometry rendering, duplicate targets and all seven shapes passed ("
+            << changedPixels << " changed pixels).\n";
+    }
+
     void CheckMaps(ApplicationUi& ui, RendererDX11& renderer, const Level& level,
         const Font& font, const TextureAnim& hud, ID3D11Device3* device, ID3D11DeviceContext3* context,
         const char* screenshot = nullptr)
@@ -1578,6 +1790,7 @@ int main(int argc, char* argv[])
         const auto items = OriginalItems();
         CheckTextControls(font);
         CheckTutorialFlames();
+        CheckMutableWalls(renderer, device.Get(), context.Get());
         CheckEnemyModels();
         CheckMummyFade(renderer, device.Get(), context.Get());
         CheckDragon(renderer, device.Get(), context.Get());

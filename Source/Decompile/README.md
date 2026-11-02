@@ -39,7 +39,10 @@ For the first explained case and shared collision-map pointer, see
   `crab-oil-support-evidence.txt`: native push-player radial separation,
   crab wandering/material checks and burnable-oil aging, light and spreading.
   `Scaffold/ThirdPartBehaviorTests.cpp` covers these mechanics and their
-  original third-part level objects; baked-wall rendering remains deferred.
+  original third-part level objects. Destructible walls are extracted into
+  independently hideable ranges sharing the static island GPU buffers; the host
+  synchronizes their visibility from GameCore's authoritative wall tiles.
+  See [destructible wall presentation](BehaviorRecovery.md#destructible-wall-presentation).
 - `map-presentation-evidence.txt`: native map ownership gate, corner-map
   heading, PictureMap's page-11 transition and modal map dispatch.
   The corner map uses a lazily uploaded, palette-converted collision texture;

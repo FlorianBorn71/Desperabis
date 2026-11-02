@@ -20,6 +20,7 @@ public:
     FUTURE(void) PopulateScene(Scene& scene, bool createGameObjects, bool addMapIcons);
 	void ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& rawGO, Texture* spriteOverride = nullptr) const;
     RenderableInstancePtr CreatePlayerObject();
+    std::size_t SynchronizeWallTiles(const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride);
 	float GetHeightAtPos(const Vector& pos) const 
     {
         return m_cellArray.GetHeightAtPos(pos);
@@ -68,6 +69,13 @@ protected:
 
     std::vector<std::shared_ptr<Renderable>> m_wallRenderables;
     std::vector<std::shared_ptr<RenderableInstance>> m_wallGeometry;
+    struct MutableWall
+    {
+        int column, row;
+        byte originalWall;
+        RenderableInstancePtr instance;
+    };
+    std::vector<MutableWall> m_mutableWalls;
 
     std::shared_ptr<Renderable> m_skyRenderable;
     std::shared_ptr<Texture> m_lightmap;
