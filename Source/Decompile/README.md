@@ -51,6 +51,19 @@ For the first explained case and shared collision-map pointer, see
   coordinate, parchment-remap and line-drawing helpers. Confirms separate
   geometry-based tile shading and wall outlines, now generated into one separate
   level texture shared by the modal and the wall-map model's preview material.
+- `water-surface-generation-evidence.txt`: four native surface definitions,
+  five-bit selectors and intentional suppression of zero-depth/mode-255 flat
+  quads. Level 17 uses modelled shoreline water in those suppressed tiles;
+  see [native special-surface geometry](BehaviorRecovery.md#native-special-surface-geometry).
+- `level-fifteen-traps-evidence.txt`, `level-fifteen-trap-spawn-evidence.txt`,
+  `level-fifteen-trap-helpers-evidence.txt`: arrow emitters, floor spears and
+  their shared projectile/contact helpers; implemented with original-fixture
+  regression tests in `Scaffold/LevelFifteenTrapTests.cpp`.
+- `level-sixteen-seventeen-evidence.txt`,
+  `level-sixteen-seventeen-support-evidence.txt`,
+  `level-sixteen-seventeen-lifecycle-evidence.txt`: recovered frog, outdoor
+  bat, lava smoke, sloped rolling-rock and shark paths. `ExtinguishLava` remains
+  deliberately deferred.
 - `initial-import.txt`: generated memory map and initial instruction report.
 - `high-level-evidence.txt`: focused instruction evidence for the control-flow map.
 - `ui-evidence.txt`: UI page dispatch, F2 inventory navigation, shared input/text

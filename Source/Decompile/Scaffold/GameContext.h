@@ -425,6 +425,10 @@ namespace Desperabis
         InteractionResult HandleCockroachContact(RawGameObject& object);
         InteractionResult HandleCrabContact(RawGameObject& object);
         InteractionResult HandleDamageObjectContact(const RawGameObject& object);
+        // Native 10AC:2124: one damage application until the behavior resets generalPurpose2.
+        void ApplyLatchedPlayerContactDamage(RawGameObject& object);
+        // Native 10AC:4106 selectors 1/11, used by the original arrow and fountain emitters.
+        std::uint16_t SpawnEmitterProjectile(const RawGameObject& source);
         InteractionResult HandleTeleporterContact(RawGameObject& object, bool interactionPressed);
         InteractionResult HandleLevelEndContact(RawGameObject& object, bool interactionPressed);
         // Native 0EF0:0896 scans every matching live destination in slots 2..141.
@@ -448,6 +452,7 @@ namespace Desperabis
         std::optional<std::array<std::int16_t, 3>> GetModelAnchor(const RawGameObject& object, bool muzzle) const;
         void UpdateModelAttachments();
         std::int16_t frameTickCount = 1; // DS:D4CA; burning uses this rather than the behavior argument.
+        std::int32_t levelElapsedTicks = 0; // DS:D504; signed level timer used by delayed rock slopes.
         std::int16_t windX = 0; // DS:2B0E; owned by this level/context, not a process global.
         std::int16_t windZ = 0; // DS:2B10.
         bool skyEnabled = false; // Native DS:D4C4 > 0.

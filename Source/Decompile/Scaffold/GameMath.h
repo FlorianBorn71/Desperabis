@@ -15,6 +15,8 @@ namespace Desperabis
 
     std::int16_t WrapSignedWord(std::int32_t value);
     std::int16_t ArithmeticShiftRight(std::int16_t value, unsigned int bits);
+    // Turbo Pascal Real48 temporary conversion (2CE4:164C).
+    double RoundReal48(double value);
 
     // Original 1E48:2E0A: ordinary (unclamped) sine table, signed high-word products.
     void GetDirectionDisplacement(std::int16_t& x, std::int16_t& z,

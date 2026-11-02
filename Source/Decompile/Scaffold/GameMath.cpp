@@ -68,14 +68,15 @@ namespace Desperabis
             z = WrapSignedWord(-static_cast<std::int32_t>(zProduct >> 16));
         }
 
-        double RoundReal48(double value)
-        {
-            if (value == 0) { return 0; }
-            int exponent = 0;
-            const auto fraction = std::frexp(std::abs(value), &exponent);
-            const auto rounded = std::floor(std::ldexp(fraction, 40) + 0.5);
-            return std::copysign(std::ldexp(rounded, exponent - 40), value);
-        }
+    }
+
+    double RoundReal48(double value)
+    {
+        if (value == 0) { return 0; }
+        int exponent = 0;
+        const auto fraction = std::frexp(std::abs(value), &exponent);
+        const auto rounded = std::floor(std::ldexp(fraction, 40) + 0.5);
+        return std::copysign(std::ldexp(rounded, exponent - 40), value);
     }
 
     const std::array<std::int32_t, 513> SineTable = MakeSineTable(SineQuarter);

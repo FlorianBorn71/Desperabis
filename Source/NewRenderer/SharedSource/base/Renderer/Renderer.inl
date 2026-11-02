@@ -150,7 +150,7 @@ inline void Renderer::RenderWaterInstances(CONTEXT_TYPE& context)
         context.PrepareWaterRendering(water);
         for (const auto& entry : water.m_waterReceiver)
         {
-            context.RenderInstance<GeometryPassType::MirrorReceiver>(entry.m_instance, TransparencyMode::Water);
+            context.RenderInstance<GeometryPassType::MirrorReceiver>(entry.m_instance, TransparencyMode::Water, entry.m_drawCallIndex);
         }
 
     }

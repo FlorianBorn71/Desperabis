@@ -22,6 +22,7 @@ enum class WaterSlotIndex : byte
     WaterSlot1 = 1,
     WaterSlot2 = 2,
     WaterSlot3 = 3,
+    WaterSlot4 = 4,
 };
 
 enum class HeightLevel : int
@@ -31,7 +32,8 @@ enum class HeightLevel : int
     WaterLevel1 = 2,
     WaterLevel2 = 3,
     WaterLevel3 = 4,
-    Count = 5
+    WaterLevel4 = 5,
+    Count = 6
 };
 
 
@@ -84,5 +86,5 @@ struct GridCellArray
 
     std::vector<GridCell> m_cell;
     int m_sizeX, m_sizeZ;
-    float m_waterHeights[3] = {};
+    float m_waterHeights[4] = {};
 };

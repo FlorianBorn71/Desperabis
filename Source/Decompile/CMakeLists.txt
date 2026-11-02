@@ -26,6 +26,7 @@ add_library(behavior-recovery STATIC
     Scaffold/BehaviorHandlers.cpp
     Scaffold/EnemyBehaviors.cpp
     Scaffold/DragonBehaviors.cpp
+    Scaffold/LevelFifteenTraps.cpp
     Scaffold/ModelAnchors.cpp
     Scaffold/WeatherBehaviors.cpp
     Scaffold/WeaponPresentation.cpp
@@ -47,6 +48,10 @@ foreach(target Continuous Experimental Nightly NightlyMemoryCheck)
     endif()
 endforeach()
 if(BUILD_TESTING)
+    add_executable(level-fifteen-trap-tests Scaffold/LevelFifteenTrapTests.cpp)
+    target_link_libraries(level-fifteen-trap-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME level-fifteen-traps COMMAND level-fifteen-trap-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original")
     add_executable(dragon-tests Scaffold/DragonTests.cpp)
     target_link_libraries(dragon-tests PRIVATE Desperabis::GameCore)
     add_test(NAME level-fifteen-dragon COMMAND dragon-tests
@@ -150,6 +155,10 @@ if(BUILD_TESTING)
     add_executable(player-health-tests Scaffold/PlayerHealthTests.cpp)
     target_link_libraries(player-health-tests PRIVATE behavior-recovery)
     add_test(NAME player-health COMMAND player-health-tests)
+    add_executable(level-sixteen-seventeen-tests Scaffold/LevelSixteenSeventeenTests.cpp)
+    target_link_libraries(level-sixteen-seventeen-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME level-sixteen-seventeen-behaviors COMMAND level-sixteen-seventeen-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original/LEVEL")
     add_test(NAME behavior-recovery-routes COMMAND behavior-recovery-tests
         "${CMAKE_CURRENT_SOURCE_DIR}/../../Game/Original/DESPERAB.EXE"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original/SAMP/S_TAB.PRB")
@@ -163,7 +172,7 @@ foreach(target behavior-recovery desperabis-recovery)
     endif()
 endforeach()
 if(BUILD_TESTING)
-    foreach(target tutorial-tests ambient-tests behavior-recovery-tests application-flow-tests application-update-tests fireplace-tests particle-tests floating-debris-tests rat-snake-tests cockroach-tests bat-indoor-tests mummy-tests skeleton-tests damage-tests weapon-tests ranged-weapon-tests game-runtime-tests player-posture-tests player-look-tests player-support-tests player-health-tests)
+    foreach(target tutorial-tests ambient-tests behavior-recovery-tests application-flow-tests application-update-tests fireplace-tests particle-tests floating-debris-tests rat-snake-tests cockroach-tests bat-indoor-tests mummy-tests skeleton-tests damage-tests weapon-tests ranged-weapon-tests game-runtime-tests player-posture-tests player-look-tests player-support-tests player-health-tests level-sixteen-seventeen-tests)
         set_target_properties(${target} PROPERTIES FOLDER "Tests")
         if(MSVC)
             target_compile_options(${target} PRIVATE /W4 /WX)

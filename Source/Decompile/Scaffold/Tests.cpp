@@ -173,13 +173,16 @@ namespace
                 entry.type == BehaviorType::BearTrapAmmo || entry.type == BehaviorType::Mummie ||
                 entry.type == BehaviorType::MummieGuard || entry.type == BehaviorType::Gorilla ||
                 entry.type == BehaviorType::AirborneLeaf || entry.type == BehaviorType::GroundLeaf ||
-                entry.type == BehaviorType::RainDrop ||
+                entry.type == BehaviorType::RainDrop || entry.type == BehaviorType::FlyingArrow ||
+                entry.type == BehaviorType::Frog ||
+                entry.type == BehaviorType::Behavior_11 ||
                 entry.type == BehaviorType::Harvestman || entry.type == BehaviorType::Devil)
             {
                 object.posX = 150;
                 object.posZ = 4050;
             }
             if (entry.type == BehaviorType::MummieGuard) { object.soundEffectId = 15; }
+            if (entry.type == BehaviorType::ShootArrows) { object.generalPurpose1 = 1; }
             if (entry.type == BehaviorType::DragonHead) { object.doorLockOrGroupBitmask = 1; }
             const auto before = ObjectBytes(object);
             GameContext context;
@@ -195,6 +198,12 @@ namespace
             Check(FindBehavior(entry.type) == &entry && FindBehavior(entry.name) == &entry,
                 "Behavior enum/name lookup must reference the same descriptor.");
             const bool implemented = entry.type == BehaviorType::Pillar || entry.type == BehaviorType::LightSource ||
+                entry.type == BehaviorType::ShootArrows || entry.type == BehaviorType::FlyingArrow ||
+                entry.type == BehaviorType::SpearOnGroundTrap ||
+                entry.type == BehaviorType::Frog || entry.type == BehaviorType::Behavior_11 ||
+                entry.type == BehaviorType::BatOutdoor || entry.type == BehaviorType::LavaSmoke ||
+                entry.type == BehaviorType::RollingRockSlope || entry.type == BehaviorType::RollingRock ||
+                entry.type == BehaviorType::Shark ||
                 entry.type == BehaviorType::Door ||
                 entry.type == BehaviorType::TutorialTrigger ||
                 entry.type == BehaviorType::LightningGenerator || entry.type == BehaviorType::WindController ||
@@ -1468,7 +1477,7 @@ namespace
             {
                 return result.status == DispatchStatus::NoSpecificCase;
             }), "The loop must expose a dispatch result for every ordinary slot.");
-        state.worldObjects[2].behavior = BehaviorType::BatOutdoor;
+        state.worldObjects[2].behavior = BehaviorType::Behavior_6;
         Check(UpdateObjects(state)[0].status == DispatchStatus::UnimplementedHandler,
             "The loop must not hide unrecovered behavior statuses.");
         state.tickCount = -1;
@@ -2769,15 +2778,15 @@ namespace
             "No-ceiling lookup must not require unused neighboring samples at the level edge.");
         Check(state.GetFloorHeight(4900, 0, 200) == 0 && state.GetRoomHeight(4900, 200) == 96,
             "Last complete interpolation cell was rejected or mapped to the wrong row.");
-        for (const auto x : { 0, 5000, 12799, 12800, -12900 })
+        for (const auto x : { 12800, -12900 })
         {
             bool rejected = false;
             bool overflow = false;
             try { state.GetFloorHeight(static_cast<std::int16_t>(x), 0, 4000); }
             catch (const std::overflow_error&) { rejected = true; overflow = true; }
             catch (const std::out_of_range&) { rejected = true; }
-            Check(rejected && overflow == (x == 12800 || x == -12900),
-                "Height lookup failed to distinguish native byte-division overflow from sample bounds.");
+            Check(rejected && overflow,
+                "Height lookup must preserve native byte-division overflow checks.");
         }
         bool rejected = false;
         try { state.GetRoomHeight(100, -12900); }

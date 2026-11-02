@@ -1,0 +1,92 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Recovery notes (module-relative DOS addresses):
+  Dispatch behavior40 at 0000:1E07 calls 10AC:8A15 with object slot and tick count.
+  Dispatch behavior44 at 0000:1E98 calls 10AC:8AD3 with the same arguments.
+  Complete helper decoding: level-fifteen-trap-helpers-evidence.txt.
+  Shared selector1 initialization: enemy-attack-support-evidence.txt,
+  10AC:4106..41F0; shared terrain clamp 10AC:4780..47B9 is in
+  level-fifteen-trap-spawn-evidence.txt. Runtime behavior41 selector0 and
+  selector11 decoding is in slime-flight-evidence.txt, 10AC:47BA..4D7C.
+  Shared spear damage latch 10AC:2124..2181 and listener distance
+  10AC:202A..205F are also in level-fifteen-trap-spawn-evidence.txt.
+
+Original fixtures:
+  OBJPOS15.DAT original slot3: behavior40, selector1, health1000,
+  itemValue160, initial countdown110, heading256, speed10.
+  Spawn selector1 creates model31 vector arrow, behavior/collision41,
+  health1000, runtime itemValue0 (NOT selector1), damage140, radii10/8.
+  OBJPOS15.DAT slots11,13,15,17,18,19: behavior44, health1000,
+  itemValue500, speed4, damage250, initial phases432/24/160/196/264/384.
+  These traps morph in place; no additional spear object is spawned.
+  Native source behavior40 is also present at OBJPOS30.DAT slot41:
+  selector11, health1005 (dormant), interval1, speed0, model33,
+  velocityX100/velocityY25/velocityZ2. Once activated at health1000 it
+  creates runtime selector11, including sound86 with shared source500.
+  This does not implement behavior130 ExtinguishLava.
+
+Semantics:
+  Emitter only runs at health exactly1000. Each positive tick copies a nonzero
+  modelFrame2 into animFrame, then either decrements signed-positive countdown,
+  or reloads countdown from itemValue and spawns. Interval0 breaks after spawn.
+  Shared allocator clears a free or lowest-health object, fallback slot165;
+  notifications must occur after all initialized fields and terrain+8 clamping.
+  Arrow selector0 moves without gravity; wall mask8 destroys it. Common
+  projectile player overlap subtracts damage*29491 fixed-point life, clears
+  damage, sets hit ticks10, and invokes shared DamageObject collision41 logic.
+  Spear computes max(100-abs16(phase-100),0) BEFORE phase update, once per
+  dispatch (even tick0), not per substep. Speed0 defaults to5. Signed phase<1
+  reloads positive itemValue, or arms phase200 at listener distance strictly<80;
+  resets contact latch. Otherwise subtract tickCount*speed with word wrapping.
+  Morph>10 plus player overlap invokes native one-shot damage latch (generalPurpose2).
+  First hit sets hit ticks8 and applies damage*29491; every hit latches1.
+  Contact switches animFrame1 to3, retaining it in later cycles.
+  Tests: Scaffold\LevelFifteenTrapTests.cpp, CTest level-fifteen-traps.
+  Supported emitter selectors1/11 cover both original behavior40 fixtures;
+  unsupported synthetic selectors remain explicit UnimplementedHandler.
+
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 0000:1E07:004C
+0000:1E07  FF 76 FC                 PUSH word ptr [BP + -0x4]
+0000:1E0A  FF 76 04                 PUSH word ptr [BP + 0x4]
+0000:1E0D  9A 15 8A AC 20           CALLF 0x2000:94d5 ; encoded analysis target 20AC:8A15, module 10AC:8A15
+0000:1E12  E9 FB 32                 JMP 0x1000:5110 ; logical module target 0000:5110
+0000:1E15  3D 29 00                 CMP AX,0x29
+0000:1E18  75 34                    JNZ 0x1000:1e4e ; logical module target 0000:1E4E
+0000:1E1A  8B 46 04                 MOV AX,word ptr [BP + 0x4]
+0000:1E1D  89 46 C4                 MOV word ptr [BP + -0x3c],AX
+0000:1E20  B8 01 00                 MOV AX,0x1
+0000:1E23  3B 46 C4                 CMP AX,word ptr [BP + -0x3c]
+0000:1E26  7F 23                    JG 0x1000:1e4b ; logical module target 0000:1E4B
+0000:1E28  89 46 FE                 MOV word ptr [BP + -0x2],AX
+0000:1E2B  EB 03                    JMP 0x1000:1e30 ; logical module target 0000:1E30
+0000:1E2D  FF 46 FE                 INC word ptr [BP + -0x2]
+0000:1E30  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:1E33  26 81 7D 0A E9 03        CMP word ptr ES:[DI + 0xa],0x3e9
+0000:1E39  7D 08                    JGE 0x1000:1e43 ; logical module target 0000:1E43
+0000:1E3B  FF 76 FC                 PUSH word ptr [BP + -0x4]
+0000:1E3E  9A BA 47 AC 20           CALLF 0x2000:527a ; encoded analysis target 20AC:47BA, module 10AC:47BA
+0000:1E43  8B 46 FE                 MOV AX,word ptr [BP + -0x2]
+0000:1E46  3B 46 C4                 CMP AX,word ptr [BP + -0x3c]
+0000:1E49  75 E2                    JNZ 0x1000:1e2d ; logical module target 0000:1E2D
+0000:1E4B  E9 C2 32                 JMP 0x1000:5110 ; logical module target 0000:5110
+0000:1E4E  3D 2A 00                 CMP AX,0x2a
+0000:1E51  75 0E                    JNZ 0x1000:1e61 ; logical module target 0000:1E61
+
+Range 0000:1E98:002C
+0000:1E98  FF 76 FC                 PUSH word ptr [BP + -0x4]
+0000:1E9B  FF 76 04                 PUSH word ptr [BP + 0x4]
+0000:1E9E  9A D3 8A AC 20           CALLF 0x2000:9593 ; encoded analysis target 20AC:8AD3, module 10AC:8AD3
+0000:1EA3  E9 6A 32                 JMP 0x1000:5110 ; logical module target 0000:5110
+0000:1EA6  3D 2D 00                 CMP AX,0x2d
+0000:1EA9  75 2B                    JNZ 0x1000:1ed6 ; logical module target 0000:1ED6
+0000:1EAB  8B 46 04                 MOV AX,word ptr [BP + 0x4]
+0000:1EAE  89 46 C4                 MOV word ptr [BP + -0x3c],AX
+0000:1EB1  B8 01 00                 MOV AX,0x1
+0000:1EB4  3B 46 C4                 CMP AX,word ptr [BP + -0x3c]
+0000:1EB7  7F 1A                    JG 0x1000:1ed3 ; logical module target 0000:1ED3
+0000:1EB9  89 46 FE                 MOV word ptr [BP + -0x2],AX
+0000:1EBC  EB 03                    JMP 0x1000:1ec1 ; logical module target 0000:1EC1
+0000:1EBE  FF 46 FE                 INC word ptr [BP + -0x2]
+0000:1EC1  FF 76 FC                 PUSH word ptr [BP + -0x4]

@@ -563,17 +563,11 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
                 DrawCallMaterial::GetWaterTintColor(reflType, solidColor);
                 break;
             case TriangleBlendType::Refraction:
-                solidColor = { 0,255,0,255 };
-                dc.m_material.m_reflectionType = reflType | WaterReflectionType::RefractionBit;
-                dc.m_material.m_transparencyType = TransparencyMode::Water;
-                DrawCallMaterial::GetWaterTintColor(reflType, solidColor);
-                break;
             case TriangleBlendType::Reflection:
             {
                 const VertexPosition* vertexPositions = &context.m_input.m_vertexPos[context.m_modelPositionOfs];
                 uint16_t p0 = p.i0 - 1;
-                solidColor = { 255,0,0,255 };
-                dc.m_material.m_reflectionType = reflType | WaterReflectionType::ReflectionBit;
+                dc.m_material.m_reflectionType = reflType;
                 dc.m_material.m_transparencyType = TransparencyMode::Water;
                 dc.m_material.m_mirrorHeight = vertexPositions[p0].y; // take the vertex position of the first triangle position as mirror level
                 DrawCallMaterial::GetWaterTintColor(reflType, solidColor);

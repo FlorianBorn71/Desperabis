@@ -3,7 +3,7 @@
 #include <DX11/RendererDX11.h>
 
 template<GeometryPassType PASSTYPE>
-void RenderContextDX11::RenderInstance(const RenderableInstance* instance, TransparencyMode transparencyFilter)
+void RenderContextDX11::RenderInstance(const RenderableInstance* instance, TransparencyMode transparencyFilter, int drawCallIndex)
 {
     const Renderable* renderable = instance->GetRenderable();
     NativeModelMeshObjectDX11* nativeMesh = renderable->GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
@@ -104,6 +104,7 @@ void RenderContextDX11::RenderInstance(const RenderableInstance* instance, Trans
     // Draw the objects.
     for (int i = 0; i < renderable->m_drawCalls.size(); i++)
     {
+        if (drawCallIndex >= 0 && i != drawCallIndex) { continue; }
         const DrawCall& dc(renderable->m_drawCalls[i]);
         const DrawCallMaterial& material = (i < instance->m_materialOverride.size()) ? instance->m_materialOverride[i] : dc.m_material;
         if (material.m_transparencyType != transparencyFilter)

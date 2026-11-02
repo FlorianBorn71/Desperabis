@@ -22,8 +22,8 @@ namespace Desperabis
 
         struct HeightPosition
         {
-            std::size_t column;
-            std::size_t row;
+            int column;
+            int row;
             std::uint16_t fractionX;
             std::uint16_t fractionZ;
         };
@@ -36,24 +36,46 @@ namespace Desperabis
             {
                 throw std::overflow_error("Height lookup would overflow the DOS signed-byte division.");
             }
-            const int row = 41 - zTile;
-            if (column < 1 || column > static_cast<int>(Level::Width) ||
-                row < 1 || row > static_cast<int>(Level::Height))
-            {
-                throw std::out_of_range("Height lookup is outside the 50x40 level.");
-            }
-            // The original arrays are one-based; their instruction displacements are biased by 51.
-            return { static_cast<std::size_t>(column - 1), static_cast<std::size_t>(row - 1),
+            return { column - 1, 40 - zTile,
                 static_cast<std::uint16_t>((x % 100) * 661),
                 static_cast<std::uint16_t>((z % 100) * 661) };
         }
 
-        void CheckHeightCorners(const HeightPosition& position)
+        HeightPosition GetHeightCell(std::int16_t x, std::int16_t z)
         {
-            if (position.column + 1 >= Level::Width || position.row + 1 >= Level::Height)
+            auto position = GetHeightPosition(x, z);
+            const int index = position.row * static_cast<int>(Level::Width) + position.column;
+            if (index < 0 || index >= static_cast<int>(Level::Width * Level::Height))
             {
-                throw std::out_of_range("Height interpolation requires four samples inside the level.");
+                throw std::out_of_range("Height lookup is outside the 50x40 level.");
             }
+            position.column = index % static_cast<int>(Level::Width);
+            position.row = index / static_cast<int>(Level::Width);
+            return position;
+        }
+
+        enum class GeometryPlane
+        {
+            WallTextures, FloorObjects, CeilingObjects, FloorHeights, RoomHeights, SurfaceFlags, CollisionMaterials
+        };
+
+        std::uint8_t ReadGeometrySample(const Level& terrain, GeometryPlane plane,
+            const HeightPosition& position, int offset = 0)
+        {
+            // DOS planes are contiguous in this order; boundary samples can belong to a neighboring plane.
+            const std::array<const std::uint8_t (*)[Level::Width], 7> planes = {
+                terrain.wallTextures, terrain.floorObjects, terrain.ceilingObjects, terrain.floorHeights,
+                terrain.roomHeights, terrain.surfaceFlags, terrain.collisionMaterials
+            };
+            constexpr int planeSize = static_cast<int>(Level::Width * Level::Height);
+            const int index = static_cast<int>(plane) * planeSize +
+                position.row * static_cast<int>(Level::Width) + position.column + offset;
+            if (index < 0 || index >= static_cast<int>(planes.size()) * planeSize)
+            {
+                throw std::out_of_range("Height sample is outside the native geometry planes.");
+            }
+            const auto localIndex = static_cast<std::size_t>(index % planeSize);
+            return planes[index / planeSize][localIndex / Level::Width][localIndex % Level::Width];
         }
 
         std::uint16_t Interpolate(std::uint16_t first, std::uint16_t second, std::uint16_t fraction)
@@ -74,13 +96,12 @@ namespace Desperabis
         }
 
         std::array<std::int16_t, 4> GetCorners(
-            const std::uint8_t (&plane)[Level::Height][Level::Width], const HeightPosition& position)
+            const Level& terrain, GeometryPlane plane, const HeightPosition& position)
         {
-            CheckHeightCorners(position);
-            const auto row = position.row;
-            const auto column = position.column;
-            return { plane[row][column], plane[row][column + 1],
-                plane[row + 1][column], plane[row + 1][column + 1] };
+            return { ReadGeometrySample(terrain, plane, position),
+                ReadGeometrySample(terrain, plane, position, 1),
+                ReadGeometrySample(terrain, plane, position, static_cast<int>(Level::Width)),
+                ReadGeometrySample(terrain, plane, position, static_cast<int>(Level::Width + 1)) };
         }
 
         std::int16_t RepeatFloor(std::int16_t corner, std::int16_t queryHeight, std::int16_t step)
@@ -102,14 +123,14 @@ namespace Desperabis
             std::int16_t x, std::int16_t y, std::int16_t z)
         {
             const auto position = GetHeightPosition(x, z);
-            const auto surface = terrain.surfaceFlags[position.row][position.column] & 31;
-            auto corners = GetCorners(terrain.floorHeights, position);
+            const auto surface = ReadGeometrySample(terrain, GeometryPlane::SurfaceFlags, position) & 31;
+            auto corners = GetCorners(terrain, GeometryPlane::FloorHeights, position);
             const auto halfY = y >= 0 ? y / 2 : (static_cast<int>(y) - 1) / 2;
             const auto queryHeight = WrapSignedWord(-halfY);
             constexpr int stackedFloorSurface = 28;
             if (surface == stackedFloorSurface)
             {
-                const auto room = GetCorners(terrain.roomHeights, position);
+                const auto room = GetCorners(terrain, GeometryPlane::RoomHeights, position);
                 for (std::size_t i = 0; i < corners.size(); ++i)
                 {
                     corners[i] = WrapSignedWord(corners[i] - room[i]);
@@ -303,6 +324,7 @@ namespace Desperabis
         collisionMap = ownedLevel->collisionMap.get();
         collisionmapUploadDirty = true;
         worldObjects = data.objects;
+        levelElapsedTicks = 0;
         playerForwardSpeed = 0;
         playerSidewaysSpeed = 0;
         playerTurnSpeed = 0;
@@ -646,7 +668,7 @@ namespace Desperabis
                 RequestPlayerCrouch();
                 player.generalPurpose3 = 1;
                 const auto position = GetHeightPosition(player.posX, player.posZ);
-                const auto depth = GetHeightSurfaceDepth(level->surfaceFlags[position.row][position.column]);
+                const auto depth = GetHeightSurfaceDepth(ReadGeometrySample(*level, GeometryPlane::SurfaceFlags, position));
                 playerUnderwater = WrapSignedWord(eyeY + depth) < 0;
             }
             if (playerUnderwater)
@@ -731,6 +753,8 @@ namespace Desperabis
         if (input.IsKeyPressed(InputKey::SelectScytheKey)) { SelectWeapon(WeaponType::Scythe); }
         if (input.IsKeyPressed(InputKey::SelectLentilsKey)) { SelectWeapon(WeaponType::Lentils); }
         if (input.IsKeyPressed(InputKey::AttackKey)) { weapon.attack = AttackWithSelectedWeapon(); }
+        levelElapsedTicks = static_cast<std::int32_t>(
+            static_cast<std::uint32_t>(levelElapsedTicks) + static_cast<std::uint32_t>(frameTickCount));
         return { GameTickStatus::Advanced, interaction, results, movement, weapon };
     }
 
@@ -1154,6 +1178,7 @@ namespace Desperabis
         }
         soundListenerX = player.posX;
         soundListenerZ = player.posZ;
+        levelElapsedTicks = 0;
         lightingCache.Reset(soundListenerX, soundListenerZ, lightingCache.activeRadius);
     }
 
@@ -1606,7 +1631,7 @@ namespace Desperabis
         case CollisionType::WallDestruction:
         {
             if (!level || !collisionMap) { throw std::runtime_error("Wall destruction requires level geometry and collision memory."); }
-            const auto cell = GetHeightPosition(object.posX, object.posZ);
+            const auto cell = GetHeightCell(object.posX, object.posZ);
             const auto column = WrapSignedWord(object.posX - 112) / 25;
             const auto row = WrapSignedWord(162 - WrapSignedWord(object.posZ - 38) / 25);
             const auto stride = static_cast<std::size_t>(collisionMap->widthMinusOne) + 1;
@@ -1635,7 +1660,7 @@ namespace Desperabis
         case CollisionType::WaterRecharge:
         {
             if (!level) { throw std::runtime_error("Water-recharge activation requires level geometry."); }
-            const auto cell = GetHeightPosition(object.posX, object.posZ);
+            const auto cell = GetHeightCell(object.posX, object.posZ);
             object.collisionType = CollisionType::None;
             level->floorObjects[cell.row][cell.column] = static_cast<std::uint8_t>(object.itemValue);
             collisionmapUploadDirty = true;
@@ -2764,7 +2789,7 @@ namespace Desperabis
         if (!level) { throw std::logic_error("Player ceiling lookup requires a loaded level."); }
         const auto& player = worldObjects[1];
         const auto position = GetHeightPosition(player.posX, player.posZ);
-        return level->ceilingObjects[position.row][position.column] != 0;
+        return ReadGeometrySample(*level, GeometryPlane::CeilingObjects, position) != 0;
     }
 
     std::uint8_t GameContext::GetCollisionMapPixelAtWorldXZ(std::int16_t x, std::int16_t z) const
@@ -2958,7 +2983,7 @@ namespace Desperabis
     {
         if (!level) { throw std::runtime_error("GetFloorHeight requires level geometry."); }
         const auto position = GetHeightPosition(x, z);
-        const auto depth = GetHeightSurfaceDepth(level->surfaceFlags[position.row][position.column]);
+        const auto depth = GetHeightSurfaceDepth(ReadGeometrySample(*level, GeometryPlane::SurfaceFlags, position));
         const auto flatFloor = WrapSignedWord(-static_cast<std::int32_t>(depth));
         if (flatFloor >= -900) { return flatFloor; }
         return GetTerrainFloorHeight(x, y, z);
@@ -2995,8 +3020,8 @@ namespace Desperabis
     {
         if (!level) { throw std::runtime_error("GetRoomHeight requires level geometry."); }
         const auto position = GetHeightPosition(x, z);
-        if (level->ceilingObjects[position.row][position.column] == 0) { return 20000; }
-        const auto corners = GetCorners(level->roomHeights, position);
+        if (ReadGeometrySample(*level, GeometryPlane::CeilingObjects, position) == 0) { return 20000; }
+        const auto corners = GetCorners(*level, GeometryPlane::RoomHeights, position);
         return WrapSignedWord(2 * static_cast<std::int32_t>(InterpolateHeight(corners, position)));
     }
 

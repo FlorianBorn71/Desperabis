@@ -390,11 +390,18 @@ namespace
         emitter.doorLockOrGroupBitmask = 1001;
         crater.ReplaceWorldObject(2, emitter);
         crater.events.clear();
-        ExpectError<std::out_of_range>([&] { UpdateObject(crater.worldObjects[2], crater); });
-        Check(crater.events.size() == 1, "Failed source-slot initialization must not announce an initialized replacement.");
+        Check(UpdateObject(crater.worldObjects[2], crater).status == DispatchStatus::ExecutedCase &&
+            crater.events.size() == 2, "Cleared-source boundary initialization must finish and announce its replacement.");
         CheckObjectEvent(crater, 0, false, 2, emitter);
-        Check(crater.worldObjects[2].behavior == BehaviorType::SmokeFading && crater.worldObjects[2].posX == 0,
-            "Lifecycle hooks must preserve native partial initialization after source-slot clearing.");
+        CheckObjectEvent(crater, 1, true, 2, crater.worldObjects[2]);
+        Check(crater.worldObjects[2].behavior == BehaviorType::SmokeFading && crater.worldObjects[2].posX == 0 &&
+            crater.worldObjects[2].posY == 0 && crater.worldObjects[2].posZ == 0,
+            "Lifecycle hooks must preserve native cleared-source coordinates during initialization.");
+        crater.events.clear();
+        ExpectError<std::overflow_error>([&] {
+            crater.InitializeSmokeParticle(crater.worldObjects[3], 12800, 0, 4050, 5, 1, 1);
+        });
+        Check(crater.events.empty(), "Failed initialization must not announce a partially initialized replacement.");
 
         host.events.clear();
         host.InitializeDriftingParticle(host.worldObjects[165], 3, 150, 4050);
@@ -625,7 +632,7 @@ namespace
         light.behavior = BehaviorType::PulsatingLight;
         light.posX = 100;
         data.objects[4].health = 1000;
-        data.objects[4].behavior = BehaviorType::Frog;
+        data.objects[4].behavior = BehaviorType::Behavior_6;
         data.objects[5].health = 1000;
         data.objects[5].displayType = static_cast<DisplayType>(60);
         host.CompleteLevelLoad(request.id, std::move(data));
@@ -1011,6 +1018,10 @@ namespace
         for (auto& row : geometry->surfaceFlags) { std::fill(std::begin(row), std::end(row), std::uint8_t{ 1 }); }
         host.Tick({}, input);
         host.worldObjects[1].posX = 0;
+        host.worldObjects[1].posZ = 4000;
+        Check(host.Tick({}, input).status == GameTickStatus::Advanced,
+            "Native terrain boundary reads must not abort the gameplay tick.");
+        host.worldObjects[1].posZ = -12000;
         ExpectError<std::out_of_range>([&] { host.Tick({}, input); });
     }
 
@@ -1733,8 +1744,10 @@ namespace
         Check(data.playerSpawn->position == preserved.position && data.playerSpawn->direction == preserved.direction,
             "Missing-marker errors must not overwrite an existing explicit spawn.");
         data.level->wallTextures[39][49] = 0xe1;
-        ExpectError<std::out_of_range>([&] { host.InitializeLevelPlayerSpawn(data, direction); });
-        Check(data.playerSpawn->position == preserved.position, "Invalid marker terrain must fail before changing spawn.");
+        host.InitializeLevelPlayerSpawn(data, direction);
+        Check(data.playerSpawn->position == std::array<std::int16_t, 3>{ 5050,-33,150 } &&
+            data.playerSpawn->direction == direction,
+            "A boundary marker must use native floor-to-room plane aliases, not fail height interpolation.");
         LevelLoadData noGeometry;
         ExpectError<std::invalid_argument>([&] { host.InitializeLevelPlayerSpawn(noGeometry, direction); });
 

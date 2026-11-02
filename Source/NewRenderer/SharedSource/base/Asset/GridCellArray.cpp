@@ -171,7 +171,7 @@ Vector3 GridCellArray::GetGridPos(int tileX, int tileY, HeightLevel atHeight) co
     }
     else
     {
-        assert((int)atHeight >= (int)HeightLevel::WaterLevel1 && (int)atHeight <= (int)HeightLevel::WaterLevel3);
+        assert((int)atHeight >= (int)HeightLevel::WaterLevel1 && (int)atHeight <= (int)HeightLevel::WaterLevel4);
         h = m_waterHeights[(int)atHeight - (int)HeightLevel::WaterLevel1];
     }
 
@@ -199,7 +199,7 @@ Vector3 GridCellArray::GetCenterPos(int tileX, int tileY, HeightLevel atHeight) 
     }
     else
     {
-        assert((int)atHeight >= (int)HeightLevel::WaterLevel1 && (int)atHeight <= (int)HeightLevel::WaterLevel3);
+        assert((int)atHeight >= (int)HeightLevel::WaterLevel1 && (int)atHeight <= (int)HeightLevel::WaterLevel4);
         h = m_waterHeights[(int)atHeight - (int)HeightLevel::WaterLevel1];
     }
 
@@ -297,4 +297,3 @@ void GridCellArray::FloodFillWithIdRecursive(int x, int y, byte Id)
 	FloodFillWithIdRecursive(x, y - 1, Id);
     FloodFillWithIdRecursive(x, y + 1, Id);
 }
-

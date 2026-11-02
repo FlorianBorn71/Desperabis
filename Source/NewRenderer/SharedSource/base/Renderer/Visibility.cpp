@@ -147,16 +147,21 @@ void DefaultVisibilityContext::DetermineVisibleInstances(VisibilityResult& resul
 			AddBurningLight(inst, false); //  no need to test visibility since the object itself is visible
 		}
 #ifdef ENABLE_ADVANCED_RENDERING
-		bool useReflection;
-		float waterHeight;
-
-		if (collectWaterReceiver && inst->RetrieveWaterProperties(useReflection, waterHeight))
+		if (collectWaterReceiver && inst->HasWaterMaterials())
 		{
-            if (useReflection && cameraPos.GetY() < waterHeight) { useReflection = false; }
-			VisibilityResult::VisibleWaterLevel& level = result.CreateWaterReceiver(useReflection, waterHeight);
-			VisibilityResult::InstanceAndHash& entry = level.m_waterReceiver.emplace_back();
-			entry.m_instance = inst;
-			entry.m_sortingHash = inst->ComputeOpaqueSortingHash();
+            const auto& draws = inst->GetRenderable()->m_drawCalls;
+            for (int drawIndex = 0; drawIndex < static_cast<int>(draws.size()); ++drawIndex)
+            {
+                bool useReflection;
+                float waterHeight;
+                if (!inst->RetrieveWaterProperties(useReflection, waterHeight, drawIndex)) { continue; }
+                if (useReflection && cameraPos.GetY() < waterHeight) { useReflection = false; }
+                VisibilityResult::VisibleWaterLevel& level = result.CreateWaterReceiver(useReflection, waterHeight);
+                VisibilityResult::InstanceAndHash& entry = level.m_waterReceiver.emplace_back();
+                entry.m_instance = inst;
+                entry.m_sortingHash = inst->ComputeOpaqueSortingHash();
+                entry.m_drawCallIndex = drawIndex;
+            }
 		}
 #endif
     };

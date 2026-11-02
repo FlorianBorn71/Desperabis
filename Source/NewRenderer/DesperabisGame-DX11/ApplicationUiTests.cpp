@@ -375,6 +375,63 @@ namespace
         const auto pixels = target.Pixels(device, context);
         Check(std::any_of(pixels.begin(), pixels.end(), [](auto pixel)
             { return (pixel & 0xffffff) != 0xcccccc; }), "The underside water receiver must produce refraction pixels.");
+        model.m_drawCalls[0].m_primitiveCount = 1;
+        auto secondDraw = model.m_drawCalls[0];
+        secondDraw.m_firstIndex = 3;
+        secondDraw.m_material.m_reflectionType = WaterReflectionType::RefractionBit | WaterReflectionType::Water;
+        secondDraw.m_material.ComputeHash();
+        model.m_drawCalls.push_back(secondDraw);
+        auto& materials = instance->GetOrCreateMaterialOverrides();
+        materials[0] = model.m_drawCalls[0].m_material;
+        materials[1] = secondDraw.m_material;
+        instance->ComputeTransparencyMask();
+        VisibilityResult mixed;
+        visibility.Collect(mixed, scene, 1.f);
+        Check(mixed.m_visibleWater.size() == 2,
+            "One model with reflecting and refracting triangles must enter both water passes.");
+        for (const auto& group : mixed.m_visibleWater)
+        {
+            Check(group.m_waterReceiver.size() == 1 &&
+                group.m_waterReceiver[0].m_drawCallIndex == (group.m_useReflection ? 0 : 1),
+                "Each water pass must retain the exact source draw range, not re-render all water materials.");
+        }
+        VisibilityResult submerged;
+        visibility.Collect(submerged, scene, -1.f);
+        Check(submerged.m_visibleWater.size() == 1 &&
+            submerged.m_visibleWater[0].m_waterReceiver.size() == 2,
+            "Submersion must convert both individual water ranges to refraction without losing either.");
+        const auto renderRange = [&](int drawIndex)
+        {
+            RenderContextDX11 rangeRender(renderer, result, settings, stats);
+            rangeRender.BeginRendering();
+            rangeRender.BeginRenderTargetScope(RenderTargetPassType::MainView);
+            context->ClearRenderTargetView(target.colorView.Get(), gray);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+            rangeRender.TrackGlobals();
+            rangeRender.BeginWaterRendering();
+            rangeRender.PrepareRefraction(true);
+            rangeRender.SetGeometryPassType(GeometryPassType::MirrorReceiver);
+            rangeRender.SetBlendState(TransparencyMode::Water);
+            rangeRender.PrepareWaterRendering(water);
+            rangeRender.RenderInstance<GeometryPassType::MirrorReceiver>(instance.get(), TransparencyMode::Water, drawIndex);
+            rangeRender.EndWaterRendering();
+            rangeRender.EndRenderTargetScope();
+            rangeRender.EndRendering();
+            return target.Pixels(device, context);
+        };
+        const auto firstPixels = renderRange(0), secondPixels = renderRange(1), allPixels = renderRange(-1);
+        int firstOnly = 0, secondOnly = 0;
+        for (std::size_t i = 0; i < allPixels.size(); ++i)
+        {
+            const bool first = (firstPixels[i] & 0xffffff) != 0xcccccc;
+            const bool second = (secondPixels[i] & 0xffffff) != 0xcccccc;
+            if (first && !second) { ++firstOnly; }
+            if (second && !first) { ++secondOnly; }
+            Check(((allPixels[i] & 0xffffff) != 0xcccccc) == (first || second),
+                "Filtered water passes must cover precisely the union of their source triangles.");
+        }
+        Check(firstOnly > 100 && secondOnly > 100,
+            "Selecting a water draw range must visibly omit the other triangle rather than redraw the entire model.");
         scene.RemoveRenderableInstance(instance);
     }
 
@@ -985,6 +1042,140 @@ namespace
         std::cout << "Mutable walls: original level-11 triggers, shared immutable buffers, selective removal, "
             "identical saved-geometry rendering, duplicate targets and all seven shapes passed ("
             << changedPixels << " changed pixels).\n";
+    }
+
+    void CheckWaterSurfaceDefinitions()
+    {
+        class SurfaceLevel final : public Level
+        {
+        public:
+            void Build(const LevelInfo& info)
+            {
+                InitLevelInfo(info);
+                constexpr int width = 8, height = 3, count = width * height;
+                std::vector<byte> geometry(4 + 7 * count, 0);
+                geometry[0] = width - 1;
+                geometry[2] = height - 1;
+                const byte selectors[]{ 1,2,3,4,17,20 };
+                std::copy(std::begin(selectors), std::end(selectors), geometry.begin() + 4 + 5 * count + width + 1);
+                ReadLevelData(geometry.data(), static_cast<int>(geometry.size()), true);
+                CreateWallGeometry();
+                for (const auto& instance : m_wallGeometry) { instance->ComputeTransparencyMask(); }
+            }
+            const auto& Walls() const { return m_wallGeometry; }
+        };
+        LevelInfo fixture;
+        fixture.m_raw.m_data.water[0] = { WaterReflectionType::Water, 10 };
+        fixture.m_raw.m_data.water[1] = { WaterReflectionType::Disabled, 30 };
+        fixture.m_raw.m_data.water[2] = { WaterReflectionType::ReflectionBit | WaterReflectionType::Water, 30 };
+        fixture.m_raw.m_rawData[114] = static_cast<byte>(WaterReflectionType::Lava);
+        fixture.m_raw.m_rawData[115] = 17;
+        Check(sizeof(LevelInfo::LevelInfoRaw) == 124 &&
+            fixture.m_raw.m_data.water[3].reflectionType == WaterReflectionType::Lava &&
+            fixture.m_raw.m_data.water[3].height == 17,
+            "The fourth native surface pair must retain LEVELS.INF offsets 114/115 and the 124-byte record layout.");
+        SurfaceLevel surfaces;
+        surfaces.Build(fixture);
+        Check(surfaces.Walls().size() == 3 &&
+            surfaces.GetCellArray().GetCell(4, 1).m_waterSlot == WaterSlotIndex::WaterSlot4 &&
+            !surfaces.GetCellArray().GetCell(5, 1).IsWaterSurface() &&
+            !surfaces.GetCellArray().GetCell(6, 1).IsWaterSurface(),
+            "Native selectors use five bits and accept 1..4; 17/20 must not alias water slots 1/4.");
+        bool fourthSurface = false;
+        for (const auto& instance : surfaces.Walls())
+        {
+            const auto& dc = instance->GetRenderable()->m_drawCalls.at(0);
+            Check(dc.m_material.m_transparencyType == TransparencyMode::Water &&
+                dc.m_material.m_reflectionType != WaterReflectionType::Disabled && dc.m_primitiveCount == 2,
+                "Only enabled nonzero-depth surface definitions may emit flat water quads.");
+            if (dc.m_material.m_reflectionType == WaterReflectionType::Lava)
+            {
+                fourthSurface = true;
+                Check(std::fabs(dc.m_material.m_mirrorHeight + 170.f * DespToFloat) < 0.00001f &&
+                    std::fabs(surfaces.GetCellArray().GetGridPos(4, 1, HeightLevel::WaterLevel4).y +
+                        170.f * DespToFloat) < 0.00001f,
+                    "Fourth-slot vertices and receiver metadata must use the native ten-unit depth.");
+            }
+        }
+        Check(fourthSurface, "The fourth native special surface must generate geometry.");
+        for (auto& slot : fixture.m_raw.m_data.water) { slot.height = 0; }
+        SurfaceLevel zeroDepth;
+        zeroDepth.Build(fixture);
+        Check(zeroDepth.Walls().empty(), "Native depth zero must suppress a flat special-surface polygon.");
+        auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(17));
+        FlameScene scene;
+        FORCE_WAIT(level->PopulateScene(scene, false, false));
+        std::size_t shorelineReceivers = 0, flatTriangles = 0;
+        for (const auto& instance : scene.GetRenderableInstances())
+        {
+            if (!instance->HasWaterMaterials()) { continue; }
+            bool reflection;
+            float height;
+            instance->RetrieveWaterProperties(reflection, height);
+            const auto& range = instance->GetGlobalBounds().m_tileRange;
+            const bool shoreline = instance->HasOpaqueMaterials() &&
+                range.m_minX == range.m_maxX && range.m_minZ == range.m_maxZ &&
+                level->GetCellArray().IsInside(range.m_minX, range.m_minZ) &&
+                (level->GetCellArray().GetCell(range.m_minX, range.m_minZ).m_walls & 31) == 2;
+            if (shoreline)
+            {
+                ++shorelineReceivers;
+                const auto& draws = instance->GetRenderable()->m_drawCalls;
+                for (int drawIndex = 0; drawIndex < static_cast<int>(draws.size()); ++drawIndex)
+                {
+                    if (!instance->RetrieveWaterProperties(reflection, height, drawIndex)) { continue; }
+                    Check(std::fabs(height + 300.f * DespToFloat) < 0.00001f,
+                        "Every modelled shoreline water range must join the flat depth-300 water plane.");
+                }
+            }
+            else if (!instance->HasOpaqueMaterials())
+            {
+                for (const auto& dc : instance->GetRenderable()->m_drawCalls)
+                {
+                    if (dc.m_material.m_transparencyType == TransparencyMode::Water) { flatTriangles += dc.m_primitiveCount; }
+                }
+            }
+        }
+        Check(shorelineReceivers == 63 && flatTriangles == 38 * 2,
+            "Level 17's 63 selector-2 tiles use modelled shoreline water; only its 38 selector-3 tiles emit flat quads.");
+        class SurfaceVisibility final : public DefaultVisibilityContext
+        {
+        public:
+            void Collect(VisibilityResult& result, const Scene& scene)
+            {
+                m_performFrustumClipping = false;
+                VisibilitySettings settings;
+                settings.filterMask = static_cast<uint32_t>(GamePlay::VisibilityFilter::Walls);
+                Frustum frustum;
+                DetermineVisibleInstances(result, result.m_visibleInstances, &scene,
+                    Vector(0, 10.f, 0), frustum, nullptr, settings, true);
+            }
+        } visibility;
+        VisibilityResult visible;
+        visibility.Collect(visible, scene);
+        std::size_t receiverCount = 0, expectedRanges = 0;
+        for (const auto& instance : scene.GetRenderableInstances())
+        {
+            for (const auto& dc : instance->GetRenderable()->m_drawCalls)
+            {
+                if (dc.m_material.m_transparencyType == TransparencyMode::Water) { ++expectedRanges; }
+            }
+        }
+        for (const auto& group : visible.m_visibleWater)
+        {
+            for (const auto& entry : group.m_waterReceiver)
+            {
+                ++receiverCount;
+                bool reflection;
+                float height;
+                Check(entry.m_instance->RetrieveWaterProperties(reflection, height, entry.m_drawCallIndex) &&
+                    reflection == group.m_useReflection && std::fabs(height - group.m_waterHeight) < 0.05f,
+                    "Original level-17 reflection/refraction ranges must retain their own pass and physical plane.");
+            }
+        }
+        Check(receiverCount == expectedRanges, "Every original modelled and flat water range must be submitted exactly once.");
+        std::cout << "Water surfaces: four native slots, five-bit selectors, zero-depth/255 suppression, "
+            "63 modelled shoreline tiles, 38 flat tiles and per-material reflection/refraction passed.\n";
     }
 
     void CheckMaps(ApplicationUi& ui, RendererDX11& renderer, const Level& level,
@@ -1791,6 +1982,7 @@ int main(int argc, char* argv[])
         CheckTextControls(font);
         CheckTutorialFlames();
         CheckMutableWalls(renderer, device.Get(), context.Get());
+        CheckWaterSurfaceDefinitions();
         CheckEnemyModels();
         CheckMummyFade(renderer, device.Get(), context.Get());
         CheckDragon(renderer, device.Get(), context.Get());

@@ -93,7 +93,7 @@ void Level::InitLevelInfo(const LevelInfo& info)
 {
     m_levelInfo = info;
 
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 4; i++)
     {
         const LevelInfo::WaterSlot& src(m_levelInfo.m_raw.m_data.water[i]);
         m_cellArray.m_waterHeights[i] = (float)src.height * -10.f * DespToFloat;
@@ -242,9 +242,9 @@ void Level::ReadLevelData(const byte* rawData, int dataSize, bool readSize)
             cell.m_ceilingHeight = cell.m_floorHeight - (float)rawDataCeilingHeight[i] * scale;
             cell.m_wallTextures = wallTextures[i];
             cell.m_walls = rawDataWalls[i];
-            byte collision = cell.m_walls & 15;
+            byte collision = cell.m_walls & 31;
             cell.m_waterSlot = (WaterSlotIndex)collision;
-            if (cell.m_waterSlot<WaterSlotIndex::WaterSlot1 || cell.m_waterSlot>WaterSlotIndex::WaterSlot3)
+            if (cell.m_waterSlot<WaterSlotIndex::WaterSlot1 || cell.m_waterSlot>WaterSlotIndex::WaterSlot4)
                 cell.m_waterSlot = WaterSlotIndex::None;
             cell.m_floor = rawDataFloor[i];
             cell.m_ceiling = rawDataCeiling[i];
@@ -953,9 +953,9 @@ void Level::CreateWallGeometry()
                 if (cell.IsWaterSurface())
                 {
                     int slotIndex = (int)cell.m_waterSlot - (int)WaterSlotIndex::WaterSlot1; // 0..3
-                    assert(slotIndex >= 0 && slotIndex < 3);
+                    assert(slotIndex >= 0 && slotIndex < 4);
                     const LevelInfo::WaterSlot& waterSlot(m_levelInfo.m_raw.m_data.water[slotIndex]);
-                    if (waterSlot.reflectionType != WaterReflectionType::Disabled)
+                    if (waterSlot.height != 0 && waterSlot.reflectionType != WaterReflectionType::Disabled)
                     {
                         HeightLevel level = (HeightLevel)(slotIndex + (int)HeightLevel::WaterLevel1); // translate into height level
                         int firstIndex = (int)indices.size();

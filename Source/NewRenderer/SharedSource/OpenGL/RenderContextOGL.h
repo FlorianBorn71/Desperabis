@@ -17,7 +17,7 @@ public:
     ~RenderContextOGL() = default;
 
     template<GeometryPassType PASSTYPE>
-    void RenderInstance(const RenderableInstance* instance, TransparencyMode transparencyFilter);
+    void RenderInstance(const RenderableInstance* instance, TransparencyMode transparencyFilter, int drawCallIndex = -1);
 
     void TrackGlobals();
     void BeginRendering();

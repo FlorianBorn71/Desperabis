@@ -168,19 +168,20 @@ void RenderableInstance::PrepareSubInstancesForRendering()
 
 }
 
-bool RenderableInstance::RetrieveWaterProperties(bool& useReflection, float& waterHeight) const
+bool RenderableInstance::RetrieveWaterProperties(bool& useReflection, float& waterHeight, int drawCallIndex) const
 {
     if (!HasWaterMaterials())
         return false;
 
     for (int i = 0; i < m_renderable->m_drawCalls.size(); i++)
     {
+        if (drawCallIndex >= 0 && i != drawCallIndex) { continue; }
         const DrawCallMaterial& material = i < m_materialOverride.size() ? m_materialOverride[i] : m_renderable->m_drawCalls[i].m_material;
-        if (material.m_reflectionType == WaterReflectionType::Disabled)
+        if (material.m_transparencyType != TransparencyMode::Water ||
+            material.m_reflectionType == WaterReflectionType::Disabled)
             continue;
-        assert(material.m_transparencyType == TransparencyMode::Water);
         useReflection = (material.m_reflectionType & WaterReflectionType::ReflectionBit) != 0;
-        waterHeight = material.m_mirrorHeight + this->m_transform.GetTranslation().GetY();
+        waterHeight = m_transform.TransformPosition(Vector(0, material.m_mirrorHeight * m_uniformScale, 0)).GetY();
         return true;
     }
 

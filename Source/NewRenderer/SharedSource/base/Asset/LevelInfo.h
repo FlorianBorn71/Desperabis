@@ -65,7 +65,7 @@ public:
         byte targetSlot;
     };
 
-    // there can be 3 slots of water, the tile indexes them with 1..3
+    // Native special-surface selectors 1..4 index these depth/mode pairs.
     struct WaterSlot
     {
         WaterReflectionType reflectionType;
@@ -101,8 +101,8 @@ public:
                 byte ignored_Ten; // almost always 10, ofs 105
                 byte waterAmplitude; // ofs 106
                 byte amoutOfStars; // number of stars rendered into sky, ofs 107
-                WaterSlot water[3]; // ofs 108
-                byte unknowns[10];
+                WaterSlot water[4]; // ofs 108
+                byte unknowns[8];
             } m_data;
             byte m_rawData[124];
         };
@@ -123,4 +123,3 @@ public:
     std::shared_ptr<Texture> m_loadedTexture[NumSlots];
     std::shared_ptr<TextureAnim> m_loadedTextureAnim[NumSlots];
 };
-

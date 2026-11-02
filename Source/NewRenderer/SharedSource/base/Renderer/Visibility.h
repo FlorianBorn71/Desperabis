@@ -17,6 +17,7 @@ struct VisibilityResult
     {
         const RenderableInstance* m_instance;
         uint32_t m_sortingHash;
+        int m_drawCallIndex = -1;
     };
 
     void Reset();

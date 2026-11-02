@@ -60,6 +60,101 @@ responses, oil thresholds/spreading/burnout and every corresponding original
 level-10/12/13 object. Renderer wall removal is implemented as described below;
 PictureMap interactions are implemented by the modal flow described below.
 
+### Level-15 arrow emitters and floor spears
+
+`ShootArrows` (40, `0000:1E07` -> `10AC:8A15`) and
+`SpearOnGroundTrap` (44, `0000:1E98` -> `10AC:8AD3`) are now implemented,
+including the original level-15 slot-3 emitter and all six floor-spear records.
+The recovered shared projectile initializer and latched player-contact damage
+live in `Scaffold/LevelFifteenTraps.cpp`, not renderer-side simulation.
+The emitted ordinary `FlyingArrow` path is implemented alongside the existing
+dragon-debris variant. The shared emitter's fountain variant is covered too;
+unsupported synthetic selectors remain explicit failures rather than silently
+spawning a guessed projectile.
+
+See [dispatch evidence](level-fifteen-traps-evidence.txt),
+[spawn evidence](level-fifteen-trap-spawn-evidence.txt), and
+[helper evidence](level-fifteen-trap-helpers-evidence.txt).
+`level-fifteen-traps` tests original fixtures, emitter/projectile execution and
+floor-spear contact alongside the existing dragon, enemy, damage and particle
+regressions.
+
+### Level-16/17 outdoor and cave behaviors
+
+The authored `Frog` (12), `BatOutdoor` (17), `LavaSmoke` (200),
+`RollingRockSlope` (34) and `Shark` (65) paths are now implemented from the
+[native dispatch and helper evidence](level-sixteen-seventeen-evidence.txt),
+[support evidence](level-sixteen-seventeen-support-evidence.txt), and
+[lifecycle evidence](level-sixteen-seventeen-lifecycle-evidence.txt).
+They remain core-owned simulation rather than renderer-side object behaviors.
+`ExtinguishLava` (130) is deliberately still unimplemented: its geometry
+changes are outside this recovery batch.
+
+Native entries are `10AC:8BC4` (frog), `10AC:5BE7` (outdoor bat),
+`10AC:38D6` (shark), `0000:1CA6` (sloped rock), and `0000:4EFB` (lava
+smoke). Required swimming-frog and ordinary rolling-rock dependencies are
+implemented too. The native level timer advances at the end of the gameplay
+tick, after weapons, and resets on level installation and teleportation; it
+does not advance while modal gameplay is paused.
+
+The original frog at X=97 also requires native terrain-row aliasing at the
+one-based grid boundary rather than rejecting that authored position.
+`level-sixteen-seventeen-behaviors` tests this boundary, navigation/lifecycle
+paths and timer reset/wrap/order, 52 original authored fixtures over up to
+10,000 updates each, and 5,120 outdoor-bat phases. A longer run reproduced
+the forest frog in original slot 24 reaching X=1268, Z=199 at update 1470:
+the previous four-samples-in-one-plane guard threw and repeatedly aborted
+the rest of the gameplay update. Boundary queries now use bounded native
+cross-plane reads; 49,152 boundary coordinate pairs are compared against
+an independent DS-byte-image reference.
+
+### Native special-surface geometry
+
+[Surface generation evidence](water-surface-generation-evidence.txt) separates
+surface selection from geometry occupancy. `1E48:1AF9..1B42` masks the FELD
+surface selector with **31**, accepts **1..4**, and reads the corresponding
+mode/depth pair from LEVELS.INF bytes **108..115**. Depth is the unsigned
+height byte multiplied by ten. `0000:6040..60D7` submits these surfaces through
+`0000:5993`, which returns immediately for **zero depth** or **mode 255**
+(`5997..59A4`). Mode 255 therefore deliberately suppresses the generic flat
+quad; it must not be changed into ordinary reflecting water to fill gaps.
+
+The renderer now retains all four pairs, uses the five-bit selector and mirrors
+both suppression rules. Previously it kept only three definitions, masked four
+bits (incorrectly aliasing selectors 17..19 to 1..3), and emitted zero-depth
+surfaces. The fourth pair preserves the native 124-byte record layout rather
+than consuming/reinterpreting the following repeat-floor settings.
+
+Original level 17 alternates **63 selector-2 tiles** (mode 255, depth 300)
+with **38 selector-3 tiles** (mode 32, depth 300). The former have authored
+shoreline floor models, not missing generic quads: model bank 3 is VEKT9,
+frames 12/13 zero-based, rotated by the floor byte. Their type-3 reflection
+triangles occupy the irregular water portions beside the textured shore.
+Their local Y=-120 becomes +0.06 renderer units above terrain depth 312,
+joining the flat depth-300 water plane. Filling these tiles with full quads
+would incorrectly cover the authored shoreline.
+
+The actual shoreline presentation defect was the assumption that one model
+has one water pass: VEKT9 frame 13 contains both reflection and refraction
+triangles. Whichever material sorted first selected the pass for **all** its
+water triangles, so an entire shoreline patch could refract instead of reflect.
+Refraction materials also lacked their local plane height and were grouped at
+the terrain plane rather than the adjoining water plane.
+
+Visibility now registers each water draw range independently, preserving its
+reflection/refraction mode and transformed plane height. Water rendering draws
+only that range in its assigned pass; regular opaque/transparent batching is
+unchanged. Both kinds of model water material carry the source triangle's
+local height, including instance scale and rotation when transformed to world
+space. Below the surface, each reflecting range independently switches to
+refraction, preserving the existing underwater policy.
+
+WARP tests check all 63 modelled shoreline cells and 38 generic flat cells in
+original level 17, the physical plane of each shoreline water range, and
+exactly-once submission to the appropriate reflection/refraction group.
+A two-triangle mixed-material render verifies that each pass draws only its
+own triangle and their combined coverage matches the original mesh.
+
 ### Destructible wall presentation
 
 The renderer scans live `WallDestruction` (collision 8) raw objects before
@@ -446,15 +541,13 @@ case BehaviorType::BatIndoor:
     return Function_BatIndoor(object, context);
 ```
 
-Pillar, LightSource, PulsatingLight, Door, Flies, RatAndSnake, BatIndoor, Mummie, MummieGuard,
-SpiderLarge, Harvestman, Devil, Gorilla, FloatingDebris, behavior 18, FireParticle, BurningFireplace,
-IdleAnimation, SmokeFading, SpawnInCrater, Switch1, SwitchGrouped, WaterDrop, LevelStartOverride, AmbientSoundPosition,
-and DisabledSentinel return `ExecutedCase`. The other
-handlers return `UnimplementedHandler` without moving objects or writing
-globals. Every handler returns its enum identity, for example:
+Recovered handlers return `ExecutedCase`, including the level-15/16/17
+emitters, traps, outdoor/cave enemies and lava smoke described above.
+Remaining unrecovered stubs return `UnimplementedHandler` without moving
+objects or writing globals. Every handler returns its enum identity, for example:
 
 ```cpp
-return { DispatchStatus::UnimplementedHandler, BehaviorType::BatOutdoor, 0x16A3 };
+return { DispatchStatus::UnimplementedHandler, BehaviorType::MercuryLamp, 0x1E53 };
 ```
 
 ### Coverage and word-sized behavior values
@@ -524,7 +617,8 @@ angles and frame blend without a separate renderer behavior. `bat-indoor-behavio
 checks 4096 full-record/RNG reference cases, original collision maps for all
 50 asset records, wall lookahead, stuck diagnostics/lifecycle hooks, wake/sleep
 thresholds, weapon death, audio, runtime tick clocks and player eye-height tracking.
-BatOutdoor remains separate and unrecovered (`0000:16A3`, helper `10AC:5BE7`).
+BatOutdoor is recovered separately (`0000:16A3`, helper `10AC:5BE7`); see the
+[level-16/17 implementation](#level-1617-outdoor-and-cave-behaviors).
 
 ## Mummie and MummieGuard
 
@@ -3950,10 +4044,18 @@ The context borrows the level; its owner must keep it alive.
 - `GetRoomHeight(x,z)`, `1E48:1BA6`, returns **relative** height. No ceiling
   returns 20000 immediately; otherwise the same interpolation of room
   bytes is doubled. Absolute ceiling Y is effective floor plus room height.
-- Queries outside the arrays or needing out-of-array neighboring samples
-  throw, rather than reproducing DOS reads into adjacent arrays. A complete
-  four-sample cell requires X=100..4999 and Z=200..4099. Flat-surface and
-  no-ceiling branches do not unnecessarily require those neighbors.
+- Native reads are linear across row and plane boundaries. The contiguous
+  DS planes are wall textures (`32D0`), floor objects (`3AA0`), ceiling objects
+  (`4270`), floor heights (`4A40`), room heights (`5210`), surface flags
+  (`59E0`), and collision materials (`61B0`), each 2,000 bytes. This order
+  differs from the host structure and the FELD file. Boundary samples are
+  explicitly redirected to the correct plane without out-of-bounds C++
+  array access, clamping, or fabricated samples. In particular frogs wrap
+  X/Z to 0..4095, so Z<200 legitimately reads room bytes as floor samples.
+  Reads outside these modeled native planes and signed-byte division
+  overflow still throw. Geometry-writing triggers retain their strict
+  destination-plane bounds. Flat-surface and no-ceiling branches do not
+  unnecessarily require unused neighboring samples.
 
 `CreateDummyLevel()` now also creates flat raw floor 0, room height 50,
 ceiling-object 1, and surface flags 0. Native interpolation therefore gives

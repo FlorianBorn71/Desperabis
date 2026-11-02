@@ -328,13 +328,12 @@ namespace
         context.level = &level;
         context.worldObjects[2] = Emitter();
         context.worldObjects[2].health = 1;
-        bool rejected = false;
-        try { UpdateObject(context.worldObjects[2], context); }
-        catch (const std::out_of_range&) { rejected = true; }
-        Check(rejected && context.worldObjects[2].behavior == BehaviorType::SmokeFading &&
-            context.worldObjects[2].posX == 0 && context.worldObjects[2].posY == 0 &&
-            context.worldObjects[2].posZ == 0,
-            "Allocation aliasing must reread the cleared source, not silently reuse its old coordinates.");
+        seed = context.randomSeed;
+        Next(seed, 1000);
+        expected = SmokeInit({}, 0, 0, 0, 5, 1, 1, -96, seed);
+        Check(UpdateObject(context.worldObjects[2], context).status == DispatchStatus::ExecutedCase &&
+            Equal(context.worldObjects[2], expected) && context.randomSeed == seed,
+            "Allocation aliasing must reread the cleared source and complete initialization using native boundary heights.");
     }
 
     void TestAssets(const char* path)

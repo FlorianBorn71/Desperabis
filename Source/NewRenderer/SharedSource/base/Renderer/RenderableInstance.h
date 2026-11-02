@@ -36,7 +36,7 @@ public:
         return (m_usedTransparencies & TransparencyModeMask::AllWaterReceiver) != TransparencyModeMask::None;
     }
 
-    bool RetrieveWaterProperties(bool& useReflection, float& waterHeight) const;
+    bool RetrieveWaterProperties(bool& useReflection, float& waterHeight, int drawCallIndex = -1) const;
 
     void SetDebugSelection(bool status)
     {
@@ -117,4 +117,3 @@ public:
     bool m_debugColorTint = false;
 #endif
 };
-

@@ -1,7 +1,7 @@
 #pragma once
 
 template<GeometryPassType PASSTYPE>
-void RenderContextOGL::RenderInstance(const RenderableInstance* instance, TransparencyMode transparencyFilter)
+void RenderContextOGL::RenderInstance(const RenderableInstance* instance, TransparencyMode transparencyFilter, int drawCallIndex)
 {
     const Renderable* renderable = instance->m_renderable;
     NativeModelMeshObjectOGL* nativeMesh = renderable->GetNativeRuntimeObj<NativeModelMeshObjectOGL>();
@@ -60,6 +60,7 @@ void RenderContextOGL::RenderInstance(const RenderableInstance* instance, Transp
     // Draw the objects.
     for (int i = 0; i < renderable->m_drawCalls.size(); i++)
     {
+        if (drawCallIndex >= 0 && i != drawCallIndex) { continue; }
         const DrawCall& dc(renderable->m_drawCalls[i]);
         const DrawCallMaterial& material = (i < instance->m_materialOverride.size()) ? instance->m_materialOverride[i] : dc.m_material;
         if (material.m_transparencyType != transparencyFilter)

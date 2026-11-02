@@ -527,7 +527,7 @@ namespace Desperabis
 
     DispatchResult Function_FlyingArrow(RawGameObject& object, GameContext& context)
     {
-        if (object.itemValue != 3 && object.itemValue != 103 &&
+        if (object.itemValue != 0 && object.itemValue != 11 && object.itemValue != 3 && object.itemValue != 103 &&
             object.itemValue != 4 && object.itemValue != 5 && object.itemValue != 6)
         {
             return { DispatchStatus::UnimplementedHandler, BehaviorType::FlyingArrow, 0x1E1A };
@@ -542,7 +542,23 @@ namespace Desperabis
             const auto floor = object.itemValue >= 4 && object.itemValue <= 6 ?
                 context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ) :
                 context.GetFloorHeight(object.posX, object.posY, object.posZ);
-            if (object.itemValue == 4)
+            if (object.itemValue == 0)
+            {
+                if (wall) { context.SetObjectHealth(object, 0); }
+            }
+            else if (object.itemValue == 11)
+            {
+                --object.generalPurpose1;
+                object.velocityY = ArithmeticShiftRight(WrapSignedWord(object.generalPurpose1), 2);
+                if (object.health > 10 && object.posY < floor)
+                {
+                    context.SetObjectHealth(object, 0);
+                    continue;
+                }
+                object.blendWeightOrSpriteOpacity = WrapSignedWord(
+                    object.blendWeightOrSpriteOpacity + object.doorLockOrGroupBitmask);
+            }
+            else if (object.itemValue == 4)
             {
                 if (object.spriteScale < 100)
                 {
