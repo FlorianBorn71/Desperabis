@@ -23,7 +23,7 @@ namespace Desperabis
         UnidentifiedPage8 = 8,
         UnidentifiedPage9 = 9,
         Inventory = 10,
-        UnidentifiedPage11 = 11,
+        Map = 11,
         Presentation20 = 20,
         AlternateMainMenu = 21,
         Presentation22 = 22,
@@ -89,7 +89,7 @@ namespace Desperabis
         UiTextLayout layout = UiTextLayout::TopAligned;
     };
 
-    enum class UiBitmapSource { Hud, LevelSprite, ModelTexture, InventoryIcons };
+    enum class UiBitmapSource { Hud, LevelSprite, ModelTexture, InventoryIcons, MapPaper };
     enum class UiBitmapLayout { Fit, TopLeft, SpriteAnchor, Center };
 
     struct UiBitmap
@@ -124,7 +124,16 @@ namespace Desperabis
         std::optional<float> projectionCenterY;
     };
 
-    using UiDrawCommand = std::variant<UiFill, UiText, UiBitmap, UiHealthMeter, UiModel>;
+    struct UiMap
+    {
+        UiRectangle bounds;
+        bool overview = false;
+        float centerColumn = 0, centerRow = 0;
+        std::int16_t heading = 0;
+        float pixelsPerMapPixel = 2;
+    };
+
+    using UiDrawCommand = std::variant<UiFill, UiText, UiBitmap, UiHealthMeter, UiModel, UiMap>;
 
     struct ApplicationPresentation
     {

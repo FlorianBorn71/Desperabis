@@ -8,6 +8,8 @@
 #include <map>
 
 class RendererDX11;
+class ModelAnim;
+class RenderableInstance;
 
 // Executes the core's drawing recipe; owns no page/input/inventory decisions.
 class ApplicationUi
@@ -21,6 +23,11 @@ public:
     FUTURE(void) Initialize();
     void Deinitialize();
     void Clear();
+    // Called only when a map is visible. Clears the core's dirty flag after a successful upload.
+    bool UploadCollisionMap(Desperabis::GameContext& core, Renderer& renderer);
+    bool UploadGeometryMap(const Desperabis::GameContext& core, Renderer& renderer);
+    void ApplyMapMaterial(RenderableInstance& instance, const ModelAnim& model, Renderer& renderer);
+    const Texture* GetGeometryMapTexture() const { return m_geometryMap.get(); }
     static std::vector<std::shared_ptr<TextMeshInstance>> CreateVitalMeters(
         const Texture& healthTexture, const Desperabis::UiRectangle& bounds,
         float healthFraction, std::optional<float> oxygenFraction);
@@ -55,4 +62,13 @@ private:
     std::array<std::array<std::shared_ptr<TextMesh>, 2>, 12> m_weaponMeshes;
     CachedMesh m_heldWeaponMesh;
     const Texture* m_heldWeaponTexture = nullptr;
+    std::shared_ptr<Texture> m_mapPaper, m_collisionMap;
+    std::vector<Color4> m_mapPaperPixels;
+    std::shared_ptr<Texture> m_geometryMap;
+    const Desperabis::Level* m_geometryMapSource = nullptr;
+    std::optional<std::int16_t> m_geometryMapLevelNumber;
+    std::uint64_t m_geometryMapRevision = 0, m_geometryMapGeneration = 0;
+    std::map<const ModelAnim*, std::shared_ptr<Texture>> m_mapMaterialViews;
+    const Desperabis::CollisionMap* m_mapSource = nullptr;
+    std::uint64_t m_mapGeometryRevision = 0, m_mapRevision = 0;
 };

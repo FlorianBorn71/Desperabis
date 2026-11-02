@@ -229,6 +229,22 @@ FUTURE(void) ApplicationUi::Initialize()
     };
     const auto shades = CO_AWAIT read(L"LEVEL\\OPSET10.256");
     const auto hudData = CO_AWAIT read(L"ANIMS\\AMA_ANI.AN2");
+    const auto paperPalette = CO_AWAIT AssetManager::Instance().LoadAsset<Palette>(L"GRAFIK\\BACKGR3.PAL");
+    m_mapPaper = CO_AWAIT AssetManager::Instance().LoadAsset<Texture>(L"GRAFIK\\BACKGR3.256", paperPalette);
+    if (m_mapPaper->m_width != 360 || m_mapPaper->m_height != 240)
+    {
+        throw std::runtime_error("Expected the original 360x240 map parchment.");
+    }
+    const auto paper = CO_AWAIT read(L"GRAFIK\\BACKGR3.256");
+    if (paper.size() != 4 + 360 * 240)
+    {
+        throw std::runtime_error("Invalid original map parchment pixels.");
+    }
+    m_mapPaperPixels.resize(360 * 240);
+    for (std::size_t i = 0; i < m_mapPaperPixels.size(); ++i)
+    {
+        m_mapPaperPixels[i] = paperPalette->GetEntryCustomAlpha(paper[i + 4], 255);
+    }
     m_weapons = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\WAFFEN.AN2");
     if (m_weapons->m_countX != 4 || m_weapons->m_countY != 3)
     {
@@ -423,11 +439,253 @@ void ApplicationUi::Deinitialize()
     m_heldWeaponMesh = {};
     m_heldWeaponTexture = nullptr;
     m_weapons.reset();
+    m_mapPaper.reset();
+    m_mapPaperPixels.clear();
 }
 
 void ApplicationUi::Clear()
 {
     m_meshes.clear();
+    m_collisionMap.reset();
+    m_mapSource = nullptr;
+    m_mapMaterialViews.clear();
+    m_geometryMap.reset();
+    m_geometryMapSource = nullptr;
+    m_geometryMapLevelNumber.reset();
+}
+
+bool ApplicationUi::UploadGeometryMap(const Desperabis::GameContext& core, Renderer& renderer)
+{
+    const auto* geometry = core.GetLevel();
+    if (!geometry) { throw std::logic_error("Map presentation requires loaded level geometry."); }
+    if (m_geometryMap && m_geometryMapSource == geometry &&
+        m_geometryMapLevelNumber == core.GetLoadedLevelNumber() &&
+        m_geometryMapRevision == geometry->geometryRevision) { return false; }
+    if (m_mapPaperPixels.size() != 360 * 240)
+    {
+        throw std::logic_error("Map parchment must be initialized before generating its texture.");
+    }
+    if (geometry->geometryWidth == 0 || geometry->geometryWidth > Desperabis::Level::Width ||
+        geometry->geometryHeight == 0 || geometry->geometryHeight > Desperabis::Level::Height)
+    {
+        throw std::runtime_error("Map geometry dimensions must fit 50x40.");
+    }
+    TextureLoadingContext pixels;
+    pixels.m_rgbaData = m_mapPaperPixels;
+    const auto occupied = [&](std::size_t row)
+    {
+        return std::any_of(std::begin(geometry->wallTextures[row]),
+            std::begin(geometry->wallTextures[row]) + geometry->geometryWidth,
+            [](auto value) { return value != 0; });
+    };
+    std::size_t first = 0;
+    while (first < geometry->geometryHeight && !occupied(first)) { ++first; }
+    if (first < geometry->geometryHeight)
+    {
+        std::size_t last = first;
+        while (last + 1 < geometry->geometryHeight && occupied(last + 1)) { ++last; }
+        const int scale = last > first ? 160 / static_cast<int>(last - first) : 1;
+        const auto xAt = [scale](int column) { return 20 + (column + 1) * scale; };
+        const auto yAt = [scale, first](int row)
+        {
+            return 16 + (row * 100 - static_cast<int>(first + 1)) * scale / 100;
+        };
+        const auto put = [&](int x, int y, Color4 color)
+        {
+            if (x >= 0 && x < 360 && y >= 0 && y < 240)
+            {
+                pixels.m_rgbaData[y * 360 + x] = color;
+            }
+        };
+        for (std::size_t row = first; row <= last; ++row)
+        {
+            for (std::size_t column = 0; column < (std::min)(geometry->geometryWidth, std::size_t{49}); ++column)
+            {
+                if (geometry->ceilingObjects[row][column] == 0) { continue; }
+                const auto surface = geometry->surfaceFlags[row][column] & 31;
+                const bool water = surface >= 1 && surface <= 4;
+                for (int y = (std::max)(0, yAt(static_cast<int>(row)));
+                    y < (std::min)(240, yAt(static_cast<int>(row + 1))); ++y)
+                {
+                    for (int x = (std::max)(0, xAt(static_cast<int>(column)));
+                        x < (std::min)(360, xAt(static_cast<int>(column + 1))); ++x)
+                    {
+                        const auto paper = m_mapPaperPixels[y * 360 + x];
+                        // Approximate the native indexed paper remaps while retaining its grain.
+                        const int grain = (paper.r + paper.g + paper.b) / 3;
+                        const Color4 shaded = water ?
+                            Color4{ static_cast<byte>(grain * 45 / 100), static_cast<byte>(grain * 70 / 100),
+                                static_cast<byte>((std::min)(255, grain * 110 / 100)), 255 } :
+                            Color4{ static_cast<byte>(paper.r * 60 / 100), static_cast<byte>(paper.g * 60 / 100),
+                                static_cast<byte>(paper.b * 60 / 100), 255 };
+                        put(x, y, shaded);
+                    }
+                }
+            }
+        }
+        const Color4 ink{ 20, 17, 12, 255 };
+        for (std::size_t row = first; row <= last; ++row)
+        {
+            for (std::size_t column = 0; column < (std::min)(geometry->geometryWidth, std::size_t{49}); ++column)
+            {
+                const auto wall = geometry->wallTextures[row][column];
+                if ((wall & 15) == 0) { continue; }
+                const int shape = wall >> 5;
+                const int left = xAt(static_cast<int>(column)), right = xAt(static_cast<int>(column + 1));
+                const int top = yAt(static_cast<int>(row)), bottom = yAt(static_cast<int>(row + 1));
+                if (shape == 0 || shape == 5)
+                {
+                    for (int y = top; y <= bottom; ++y) { put(left, y, ink); }
+                }
+                if (shape == 2 || shape == 5)
+                {
+                    for (int y = top; y <= bottom; ++y) { put(right, y, ink); }
+                }
+                if (shape == 1 || shape == 4)
+                {
+                    for (int x = left; x <= right; ++x) { put(x, top, ink); }
+                }
+                if (shape == 3 || shape == 4)
+                {
+                    for (int x = left; x <= right; ++x) { put(x, bottom, ink); }
+                }
+            }
+        }
+    }
+    if (!m_geometryMap)
+    {
+        m_geometryMap = std::make_shared<Texture>();
+        AssetManager::Instance().RegisterAsset(*m_geometryMap);
+    }
+    // Native textured-wall UVs transpose the preview. Store once in that orientation;
+    // the modal quad reverses the transpose without a second texture upload.
+    auto logicalPixels = std::move(pixels.m_rgbaData);
+    pixels.m_rgbaData.resize(logicalPixels.size());
+    for (int y = 0; y < 240; ++y)
+    {
+        for (int x = 0; x < 360; ++x)
+        {
+            pixels.m_rgbaData[x * 240 + y] = logicalPixels[y * 360 + x];
+        }
+    }
+    m_geometryMap->m_width = 240;
+    m_geometryMap->m_height = 360;
+    m_geometryMap->m_hasAlpha = false;
+    m_geometryMap->SetDefaultParams();
+    renderer.CreateTexture(*m_geometryMap, pixels);
+    for (auto& [model, view] : m_mapMaterialViews) { renderer.CloneTextureRuntime(*view, *m_geometryMap); }
+    m_geometryMapSource = geometry;
+    m_geometryMapLevelNumber = core.GetLoadedLevelNumber();
+    m_geometryMapRevision = geometry->geometryRevision;
+    ++m_geometryMapGeneration;
+    return true;
+}
+
+void ApplicationUi::ApplyMapMaterial(RenderableInstance& instance, const ModelAnim& model, Renderer& renderer)
+{
+    if (!m_geometryMap || !instance.GetRenderable())
+    {
+        throw std::logic_error("Wall-map materials require an uploaded geometry map and model.");
+    }
+    // VEKT14 bank 3 uses embedded slot 5 for its map panel; slot 4 is the wooden frame.
+    constexpr int previewSlot = 5;
+    if ((model.m_textureUsedMask & (1 << previewSlot)) == 0)
+    {
+        throw std::runtime_error("Wall-map model has no map-preview texture.");
+    }
+    const auto& calls = instance.GetRenderable()->m_drawCalls;
+    const auto isPreview = [&](const DrawCall& call)
+    {
+        return call.m_material.m_textureSlot == previewSlot + 1 &&
+            call.m_material.m_texture == &model.m_textureAtlas;
+    };
+    if (std::none_of(calls.begin(), calls.end(), isPreview))
+    {
+        throw std::runtime_error("Wall-map model has no map-preview material.");
+    }
+    auto& view = m_mapMaterialViews[&model];
+    if (!view)
+    {
+        const auto atlas = model.m_ownTextures[previewSlot].m_atlasData;
+        if (atlas.scaleU <= 0 || atlas.scaleV <= 0)
+        {
+            throw std::runtime_error("Wall-map preview has invalid atlas coordinates.");
+        }
+        auto texture = std::make_shared<Texture>();
+        texture->m_width = m_geometryMap->m_width;
+        texture->m_height = m_geometryMap->m_height;
+        texture->SetDefaultParams();
+        texture->m_atlasData = { 1 / atlas.scaleU, 1 / atlas.scaleV,
+            -atlas.ofsU / atlas.scaleU, -atlas.ofsV / atlas.scaleV };
+        renderer.CloneTextureRuntime(*texture, *m_geometryMap);
+        AssetManager::Instance().RegisterAsset(*texture);
+        view = std::move(texture);
+    }
+    const auto oldSize = instance.m_materialOverride.size();
+    instance.m_materialOverride.resize(calls.size());
+    for (std::size_t i = 0; i < calls.size(); ++i)
+    {
+        if (i >= oldSize) { instance.m_materialOverride[i] = calls[i].m_material; }
+        if (!isPreview(calls[i])) { continue; }
+        instance.m_materialOverride[i].m_texture = view.get();
+        instance.m_materialOverride[i].ComputeHash();
+    }
+    instance.ComputeTransparencyMask();
+}
+
+bool ApplicationUi::UploadCollisionMap(Desperabis::GameContext& core, Renderer& renderer)
+{
+    const auto* map = core.collisionMap;
+    const auto* geometry = core.GetLevel();
+    if (!map || !geometry) { throw std::logic_error("Map presentation requires loaded collision geometry."); }
+    if (m_collisionMap && m_mapSource == map && !core.collisionmapUploadDirty &&
+        m_mapGeometryRevision == geometry->geometryRevision) { return false; }
+    const std::size_t width = static_cast<std::size_t>(map->widthMinusOne) + 1;
+    const std::size_t height = static_cast<std::size_t>(map->heightMinusOne) + 1;
+    if (width > 200 || height > 200 || width * height > Desperabis::CollisionMap::VARIABLE_SIZE)
+    {
+        throw std::runtime_error("Collision-map dimensions exceed the supported 200x200 texture.");
+    }
+    // RGB approximations of map materials, not the scene's model/sprite palette.
+    const std::array<Color4, 8> floors{{
+        { 82, 69, 45, 220 }, { 60, 100, 160, 220 }, { 120, 88, 48, 220 }, { 55, 94, 148, 220 },
+        { 72, 100, 54, 220 }, { 102, 91, 67, 220 }, { 128, 120, 101, 220 }, { 133, 111, 72, 220 }
+    }};
+    std::array<Color4, 256> palette;
+    for (std::size_t i = 0; i < palette.size(); ++i)
+    {
+        palette[i] = (i & 0x38) != 0 ? Color4{ 192, 192, 184, 255 } : floors[i & 7];
+    }
+    TextureLoadingContext pixels;
+    const auto stride = width + 2;
+    pixels.m_rgbaData.resize(stride * (height + 2), Color4{ 0, 0, 0, 0 });
+    for (std::size_t y = 0; y < height; ++y)
+    {
+        for (std::size_t x = 0; x < width; ++x)
+        {
+            const auto value = map->data[y * width + x];
+            const auto row = y / 4, column = (x + 1) / 4;
+            const bool floor = row < geometry->geometryHeight && column < geometry->geometryWidth &&
+                geometry->floorObjects[row][column] != 0;
+            if (value == 0 && !floor) { continue; }
+            pixels.m_rgbaData[(y + 1) * stride + x + 1] = palette[value];
+        }
+    }
+    if (!m_collisionMap)
+    {
+        m_collisionMap = std::make_shared<Texture>();
+        AssetManager::Instance().RegisterAsset(*m_collisionMap);
+    }
+    m_collisionMap->m_width = static_cast<std::uint16_t>(stride);
+    m_collisionMap->m_height = static_cast<std::uint16_t>(height + 2);
+    m_collisionMap->m_hasAlpha = true;
+    m_collisionMap->SetDefaultParams();
+    renderer.CreateTexture(*m_collisionMap, pixels);
+    m_mapSource = map;
+    m_mapGeometryRevision = geometry->geometryRevision;
+    ++m_mapRevision;
+    core.collisionmapUploadDirty = false;
+    return true;
 }
 
 void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation, RendererDX11& renderer,
@@ -440,8 +698,9 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
     if (!hud.IsValidFrame(1, 0)) { throw std::runtime_error("Application UI requires the original HUD bank."); }
     const float canvasScale = (std::min)(viewport.Width / ApplicationPresentation::Width,
         viewport.Height / ApplicationPresentation::Height);
-    const float offsetX = viewport.TopLeftX + (viewport.Width - ApplicationPresentation::Width * canvasScale) * 0.5f;
-    const float offsetY = viewport.TopLeftY + (viewport.Height - ApplicationPresentation::Height * canvasScale) * 0.5f;
+    const float anchor = presentation.page == MenuPage::Gameplay ? 1.f : 0.5f;
+    const float offsetX = viewport.TopLeftX + (viewport.Width - ApplicationPresentation::Width * canvasScale) * anchor;
+    const float offsetY = viewport.TopLeftY + (viewport.Height - ApplicationPresentation::Height * canvasScale) * anchor;
     m_meshes.resize(presentation.commands.size());
     VisibilityResult elements;
     RenderContextDX11 context(renderer, elements, settings, stats);
@@ -477,7 +736,52 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
             DrawModel(*model, level, renderer, settings, stats, modelViewport, deviceContext, colorView, depthView);
             continue;
         }
-        if (const auto* fill = std::get_if<UiFill>(&command))
+        if (const auto* map = std::get_if<UiMap>(&command))
+        {
+            if (map->overview)
+            {
+                if (!m_geometryMap) { throw std::logic_error("Geometry map must be uploaded before drawing."); }
+                x = map->bounds.x;
+                y = map->bounds.y;
+                key = "geometry-map:" + std::to_string(m_geometryMapGeneration) + ":" +
+                    std::to_string(map->bounds.width) + ":" + std::to_string(map->bounds.height);
+                if (key != cached.key)
+                {
+                    const std::array<Vector2, 4> uv{{ { 0,0 }, { 0,1 }, { 1,0 }, { 1,1 } }};
+                    cached.mesh = TextMesh::CreateTexturedQuad(*m_geometryMap,
+                        map->bounds.width, map->bounds.height, uv);
+                }
+            }
+            else
+            {
+                if (!m_collisionMap) { throw std::logic_error("Collision map must be uploaded before drawing."); }
+                x = map->bounds.x;
+                y = map->bounds.y;
+                const float zoom = map->pixelsPerMapPixel;
+                const float centerX = map->centerColumn, centerY = map->centerRow;
+                const float angle = map->heading * (6.28318530718f / 512.f);
+                const float cosine = std::cos(angle), sine = std::sin(angle);
+                std::array<Vector2, 4> uv;
+                for (std::size_t corner = 0; corner < uv.size(); ++corner)
+                {
+                    const float dx = (corner % 2 == 0 ? -0.5f : 0.5f) * map->bounds.width / zoom;
+                    const float dy = (corner < 2 ? -0.5f : 0.5f) * map->bounds.height / zoom;
+                    uv[corner] = {
+                        (1.5f + centerX + dx * cosine - dy * sine) / m_collisionMap->m_width,
+                        (1.5f + centerY + dx * sine + dy * cosine) / m_collisionMap->m_height };
+                }
+                key = "map:" + std::to_string(m_mapRevision) + ":" + std::to_string(centerX) + ":" +
+                    std::to_string(centerY) + ":" + std::to_string(angle) + ":" +
+                    std::to_string(map->bounds.width) + ":" + std::to_string(map->bounds.height) + ":" +
+                    std::to_string(zoom);
+                if (key != cached.key)
+                {
+                    cached.mesh = TextMesh::CreateTexturedQuad(*m_collisionMap,
+                        map->bounds.width, map->bounds.height, uv);
+                }
+            }
+        }
+        else if (const auto* fill = std::get_if<UiFill>(&command))
         {
             x = fill->bounds.x;
             y = fill->bounds.y;
@@ -554,7 +858,8 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
             {
                 throw std::runtime_error("Unavailable native inventory resource bank " + std::to_string(iconFile) + ".");
             }
-            const auto frame = ResolveBitmap(*bitmap, level, *selectedHud, *bank->second.at(bitmap->shade));
+            const auto frame = bitmap->source == UiBitmapSource::MapPaper ? BitmapFrame{ *m_mapPaper } :
+                ResolveBitmap(*bitmap, level, *selectedHud, *bank->second.at(bitmap->shade));
             const auto& texture = frame.texture;
             if (texture.m_width == 0 || texture.m_height == 0)
             {
@@ -585,7 +890,15 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
                 std::to_string(bitmap->assetSlot) + ":" + std::to_string(bitmap->animation) + ":" +
                 std::to_string(bitmap->frame) + ":" + std::to_string(width) + ":" + std::to_string(height) + ":" +
                 std::to_string(bitmap->flipHorizontal) + ":" + std::to_string(bitmap->shade);
-            if (key != cached.key) { cached.mesh = TextMesh::CreateTexturedQuad(texture, width, height); }
+            if (key != cached.key)
+            {
+                if (bitmap->source == UiBitmapSource::MapPaper)
+                {
+                    const std::array<Vector2, 4> uv{{ { 0,0 }, { 1,0 }, { 0,1 }, { 1,1 } }};
+                    cached.mesh = TextMesh::CreateTexturedQuad(texture, width, height, uv);
+                }
+                else { cached.mesh = TextMesh::CreateTexturedQuad(texture, width, height); }
+            }
         }
         else if (const auto* meter = std::get_if<UiHealthMeter>(&command))
         {

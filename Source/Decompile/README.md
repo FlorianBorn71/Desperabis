@@ -39,7 +39,15 @@ For the first explained case and shared collision-map pointer, see
   `crab-oil-support-evidence.txt`: native push-player radial separation,
   crab wandering/material checks and burnable-oil aging, light and spreading.
   `Scaffold/ThirdPartBehaviorTests.cpp` covers these mechanics and their
-  original third-part level objects; maps and baked-wall rendering remain deferred.
+  original third-part level objects; baked-wall rendering remains deferred.
+- `map-presentation-evidence.txt`: native map ownership gate, corner-map
+  heading, PictureMap's page-11 transition and modal map dispatch.
+  The corner map uses a lazily uploaded, palette-converted collision texture;
+  see [map presentation](BehaviorRecovery.md#owned-and-wall-map-presentation).
+- `map-modal-geometry-evidence.txt`: complete native modal-map routine and its
+  coordinate, parchment-remap and line-drawing helpers. Confirms separate
+  geometry-based tile shading and wall outlines, now generated into one separate
+  level texture shared by the modal and the wall-map model's preview material.
 - `initial-import.txt`: generated memory map and initial instruction report.
 - `high-level-evidence.txt`: focused instruction evidence for the control-flow map.
 - `ui-evidence.txt`: UI page dispatch, F2 inventory navigation, shared input/text
@@ -299,7 +307,7 @@ presentation after completion, and do not carry the old frame's simulation
 into the new scene. See [progression and exit recovery](BehaviorRecovery.md#core-owned-level-progression-and-levelend).
 Interactive hosts call `UpdateApplication(elapsedSeconds, input)` every frame,
 including paused, loading and zero-simulation-tick frames. GameCore checks
-F1/F2 input, dispatches gameplay/main-menu/inventory updates, and owns the
+F1/F2 input, dispatches gameplay/main-menu/inventory/map updates, and owns the
 33 Hz accumulator. Inspect the optional `result.tick`, synchronize render
 instances from `GetWorldObjects()`, and use `result.worldDeltaSeconds` for
 world presentation clocks. Draw the core-authored `GetApplicationPresentation()`
@@ -308,6 +316,18 @@ that canvas. No modal UI override is required.
 Inventory recipes reference the original frame/action/resource art and palette
 shade states rather than replacement widgets. See the
 [native layout recovery](HighLevelStructure.md#original-inventory-artwork-and-placement).
+Gameplay recipes may contain a clipped `UiMap` overlay while still requiring
+the world to render; use the presentation's page, not an empty command list,
+to distinguish gameplay from modal screens. `ApplicationUi::UploadCollisionMap`
+consumes `GameContext::collisionmapUploadDirty` only after a successful upload.
+Runtime collision edits must use the context's pixel/span helpers, which route
+through `WriteCollisionMapByte`; do not bypass dirty tracking with raw writes.
+Level installation and floor-footprint changes also invalidate map presentation.
+`ApplicationUi::UploadGeometryMap` independently caches the modal/wall-preview
+texture by loaded level and `geometryRevision`. `ApplyMapMaterial` changes only
+the map panel's per-instance material and shares that GPU texture; do not modify
+the original model atlas or upload separate preview pixels. World instances
+must be cleared before the UI's level texture cache.
 `Tick({behaviorTicks, frameTicks}, input)` remains the low-level recovery API;
 do not mix it with the application's time accumulator. See the
 [runtime integration contract](BehaviorRecovery.md#host-driven-runtime-integration)

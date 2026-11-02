@@ -337,6 +337,7 @@ namespace Desperabis
         // Returns false for a disabled choice, leaving the current page unchanged.
         bool SelectMainMenuAction(MainMenuAction action);
         bool OpenInventory();
+        void OpenMap();
         void StartNewGame(std::int16_t chapter);
 
         bool hasActiveGame = false; // Original resume/save availability flag, separate from page selection.
@@ -345,6 +346,7 @@ namespace Desperabis
         std::int16_t tickCount = 1;
         bool behaviorDispatchEnabled = true;
         CollisionMap* collisionMap = nullptr;
+        bool collisionmapUploadDirty = true;
         // Original DS:EC70, initialized to five FF bytes.
         std::uint8_t switchGroupMasks[5] = { 0xff, 0xff, 0xff, 0xff, 0xff };
         // Original inventory slots 1..14: two hands followed by twelve backpack slots.
@@ -550,6 +552,7 @@ namespace Desperabis
         virtual void InitializeNewGame(std::int16_t chapter);
 
     private:
+        void WriteCollisionMapByte(std::size_t address, std::uint8_t value);
         std::vector<LightningFlash> lightningFlashes;
         void UpdateInventoryInput(bool confirm);
         void SwapInventoryItems(std::size_t first, std::size_t second);

@@ -57,8 +57,8 @@ and oil's all-contact collector. These are now implemented in
 [ThirdPartBehaviorTests.cpp](Scaffold/ThirdPartBehaviorTests.cpp) checks
 radial/camera/wall/cheat behavior, seeded byte-exact crab updates, contact
 responses, oil thresholds/spreading/burnout and every corresponding original
-level-10/12/13 object. PictureMap interactions and renderer updates for
-baked wall removals remain deferred.
+level-10/12/13 object. Renderer updates for baked wall removals remain deferred;
+PictureMap interactions are implemented by the modal flow described below.
 
 [GameContext.h](Scaffold/GameContext.h) now owns the `GameContext` class,
 formerly the `GameState` struct embedded in the dispatch header. Existing
@@ -72,6 +72,123 @@ of the gameplay implementation. Public gameplay state remains
 directly accessible. There is no compatibility alias for the old type name.
 The gameplay free-function and behavior-handler APIs still receive
 `GameContext&`; converting all of them to members is deliberately out of scope.
+
+### Owned and wall map presentation
+
+[Native evidence](map-presentation-evidence.txt) identifies two separate paths:
+
+- `PickableMap` (collision 45) grants `hasMap`. Native `0000:6833` gates the
+  corner display on DS:D4FB. Its drawing helper `1E48:CB6A` binds the collision
+  map and derives orientation from the player heading DS:D4D0, not a free-running
+  animation. The modern view stays clipped in the lower-right corner, centered
+  on the player and rotating with their heading.
+- `PictureMap` (collision 46) writes application state 11 at `0EF0:1009`.
+  The dispatcher calls `0000:70A5` for this state. It remains a persistent world
+  object and does not grant ownership of the corner map. State 11 is now named
+  `MenuPage::Map`. The modern host replaces only its preview material with the
+  generated level map, leaving the model geometry and wooden frame unchanged.
+
+The interactive core handles Enter contact, opens the map and suspends world
+updates, animation time and random-number consumption. A fresh Enter or Escape
+returns to gameplay; the opening/closing held key cannot immediately close or
+reopen it. The host only draws the core's `UiMap` recipe. The modal uses original
+`GRAFIK\BACKGR3.256` with `BACKGR3.PAL` on the original 360x240 logical canvas.
+The older blocking dispatcher still delegates this page
+to its `ShowUnrecoveredPage` hook; the implemented path is `UpdateApplication`.
+
+The [complete modal geometry export](map-modal-geometry-evidence.txt) confirms
+that native `0000:70A5..7470` does not use collision pixels:
+
+1. `0000:6FF7` scans the wall-texture plane (biased displacement DS:329D,
+   actual base DS:32D0) to identify the first contiguous group of occupied rows.
+   `0000:70CA..7116` chooses an integer scale from that row span; the coordinate
+   helpers are `0000:6FAE` and `0000:6FCF`.
+2. `0000:7153..71BA` shades covered tiles. Its presence test is the
+   **ceiling-object plane**, not floorObjects: DS:423D + 50*row + column
+   with one-based indices addresses actual base DS:4270. This corrects the
+   earlier description of DS:423D as floor occupancy.
+   `surfaceFlags & 31` in 1..4 selects remap 1; other values select remap 0.
+   The tile rectangle ends at the next tile boundary **minus one pixel** on
+   both axes, so neighbouring tile fills do not overlap.
+3. `0000:7036` reads each source background pixel through `1E48:0E34`,
+   remaps it using DS:0A00 + 256*selector + pixel, and writes the result
+   through `1E48:23CF`. This preserves parchment texture rather than replacing
+   it with a flat material colour. The modal selects remap bank 12 through
+   `1E48:B74C`; the exact backing-file/active-palette combination is not
+   established by this export.
+4. `0000:71F4..73F8` reads the **wall-texture plane**, not surfaceFlags or
+   collisionMaterials. Only records with `(wallTextures & 15) != 0` draw.
+   `wallTextures >> 5` selects the segments below, passed to the line primitive
+   `1E48:26C5` with palette index 0. Types 6 and 7 have no modal drawing case.
+
+| Wall shape | Segments on the tile |
+| --- | --- |
+| 0 | Left |
+| 1 | Top |
+| 2 | Right |
+| 3 | Bottom |
+| 4 | Top and bottom |
+| 5 | Left and right |
+
+**Modern implementation:** `ApplicationUi::UploadGeometryMap` now generates a
+separate parchment texture using the geometry shading/line passes above.
+The modal's full-canvas `UiMap` command displays it; the corner map retains its
+independent collision texture. Collision construction is unchanged, since
+changing it to fix modal appearance would change physics.
+The collision builder deliberately draws inclusive 5x5 tiles at four-pixel
+spacing, overwriting shared material edges and applying collision-specific wall
+icons; magnifying those pixels exposes spill and thick blockers absent from the
+native modal. See [CollisionMap.cpp](Scaffold/CollisionMap.cpp).
+
+The generated map follows the native row-span scaling, ceiling-presence test,
+surface-flag selection, half-open tile fills and one-pixel wall segments.
+Paper shading remains an explicit RGB approximation: ordinary covered tiles
+darken the parchment, alternate tiles apply a blue tint while retaining grain,
+and wall ink is dark brown. This does not claim byte-exact native remap colours.
+The texture is cached by level source, loaded level number and `geometryRevision`;
+collision-only writes and modal navigation do not regenerate it. Geometry
+changes refresh the same texture object and all existing model aliases.
+
+The original PictureMap objects are level 11 slot 78, level 12 slot 3 and
+level 14 slot 51. All use model 31, bank 3, frame 1, resolving to VEKT14.
+Its six frame quads use embedded texture 4; the map panel uses embedded texture 5.
+`ApplyMapMaterial` overrides only the latter through the existing per-instance
+material vector. Atlas batching now retains source texture-slot boundaries,
+so those two materials cannot be merged. No shared model asset is modified.
+The preview alias undoes the original packed atlas scale/offset using the existing
+texture transform and `CloneTextureRuntime`; it shares the modal's GPU texture/SRV
+without another pixel upload. Native textured-wall UVs transpose the picture,
+so the unique upload is stored as 240x360 and the modal quad reverses that
+transpose to present the upright 360x240 canvas. Both views have the same orientation.
+Clear world instances before clearing the UI's level texture cache.
+
+The corner-map upload expands a 256-entry material palette to RGBA: low three bits select
+floor colours, and any `0x38` blocker bits select light gray walls. Water is blue,
+wood brown; these are RGB approximations, not recovered byte-exact native map
+lookup tables. Zero-valued pixels inside the geometry's floor footprint remain
+visible; zero outside it is transparent. A transparent one-pixel texture border
+avoids edge smearing when the clipped corner map extends beyond the level.
+
+`GameContext::collisionmapUploadDirty` starts true and is set by level installation
+and floor-footprint changes. All runtime pixel, door-span, barrier-span and
+destroyed-wall writes pass through `WriteCollisionMapByte`, retaining native
+wrapped/header-write semantics while invalidating only changed bytes.
+Do not introduce direct runtime collision-map writes. `ApplicationUi` coalesces
+edits into one upload when the corner map is actually visible, also checking source and
+geometry revision. It clears the flag only after successful texture creation.
+Movement and heading only change quad UVs, not the uploaded texture. The binary
+`CollisionMap` layout remains unchanged; dirty state belongs to the context.
+
+[ApplicationUpdateTests.cpp](Scaffold/ApplicationUpdateTests.cpp) covers ownership,
+contact, modal input edges, frozen simulation and every map-mutation family.
+[ApplicationUiTests.cpp](../NewRenderer/DesperabisGame-DX11/ApplicationUiTests.cpp)
+checks independent lazy uploads, live rendered edits, clipping/rotation,
+nonoverlapping tile boundaries, all eight native wall selectors and parchment
+at normal, wide and portrait aspect ratios. It also checks the level-11 pickup,
+all three original wall maps, actual 3D panel pixels/orientation, unchanged frame
+materials, shared GPU resources and automatic alias refresh after geometry changes.
+
+### Application controller
 
 [ApplicationFlow.h](Scaffold/ApplicationFlow.h) defines `MenuPage`, retaining
 the original application-state numbers, and `MainMenuAction`. The recovered

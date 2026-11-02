@@ -301,6 +301,7 @@ namespace Desperabis
         ownedLevel = std::move(data.level);
         level = ownedLevel.get();
         collisionMap = ownedLevel->collisionMap.get();
+        collisionmapUploadDirty = true;
         worldObjects = data.objects;
         playerForwardSpeed = 0;
         playerSidewaysSpeed = 0;
@@ -950,6 +951,15 @@ namespace Desperabis
         return true;
     }
 
+    void GameContext::OpenMap()
+    {
+        if (menuPage != MenuPage::Gameplay || !collisionMap || !level)
+        {
+            throw std::logic_error("Opening the map requires gameplay with loaded collision geometry.");
+        }
+        SetMenuPage(MenuPage::Map);
+    }
+
     void GameContext::StartNewGame(std::int16_t chapter)
     {
         if (chapter <= 0)
@@ -1012,7 +1022,7 @@ namespace Desperabis
         case MenuPage::UnidentifiedPage5:
         case MenuPage::UnidentifiedPage8:
         case MenuPage::UnidentifiedPage9:
-        case MenuPage::UnidentifiedPage11:
+        case MenuPage::Map:
         case MenuPage::Presentation22:
         case MenuPage::Presentation23:
         case MenuPage::Presentation25:
@@ -1609,8 +1619,10 @@ namespace Desperabis
                     if (px < 0 || pz < 0 || px > collisionMap->widthMinusOne || pz > collisionMap->heightMinusOne) { continue; }
                     const auto index = static_cast<std::size_t>(pz) * stride + px;
                     if (index >= CollisionMap::VARIABLE_SIZE) { throw std::out_of_range("Wall destruction exceeds collision-map storage."); }
-                    auto& pixel = collisionMap->data[index];
-                    if ((pixel & 0x38) == 0x38) { pixel = 0; }
+                    if ((collisionMap->data[index] & 0x38) == 0x38)
+                    {
+                        WriteCollisionMapByte(offsetof(CollisionMap, data) + index, 0);
+                    }
                 }
             }
             SetObjectHealth(object, 0);
@@ -1626,6 +1638,7 @@ namespace Desperabis
             const auto cell = GetHeightPosition(object.posX, object.posZ);
             object.collisionType = CollisionType::None;
             level->floorObjects[cell.row][cell.column] = static_cast<std::uint8_t>(object.itemValue);
+            collisionmapUploadDirty = true;
             ++level->geometryRevision;
             return;
         }
@@ -2825,6 +2838,22 @@ namespace Desperabis
         PromptUserMessage("WC-Error Obj " + std::to_string(found - worldObjects.begin()), 50);
     }
 
+    void GameContext::WriteCollisionMapByte(std::size_t address, std::uint8_t value)
+    {
+        if (!collisionMap) { throw std::runtime_error("Collision-map writes require collision-map memory."); }
+        if (address >= sizeof(CollisionMap))
+        {
+            throw std::out_of_range("Collision-map write is outside the allocated map.");
+        }
+        // Native wrapped writes can also touch the width/height header.
+        auto* bytes = reinterpret_cast<unsigned char*>(collisionMap);
+        if (bytes[address] != value)
+        {
+            bytes[address] = value;
+            collisionmapUploadDirty = true;
+        }
+    }
+
     void GameContext::SetCollisionMapPixelAtWorldXZ(
         std::int16_t x, std::int16_t z, std::uint16_t value)
     {
@@ -2843,16 +2872,7 @@ namespace Desperabis
         {
             throw std::out_of_range("Collision-map write is outside the allocated dummy map.");
         }
-        if (address >= dataOffset)
-        {
-            map.data[address - dataOffset] = static_cast<std::uint8_t>(value);
-        }
-        else
-        {
-            // Normalize the far pointer to offset zero; wrapped writes can still hit the header.
-            auto* bytes = reinterpret_cast<unsigned char*>(&map);
-            bytes[address] = static_cast<std::uint8_t>(value);
-        }
+        WriteCollisionMapByte(address, static_cast<std::uint8_t>(value));
     }
 
     void GameContext::SetDoorCollisionMapAtWorldXZ(
@@ -2863,7 +2883,6 @@ namespace Desperabis
             throw std::runtime_error("Door collision updates require collision-map memory.");
         }
         auto& map = *collisionMap;
-        auto* bytes = reinterpret_cast<unsigned char*>(&map);
         const int column = WrapSignedWord(static_cast<std::int32_t>(x) - 137) / 25;
         const int centerRow = 162 - WrapSignedWord(static_cast<std::int32_t>(z) - 38) / 25;
         for (int offset = -1; offset <= 1; ++offset)
@@ -2881,7 +2900,7 @@ namespace Desperabis
                     throw std::out_of_range("Door collision write is outside the allocated map.");
                 }
             }
-            for (const auto address : addresses) { bytes[address] = static_cast<std::uint8_t>(value); }
+            for (const auto address : addresses) { WriteCollisionMapByte(address, static_cast<std::uint8_t>(value)); }
         }
     }
 
@@ -2907,7 +2926,10 @@ namespace Desperabis
                 {
                     throw std::out_of_range("Barrier collision span exceeds the allocated map.");
                 }
-                std::fill_n(map.data + address, count, value);
+                for (int pixel = 0; pixel < count; ++pixel)
+                {
+                    WriteCollisionMapByte(offsetof(CollisionMap, data) + address + pixel, value);
+                }
             }
             if (horizontal) { break; }
         }

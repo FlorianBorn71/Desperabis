@@ -97,6 +97,10 @@ namespace Desperabis
             state.SetObjectHealth(object, 0);
             return { InteractionStatus::Applied };
 
+        case CollisionType::PictureMap:
+            state.OpenMap();
+            return { InteractionStatus::Applied };
+
         case CollisionType::Medicine:
             for (std::size_t i = 0; i < state.inventory.size(); ++i)
             {
@@ -209,7 +213,6 @@ namespace Desperabis
         case CollisionType::VaseToGrab:
         case CollisionType::MirrorToGrab:
         case CollisionType::SarcophagusWithBones:
-        case CollisionType::PictureMap:
         case CollisionType::Lorry:
             return { InteractionStatus::UnimplementedHandler };
 

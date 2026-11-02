@@ -624,9 +624,12 @@ namespace
 		const float side = (std::min)(g_viewport.Width - margin * 2.f,
 			g_viewport.Height - g_gameCore->GetHealthBarHeight() - margin * 2.f) * 0.16f;
 		if (side <= 0.f) { return; }
+		const float previewBottom = g_gameCore->hasMap ?
+			g_viewport.Height - 71.f * (std::min)(g_viewport.Width / 360.f, g_viewport.Height / 240.f) :
+			g_viewport.Height - g_gameCore->GetHealthBarHeight();
 		const D3D11_VIEWPORT viewport = {
 			g_viewport.Width - margin - side,
-			g_viewport.Height - g_gameCore->GetHealthBarHeight() - margin - side,
+			previewBottom - margin - side,
 			side,side,0.f,1.f };
 		const GamePlay::PropertyAccessorBase properties(g_objectState[slot]);
 		g_renderer.SetItemPreview(instance, GamePlay::IsSpriteDisplayType(properties.GetDisplayType()), viewport);
@@ -825,8 +828,8 @@ namespace
 		g_gameCore->ClearPrompt();
 		g_gameCore->ClearHealthBar();
 		g_gameCore->ClearLightningFlashes();
-		g_applicationUi.Deinitialize();
 		ClearGameObjects();
+		g_applicationUi.Deinitialize();
 		g_scene.reset();
 		g_promptFont.reset();
 		g_fontAnimations = {};
@@ -974,6 +977,37 @@ namespace
 	void Render()
 	{
 		const auto presentation = g_gameCore->GetApplicationPresentation();
+		if (std::any_of(presentation.commands.begin(), presentation.commands.end(),
+			[](const auto& command) {
+			    const auto* map = std::get_if<Desperabis::UiMap>(&command);
+			    return map && !map->overview;
+			}))
+		{
+			g_applicationUi.UploadCollisionMap(*g_gameCore, g_renderer);
+		}
+		if (g_scene->IsReady() &&
+			(presentation.page == Desperabis::MenuPage::Gameplay || presentation.page == Desperabis::MenuPage::Map))
+		{
+			const auto& objects = g_gameCore->GetWorldObjects();
+			const bool wallMap = std::any_of(objects.begin() + 2, objects.end(), [](const auto& object)
+			{
+			    return object.health > 0 && object.collisionType == Desperabis::CollisionType::PictureMap;
+			});
+			if (wallMap || presentation.page == Desperabis::MenuPage::Map)
+			{
+			    g_applicationUi.UploadGeometryMap(*g_gameCore, g_renderer);
+			    for (std::size_t slot = 2; slot < g_numObjectSlots; ++slot)
+			    {
+			        const auto& object = objects.at(slot);
+			        const auto& instance = g_objectInst[slot];
+			        if (object.health <= 0 || object.collisionType != Desperabis::CollisionType::PictureMap ||
+			            !instance || !instance->GetRenderable()) { continue; }
+			        const auto model = g_scene->m_level->GetLevelInfo().GetModelAnim(object.modelId - 30);
+			        if (!model) { throw std::runtime_error("Wall-map model bank is unavailable."); }
+			        g_applicationUi.ApplyMapMaterial(*instance, *model, g_renderer);
+			    }
+			}
+		}
 		g_renderer.ReInitialize(g_renderTargetView.Get(), g_depthStencilView.Get(), g_viewport);
 
 		g_d3dContext->RSSetViewports(1, &g_viewport);
@@ -981,7 +1015,7 @@ namespace
 		g_d3dContext->OMSetRenderTargets(1, targets, g_depthStencilView.Get());
 
 		Vector4 clearCol = { 0.05f, 0.06f, 0.08f, 1.f };
-		if (presentation.commands.empty() && g_scene->IsReady())
+		if (presentation.page == Desperabis::MenuPage::Gameplay && g_scene->IsReady())
 		{
 			clearCol = g_scene->GetClearColor();
 		}
@@ -994,7 +1028,7 @@ namespace
 		Renderer::Instance().SetCamera(g_camera);
 		Renderer::Instance().SetCurrentTime(g_worldTime);
 		g_renderer.SetWeaponDraw({});
-		if (presentation.commands.empty())
+		if (presentation.page == Desperabis::MenuPage::Gameplay)
 		{
 			UpdateItemPreview();
 			if (g_scene->IsReady())
@@ -1009,6 +1043,12 @@ namespace
 				}
 			}
 			Renderer::Instance().RenderScene(g_scene.get(), g_renderSettings, g_visSettings, &g_profilingStats);
+			if (!presentation.commands.empty())
+			{
+				g_applicationUi.Draw(presentation, g_renderer, *g_scene->m_level, *g_promptFont, *g_hudAnimations,
+					g_renderSettings, g_profilingStats, g_viewport, g_d3dContext.Get(),
+					g_renderTargetView.Get(), g_depthStencilView.Get());
+			}
 		}
 		else
 		{

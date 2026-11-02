@@ -4,7 +4,8 @@
 
 bool DrawCall::IsBatchableWith(const DrawCall& other) const
 {
-    if (m_material.m_useAlphaTest != other.m_material.m_useAlphaTest
+    if (m_material.m_textureSlot != other.m_material.m_textureSlot
+        || m_material.m_useAlphaTest != other.m_material.m_useAlphaTest
         || m_material.m_applyLighting != other.m_material.m_applyLighting
         //|| m_material.m_textureRepeat != other.m_material.m_textureRepeat
         || m_material.m_reflectionType != other.m_material.m_reflectionType
@@ -20,11 +21,6 @@ bool DrawCall::IsBatchableWith(const DrawCall& other) const
     {
         return false;
     }
-    else if (m_material.m_textureSlot != other.m_material.m_textureSlot)
-    {
-        return false;
-    }
-
     return true;
 }
 
@@ -40,12 +36,9 @@ uint64_t DrawCall::ComputeBatchingKey() const
     {
         batchingKey ^= (((uint64_t)m_material.m_texture->GetAssetId()) << 48);
     }
-    else
-    {
-        uint64_t slot = (uint64_t)(m_material.m_textureSlot + 1);
-        uint64_t slotMask = slot << 28;
-        batchingKey |= slotMask;
-    }
+    // Atlas packing must not erase source material slots needed by instance overrides.
+    uint64_t slot = (uint64_t)(m_material.m_textureSlot + 1);
+    batchingKey |= slot << 28;
 
     return batchingKey;
 

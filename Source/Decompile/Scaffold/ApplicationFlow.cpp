@@ -221,6 +221,12 @@ namespace Desperabis
                 inventoryPulsePhase = static_cast<std::uint16_t>((inventoryPulsePhase + steps * 17) & 511);
             }
             break;
+        case MenuPage::Map:
+            if (wasPressed(InputKey::UiCancelKey) || wasPressed(InputKey::UiConfirmKey))
+            {
+                SetMenuPage(MenuPage::Gameplay);
+            }
+            break;
         case MenuPage::MainMenu:
         case MenuPage::AlternateMainMenu:
             if (wasPressed(InputKey::UiCancelKey))
@@ -276,7 +282,7 @@ namespace Desperabis
             snapshot.keys[i] = snapshot.keys[i] && !applicationBlockedKeys[i];
         }
         result.tick = Tick(result.timing, snapshot);
-        if (result.tick->status == GameTickStatus::LevelEnded)
+        if (result.tick->status == GameTickStatus::LevelEnded || menuPage != pageAtStart)
         {
             result.worldDeltaSeconds = 0;
             result.timing = { 0, 0 };
@@ -345,10 +351,27 @@ namespace Desperabis
     ApplicationPresentation GameContext::GetApplicationPresentation() const
     {
         ApplicationPresentation result{ menuPage, {} };
-        if (menuPage == MenuPage::Gameplay || menuPage == MenuPage::Quit) { return result; }
+        if (menuPage == MenuPage::Gameplay)
+        {
+            if (hasMap && runtimeState == GameRuntimeState::Ready && collisionMap)
+            {
+                result.commands.emplace_back(UiFill{ { 288, 168, 72, 1 }, { 70, 60, 85 } });
+                result.commands.emplace_back(UiFill{ { 288, 168, 1, 70 }, { 70, 60, 85 } });
+                result.commands.emplace_back(UiMap{ { 289, 169, 71, 69 }, false,
+                    (worldObjects[1].posX - 112.f) / 25.f,
+                    162.f - (worldObjects[1].posZ - 38.f) / 25.f, playerHeading });
+            }
+            return result;
+        }
+        if (menuPage == MenuPage::Quit) { return result; }
         const UiColor normal{ 204, 153, 85 }, bright{ 255, 230, 160 }, dark{ 85, 72, 55 };
         auto& draw = result.commands;
         draw.emplace_back(UiFill{ { 0, 0, result.Width, result.Height }, { 0, 0, 0 } });
+        if (menuPage == MenuPage::Map)
+        {
+            draw.emplace_back(UiMap{ { 0, 0, result.Width, result.Height }, true });
+            return result;
+        }
         const auto text = [&draw, page = menuPage](float x, float y, std::string value, UiColor color,
             float scale = 0.65f, UiTextAlignment alignment = UiTextAlignment::Left)
         {

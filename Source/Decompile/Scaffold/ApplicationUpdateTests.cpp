@@ -1,4 +1,5 @@
 #include "GameContext.h"
+#include "BehaviorDispatch.h"
 
 #include <cmath>
 #include <cstring>
@@ -416,6 +417,103 @@ namespace
             "Inventory swaps must keep the placeable weapon reference and registry attached to their record.");
     }
 
+    void TestMapFlowAndDirtyWrites()
+    {
+        Host host;
+        Input input;
+        Ready(host, input);
+        Check(host.collisionmapUploadDirty, "A new level must require its first map upload.");
+        host.worldObjects[1].posX = 1112;
+        host.worldObjects[1].posZ = 3088;
+        host.worldObjects[1].collisionRadiusXZ = host.worldObjects[1].collisionRadiusY = 30;
+        host.worldObjects[1].collisionMask = 1;
+        Check(host.GetApplicationPresentation().commands.empty(), "The corner map must require ownership.");
+        auto pickup = Item(CollisionType::PickableMap);
+        Check(HandlePlayerObjectInteraction(pickup, host).status == InteractionStatus::Applied &&
+            host.hasMap && pickup.health == 0, "Picking up the map must enable the corner view.");
+        const auto corner = host.GetApplicationPresentation();
+        const auto* map = std::get_if<UiMap>(&corner.commands.back());
+        Check(corner.page == MenuPage::Gameplay && map && !map->overview &&
+            map->bounds.x == 289 && map->bounds.y == 169 && map->bounds.width == 71 &&
+            map->bounds.height == 69 && map->centerColumn == 40 && map->centerRow == 40,
+            "The live corner map must be clipped and centered using native world-to-map coordinates.");
+        auto& picture = host.worldObjects[2];
+        picture = host.worldObjects[1];
+        picture.collisionType = CollisionType::PictureMap;
+        host.objectCollisionsEnabled = true;
+        input.Set(InputKey::InteractionKey, true);
+        input.Set(InputKey::UiConfirmKey, true);
+        const auto opened = host.UpdateApplication(1.0 / 33, input);
+        Check(opened.tick && opened.tick->interaction &&
+            opened.tick->interaction->status == InteractionStatus::Applied &&
+            host.GetMenuPage() == MenuPage::Map && opened.worldDeltaSeconds == 0 &&
+            picture.health == 1000 && host.hasMap,
+            "Enter on a wall map must open page 11 without consuming the object or advancing world time.");
+        const auto objects = host.worldObjects;
+        const auto seed = host.randomSeed;
+        for (int i = 0; i < 10; ++i)
+        {
+            const auto update = host.UpdateApplication(1, input);
+            Check(!update.tick && update.worldDeltaSeconds == 0 && host.GetMenuPage() == MenuPage::Map &&
+                host.randomSeed == seed &&
+                std::memcmp(objects.data(), host.worldObjects.data(), sizeof(objects)) == 0,
+                "The map must freeze gameplay and ignore the held opening Enter key.");
+        }
+        const auto modal = host.GetApplicationPresentation();
+        const auto* overview = std::get_if<UiMap>(&modal.commands[1]);
+        Check(static_cast<int>(MenuPage::Map) == 11 && overview && overview->overview &&
+            overview->bounds.width == 360 && overview->bounds.height == 240,
+            "Page 11 must draw the generated parchment map on the full canvas.");
+        input.Set(InputKey::InteractionKey, false);
+        input.Set(InputKey::UiConfirmKey, false);
+        host.UpdateApplication(0, input);
+        input.Set(InputKey::InteractionKey, true);
+        input.Set(InputKey::UiConfirmKey, true);
+        host.UpdateApplication(1, input);
+        Check(host.GetMenuPage() == MenuPage::Gameplay, "A fresh Enter press must close the map.");
+        host.UpdateApplication(1.0 / 33, input);
+        Check(host.GetMenuPage() == MenuPage::Gameplay, "The closing Enter must not reopen the wall map.");
+        input.Set(InputKey::InteractionKey, false);
+        input.Set(InputKey::UiConfirmKey, false);
+        host.UpdateApplication(0, input);
+        host.hasMap = false;
+        host.OpenMap();
+        host.UpdateApplication(0, input);
+        Tap(host, input, InputKey::UiCancelKey);
+        Check(host.GetMenuPage() == MenuPage::Gameplay && !host.hasMap,
+            "Escape must close a wall map, which must not grant ownership.");
+
+        host.collisionmapUploadDirty = false;
+        host.SetCollisionMapPixelAtWorldXZ(150, 4050, 1);
+        Check(host.collisionmapUploadDirty, "Single-pixel writes must invalidate the map upload.");
+        host.collisionmapUploadDirty = false;
+        host.SetCollisionMapPixelAtWorldXZ(150, 4050, 1);
+        Check(!host.collisionmapUploadDirty, "Repeated identical writes must not force another upload.");
+        host.SetDoorCollisionMapAtWorldXZ(150, 4050, 56);
+        Check(host.collisionmapUploadDirty, "Door spans must invalidate the map upload.");
+        host.collisionmapUploadDirty = false;
+        host.SetDoorCollisionMapAtWorldXZ(150, 4050, 56);
+        Check(!host.collisionmapUploadDirty, "Unchanged door spans must remain clean.");
+        host.SetBarrierCollisionMapAtWorldXZ(150, 4050, 0, 16);
+        Check(host.collisionmapUploadDirty, "Barrier spans must invalidate the map upload.");
+        host.SetDoorCollisionMapAtWorldXZ(150, 4050, 56);
+        host.collisionmapUploadDirty = false;
+        auto wall = Item(CollisionType::WallDestruction);
+        wall.posX = 150; wall.posZ = 4050;
+        host.DamageObject(wall, 1);
+        Check(host.collisionmapUploadDirty && wall.health == 0,
+            "Wall destruction must invalidate the map when it removes collision pixels.");
+        host.collisionmapUploadDirty = false;
+        auto fountain = Item(CollisionType::WaterRecharge, 1);
+        fountain.posX = 150; fountain.posZ = 4050;
+        host.DamageObject(fountain, 0);
+        Check(host.collisionmapUploadDirty, "Floor footprint changes must invalidate map coverage.");
+        host.collisionmapUploadDirty = false;
+        host.StartLevel(50);
+        Check(host.collisionmapUploadDirty, "Replacing a level must invalidate even an already clean map.");
+        ExpectError<std::logic_error>([] { GameContext empty; empty.OpenMap(); });
+    }
+
     void TestNativeArtworkLayout()
     {
         GameContext host;
@@ -501,6 +599,7 @@ int main()
         TestPotionCompatibility();
         TestPresentationAndHandReference();
         TestNativeArtworkLayout();
+        TestMapFlowAndDirtyWrites();
         std::cout << "PASS: nonblocking F1/F2 flow, modal clocks, input edges/repeat, inventory swaps, "
             "medicine arithmetic, 512 pulse phases and drawing recipes.\n";
         return 0;

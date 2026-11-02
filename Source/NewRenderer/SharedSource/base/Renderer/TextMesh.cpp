@@ -40,6 +40,22 @@ std::shared_ptr<TextMesh> TextMesh::CreateTexturedQuad(
 	return mesh;
 }
 
+std::shared_ptr<TextMesh> TextMesh::CreateTexturedQuad(
+	const Texture& texture, float width, float height, const std::array<Vector2, 4>& texCoords)
+{
+	auto mesh = CreateTexturedQuad(texture, width, height);
+	for (std::size_t i = 0; i < texCoords.size(); ++i)
+	{
+		const auto& uv = texCoords[i];
+		if (!std::isfinite(uv.x) || !std::isfinite(uv.y))
+		{
+			throw std::invalid_argument("Screen-space texture coordinates must be finite.");
+		}
+		mesh->m_batches[0].m_vertices[i].m_texCoord = texture.m_atlasData.Apply(uv.x, uv.y);
+	}
+	return mesh;
+}
+
 void TextMesh::CreateRuntimes(Renderer& renderer)
 {
 	if (!IsValid() || m_runtime != nullptr)

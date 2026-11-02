@@ -775,6 +775,371 @@ namespace
         std::cout << "Model display: six named material tints, seven brightness shades and unchanged fire/unknown modes passed.\n";
     }
 
+    void CheckMaps(ApplicationUi& ui, RendererDX11& renderer, const Level& level,
+        const Font& font, const TextureAnim& hud, ID3D11Device3* device, ID3D11DeviceContext3* context,
+        const char* screenshot = nullptr)
+    {
+        auto geometry = Desperabis::CreateDummyLevel();
+        geometry.collisionMap->widthMinusOne = 23;
+        geometry.collisionMap->heightMinusOne = 19;
+        geometry.geometryWidth = 6;
+        geometry.geometryHeight = 5;
+        std::memset(geometry.ceilingObjects, 0, sizeof(geometry.ceilingObjects));
+        for (int row = 0; row < 5; ++row) { geometry.wallTextures[row][0] = 193; }
+        for (int row = 1; row <= 3; ++row)
+        {
+            for (int column = 1; column <= 4; ++column)
+            {
+                geometry.floorObjects[row][column] = 1;
+                geometry.ceilingObjects[row][column] = 1;
+            }
+        }
+        geometry.surfaceFlags[2][2] = 1;
+        for (int row = 4; row < 16; ++row) { geometry.collisionMap->data[row * 24 + 5] = 56; }
+        for (int row = 8; row < 12; ++row)
+        {
+            for (int column = 8; column < 12; ++column) { geometry.collisionMap->data[row * 24 + column] = 1; }
+        }
+        Desperabis::GameContext core;
+        core.level = &geometry;
+        core.collisionMap = geometry.collisionMap.get();
+        Check(ui.UploadCollisionMap(core, renderer) && !core.collisionmapUploadDirty &&
+            !ui.UploadCollisionMap(core, renderer), "The first map upload must be lazy and cached.");
+        Check(ui.UploadGeometryMap(core, renderer) && !ui.UploadGeometryMap(core, renderer),
+            "The geometry map must have its own lazy texture cache.");
+        const auto texturePixels = [&]
+        {
+            Target capture(device, 240, 360);
+            context->CopyResource(capture.color.Get(), ui.GetGeometryMapTexture()->
+                GetNativeRuntimeObj<NativeTextureObjectDX11>()->m_nativeTex.Get());
+            const auto uploaded = capture.Pixels(device, context);
+            std::vector<std::uint32_t> logical(360 * 240);
+            for (int y = 0; y < 240; ++y)
+            {
+                for (int x = 0; x < 360; ++x) { logical[y * 360 + x] = uploaded[x * 240 + y]; }
+            }
+            return logical;
+        };
+        const auto shaded = texturePixels();
+        const auto blueAt = [&](int x, int y)
+        {
+            const auto pixel = shaded[y * 360 + x];
+            return static_cast<int>((pixel >> 16) & 255) > static_cast<int>(pixel & 255) + 20;
+        };
+        Check(blueAt(179, 110) && !blueAt(180, 110) && !blueAt(150, 135),
+            "Water shading must stop exactly before the neighbouring tile in both axes.");
+        for (int shape = 0; shape < 8; ++shape)
+        {
+            geometry.wallTextures[1][2] = static_cast<byte>((shape << 5) | 1);
+            ++geometry.geometryRevision;
+            Check(ui.UploadGeometryMap(core, renderer), "Wall changes must invalidate the geometry map.");
+            const auto pixels = texturePixels();
+            const auto inkAt = [&](int x, int y) { return pixels[y * 360 + x] == 0xff0c1114; };
+            Check(inkAt(140, 75) == (shape == 0 || shape == 5) &&
+                inkAt(180, 75) == (shape == 2 || shape == 5) &&
+                inkAt(160, 55) == (shape == 1 || shape == 4) &&
+                inkAt(160, 95) == (shape == 3 || shape == 4),
+                "The modal must draw exactly the native one-pixel wall segments for all eight shape selectors.");
+        }
+        ui.UploadCollisionMap(core, renderer);
+        Camera camera;
+        RenderingSettings settings;
+        ProfilingStats stats;
+        Desperabis::UiMap map{ { 80, 50, 120, 100 }, false, 10, 10, 0, 4 };
+        for (const auto size : { std::pair<UINT, UINT>{ 360,240 }, { 1280,720 }, { 480,800 } })
+        {
+            Target target(device, size.first, size.second);
+            renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+            const auto render = [&](const Desperabis::ApplicationPresentation& recipe)
+            {
+                const float background[]{ 0.1f, 0.2f, 0.3f, 1.f };
+                context->ClearRenderTargetView(target.colorView.Get(), background);
+                VisibilityResult empty;
+                empty.m_mainCamera = &camera;
+                renderer.RenderSceneElements(empty, settings, stats);
+                ui.Draw(recipe, renderer, level, font, hud, settings, stats, target.viewport,
+                    context, target.colorView.Get(), target.depthView.Get());
+                return target.Pixels(device, context);
+            };
+            const Desperabis::ApplicationPresentation empty{ Desperabis::MenuPage::Gameplay, {} };
+            const auto baseline = render(empty);
+            map.heading = 0;
+            const auto first = render({ Desperabis::MenuPage::Gameplay, { map } });
+            map.heading = 128;
+            const auto rotated = render({ Desperabis::MenuPage::Gameplay, { map } });
+            Check(!ui.UploadCollisionMap(core, renderer), "Rotating the map must not upload its pixels again.");
+            const float scale = (std::min)(size.first / 360.f, size.second / 240.f);
+            const float ox = size.first - 360 * scale;
+            const float oy = size.second - 240 * scale;
+            int changed = 0, blue = 0, brown = 0, gray = 0, rotatedPixels = 0;
+            for (UINT y = 0; y < size.second; ++y)
+            {
+                for (UINT x = 0; x < size.first; ++x)
+                {
+                    const auto i = y * size.first + x;
+                    const bool inside = x + 0.5f >= ox + map.bounds.x * scale &&
+                        x + 0.5f < ox + (map.bounds.x + map.bounds.width) * scale &&
+                        y + 0.5f >= oy + map.bounds.y * scale &&
+                        y + 0.5f < oy + (map.bounds.y + map.bounds.height) * scale;
+                    if (!inside)
+                    {
+                        Check(first[i] == baseline[i] && rotated[i] == baseline[i],
+                            "Rotating map sampling must never draw outside the clipped viewport.");
+                    }
+                    else
+                    {
+                        changed += first[i] != baseline[i];
+                        rotatedPixels += first[i] != rotated[i];
+                        const int r = first[i] & 255, g = (first[i] >> 8) & 255, b = (first[i] >> 16) & 255;
+                        if (first[i] != baseline[i])
+                        {
+                            blue += b > r + 20;
+                            brown += r > b + 15;
+                            gray += r > 140 && std::abs(r - g) < 10 && std::abs(r - b) < 15;
+                        }
+                    }
+                }
+            }
+            Check(changed > 100 && rotatedPixels > 100 && blue > 20 && brown > 20 && gray > 20,
+                "The map must visibly rotate and distinguish blue water, brown floor and gray walls.");
+            core.SetCollisionMapPixelAtWorldXZ(312, 3888, 56);
+            core.SetCollisionMapPixelAtWorldXZ(337, 3888, 56);
+            Check(ui.UploadCollisionMap(core, renderer) && !ui.UploadCollisionMap(core, renderer),
+                "Multiple collision edits must coalesce into exactly one lazy upload.");
+            Check(!ui.UploadGeometryMap(core, renderer),
+                "Collision-only edits must not rebuild the geometry map.");
+            const auto edited = render({ Desperabis::MenuPage::Gameplay, { map } });
+            Check(edited != rotated, "Collision edits must change the actual rendered map pixels.");
+            core.SetCollisionMapPixelAtWorldXZ(312, 3888, 1);
+            core.SetCollisionMapPixelAtWorldXZ(337, 3888, 1);
+            ui.UploadCollisionMap(core, renderer);
+            core.SetMenuPage(Desperabis::MenuPage::Map);
+            const auto paper = render({ Desperabis::MenuPage::Map, {
+                Desperabis::UiBitmap{ { 0,0,360,240 }, Desperabis::UiBitmapSource::MapPaper, 0,0,0,{} } } });
+            const auto modal = render(core.GetApplicationPresentation());
+            Check(modal != paper && modal != baseline, "The modal map must render on the original parchment.");
+            int waterPixels = 0, paperPixels = 0;
+            for (std::size_t i = 0; i < modal.size(); ++i)
+            {
+                const int r = modal[i] & 255, b = (modal[i] >> 16) & 255;
+                waterPixels += b > r + 20;
+                paperPixels += modal[i] == paper[i] && paper[i] != baseline[i];
+            }
+            Check(waterPixels > 100 && paperPixels > 1000,
+                "The full map must retain blue water and show parchment through its unoccupied area.");
+        }
+        ++geometry.geometryRevision;
+        Check(ui.UploadCollisionMap(core, renderer), "Geometry coverage changes must invalidate map presentation.");
+        Check(ui.UploadGeometryMap(core, renderer), "Geometry revisions must rebuild the separate map texture.");
+        ui.Clear();
+        Check(ui.UploadCollisionMap(core, renderer), "Clearing renderer caches must require a fresh upload.");
+        core.collisionMap->widthMinusOne = 200;
+        core.collisionmapUploadDirty = true;
+        bool rejected = false;
+        try { ui.UploadCollisionMap(core, renderer); }
+        catch (const std::runtime_error&) { rejected = true; }
+        Check(rejected && core.collisionmapUploadDirty, "Failed uploads must leave the map dirty and report an error.");
+        ui.Clear();
+        class OriginalMapHost final : public Desperabis::GameContext
+        {
+            std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+            {
+                const std::wstring name(filename.begin(), filename.end());
+                return FORCE_GET(FileManager::Instance().ReadDataFuture(
+                    FileManager::Instance().FilenameToNative(name)));
+            }
+            void LoadLevel(const Desperabis::LevelLoadRequest& request) override
+            {
+                Desperabis::LevelLoadData data;
+                LoadLevelGeometry(request.levelNumber, data);
+                LoadLevelObjects(request.levelNumber, data);
+                InitializeLevelPlayerSpawn(data, { 0, 0, 100 });
+                CompleteLevelLoad(request.id, std::move(data));
+            }
+        } original;
+        Target realTarget(device, 360, 240);
+        for (const int number : { 11, 12, 14 })
+        {
+            original.StartLevel(static_cast<std::int16_t>(number));
+            auto picture = std::find_if(original.worldObjects.begin() + 2, original.worldObjects.end(),
+                [](const auto& object) { return object.health > 0 &&
+                    object.collisionType == Desperabis::CollisionType::PictureMap; });
+            Check(picture != original.worldObjects.end(), "Expected an original level-11/12/14 wall map.");
+            const auto before = *picture;
+            Check(Desperabis::HandlePlayerObjectInteraction(*picture, original).status ==
+                Desperabis::InteractionStatus::Applied && original.GetMenuPage() == Desperabis::MenuPage::Map &&
+                std::memcmp(&before, &*picture, sizeof(before)) == 0,
+                "Original wall maps must open the modal without altering their baked preview/model.");
+            Check(ui.UploadGeometryMap(original, renderer), "A different real level must replace the geometry-map texture.");
+            auto* realLevel = FORCE_GET(AssetManager::Instance().LoadLevel(number));
+            const auto model = realLevel->GetLevelInfo().GetModelAnim(picture->modelId - 30);
+            Check(model != nullptr, "The original wall-map model must be loaded.");
+            auto instance = std::make_shared<RenderableInstance>(nullptr);
+            ::RawGameObject raw{};
+            raw.m_level = realLevel;
+            Desperabis::EncodeGameObject(*picture, raw.m_rawBytes, 54);
+            realLevel->ApplyRenderProperties(instance, raw);
+            const auto* mesh = instance->GetRenderable();
+            Check(mesh != nullptr && model->m_textureUsedMask == 3327,
+                "The original VEKT14 wall-map geometry and textures must remain intact.");
+            ui.ApplyMapMaterial(*instance, *model, renderer);
+            int replaced = 0, preserved = 0;
+            const auto* mapRuntime = ui.GetGeometryMapTexture()->GetNativeRuntimeObj<NativeTextureObjectDX11>();
+            for (std::size_t i = 0; i < mesh->m_drawCalls.size(); ++i)
+            {
+                const auto& originalMaterial = mesh->m_drawCalls[i].m_material;
+                const auto& material = instance->m_materialOverride[i];
+                if (originalMaterial.m_textureSlot == 6)
+                {
+                    const auto* view = material.m_texture->GetNativeRuntimeObj<NativeTextureObjectDX11>();
+                    Check(view->m_nativeTex.Get() == mapRuntime->m_nativeTex.Get() &&
+                        view->m_nativeTexView.Get() == mapRuntime->m_nativeTexView.Get(),
+                        "The model preview must share the modal texture, not a second upload.");
+                    const auto source = model->m_ownTextures[5].m_atlasData;
+                    const auto remap = material.m_texture->m_atlasData;
+                    const auto uv0 = source.Apply(0, 0), uv1 = source.Apply(1, 1);
+                    const auto mapped0 = remap.Apply(uv0.x, uv0.y), mapped1 = remap.Apply(uv1.x, uv1.y);
+                    Check(std::abs(mapped0.x) < 0.00001f && std::abs(mapped0.y) < 0.00001f &&
+                        std::abs(mapped1.x - 1) < 0.00001f && std::abs(mapped1.y - 1) < 0.00001f,
+                        "The preview override must undo baked atlas UVs without changing shared mesh data.");
+                    ++replaced;
+                }
+                else
+                {
+                    Check(material.m_texture == originalMaterial.m_texture &&
+                        material.m_materialHash == originalMaterial.m_materialHash,
+                        "The frame and all non-map materials must be unchanged.");
+                    ++preserved;
+                }
+            }
+            Check(replaced == 1 && preserved > 0 && instance->GetRenderable() == mesh,
+                "Only the original map panel may receive the generated texture.");
+            renderer.ReInitialize(realTarget.colorView.Get(), realTarget.depthView.Get(), realTarget.viewport);
+            VisibilityResult empty;
+            empty.m_mainCamera = &camera;
+            renderer.RenderSceneElements(empty, settings, stats);
+            ui.Draw(original.GetApplicationPresentation(), renderer, level, font, hud, settings, stats,
+                realTarget.viewport, context, realTarget.colorView.Get(), realTarget.depthView.Get());
+            const auto pixels = realTarget.Pixels(device, context);
+            int blue = 0, brown = 0;
+            for (const auto pixel : pixels)
+            {
+                const int r = pixel & 255, b = (pixel >> 16) & 255;
+                blue += b > r + 20;
+                brown += r > b + 15;
+            }
+            Check(brown > 1000 && (number != 12 || blue > 20),
+                "Real maps must show parchment/floors and level 12's blue water.");
+            if (screenshot && number == 12) { realTarget.SaveBitmap(screenshot, pixels); }
+            auto unmodified = std::make_shared<RenderableInstance>(nullptr);
+            Texture lightmap;
+            lightmap.CreatePlainWhite();
+            lightmap.m_atlasData = { 0, 0, 0.5f, 0.5f };
+            int mostChanged = 0, mostBlue = 0;
+            for (const int heading : { 0, 128, 256, 384 })
+            {
+                auto object = *picture;
+                object.posX = 150; object.posY = 0; object.posZ = 4050;
+                object.winY = static_cast<std::int16_t>(heading);
+                Desperabis::EncodeGameObject(object, raw.m_rawBytes, 54);
+                realLevel->ApplyRenderProperties(unmodified, raw);
+                realLevel->ApplyRenderProperties(instance, raw);
+                ui.ApplyMapMaterial(*instance, *model, renderer);
+                instance->UpdateGlobalBounds();
+                const auto center = instance->GetGlobalBounds().GetCenter();
+                const float span = (std::max)(instance->GetGlobalBounds().GetSphereRadius() * 3.f, 0.2f);
+                Matrix4 projection, transform;
+                projection.CreateOrthographic(span * 1.5f, span, 0.1f, 20.f);
+                transform.SetTranslation(Vector(center.GetX(), center.GetY(), center.GetZ() + 10.f));
+                Camera modelCamera;
+                modelCamera.SetProjectionMatrix(projection);
+                modelCamera.SetCameraTransformMatrix(transform);
+                const auto renderModel = [&](const RenderableInstance* drawn)
+                {
+                    VisibilityResult visible;
+                    visible.m_mainCamera = &modelCamera;
+                    visible.m_visibleInstances.m_opaqueInstances.push_back({ drawn, 0 });
+                    visible.m_visibleInstances.m_visibleTransparencyTypes = drawn->GetUsedTransparencyMask();
+                    visible.m_ambientColor = { 1.f, 1.f, 1.f };
+                    visible.m_fogColor = { 0.f, 0.f, 0.f };
+                    visible.m_fogFalloff = 0.f;
+                    visible.m_lightmap = &lightmap;
+                    const float black[]{ 0,0,0,1 };
+                    context->ClearRenderTargetView(realTarget.colorView.Get(), black);
+                    context->ClearDepthStencilView(realTarget.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+                    renderer.RenderSceneElements(visible, settings, stats);
+                    return realTarget.Pixels(device, context);
+                };
+                const auto baseline = renderModel(unmodified.get());
+                const auto preview = renderModel(instance.get());
+                int changed = 0, water = 0, waterX = 0, waterY = 0;
+                int left = 360, right = 0, top = 240, bottom = 0;
+                for (std::size_t i = 0; i < preview.size(); ++i)
+                {
+                    const int x = static_cast<int>(i % 360), y = static_cast<int>(i / 360);
+                    if (preview[i] != baseline[i])
+                    {
+                        ++changed;
+                        left = (std::min)(left, x); right = (std::max)(right, x);
+                        top = (std::min)(top, y); bottom = (std::max)(bottom, y);
+                    }
+                    if (static_cast<int>((preview[i] >> 16) & 255) >
+                        static_cast<int>(preview[i] & 255) + 20)
+                    {
+                        ++water;
+                        waterX += x; waterY += y;
+                    }
+                }
+                if (number == 12 && changed > 100)
+                {
+                    Check(water > 20 && waterX * 2 > (left + right) * water &&
+                        waterY * 2 < (top + bottom) * water,
+                        "The 3D panel must show level 12's water upper-right, matching the modal orientation.");
+                }
+                if (screenshot && number == 12 && changed > mostChanged)
+                {
+                    realTarget.SaveBitmap((std::string(screenshot) + ".panel.bmp").c_str(), preview);
+                }
+                mostChanged = (std::max)(mostChanged, changed);
+                mostBlue = (std::max)(mostBlue, water);
+            }
+            Check(mostChanged > 100 && (number != 12 || mostBlue > 20),
+                "The actual 3D panel must visibly render the new map, including level 12's water.");
+            const auto* mapTexture = ui.GetGeometryMapTexture();
+            ComPtr<ID3D11Texture2D> oldTexture = mapTexture->GetNativeRuntimeObj<NativeTextureObjectDX11>()->m_nativeTex;
+            ++original.level->geometryRevision;
+            Check(ui.UploadGeometryMap(original, renderer) && ui.GetGeometryMapTexture() == mapTexture &&
+                !ui.UploadGeometryMap(original, renderer),
+                "Geometry edits must refresh one stable shared map texture exactly once.");
+            for (std::size_t i = 0; i < mesh->m_drawCalls.size(); ++i)
+            {
+                if (mesh->m_drawCalls[i].m_material.m_textureSlot != 6) { continue; }
+                const auto* refreshed = instance->m_materialOverride[i].m_texture->
+                    GetNativeRuntimeObj<NativeTextureObjectDX11>();
+                Check(refreshed->m_nativeTex.Get() != oldTexture.Get() &&
+                    refreshed->m_nativeTex.Get() == mapTexture->
+                        GetNativeRuntimeObj<NativeTextureObjectDX11>()->m_nativeTex.Get(),
+                    "Existing panel overrides must follow regenerated map pixels without another assignment.");
+            }
+            original.SetMenuPage(Desperabis::MenuPage::Gameplay);
+            if (number == 11)
+            {
+                auto pickup = std::find_if(original.worldObjects.begin() + 2, original.worldObjects.end(),
+                    [](const auto& object) { return object.health > 0 &&
+                        object.collisionType == Desperabis::CollisionType::PickableMap; });
+                Check(pickup != original.worldObjects.end() &&
+                    Desperabis::HandlePlayerObjectInteraction(*pickup, original).status ==
+                        Desperabis::InteractionStatus::Applied &&
+                    original.hasMap && pickup->health == 0 &&
+                    std::holds_alternative<Desperabis::UiMap>(original.GetApplicationPresentation().commands.back()),
+                    "The actual level-11 pickup must enable the core's corner-map recipe.");
+            }
+        }
+        ui.Clear();
+        std::cout << "Maps: independent collision/geometry caches, nonoverlapping tiles, native wall shapes, "
+            "shared GPU preview and unchanged frame, original level-11/12/14 panels, three aspect ratios passed.\n";
+    }
+
     void CheckDragon(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
         auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(15));
@@ -1253,6 +1618,7 @@ int main(int argc, char* argv[])
         ProfilingStats stats;
         ApplicationUi ui;
         FORCE_WAIT(ui.Initialize());
+        CheckMaps(ui, renderer, *level, font, *hud, device.Get(), context.Get(), argc >= 4 ? argv[3] : nullptr);
         Desperabis::GameContext core;
         core.SetMenuPage(Desperabis::MenuPage::Inventory);
         Camera camera;
