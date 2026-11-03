@@ -17,6 +17,8 @@ add_library(behavior-recovery STATIC
     Scaffold/GameRuntime.h
     Scaffold/ApplicationFlow.h
     Scaffold/ApplicationFlow.cpp
+    Scaffold/SaveGame.cpp
+    Scaffold/SaveGame.h
     Scaffold/BehaviorDispatch.cpp
     Scaffold/CollisionMap.cpp
     Scaffold/Heightfield.cpp
@@ -48,6 +50,16 @@ foreach(target Continuous Experimental Nightly NightlyMemoryCheck)
     endif()
 endforeach()
 if(BUILD_TESTING)
+    add_executable(witch-level-tests Scaffold/WitchLevelTests.cpp)
+    target_link_libraries(witch-level-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME witch-level COMMAND witch-level-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original")
+    add_executable(savegame-tests Scaffold/SaveGameTests.cpp)
+    target_link_libraries(savegame-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME native-savegame COMMAND savegame-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SaveGames"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Game/Original")
     add_executable(level-fifteen-trap-tests Scaffold/LevelFifteenTrapTests.cpp)
     target_link_libraries(level-fifteen-trap-tests PRIVATE Desperabis::GameCore)
     add_test(NAME level-fifteen-traps COMMAND level-fifteen-trap-tests
@@ -97,7 +109,8 @@ if(BUILD_TESTING)
     add_test(NAME application-flow COMMAND application-flow-tests)
     add_executable(application-update-tests Scaffold/ApplicationUpdateTests.cpp)
     target_link_libraries(application-update-tests PRIVATE Desperabis::GameCore)
-    add_test(NAME application-update COMMAND application-update-tests)
+    add_test(NAME application-update COMMAND application-update-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original")
     add_executable(fireplace-tests Scaffold/FireplaceTests.cpp)
     target_link_libraries(fireplace-tests PRIVATE behavior-recovery)
     add_test(NAME fireplace-behavior COMMAND fireplace-tests
@@ -172,7 +185,7 @@ foreach(target behavior-recovery desperabis-recovery)
     endif()
 endforeach()
 if(BUILD_TESTING)
-    foreach(target tutorial-tests ambient-tests behavior-recovery-tests application-flow-tests application-update-tests fireplace-tests particle-tests floating-debris-tests rat-snake-tests cockroach-tests bat-indoor-tests mummy-tests skeleton-tests damage-tests weapon-tests ranged-weapon-tests game-runtime-tests player-posture-tests player-look-tests player-support-tests player-health-tests level-sixteen-seventeen-tests)
+    foreach(target savegame-tests tutorial-tests ambient-tests behavior-recovery-tests application-flow-tests application-update-tests fireplace-tests particle-tests floating-debris-tests rat-snake-tests cockroach-tests bat-indoor-tests mummy-tests skeleton-tests damage-tests weapon-tests ranged-weapon-tests game-runtime-tests player-posture-tests player-look-tests player-support-tests player-health-tests level-sixteen-seventeen-tests)
         set_target_properties(${target} PROPERTIES FOLDER "Tests")
         if(MSVC)
             target_compile_options(${target} PRIVATE /W4 /WX)

@@ -11,7 +11,8 @@ namespace Desperabis
     {
         if (GetMenuPage() != MenuPage::Gameplay || worldObjects[1].itemValue > 0 ||
             weaponAnimationSpeed == -2 || weaponAnimationSpeed == -4 ||
-            (selectedWeapon == WeaponType::None && !field_D500) || weaponSpriteFrame == 0)
+            (selectedWeapon == WeaponType::None && !field_D500) ||
+            selectedWeapon == WeaponType::ShopGold || weaponSpriteFrame == 0)
         {
             return std::nullopt;
         }

@@ -339,8 +339,10 @@ instances from `GetWorldObjects()`, and use `result.worldDeltaSeconds` for
 world presentation clocks. Draw the core-authored `GetApplicationPresentation()`
 recipe on its original 360x240 logical canvas; the host only resolves assets and scales
 that canvas. No modal UI override is required.
-F1 exposes Resume, New Game and Quit. New Game opens a three-part selector:
-Training starts level 50, Part 1 starts 30, and Part 2 starts 10. Up/Down
+F1 exposes Resume, New Game, Load Game, Save Game and Quit. New Game reads
+part names and complete level sequences from `GRAFIK/HERZ.256`, built from
+the localization tool's `MissionsMenu.txt`; it does not display level indices.
+With the original data, playable starts are 50, 30 and 10. Up/Down
 selects, Enter starts and Escape returns without altering the current game.
 All three parts are available for reconstruction/testing; native unlock state
 and the animated DOS selector artwork are not yet modeled. Acceptance clears
@@ -349,6 +351,25 @@ before requesting the existing host level loader. Host cheats/preferences
 remain intact. Part 2 followed by six Tab advances reaches forest level 16.
 Startup remains the training level. See the
 [new-game contract](BehaviorRecovery.md#game-context-and-application-flow).
+Unported introductions are skipped using `LEVELS.INF` presentation metadata,
+but remain in the native saved sequence, including their ordinal positions.
+Load/Save offers ten slots, `STAND1.SPL` through `STAND10.SPL`, in the shared
+repository `Bin/SaveGames` directory for both Debug and Release. Copy original
+saves there to import them; files written there can also be copied back to DOS.
+Enter selects a save name, typing/backspace edits its original 20-byte DOS
+string, and Enter again saves/overwrites. Escape cancels editing before leaving
+the slot screen. Unused rows are blank; editing replaces the selected row and
+shows a blinking inline caret, without a separate overwrite prompt. All
+main-menu-family pages use the original `BACKGR2` image/palette and rotating
+`CURSOR.AN2` sword in the font palette. Their 360x480 art/text aspect is mapped
+to the common 360x240 logical canvas. Empty/corrupt slots and file errors are
+explicitly reported.
+The host supplies CP437 text through `QueueTextInput`, implements
+`ReadSaveFile`/`WriteSaveFile`, and installs `GetPendingSaveGame()` into an owned
+renderer `Level`/`LevelScene` before completing the core level load. Loaded
+snapshots retain their objects, seven geometry planes, collision pixels and
+embedded asset metadata; they must not be replaced by cached original levels
+or a cheat loadout. See the [native SPL contract](BehaviorRecovery.md#native-savegames-and-herz-part-data).
 Inventory recipes reference the original frame/action/resource art and palette
 shade states rather than replacement widgets. See the
 [native layout recovery](HighLevelStructure.md#original-inventory-artwork-and-placement).
@@ -582,6 +603,12 @@ the native 3x3 collision footprint, grouped activation, and consuming matching
 inventory keys. The overridable `GameContext::PromptUserMessage` hook sends original DOS-encoded
 feedback to the app, which owns its storage, lifetime and presentation. `IsUserMessageActive`
 lets doors preserve native feedback gating without core-owned message state.
+`IsBottomUserMessageActive` similarly gates the witch's mouth animation.
+The [level-90 witch shop](BehaviorRecovery.md#witch-shop-level-90) implements
+linked-stock purchases with native gold/stacking/ownership rules, localized
+spoken prices, head/mouth/dog-petting animations and both proximity curtains.
+`witch-level` tests exercise original assets and native save continuation;
+WARP tests verify the non-additive, core-controlled mouth material.
 See [doors and unlocking](BehaviorRecovery.md#ordinary-doors-and-key-unlocking)
 and [gameplay messages](BehaviorRecovery.md#gameplay-user-messages).
 Use `--behavior Door --ticks 3` for an opening-door fixture, or

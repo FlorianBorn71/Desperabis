@@ -133,7 +133,7 @@ protected:
     {
         float m_transparency; // alpha modulo for transparent objects
         float m_applyLighting; // apply lighting and fog
-        float padding1 = 0, padding2 = 0;
+        float m_depthOffset = 0, padding2 = 0;
     };
 
     ProfilingStats m_ownStats;

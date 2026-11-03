@@ -184,6 +184,13 @@ namespace
             if (entry.type == BehaviorType::MummieGuard) { object.soundEffectId = 15; }
             if (entry.type == BehaviorType::ShootArrows) { object.generalPurpose1 = 1; }
             if (entry.type == BehaviorType::DragonHead) { object.doorLockOrGroupBitmask = 1; }
+            if (entry.type == BehaviorType::TrackFireAnimation || entry.type == BehaviorType::WitchMouthAnimation)
+            {
+                object.itemValue = 1;
+                object.behaviorParameter = 1;
+                object.groupIndexOrLock = 1;
+            }
+            if (entry.type == BehaviorType::BuyItem) { object.itemValue = 2; }
             const auto before = ObjectBytes(object);
             GameContext context;
             context.tickCount = 3;
@@ -191,6 +198,8 @@ namespace
             level.heightSurfaces[0] = Level::HeightSurface{ 0, 0 };
             context.collisionMap = level.collisionMap.get();
             context.level = &level;
+            level.trackedTextureFrameCounts[1] = 5;
+            context.worldObjects[2].health = 1000;
             context.worldObjects[1].spriteScale = 1;
             const auto result = DispatchObjectCase(object, context);
             Check(result.moduleOffset == entry.moduleOffset, "Wrong case entry.");
@@ -238,7 +247,10 @@ namespace
                 entry.type == BehaviorType::Crab || entry.type == BehaviorType::BurnableOilPuddle ||
                 entry.type == BehaviorType::Dragon || entry.type == BehaviorType::DragonDying ||
                 entry.type == BehaviorType::DragonHead || entry.type == BehaviorType::FireballImpact ||
-                entry.type == BehaviorType::DisabledSentinel;
+                entry.type == BehaviorType::UnderwaterPlants || entry.type == BehaviorType::CurtainOpens ||
+                entry.type == BehaviorType::TrackFireAnimation || entry.type == BehaviorType::ForceWeaponSelection ||
+                entry.type == BehaviorType::WitchHead || entry.type == BehaviorType::BuyItem ||
+                entry.type == BehaviorType::WitchMouthAnimation || entry.type == BehaviorType::DisabledSentinel;
             Check(result.status == (implemented ?
                 DispatchStatus::ExecutedCase : entry.hasSpecificCase ?
                 DispatchStatus::UnimplementedHandler : DispatchStatus::NoSpecificCase), "Wrong case status.");
@@ -2044,7 +2056,7 @@ namespace
         key.health = -1;
         Check(HandlePlayerObjectInteraction(key, state).status == InteractionStatus::InactiveObject,
             "Host interaction requests must reject inactive selected objects.");
-        for (const auto type : { CollisionType::BookWithCode, CollisionType::BuyItem,
+        for (const auto type : { CollisionType::BookWithCode,
             CollisionType::WheelToLiftRope, CollisionType::VaseToGrab, CollisionType::MirrorToGrab,
             CollisionType::SarcophagusWithBones,
             CollisionType::Lorry })
@@ -3382,6 +3394,14 @@ namespace
             object.behavior = static_cast<BehaviorType>(behavior);
             if (object.behavior == BehaviorType::MummieGuard) { object.soundEffectId = 15; }
             if (object.behavior == BehaviorType::DragonHead) { object.doorLockOrGroupBitmask = 1; }
+            if (object.behavior == BehaviorType::TrackFireAnimation || object.behavior == BehaviorType::WitchMouthAnimation)
+            {
+                object.itemValue = 1;
+                object.behaviorParameter = 1;
+                object.groupIndexOrLock = 1;
+                level.trackedTextureFrameCounts[1] = 5;
+            }
+            if (object.behavior == BehaviorType::BuyItem) { object.itemValue = 2; }
             level.heightSurfaces[0] = Level::HeightSurface{ 0, 0 };
             const auto result = DispatchObjectCase(object, context);
             Check(result.moduleOffset == originalEntry(behavior) && result.behavior == static_cast<BehaviorType>(behavior),

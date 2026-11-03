@@ -7,8 +7,8 @@
 #include <Scene/GameObject.h>
 #include <GamePlay/GamePlay.h>
 
-LevelScene::LevelScene(int levelIndex)
-    : m_levelIndex(levelIndex)
+LevelScene::LevelScene(int levelIndex, std::shared_ptr<Level> loadedLevel)
+    : m_levelIndex(levelIndex), m_loadedLevel(std::move(loadedLevel))
 {
     m_renderInstances.reserve(512);
     m_gameObjects.reserve(512);
@@ -27,7 +27,11 @@ FUTURE(void) LevelScene::CreateScene()
 	RenderableInstancePtr inst = std::make_shared<RenderableInstance>(model, (uint32_t)GamePlay::VisibilityFilter::GameObjects);
 	this->AddRenderableInstance(inst);
 #else
-    if (isSaveGame)
+    if (m_loadedLevel)
+    {
+        m_level = m_loadedLevel.get();
+    }
+    else if (isSaveGame)
     { 
         m_level = CO_AWAIT assets.LoadSaveGame(1);
     }

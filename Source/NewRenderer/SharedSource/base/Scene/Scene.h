@@ -46,7 +46,8 @@ public:
     void AddAnimationPose(std::shared_ptr<AnimationPose> pose);
     void AddDebugGeometry(const std::vector<DebugLine>& lineBuffer);
 
-    void AddFireAnimation(std::shared_ptr<TextureAnim> torchAnim, int targetSlot, float speed);
+    void AddFireAnimation(std::shared_ptr<TextureAnim> torchAnim, int targetSlot, float speed, bool additive = true);
+    void SetFireAnimationFrame(int targetSlot, int frame);
     void AddFireAnimationInstance(RenderableInstance& instance, std::size_t materialIndex);
     void AssignFireAnimations(RenderableInstance& inst);
     void HandleFireAnimations(double elapsedTime);
@@ -95,6 +96,8 @@ protected:
     {
         std::shared_ptr<TextureAnim> m_torchAnim;
         float m_speed = 0.f;
+        bool m_additive = true;
+        int m_frame = -1;
     };
 
     struct FireAnimationPhase

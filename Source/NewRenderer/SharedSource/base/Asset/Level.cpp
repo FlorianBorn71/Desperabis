@@ -134,16 +134,13 @@ FUTURE(void) Level::Load(int index, const LevelInfo& info)
 
 
 
-FUTURE(void) Level::LoadFromSaveGame(std::wstring_view filename, const std::vector<LevelInfo>& infos)
+FUTURE(void) Level::LoadFromSaveGame(std::wstring_view filename, const std::vector<LevelInfo>&)
 {
 //    CO_AWAIT SaveGameAnalysis();
 
     std::wstring path = FileManager::Instance().FilenameToNative(filename);
     std::vector<byte> fileData = CO_AWAIT FileManager::Instance().ReadDataFuture(path);
-    CO_AWAIT ReadSaveGame(fileData.data(), (int)fileData.size(), infos);
-
-    // save state again
-    FORCE_WAIT(FileManager::Instance().WriteDataFuture(L"STAND2.SPL", fileData));
+    CO_AWAIT LoadSaveGameData(fileData.data(), (int)fileData.size());
 
     /*
     Windows::Storage::StorageFolder^ storageFolder = ApplicationData::Current->LocalFolder;
@@ -183,31 +180,6 @@ namespace
         return s.str();
     }
 }
-
-uint16_t ComputeChecksum(const byte* rawData, int dataSize)
-{
-    uint16_t* asShort = (uint16_t *)rawData;
-    uint16_t* csPos = (uint16_t*)(rawData + dataSize - 4);
-    uint16_t previousSum = *csPos;
-
-    uint16_t sum = 0;
-    for (int i = 0; i < dataSize - 4; i++)
-    {
-        sum += rawData[i];
-    }
-
-    *csPos = sum;
-
-    return sum;
-}
-
-/*
-void StoreChecksum(const byte* rawData, int dataSize, uint16_t val)
-{
-    uint16_t* csPos = (uint16_t*)(rawData + dataSize - 4);
-    *csPos = val;
-}
-*/
 
 void Level::ReadLevelData(const byte* rawData, int dataSize, bool readSize)
 {
@@ -1736,95 +1708,40 @@ FUTURE(void) Level::SaveGameAnalysis()
 }
 
 
-FUTURE(void) Level::ReadSaveGame(const byte* rawData, int dataSize, const std::vector<LevelInfo>& infos)
+FUTURE(void) Level::LoadSaveGameData(const byte* rawData, int dataSize)
 {
-//    ComputeChecksum(rawData, dataSize);
-
-    const int fixedNameLen = 15;
-    char buf[256];
-    memcpy(buf, rawData, fixedNameLen);
-    buf[buf[0] + 1] = 0;
-    std::string sg = &buf[1];
-
-    // level index is at pos 1e:
-    // part 1 : 30...
-    // part 2 : 0...
-    byte levelCount = rawData[23]; // number of levels in this game part
-    byte levelOrder[256];
-    memcpy(levelOrder, &rawData[24], levelCount); // sequence of levels in this part of the game
-
-    byte levelIndex = rawData[0xce]; // wrong for "invisible fire level"
-    if (levelIndex == 0)
-        levelIndex = 10; // just hack
-    //assert(levelIndex < levelCount);
-    //int levelFile = LevelToLevelFile[levelIndex];
-    //assert(levelIndex < LevelCount);
-    int levelFile = levelIndex; //  levelOrder[levelIndex];
-
-
-    // read level data:
-    int dataLayerSize = GridCellArray::Width * GridCellArray::Height;
-
-    int levelInfoStartsAt = 103;
-    int objPosDataStartsAt = 299; //  0x12b;  // player pos is before that (0xf5), not counting here. object positions end at 0x26b7
-	int fogTableEntryAt = 10163; // the fog type(and others ? ) is not used from the LevelInfoRaw structure when loaded from savegame. Possibly savegame makes a dump of some runtime structures. At least it seems to be always at this position.
-    int levelDataStartsAt = 10164;
-    int dataLayerCount = 7;
-    int collisionFieldStartsAt = 10164 + dataLayerCount * dataLayerSize;// 24164; // ?
-    int playerHealthPos = 0x26F3; // 2 identical words, normalized to 0..360
-
-    // level info (is inside file)
-    m_levelInfo.Parse(levelFile, &rawData[levelInfoStartsAt]);
+    constexpr int geometry = 10164, map = geometry + 14000;
+    if (!rawData || dataSize < map + 10 || dataSize > map + 40009)
+    {
+        throw std::runtime_error("Invalid SPL size for renderer loading.");
+    }
+    const auto word = [rawData](int offset)
+    {
+        return static_cast<unsigned int>(rawData[offset] | (rawData[offset + 1] << 8));
+    };
+    const auto ordinal = word(227);
+    const auto width = word(map) + 1, height = word(map + 2) + 1;
+    if (rawData[0] > 20 || rawData[23] == 0 || rawData[23] > 62 ||
+        ordinal == 0 || ordinal > rawData[23] || word(243) != 165 ||
+        width > 200 || height > 200 || dataSize != map + 4 + width * height + 5)
+    {
+        throw std::runtime_error("Invalid SPL header or collision map for renderer loading.");
+    }
+    std::uint32_t checksum = 0;
+    for (int i = 0; i < dataSize - 4; ++i) { checksum += rawData[i]; }
+    if (checksum != (word(dataSize - 4) | (word(dataSize - 2) << 16)))
+    {
+        throw std::runtime_error("SPL checksum mismatch.");
+    }
+    const int levelFile = rawData[23 + ordinal];
+    if (levelFile == 0 || levelFile == 96) { throw std::runtime_error("Invalid saved level index."); }
+    m_levelInfo.Parse(levelFile, rawData + 103);
     InitLevelInfo(m_levelInfo);
-
-    {
-        // pre-load level data. Needs to be done first, so level textures are available
-        CO_AWAIT m_levelInfo.PreloadData();
-    }
-
-    Vector playerPos;
-
-    // TEST:
-    //levelDataStartsAt -= (m_sizeX * m_sizeY);
-    //dataLayerCount++;
-
-    // objects:
-    {
-        int objCount = 165; // there is always player pos
-        RawGameObject playerO;
-        memcpy(playerO.m_rawBytes, &rawData[objPosDataStartsAt - 54], 54);
-        GamePlay::PropertyAccessorBase props(playerO);
-        playerPos = props.GetPosition();
-        ReadGameObjects(&rawData[objPosDataStartsAt], objCount * 54);
-
-        // #165 + #166 : left and right hand inventory item
-        // #167 - #178 : 12 inventory items -> 9911
-        
-        { // DEBUG logging
-            std::vector<const RawGameObject*> listOfGO;
-            for (const RawGameObject& go : m_rawGameObject)
-                listOfGO.push_back(&go);
-            std::wstring s =  GamePlay::LogRawGameObjects(listOfGO.data(), (int)listOfGO.size());
-            listOfGO.clear();
-        }
-    }
-
-    // level
-    {
-        ReadLevelData(&rawData[levelDataStartsAt], dataLayerSize * dataLayerCount, false);
-    }
-
-    // collision:
-    {
-        ReadCollisionMap(&rawData[collisionFieldStartsAt], dataSize - collisionFieldStartsAt);
-    }
-
-    // player health
-    uint16_t playerHealth1 = *((uint16_t*)&rawData[playerHealthPos]);
-    uint16_t playerHealth2 = *((uint16_t*)&rawData[playerHealthPos + 2]);
-
-    m_playerStartPos = playerPos; // got overwritten by ReadLevelData
-
-    ComputeChecksum(rawData, dataSize);
-
+    CO_AWAIT m_levelInfo.PreloadData();
+    ReadGameObjects(rawData + 299, 163 * 54);
+    ReadLevelData(rawData + geometry, 14000, false);
+    ReadCollisionMap(rawData + map, static_cast<int>(4 + width * height));
+    RawGameObject player{};
+    memcpy(player.m_rawBytes, rawData + 245, 54);
+    m_playerStartPos = GamePlay::PropertyAccessorBase(player).GetPosition();
 }

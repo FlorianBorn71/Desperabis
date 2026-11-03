@@ -1053,6 +1053,7 @@ namespace
             ++fileRequests;
             if (filename == "LEVEL\\FELD11.256") { return readBytes(levelDirectory / "FELD11.256"); }
             if (filename == "LEVEL\\LEVELS.INF") { return readBytes(levelDirectory / "LEVELS.INF"); }
+            if (filename.rfind("ANIMS\\FACKEL", 0) == 0) { return readBytes(levelDirectory.parent_path() / filename); }
             Check(filename == "LEVEL\\OBJPOS11.DAT", "GameCore must choose the requested level's assets.");
             return objectRecords;
         };
@@ -1822,6 +1823,7 @@ namespace
         {
             if (filename == "LEVEL\\FELD11.256") { return geometry; }
             if (filename == "LEVEL\\LEVELS.INF") { return read(levelDirectory / "LEVELS.INF"); }
+            if (filename.rfind("ANIMS\\FACKEL", 0) == 0) { return read(levelDirectory.parent_path() / filename); }
             Check(filename == "LEVEL\\OBJPOS11.DAT", "Unexpected player-start file request.");
             return objects;
         };

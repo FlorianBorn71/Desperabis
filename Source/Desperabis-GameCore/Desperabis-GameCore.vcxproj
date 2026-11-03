@@ -46,6 +46,7 @@
   <ItemGroup>
     <ClCompile Include="..\Decompile\Scaffold\GameContext.cpp" />
     <ClCompile Include="..\Decompile\Scaffold\ApplicationFlow.cpp" />
+    <ClCompile Include="..\Decompile\Scaffold\SaveGame.cpp" />
     <ClCompile Include="..\Decompile\Scaffold\BehaviorDispatch.cpp" />
     <ClCompile Include="..\Decompile\Scaffold\BehaviorHandlers.cpp" />
     <ClCompile Include="..\Decompile\Scaffold\EnemyBehaviors.cpp" />
@@ -64,6 +65,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\Decompile\Scaffold\GameContext.h" />
+    <ClInclude Include="..\Decompile\Scaffold\SaveGame.h" />
     <ClInclude Include="..\Decompile\Scaffold\GameRuntime.h" />
     <ClInclude Include="..\Decompile\Scaffold\ApplicationFlow.h" />
     <ClInclude Include="..\Decompile\Scaffold\BehaviorDispatch.h" />

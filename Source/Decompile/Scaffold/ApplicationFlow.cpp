@@ -13,15 +13,6 @@ namespace Desperabis
         constexpr double TicksPerSecond = 33;
         constexpr std::array<std::uint8_t, 16> InventoryPayloads{
             14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 100, 101, 1, 2 };
-        // Resource numbering follows the existing playable/menu order, not simple addition.
-        constexpr std::array<std::int16_t, 26> PlayableLevels{
-            50, 30, 31, 32, 33, 36, 34, 35,
-            10, 11, 12, 13, 14, 15, 16, 17, 18, 90, 19, 20, 21, 22, 23, 24, 25, 26 };
-        constexpr std::array<std::int16_t, 3> PartStartLevels{ 50, 30, 10 };
-        constexpr std::array<const char*, 3> PartNames{ "Training level", "Part 1", "Part 2" };
-
-        bool IsGamePartStart(std::int16_t level) { return level == 50 || level == 30 || level == 10; }
-
         class ApplicationInput final : public InputHandler
         {
         public:
@@ -80,13 +71,11 @@ namespace Desperabis
         {
             throw std::logic_error("Ending a level requires ready gameplay.");
         }
-        const auto current = std::find(PlayableLevels.begin(), PlayableLevels.end(), *loadedLevelNumber);
-        if (current == PlayableLevels.end())
-        {
-            throw std::logic_error("Current level is not in the playable level sequence.");
-        }
-        const auto next = current + 1;
-        const bool completed = finishGamePart || next == PlayableLevels.end() || IsGamePartStart(*next);
+        const auto& order = CurrentLevelOrder();
+        const auto current = std::find(order.begin(), order.end(), *loadedLevelNumber);
+        const auto next = finishGamePart ? std::optional<std::uint8_t>{} :
+            NextPlayableLevel(order, static_cast<std::size_t>(current - order.begin()) + 1);
+        const bool completed = !next;
         PrepareLevelProgression(!completed);
         if (completed)
         {
@@ -101,20 +90,36 @@ namespace Desperabis
         {
             throw std::logic_error("Game-part navigation requires ready gameplay.");
         }
-        const auto current = std::find(PlayableLevels.begin(), PlayableLevels.end(), *loadedLevelNumber);
-        if (current == PlayableLevels.end())
+        EnsureGameParts();
+        const auto& order = CurrentLevelOrder();
+        const auto current = std::find_if(gameParts.begin(), gameParts.end(), [&](const GamePart& part)
         {
-            throw std::logic_error("Current level is not in the playable level sequence.");
+            return part.levels == order;
+        });
+        if (current == gameParts.end() || current + 1 == gameParts.end())
+        {
+            throw std::logic_error("No next HERZ game part is available.");
         }
-        const auto next = std::find_if(current + 1, PlayableLevels.end(), IsGamePartStart);
-        if (next == PlayableLevels.end()) { throw std::logic_error("No next game part is available."); }
+        const auto& next = *(current + 1);
+        const auto start = NextPlayableLevel(next.levels, 0);
+        if (!start) { throw std::logic_error("The next HERZ part has no playable levels."); }
         PrepareLevelProgression(true);
-        StartLevel(*next);
+        StartLevel(*start);
     }
 
     void GameContext::InitializeNewGame(std::int16_t chapter)
     {
-        const auto start = PartStartLevels.at(static_cast<std::size_t>(chapter - 1));
+        EnsureGameParts();
+        if (static_cast<std::size_t>(chapter) > gameParts.size())
+        {
+            throw std::invalid_argument("The requested part is absent from HERZ.");
+        }
+        const auto& part = gameParts.at(static_cast<std::size_t>(chapter - 1));
+        const auto start = NextPlayableLevel(part.levels, 0);
+        if (!start) { throw std::logic_error("The selected HERZ part has no playable levels."); }
+        activeLevelOrder = part.levels;
+        activePartHasCredits = part.endsWithCredits;
+        nativeSavePrefix.clear();
         inventory = {};
         gold = arrowPoison = 0;
         hasMap = false;
@@ -133,7 +138,7 @@ namespace Desperabis
         positionalSoundsSuppressed = false;
         field_D500 = true;
         paused = false;
-        StartLevel(start);
+        StartLevel(*start);
     }
 
     InteractionResult GameContext::HandleLevelEndContact(RawGameObject& object, bool interactionPressed)
@@ -182,6 +187,11 @@ namespace Desperabis
         const auto pageAtStart = menuPage;
         // No real-time catch-up for UI repeat/pulse or world simulation after a long host stall.
         const double delta = std::min(elapsedSeconds, 1.0);
+        if (menuPage == MenuPage::MainMenu || menuPage == MenuPage::AlternateMainMenu ||
+            menuPage == MenuPage::ChapterSelection || menuPage == MenuPage::LoadGame || menuPage == MenuPage::SaveGame)
+        {
+            menuAnimationSeconds = std::fmod(menuAnimationSeconds + delta, 1.0);
+        }
         std::optional<InputKey> navigation;
         for (const auto key : { InputKey::UiUpKey, InputKey::UiDownKey, InputKey::UiLeftKey, InputKey::UiRightKey })
         {
@@ -263,11 +273,22 @@ namespace Desperabis
             else
             {
                 if (navigation == InputKey::UiUpKey && mainMenuFocus > 0) { --mainMenuFocus; }
-                if (navigation == InputKey::UiDownKey && mainMenuFocus < 2) { ++mainMenuFocus; }
+                if (navigation == InputKey::UiDownKey && mainMenuFocus < 4) { ++mainMenuFocus; }
                 if (wasPressed(InputKey::UiConfirmKey))
                 {
-                    if (mainMenuFocus == 2) { SelectMainMenuAction(MainMenuAction::Quit); }
-                    else if (mainMenuFocus == 1) { SelectMainMenuAction(MainMenuAction::NewGame); }
+                    if (mainMenuFocus == 4) { SelectMainMenuAction(MainMenuAction::Quit); }
+                    else if (mainMenuFocus == 1 && runtimeState != GameRuntimeState::Loading)
+                    {
+                        EnsureGameParts();
+                        SelectMainMenuAction(MainMenuAction::NewGame);
+                    }
+                    else if (mainMenuFocus == 2 || mainMenuFocus == 3)
+                    {
+                        const auto action = mainMenuFocus == 2 ? MainMenuAction::LoadGame : MainMenuAction::SaveGame;
+                        if (runtimeState != GameRuntimeState::Loading &&
+                            (action != MainMenuAction::SaveGame || runtimeState == GameRuntimeState::Ready) &&
+                            SelectMainMenuAction(action)) { RefreshSaveSlots(); }
+                    }
                     else if (runtimeState == GameRuntimeState::Ready)
                     {
                         SelectMainMenuAction(MainMenuAction::ResumeGame);
@@ -281,10 +302,68 @@ namespace Desperabis
             {
                 if (navigation == InputKey::UiUpKey && chapterFocus > 0) { --chapterFocus; }
                 if (navigation == InputKey::UiDownKey &&
-                    static_cast<std::size_t>(chapterFocus) + 1 < PartStartLevels.size()) { ++chapterFocus; }
+                    static_cast<std::size_t>(chapterFocus) + 1 < gameParts.size()) { ++chapterFocus; }
                 if (wasPressed(InputKey::UiConfirmKey) && runtimeState != GameRuntimeState::Loading)
                 {
                     StartNewGame(static_cast<std::int16_t>(chapterFocus + 1));
+                }
+            }
+            break;
+        case MenuPage::LoadGame:
+        case MenuPage::SaveGame:
+            if (wasPressed(InputKey::UiCancelKey))
+            {
+                if (editingSaveName) { editingSaveName = false; saveError.clear(); }
+                else { SetMenuPage(MenuPage::MainMenu); }
+            }
+            else if (!editingSaveName)
+            {
+                if (navigation == InputKey::UiUpKey && saveFocus > 0) { --saveFocus; saveError.clear(); }
+                if (navigation == InputKey::UiDownKey && saveFocus < 9) { ++saveFocus; saveError.clear(); }
+                if (wasPressed(InputKey::UiConfirmKey) && runtimeState != GameRuntimeState::Loading)
+                {
+                    if (menuPage == MenuPage::LoadGame)
+                    {
+                        try
+                        {
+                            auto bytes = ReadSaveFile(static_cast<std::uint8_t>(saveFocus + 1));
+                            if (!bytes) { saveError = "This slot is empty."; }
+                            else { LoadGame(std::move(*bytes)); }
+                        }
+                        catch (const std::runtime_error& error) { saveError = error.what(); }
+                    }
+                    else if (runtimeState == GameRuntimeState::Ready && CanResumeGame())
+                    {
+                        editingSaveName = true;
+                        saveCaretSeconds = 0;
+                        saveError.clear();
+                        saveName = saveSlots[saveFocus].occupied && saveSlots[saveFocus].error.empty() ?
+                            saveSlots[saveFocus].name : "";
+                    }
+                }
+            }
+            else
+            {
+                saveCaretSeconds = std::fmod(saveCaretSeconds + delta, 1.0);
+                if (!queuedText.empty()) { saveCaretSeconds = 0; }
+                for (const auto c : queuedText)
+                {
+                    if (c == '\b') { if (!saveName.empty()) { saveName.pop_back(); } }
+                    else if (saveName.size() < NativeSaveGame::NameCapacity) { saveName.push_back(c); }
+                }
+                if (wasPressed(InputKey::UiConfirmKey))
+                {
+                    if (saveName.empty()) { saveError = "Enter a save name."; }
+                    else
+                    {
+                        try
+                        {
+                            WriteSaveFile(static_cast<std::uint8_t>(saveFocus + 1), CaptureSaveGame(saveName));
+                            editingSaveName = false;
+                            SetMenuPage(MenuPage::Gameplay);
+                        }
+                        catch (const std::runtime_error& error) { saveError = error.what(); }
+                    }
                 }
             }
             break;
@@ -295,6 +374,7 @@ namespace Desperabis
                 std::to_string(static_cast<std::uint16_t>(menuPage)) + " is not implemented.");
         }
 
+        queuedText.clear();
         ApplicationUpdateResult result;
         if (applicationPageChanged || pageAtStart != menuPage)
         {
@@ -393,6 +473,12 @@ namespace Desperabis
         ApplicationPresentation result{ menuPage, {} };
         if (menuPage == MenuPage::Gameplay)
         {
+            if (runtimeState == GameRuntimeState::Ready && selectedWeapon == WeaponType::ShopGold &&
+                worldObjects[1].itemValue <= 0)
+            {
+                result.commands.emplace_back(UiText{9, 6, "Gold: " + std::to_string(gold), 0.65f,
+                    {204, 153, 85}, UiTextAlignment::Left, UiTextLayout::Native});
+            }
             if (hasMap && runtimeState == GameRuntimeState::Ready && collisionMap)
             {
                 result.commands.emplace_back(UiFill{ { 288, 168, 72, 1 }, { 70, 60, 85 } });
@@ -416,34 +502,57 @@ namespace Desperabis
             float scale = 0.65f, UiTextAlignment alignment = UiTextAlignment::Left)
         {
             draw.emplace_back(UiText{ x, y, std::move(value), scale, color, alignment,
-                page == MenuPage::Inventory ? UiTextLayout::Native : UiTextLayout::TopAligned });
+                page == MenuPage::Inventory ? UiTextLayout::Native : UiTextLayout::Menu });
         };
+        const auto sword = [&draw, this, normal](float x, float y)
+        {
+            const auto frame = static_cast<std::uint8_t>(menuAnimationSeconds * 10);
+            draw.emplace_back(UiBitmap{ { x, y, 0, 0 }, UiBitmapSource::MenuCursor, 0,
+                static_cast<std::uint8_t>(frame / 5), static_cast<std::uint8_t>(frame % 5),
+                normal, UiBitmapLayout::SpriteAnchor });
+        };
+        if (menuPage == MenuPage::MainMenu || menuPage == MenuPage::AlternateMainMenu ||
+            menuPage == MenuPage::ChapterSelection || menuPage == MenuPage::LoadGame || menuPage == MenuPage::SaveGame)
+        {
+            draw.emplace_back(UiBitmap{ { 0, 0, result.Width, result.Height },
+                UiBitmapSource::MenuBackground, 0, 0, 0, {}, UiBitmapLayout::Stretch });
+        }
         if (menuPage == MenuPage::MainMenu || menuPage == MenuPage::AlternateMainMenu)
         {
-            text(180, 36, "Desperabis", bright, 1, UiTextAlignment::Center);
-            text(180, 90, "Resume game", runtimeState == GameRuntimeState::Ready && CanResumeGame() ?
-                (mainMenuFocus == 0 ? bright : normal) : dark, 0.8f, UiTextAlignment::Center);
-            text(180, 120, "New game", runtimeState == GameRuntimeState::Loading ? dark :
-                (mainMenuFocus == 1 ? bright : normal), 0.8f, UiTextAlignment::Center);
-            text(180, 150, "Quit", mainMenuFocus == 2 ? bright : normal, 0.8f, UiTextAlignment::Center);
-            draw.emplace_back(UiFill{ { 94, 87.f + mainMenuFocus * 30.f, 3, 15 }, bright });
-            text(180, 198, "Loading saving and settings", dark, 0.5f, UiTextAlignment::Center);
-            text(180, 211, "are not implemented yet", dark, 0.5f, UiTextAlignment::Center);
+            text(55, 8, "Desperabis", normal, 0.9f);
+            text(80, 32, "Resume game", runtimeState == GameRuntimeState::Ready && CanResumeGame() ? normal : dark, 0.8f);
+            text(80, 60, "New game", runtimeState == GameRuntimeState::Loading ? dark : normal, 0.8f);
+            text(80, 88, "Load game", runtimeState == GameRuntimeState::Loading ? dark : normal, 0.8f);
+            text(80, 116, "Save game", runtimeState == GameRuntimeState::Ready && CanResumeGame() ? normal : dark, 0.8f);
+            text(80, 144, "Quit", normal, 0.8f);
+            sword(48, 37.f + mainMenuFocus * 28.f);
             return result;
         }
         if (menuPage == MenuPage::ChapterSelection)
         {
-            text(180, 36, "New game", bright, 1, UiTextAlignment::Center);
-            for (std::size_t part = 0; part < PartNames.size(); ++part)
+            text(55, 8, "New game", normal, 0.9f);
+            for (std::size_t part = 0; part < gameParts.size(); ++part)
             {
-                text(180, 90.f + static_cast<float>(part) * 30.f, PartNames[part],
-                    part == chapterFocus ? bright : normal, 0.8f, UiTextAlignment::Center);
+                text(80, 32.f + static_cast<float>(part) * 30.f, gameParts[part].name, normal, 0.8f);
             }
-            draw.emplace_back(UiFill{ { 94, 87.f + chapterFocus * 30.f, 3, 15 }, bright });
-            text(180, 183, "Starts at level " + std::to_string(PartStartLevels[chapterFocus]),
-                normal, 0.55f, UiTextAlignment::Center);
-            text(180, 203, "Up/Down: select  Enter: start", normal, 0.5f, UiTextAlignment::Center);
-            text(180, 216, "Esc: back", normal, 0.5f, UiTextAlignment::Center);
+            sword(48, 37.f + chapterFocus * 30.f);
+            return result;
+        }
+        if (menuPage == MenuPage::LoadGame || menuPage == MenuPage::SaveGame)
+        {
+            text(55, 8, menuPage == MenuPage::LoadGame ? "Load game" : "Save game", normal, 0.9f);
+            for (std::size_t slot = 0; slot < saveSlots.size(); ++slot)
+            {
+                const auto& entry = saveSlots[slot];
+                const bool editing = editingSaveName && slot == saveFocus;
+                text(80, 32.f + static_cast<float>(slot) * 17.5f,
+                    editing ? saveName : !entry.error.empty() ? "Unreadable save" : entry.occupied ? entry.name : "",
+                    normal, 0.8f);
+                std::get<UiText>(draw.back()).caret = editing && saveCaretSeconds < 0.5;
+            }
+            sword(48, 37.f + saveFocus * 17.5f);
+            const auto& error = saveError.empty() ? saveSlots[saveFocus].error : saveError;
+            if (!error.empty()) { text(180, 230, error, bright, 0.4f, UiTextAlignment::Center); }
             return result;
         }
         if (menuPage != MenuPage::Inventory)

@@ -10,6 +10,35 @@
 
 namespace Desperabis
 {
+    namespace
+    {
+        void AdvanceTrackedTexture(RawGameObject& object, GameContext& context)
+        {
+            if (object.behaviorParameter == 0 || !context.level || object.itemValue < 1 ||
+                object.itemValue >= static_cast<int>(context.level->trackedTextureFrameCounts.size()))
+            {
+                throw std::invalid_argument("Tracked texture requires loaded animation metadata and a nonzero period.");
+            }
+            const int frames = context.level->trackedTextureFrameCounts[object.itemValue];
+            if (frames == 0) { throw std::invalid_argument("Tracked texture animation metadata is missing."); }
+            if (object.groupIndexOrLock < 1 || object.groupIndexOrLock > 3)
+            {
+                throw std::out_of_range("Tracked texture requires reserved texture slot 13..15.");
+            }
+            auto elapsed = WrapSignedWord(object.generalPurpose2);
+            if (elapsed >= object.behaviorParameter || context.levelElapsedTicks == 0)
+            {
+                object.generalPurpose1 = static_cast<std::uint16_t>(object.generalPurpose1 +
+                    elapsed / object.behaviorParameter);
+                elapsed = static_cast<std::int16_t>(elapsed % object.behaviorParameter);
+                object.generalPurpose1 = static_cast<std::uint16_t>(
+                    WrapSignedWord(2 * frames + WrapSignedWord(object.generalPurpose1) - 1) % frames + 1);
+                context.level->trackedTextureFrames[12 + object.groupIndexOrLock] = object.generalPurpose1;
+            }
+            object.generalPurpose2 = static_cast<std::uint16_t>(elapsed + context.tickCount);
+        }
+    }
+
     DispatchResult Function_BouncingObject(RawGameObject& object, GameContext& context)
     {
         if ((object.modelId < 30 && object.generalPurpose1 != 1 && object.generalPurpose1 != 6 && object.generalPurpose1 != 7) ||
@@ -1747,9 +1776,26 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Switch3, 0x20D7 };
     }
 
-    DispatchResult Function_UnderwaterPlants(RawGameObject&, GameContext&)
+    DispatchResult Function_UnderwaterPlants(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::UnderwaterPlants, 0x212D };
+        object.velocityZ = WrapSignedWord(object.velocityZ + object.velocityX * context.tickCount);
+        object.blendWeightOrSpriteOpacity = WrapSignedWord(
+            static_cast<std::int32_t>(static_cast<std::uint32_t>(Sine(object.velocityZ) * 50) >> 16) + 50);
+        if (object.velocityZ > 128)
+        {
+            object.animFrame = object.modelFrame2;
+            if (object.itemValue == 0) { object.itemValue = 3; }
+            const auto previousBit = object.animFrame >= 1 && object.animFrame <= 4 ? 1 << (object.animFrame - 1) : 0;
+            const auto allowed = object.itemValue & 15 & ~previousBit;
+            if (allowed == 0) { throw std::invalid_argument("Plant animation needs an allowed alternative frame."); }
+            do { object.modelFrame2 = static_cast<std::uint8_t>(context.Random(4)); }
+            while ((object.itemValue & (1 << object.modelFrame2)) == 0 ||
+                object.modelFrame2 + 1 == object.animFrame);
+            ++object.modelFrame2;
+            object.velocityZ = -128;
+            object.blendWeightOrSpriteOpacity = 0;
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::UnderwaterPlants, 0x212D };
     }
 
     DispatchResult Function_Behavior_55(RawGameObject&, GameContext&)
@@ -2493,9 +2539,12 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::ClimbableLadder, 0x3C30 };
     }
 
-    DispatchResult Function_CurtainOpens(RawGameObject&, GameContext&)
+    DispatchResult Function_CurtainOpens(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::CurtainOpens, 0x3C5B };
+        object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity +
+            GetStepToward(object.blendWeightOrSpriteOpacity, WrapSignedWord(object.generalPurpose1),
+                WrapSignedWord(object.generalPurpose3 * context.tickCount)));
+        return { DispatchStatus::ExecutedCase, BehaviorType::CurtainOpens, 0x3C5B };
     }
 
     DispatchResult Function_Meteor(RawGameObject&, GameContext&)
@@ -2770,9 +2819,10 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::LavaSmoke, 0x4EFB };
     }
 
-    DispatchResult Function_TrackFireAnimation(RawGameObject&, GameContext&)
+    DispatchResult Function_TrackFireAnimation(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::TrackFireAnimation, 0x4F34 };
+        AdvanceTrackedTexture(object, context);
+        return { DispatchStatus::ExecutedCase, BehaviorType::TrackFireAnimation, 0x4F34 };
     }
 
     DispatchResult Function_FireballImpact(RawGameObject& object, GameContext& context)
@@ -2790,24 +2840,73 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::TriggerObject, 0x4F84 };
     }
 
-    DispatchResult Function_Behavior_206(RawGameObject&, GameContext&)
+    DispatchResult Function_ForceWeaponSelection(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_206, 0x4FEB };
+        context.selectedWeapon = context.requestedWeapon = static_cast<WeaponType>(object.itemValue & 255);
+        return { DispatchStatus::ExecutedCase, BehaviorType::ForceWeaponSelection, 0x4FEB };
     }
 
-    DispatchResult Function_WitchHead(RawGameObject&, GameContext&)
+    DispatchResult Function_WitchHead(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::WitchHead, 0x5007 };
+        auto target = GetVectorAngle(WrapSignedWord(context.soundListenerX - object.posX),
+            WrapSignedWord(context.soundListenerZ - object.posZ));
+        NormalizeAnglePair(object.winY, target);
+        if (context.tickCount > context.Random(25)) { object.velocityY = static_cast<std::int16_t>(context.Random(4) + 2); }
+        const auto delta = GetStepToward(object.winY, target, WrapSignedWord(object.velocityY * context.tickCount));
+        if (delta != 0 && object.winX < 10) { object.winY = WrapSignedWord(object.winY + delta); }
+        else if (context.tickCount > context.Random(20)) { object.velocityY = 0; }
+        if (context.playerCollisionSlot > 0)
+        {
+            context.DescribeShopItem(context.worldObjects.at(context.playerCollisionSlot));
+        }
+        object.generalPurpose2 = static_cast<std::uint16_t>(object.generalPurpose2 +
+            GetStepToward(WrapSignedWord(object.generalPurpose2), context.playerCollisionSlot > 0 ? 256 : 0,
+                WrapSignedWord(context.tickCount * 10)));
+        object.winX = WrapSignedWord(static_cast<std::int32_t>(
+            static_cast<std::uint32_t>(Cosine(WrapSignedWord(object.generalPurpose2)) * 27) >> 16) + 30);
+        object.blendWeightOrSpriteOpacity = WrapSignedWord(
+            object.blendWeightOrSpriteOpacity + object.velocityX * context.tickCount);
+        if (object.blendWeightOrSpriteOpacity > 200)
+        {
+            object.blendWeightOrSpriteOpacity = 0;
+            object.velocityX = 0;
+        }
+        if (context.tickCount > context.Random(120)) { object.velocityX = 25; }
+        return { DispatchStatus::ExecutedCase, BehaviorType::WitchHead, 0x5007 };
     }
 
-    DispatchResult Function_BuyItem(RawGameObject&, GameContext&)
+    DispatchResult Function_BuyItem(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::BuyItem, 0x501A };
+        if (object.itemValue < 2 || static_cast<std::size_t>(object.itemValue) >= context.worldObjects.size())
+        {
+            throw std::out_of_range("Shop stock must reference a world slot 2..165.");
+        }
+        auto& stock = context.worldObjects[object.itemValue];
+        if (object.behaviorParameter >= context.weaponInventorySlots.size())
+        {
+            throw std::out_of_range("Shop ownership selector must be in 0..31.");
+        }
+        if (object.behaviorParameter > 0 && context.weaponInventorySlots[object.behaviorParameter] > 0)
+        {
+            stock.collisionType = CollisionType::None;
+            context.SetObjectHealth(object, 0);
+        }
+        const int angle = ((object.winY - context.GetPlayerHeading()) & 511) >> 4;
+        object.collisionMask = angle < 4 || angle > 28 ? 1 : 0;
+        if (context.GetSoundDistanceAt(object.posX, object.posZ) > 50 && WrapSignedWord(object.generalPurpose3) > 0)
+        {
+            object.generalPurpose3 = static_cast<std::uint16_t>(object.generalPurpose3 - context.tickCount);
+        }
+        if (stock.health != 1000) { context.SetObjectHealth(object, 0); }
+        return { DispatchStatus::ExecutedCase, BehaviorType::BuyItem, 0x501A };
     }
 
-    DispatchResult Function_Behavior_209(RawGameObject&, GameContext&)
+    DispatchResult Function_WitchMouthAnimation(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_209, 0x502D };
+        object.generalPurpose1 = context.IsBottomUserMessageActive() ? context.Random(20) : 1;
+        AdvanceTrackedTexture(object, context);
+        if (context.Random(20) == 0) { object.behaviorParameter = static_cast<std::uint8_t>(context.Random(3) + 3); }
+        return { DispatchStatus::ExecutedCase, BehaviorType::WitchMouthAnimation, 0x502D };
     }
 
     DispatchResult Function_TutorialTrigger(RawGameObject& object, GameContext& context)

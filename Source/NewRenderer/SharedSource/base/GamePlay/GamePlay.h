@@ -207,8 +207,8 @@ namespace GamePlay
         Behavior_170 = 170, // Something in the ending village cutscene. 2 instances assigned to grates
         Behavior_178 = 178, // the barrel in the staircase, probably manages the staircase up/down teleport
         Behavior_201 = 201, // could be thunder or leaf particles gen (assigned once to decoration in level 10)
-        Behavior_206 = 206, // could be witch-manager
-        Behavior_209 = 209, // could be witch-manager
+        ForceWeaponSelection = 206,
+        WitchMouthAnimation = 209,
         Behavior_255 = 255, // Something in museum cutscene
     };
 
@@ -302,7 +302,8 @@ namespace GamePlay
         Stone = 5,
         TrapOrPole = 6,
         Electricity = 7,
-        Showel = 8
+        Showel = 8,
+        ShopGold = 10
     };
 
 	enum class VisibilityFilter : uint32_t

@@ -80,7 +80,7 @@ namespace
     };
 
     BitmapFrame ResolveBitmap(const Desperabis::UiBitmap& command, const Level& level,
-        const TextureAnim& hud, const TextureAnim& icons)
+        const TextureAnim& hud, const TextureAnim* icons, const TextureAnim& cursor)
     {
         using Desperabis::UiBitmapSource;
         if (command.flipHorizontal && command.source != UiBitmapSource::Hud)
@@ -96,7 +96,8 @@ namespace
             }
             return { model->m_ownTextures[command.frame] };
         }
-        const TextureAnim* animation = command.source == UiBitmapSource::InventoryIcons ? &icons : &hud;
+        const TextureAnim* animation = command.source == UiBitmapSource::InventoryIcons ? icons :
+            command.source == UiBitmapSource::MenuCursor ? &cursor : &hud;
         if (command.source == UiBitmapSource::LevelSprite)
         {
             if (command.shade != 0) { throw std::logic_error("Level-sprite UI pictures require their original palette."); }
@@ -312,6 +313,15 @@ FUTURE(void) ApplicationUi::Initialize()
     }
     auto fontPalette = std::make_shared<Palette>();
     fontPalette->BuildGrayscale();
+    const auto menuPalette = CO_AWAIT AssetManager::Instance().LoadAsset<Palette>(L"GRAFIK\\BACKGR2.PAL");
+    m_menuBackground = CO_AWAIT AssetManager::Instance().LoadAsset<Texture>(L"GRAFIK\\BACKGR2.256", menuPalette);
+    m_menuCursor = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\CURSOR.AN2", fontPalette);
+    if (m_menuBackground->m_width != 360 || m_menuBackground->m_height != 480 ||
+        m_menuCursor->m_countX != 2 || m_menuCursor->m_countY != 5)
+    {
+        throw std::runtime_error("Expected the original 360x480 menu background and ten sword cursor frames.");
+    }
+    m_textCaret = TextMesh::CreateTexturedQuad(*AssetManager::Instance().GetPlainWhiteTexture(), 1, 10);
     for (std::size_t bank = 0; bank < FontCharacters.size(); ++bank)
     {
         const auto font = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(
@@ -440,6 +450,9 @@ void ApplicationUi::Deinitialize()
     m_heldWeaponTexture = nullptr;
     m_weapons.reset();
     m_mapPaper.reset();
+    m_menuBackground.reset();
+    m_menuCursor.reset();
+    m_textCaret.reset();
     m_mapPaperPixels.clear();
 }
 
@@ -712,6 +725,7 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
         {
             instanceCount += text->text.size();
         }
+        if (const auto* text = std::get_if<UiText>(&command); text && text->caret) { ++instanceCount; }
     }
     instances.reserve(instanceCount);
     std::vector<const TextMeshInstance*> batch;
@@ -841,12 +855,14 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
             y = text->y;
             scale *= text->scale;
             color = text->color;
-            key = "text:" + std::to_string(static_cast<int>(text->alignment)) + ":" + text->text;
+            key = "text:" + std::to_string(static_cast<int>(text->alignment)) + ":" +
+                std::to_string(static_cast<int>(text->layout)) + ":" + text->text;
             if (key != cached.key)
             {
                 const auto alignment = text->alignment == UiTextAlignment::Center ? Font::HorizontalAlignment::Center :
                     text->alignment == UiTextAlignment::Right ? Font::HorizontalAlignment::Right : Font::HorizontalAlignment::Left;
-                cached.mesh = font.CreateGlyphMesh(text->text, { 255,255,255,255 }, alignment);
+                cached.mesh = font.CreateGlyphMesh(text->text, { 255,255,255,255 }, alignment,
+                    Font::VerticalAlignment::Top, text->layout == UiTextLayout::Menu ? 0.5f : 1.f);
             }
         }
         else if (const auto* bitmap = std::get_if<UiBitmap>(&command))
@@ -854,12 +870,14 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
             const auto& selectedHud = bitmap->flipHorizontal ? m_mirroredHud.at(bitmap->shade) : m_hud.at(bitmap->shade);
             const auto iconFile = level.GetLevelInfo().m_loadedTexAnimSlots[1];
             const auto bank = m_inventoryIcons.find(iconFile);
-            if (bank == m_inventoryIcons.end())
+            if (bitmap->source == UiBitmapSource::InventoryIcons && bank == m_inventoryIcons.end())
             {
                 throw std::runtime_error("Unavailable native inventory resource bank " + std::to_string(iconFile) + ".");
             }
             const auto frame = bitmap->source == UiBitmapSource::MapPaper ? BitmapFrame{ *m_mapPaper } :
-                ResolveBitmap(*bitmap, level, *selectedHud, *bank->second.at(bitmap->shade));
+                bitmap->source == UiBitmapSource::MenuBackground ? BitmapFrame{ *m_menuBackground } :
+                    ResolveBitmap(*bitmap, level, *selectedHud,
+                        bank == m_inventoryIcons.end() ? nullptr : bank->second.at(bitmap->shade).get(), *m_menuCursor);
             const auto& texture = frame.texture;
             if (texture.m_width == 0 || texture.m_height == 0)
             {
@@ -867,7 +885,11 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
             }
             const float fit = bitmap->layout == UiBitmapLayout::Fit ?
                 (std::min)(bitmap->bounds.width / texture.m_width, bitmap->bounds.height / texture.m_height) : 1.f;
-            const float width = texture.m_width * fit, height = texture.m_height * fit;
+            // Native menus use 360x480 artwork on the same 360x240 logical canvas.
+            const float verticalScale = bitmap->source == UiBitmapSource::MenuCursor ? 0.5f : 1.f;
+            const float width = bitmap->layout == UiBitmapLayout::Stretch ? bitmap->bounds.width : texture.m_width * fit;
+            const float height = bitmap->layout == UiBitmapLayout::Stretch ? bitmap->bounds.height :
+                texture.m_height * fit * verticalScale;
             x = bitmap->bounds.x;
             y = bitmap->bounds.y;
             if (bitmap->layout == UiBitmapLayout::Fit)
@@ -878,7 +900,7 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
             else if (bitmap->layout == UiBitmapLayout::SpriteAnchor)
             {
                 x += frame.anchorX;
-                y += frame.anchorY;
+                y += frame.anchorY * verticalScale;
             }
             else if (bitmap->layout == UiBitmapLayout::Center)
             {
@@ -892,7 +914,7 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
                 std::to_string(bitmap->flipHorizontal) + ":" + std::to_string(bitmap->shade);
             if (key != cached.key)
             {
-                if (bitmap->source == UiBitmapSource::MapPaper)
+                if (bitmap->source == UiBitmapSource::MapPaper || bitmap->source == UiBitmapSource::MenuBackground)
                 {
                     const std::array<Vector2, 4> uv{{ { 0,0 }, { 1,0 }, { 0,1 }, { 1,1 } }};
                     cached.mesh = TextMesh::CreateTexturedQuad(texture, width, height, uv);
@@ -935,6 +957,17 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
             }
         }
         cached.key = std::move(key);
+        if (const auto* text = std::get_if<UiText>(&command); text && text->caret)
+        {
+            const float alignment = text->alignment == UiTextAlignment::Left ? 1.f :
+                text->alignment == UiTextAlignment::Center ? 0.5f : 0.f;
+            auto& caret = instances.emplace_back(m_textCaret);
+            caret.SetPosition(offsetX + (text->x + cached.mesh->GetExtent().x * text->scale * alignment + 1) * canvasScale,
+                offsetY + text->y * canvasScale);
+            caret.SetScale(canvasScale * text->scale);
+            caret.SetTintColor({ text->color.r,text->color.g,text->color.b,text->color.a });
+            batch.push_back(&caret);
+        }
         auto& instance = instances.emplace_back(cached.mesh);
         instance.SetPosition(offsetX + x * canvasScale, offsetY + y * canvasScale);
         instance.SetScale(scale);

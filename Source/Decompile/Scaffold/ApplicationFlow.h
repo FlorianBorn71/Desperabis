@@ -77,7 +77,7 @@ namespace Desperabis
     };
 
     enum class UiTextAlignment { Left, Center, Right };
-    enum class UiTextLayout { TopAligned, Native };
+    enum class UiTextLayout { TopAligned, Native, Menu };
 
     struct UiText
     {
@@ -87,10 +87,11 @@ namespace Desperabis
         UiColor color;
         UiTextAlignment alignment = UiTextAlignment::Left;
         UiTextLayout layout = UiTextLayout::TopAligned;
+        bool caret = false;
     };
 
-    enum class UiBitmapSource { Hud, LevelSprite, ModelTexture, InventoryIcons, MapPaper };
-    enum class UiBitmapLayout { Fit, TopLeft, SpriteAnchor, Center };
+    enum class UiBitmapSource { Hud, LevelSprite, ModelTexture, InventoryIcons, MapPaper, MenuBackground, MenuCursor };
+    enum class UiBitmapLayout { Fit, TopLeft, SpriteAnchor, Center, Stretch };
 
     struct UiBitmap
     {

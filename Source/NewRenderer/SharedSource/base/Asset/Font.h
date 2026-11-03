@@ -26,7 +26,7 @@ public:
 	// DOS 0xFB selects dark red; 0xFA restores the caller color. Controls have no glyph or advance.
 	std::shared_ptr<TextMesh> CreateGlyphMesh(std::string_view text, const Color4& color,
 		HorizontalAlignment horizontalAlignment = HorizontalAlignment::Left,
-		VerticalAlignment verticalAlignment = VerticalAlignment::Top) const;
+		VerticalAlignment verticalAlignment = VerticalAlignment::Top, float verticalScale = 1.f) const;
 
 private:
 	struct Glyph

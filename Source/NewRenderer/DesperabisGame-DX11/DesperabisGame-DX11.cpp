@@ -27,6 +27,8 @@
 #include <algorithm>
 #include <limits>
 #include <stdexcept>
+#include <filesystem>
+#include <fstream>
 
 namespace
 {
@@ -94,6 +96,7 @@ namespace
 	}
 
 	std::vector<byte> ReadGameFile(const std::wstring& filename);
+	std::filesystem::path SaveFilePath(std::uint8_t slot);
 	void ClearGameObjects();
 
 	class GameAppContext final : public Desperabis::GameContext
@@ -179,6 +182,7 @@ namespace
 		}
 
 		bool IsUserMessageActive() const override { return m_promptTicks > 0; }
+		bool IsBottomUserMessageActive() const override { return IsUserMessageActive() && m_promptBottomAnchored; }
 
 		std::int16_t GetSpriteBottom(const Desperabis::RawGameObject& object) const override
 		{
@@ -290,6 +294,49 @@ namespace
 		}
 
 	protected:
+		std::optional<std::vector<std::uint8_t>> ReadSaveFile(std::uint8_t slot) override
+		{
+			const auto path = SaveFilePath(slot);
+			std::ifstream file(path, std::ios::binary | std::ios::ate);
+			if (!file)
+			{
+				if (!std::filesystem::exists(path)) { return std::nullopt; }
+				throw std::runtime_error("Cannot open STAND" + std::to_string(slot) + ".SPL.");
+			}
+			const auto size = file.tellg();
+			if (size < 0 || size > static_cast<std::streamoff>(Desperabis::NativeSaveGame::MaximumSize))
+			{
+				throw std::runtime_error("Invalid save-file size.");
+			}
+			std::vector<std::uint8_t> bytes(static_cast<std::size_t>(size));
+			file.seekg(0);
+			file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+			if (!file || file.peek() != std::char_traits<char>::eof()) { throw std::runtime_error("Cannot read complete save file."); }
+			return bytes;
+		}
+
+		void WriteSaveFile(std::uint8_t slot, const std::vector<std::uint8_t>& bytes) override
+		{
+			const auto path = SaveFilePath(slot);
+			std::filesystem::create_directories(path.parent_path());
+			auto temporary = path;
+			temporary += L"." + std::to_wstring(GetCurrentProcessId()) + L".tmp";
+			std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
+			if (!file) { throw std::runtime_error("Cannot create temporary save file."); }
+			file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+			file.close();
+			if (!file || !MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+			{
+				const auto error = GetLastError();
+				if (!DeleteFileW(temporary.c_str()))
+				{
+					throw std::runtime_error("Save failed; temporary-file cleanup also failed.");
+				}
+				if (!file) { throw std::runtime_error("Cannot write complete save file."); }
+				throw std::runtime_error("Cannot replace save file (Windows error " + std::to_string(error) + ").");
+			}
+		}
+
 		std::vector<std::uint8_t> LoadFile(std::string_view filename) override
 		{
 			return ReadGameFile(std::wstring(filename.begin(), filename.end()));
@@ -301,7 +348,14 @@ namespace
 			LoadLevelGeometry(request.levelNumber, data);
 			LoadLevelObjects(request.levelNumber, data);
 			InitializeLevelPlayerSpawn(data, g_initialPlayerDirection);
-			auto scene = std::make_unique<LevelScene>(request.levelNumber);
+			const auto* savedData = GetPendingSaveGame();
+			std::shared_ptr<Level> savedLevel;
+			if (savedData)
+			{
+				savedLevel = std::make_shared<Level>();
+				FORCE_WAIT(savedLevel->LoadSaveGameData(savedData->data(), static_cast<int>(savedData->size())));
+			}
+			auto scene = std::make_unique<LevelScene>(request.levelNumber, std::move(savedLevel));
 			scene->m_createGameObjects = false;
 			scene->m_createMapIcons = false;
 			FORCE_WAIT(scene->CreateScene());
@@ -312,7 +366,7 @@ namespace
 			g_scene = std::move(scene);
 			g_worldTime = 0;
 			g_freeCam->JumpTo(g_scene->GetInitialPosition());
-			if (g_cheatMode) { ApplyCheatLoadout(); }
+			if (g_cheatMode && !savedData) { ApplyCheatLoadout(); }
 			const auto title = "Desperabis (DX11) - level " + std::to_string(request.levelNumber);
 			SetWindowTextA(g_hWnd, title.c_str());
 			if (g_initialized)
@@ -547,6 +601,16 @@ namespace
 		return FORCE_GET(fileManager.ReadDataFuture(path));
 	}
 
+	std::filesystem::path SaveFilePath(std::uint8_t slot)
+	{
+		std::array<wchar_t, 32768> executable{};
+		const auto length = GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size()));
+		if (length == 0 || length >= executable.size()) { throw std::runtime_error("Cannot locate the game's save directory."); }
+		auto directory = std::filesystem::path(std::wstring(executable.data(), length)).parent_path();
+		if (directory.filename() == L"Debug") { directory = directory.parent_path(); }
+		return directory / L"SaveGames" / (L"STAND" + std::to_wstring(slot) + L".SPL");
+	}
+
 	int16_t ToNativeWord(float value)
 	{
 		return (int16_t)std::clamp(std::lround(value), -32768L, 32767L);
@@ -645,12 +709,19 @@ namespace
 		    Desperabis::Level::Width, Desperabis::Level::Height, Desperabis::Level::Width);
 		level->SynchronizeFloorTiles(&geometry->floorObjects[0][0],
 		    Desperabis::Level::Width, Desperabis::Level::Height, Desperabis::Level::Width);
+		for (const auto& object : g_gameCore->GetWorldObjects())
+		{
+			if (object.health <= 0 || object.behavior != Desperabis::BehaviorType::WitchMouthAnimation) { continue; }
+			const int target = 12 + object.groupIndexOrLock;
+			const auto frame = geometry->trackedTextureFrames.at(target);
+			if (frame != 0) { g_scene->SetFireAnimationFrame(target, frame - 1); }
+		}
 		for (int slot = 2; slot <= 164; slot++)
 		{
 			RawGameObject& state = g_objectState[slot];
 			state.m_level = level;
 			state.m_objectNumber = slot;
-			Desperabis::EncodeGameObject(g_gameCore->GetWorldObjects().at(slot), state.m_rawBytes, sizeof(state.m_rawBytes));
+			Desperabis::EncodeGameObject(g_gameCore->GetObjectRenderState(slot), state.m_rawBytes, sizeof(state.m_rawBytes));
 			state.m_rawBytes[48] = 0; // render-list scratch, rewritten every tick
 			state.m_rawBytes[49] = 0;
 			if (state == g_presentedState[slot])
@@ -786,6 +857,7 @@ namespace
 		}
 
 		g_gameCore = std::make_unique<GameAppContext>();
+		g_gameCore->LoadGameParts();
 		g_fireballFrames = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\SCHUSS1.AN2");
 		g_hudAnimations = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\AMA_ANI.AN2");
 		CO_AWAIT g_applicationUi.Initialize();
@@ -1076,6 +1148,20 @@ namespace
 	{
 		switch (message)
 		{
+		case WM_CHAR:
+			if (g_gameCore && (wParam == '\b' || wParam >= 32))
+			{
+				const wchar_t character = static_cast<wchar_t>(wParam);
+				char native = 0;
+				BOOL substituted = FALSE;
+				if (WideCharToMultiByte(437, WC_NO_BEST_FIT_CHARS, &character, 1, &native, 1,
+					nullptr, &substituted) == 1 && !substituted)
+				{
+					g_gameCore->QueueTextInput(std::string_view(&native, 1));
+				}
+				else { MessageBeep(MB_ICONWARNING); }
+			}
+			return 0;
 		case WM_SIZE:
 			if (g_d3dDevice != nullptr && wParam != SIZE_MINIMIZED)
 			{

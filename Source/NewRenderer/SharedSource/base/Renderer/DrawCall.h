@@ -85,6 +85,7 @@ struct DrawCallMaterial
     //bool m_textureRepeat = true;
     char m_textureSlot = -1;
     float m_opacity = 1.0f;
+    float m_depthOffset = 0.f;
     float m_mirrorHeight = 0.f; // for mirror objects
     Texture* m_texture = nullptr;
 
@@ -99,4 +100,3 @@ struct DrawCall
     bool IsBatchableWith(const DrawCall& other) const;
     uint64_t ComputeBatchingKey() const;
 };
-

@@ -16,6 +16,7 @@ public:
 
     FUTURE(void) Load(int index, const LevelInfo& info);
     FUTURE(void) LoadFromSaveGame(std::wstring_view filename, const std::vector<LevelInfo>& infos);
+    FUTURE(void) LoadSaveGameData(const byte* rawData, int dataSize);
 
     FUTURE(void) PopulateScene(Scene& scene, bool createGameObjects, bool addMapIcons);
 	void ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& rawGO, Texture* spriteOverride = nullptr) const;
@@ -33,7 +34,6 @@ protected:
     void ReadCollisionMap(const byte* rawData, int dataSize);
     void ReadLevelData(const byte* rawData, int dataSize, bool readSize);
     void ReadGameObjects(const byte* rawData, int dataSize);
-    FUTURE(void) ReadSaveGame(const byte* rawData, int dataSize, const std::vector<LevelInfo>& infos);
     FUTURE(void) SaveGameAnalysis();
 
     void InitLevelInfo(const LevelInfo& info);

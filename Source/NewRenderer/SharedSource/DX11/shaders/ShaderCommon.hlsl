@@ -59,7 +59,7 @@ cbuffer MaterialConstantBuffer : register(b4)
 {
     float Transparency; // for transparent objects the alpha modulo (0..1)
     float ApplyLighting; // 0 or 1, whether lighting should be applied
-    float mat_padding1, mat_padding2;
+    float DepthOffset, mat_padding2;
 };
 
 struct PackedLightSourceParams
@@ -333,6 +333,12 @@ PixelShaderInput vs_main(VertexShaderInput In)
 #ifdef ENABLE_ADVANCED_RENDERING
     Out.normal = wsNormal;
 #endif 
+
+    if (DepthOffset != 0)
+    {
+        float4 depthPosition = mul(float4(viewPos.xy, viewPos.z + DepthOffset, viewPos.w), ProjMat);
+        Out.position.z = depthPosition.z * Out.position.w / depthPosition.w;
+    }
 
     Out.color.rgb = In.color.rgb * ObjectTint.rgb;
     Out.color.a = ObjectTint.a * Transparency;

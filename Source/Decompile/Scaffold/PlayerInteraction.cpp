@@ -11,6 +11,14 @@ namespace Desperabis
             return { InteractionStatus::NoEffect };
         }
         auto& object = context.worldObjects[context.playerCollisionSlot];
+        if (object.collisionType == CollisionType::CurtainOpens)
+        {
+            object.collisionMask = 0;
+            object.generalPurpose3 = static_cast<std::uint16_t>(object.velocityZ);
+            context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+                GameContext::GetSoundVolume(static_cast<std::int16_t>(context.Random(300))), object, 1);
+            return { InteractionStatus::Applied };
+        }
         if (object.collisionType == CollisionType::PushPlayer)
         {
             if (object.behaviorParameter == 0 || context.DEBUG_noPlayerCollision)

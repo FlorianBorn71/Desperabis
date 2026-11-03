@@ -450,7 +450,10 @@ individual inventory objects, not a guessed global key bitmask.
 
 Still unresolved: resource-table indices 20 and 23 (new-game values 1000 and
 100), the meaning of the byte-4 inventory conversion, and broader UI/audio,
-inventory-use, purchasing, and door/ordinary-switch integration. Unsupported
+inventory-use, and door/ordinary-switch integration. Purchasing is now recovered
+and implemented for the witch shop, including linked stock, original samples
+and mouth animation; see [witch shop](BehaviorRecovery.md#witch-shop-level-90).
+Unsupported
 special interactions are explicitly reported, not treated as generic pickups.
 See [implementation details](BehaviorRecovery.md#inventory-and-explicit-interaction),
 [new evidence](inventory-evidence.txt), and

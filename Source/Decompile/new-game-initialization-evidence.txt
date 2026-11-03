@@ -82,10 +82,12 @@ resets movement, posture, map collision mode, lighting and world objects.
 
 Port boundaries
 ---------------
-The functional core-owned selector offers Training -> 50, Part 1 -> 30,
-Part 2 -> 10, using the existing playable-part ordering. The mapping is
-the port's explicit integration of known part starts, not a decoded
-chapter-resource row. New Game resets progress before normal StartLevel.
+The functional core-owned selector now reads part names and full level order
+from GRAFIK/HERZ.256, the paired Pascal rows produced by the localization
+tool's MissionsMenu.txt. Original playable starts remain 50,30,10 because
+unported presentation entries 29/9 (LEVELS.INF byte 100 >= 100) are skipped
+by author choice. Their indices and ordinal positions remain in native
+saves. New Game resets progress before normal StartLevel.
 Deferred loading and explicit failures use the existing load contract;
 accepted New Game does not promise rollback of old progress on failure.
 Host debug/audio preferences survive; host cheat loadouts apply as usual.
@@ -93,4 +95,5 @@ Host debug/audio preferences survive; host cheat loadouts apply as usual.
 The native selector clamps DS:3131+1 to 2..3 available parts. The port
 exposes all three for reconstruction/testing rather than inventing unlock
 state. Native helper 0000:81F2..8294 reads alternating chapter/game-name
-rows from DS:05C0; exact label metadata and carousel art remain unported.
+rows from DS:05C0; HERZ label metadata is decoded, but carousel art and
+introduction playback remain unported.

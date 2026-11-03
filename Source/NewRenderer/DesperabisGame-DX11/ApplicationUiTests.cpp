@@ -14,6 +14,7 @@
 #include <Physics/PhysicsInterface.h>
 #include <Renderer/Camera.h>
 #include <Scene/Scene.h>
+#include <Sample/LevelScene.h>
 #include <d3d11sdklayers.h>
 #include <cmath>
 #include <cstring>
@@ -548,6 +549,16 @@ namespace
     {
         const Color4 base{ 204,102,0,190 };
         const auto plain = font.CreateGlyphMesh("aaa", base);
+        const auto menu = font.CreateGlyphMesh("aaa", base, Font::HorizontalAlignment::Left,
+            Font::VerticalAlignment::Top, 0.5f);
+        Check(menu->GetExtent().x == plain->GetExtent().x && menu->GetExtent().y == plain->GetExtent().y * 0.5f,
+            "Original menu text must preserve horizontal advances while halving the 480-line glyph height.");
+        for (std::size_t vertex = 0; vertex < plain->GetBatches().at(0).m_vertices.size(); ++vertex)
+        {
+            Check(menu->GetBatches()[0].m_vertices[vertex].m_position.x == plain->GetBatches()[0].m_vertices[vertex].m_position.x &&
+                menu->GetBatches()[0].m_vertices[vertex].m_position.y == plain->GetBatches()[0].m_vertices[vertex].m_position.y * 0.5f,
+                "Menu font aspect correction must scale glyph geometry rather than changing texture sampling or inventory text.");
+        }
         const auto styled = font.CreateGlyphMesh("a\xfb" "a\xfa" "a", base);
         Check(styled->GetExtent().x == plain->GetExtent().x &&
             styled->GetBatches().size() == 1, "Color controls must occupy no glyph width or extra batches.");
@@ -1894,6 +1905,43 @@ namespace
                 CompleteLevelLoad(request.id, std::move(data));
             }
         } original;
+        for (const auto number : { 11, 16, 35 })
+        {
+            original.StartLevel(static_cast<std::int16_t>(number));
+            original.level->wallTextures[0][0] = 0;
+            if (number == 35) { original.level->nativeInfo[103] = 0; }
+            const auto snapshot = original.CaptureSaveGame("WARP snapshot");
+            auto savedLevel = std::make_shared<Level>();
+            FORCE_WAIT(savedLevel->LoadSaveGameData(snapshot.data(), static_cast<int>(snapshot.size())));
+            Check(savedLevel->GetLevelInfo().m_levelIndex == number && savedLevel->GetRawGameObjects().size() == 163,
+                "Saved renderer levels must resolve native ordinals and exclude player, fallback and inventory records.");
+            LevelScene savedScene(number, savedLevel);
+            savedScene.m_createGameObjects = savedScene.m_createMapIcons = false;
+            FORCE_WAIT(savedScene.CreateScene());
+            Check(savedScene.m_level == savedLevel.get(),
+                "Restored scenes must retain their owned snapshot, not reload cached original geometry.");
+            for (int row = 0; row < 40; ++row)
+            {
+                for (int column = 0; column < 50; ++column)
+                {
+                    const auto& cell = savedLevel->GetCellArray().GetCell(column, row);
+                    Check(cell.m_wallTextures == original.level->wallTextures[row][column] &&
+                        std::fabs(cell.m_floorHeight -
+                            original.level->floorHeights[row][column] * -2.f * DespToFloat) < 0.00001f,
+                        "Snapshot scenes must rebuild the full saved wall and height planes.");
+                }
+            }
+            original.LoadGame(snapshot);
+            Check(original.CaptureSaveGame("WARP snapshot") == snapshot,
+                "Core and renderer must agree on native snapshot state and resources.");
+            savedScene.ClearScene();
+            auto corrupt = snapshot;
+            corrupt.back() ^= 1;
+            bool rejectedSave = false;
+            try { FORCE_WAIT(savedLevel->LoadSaveGameData(corrupt.data(), static_cast<int>(corrupt.size()))); }
+            catch (const std::runtime_error&) { rejectedSave = true; }
+            Check(rejectedSave, "The renderer must reject corrupt snapshots before changing its assets.");
+        }
         Target realTarget(device, 360, 240);
         for (const int number : { 11, 12, 14 })
         {
@@ -2453,6 +2501,217 @@ namespace
             "Scene reset must release both flame slots and animation bindings.");
     }
 
+    void CheckWitchMouth(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(90));
+        const auto bytes = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS90.DAT")));
+        FlameScene scene;
+        ::RawGameObject marker{};
+        Desperabis::EncodeGameObject(Desperabis::DecodeGameObject(bytes.data(), 54), marker.m_rawBytes, 54);
+        marker.m_level = level;
+        LevelGameObject controller(&scene, marker);
+        FORCE_WAIT(GamePlay::CreateObjectBehavior(scene, controller, marker));
+        Check(scene.HasFlameSlot(13), "Behavior 209 must bind the five-frame witch mouth into reserved slot 13.");
+        ::RawGameObject head{};
+        Desperabis::EncodeGameObject(Desperabis::DecodeGameObject(bytes.data() + 3 * 54, 54), head.m_rawBytes, 54);
+        head.m_level = level;
+        auto instance = std::make_shared<RenderableInstance>(nullptr);
+        level->ApplyRenderProperties(instance, head);
+        scene.AddRenderableInstance(instance);
+        Check(scene.BindingCount() > 0, "The original witch head must actually consume its animated mouth material.");
+        scene.SetFireAnimationFrame(13, 0);
+        scene.HandleFireAnimations(0);
+        auto mouth = std::find_if(instance->m_materialOverride.begin(), instance->m_materialOverride.end(),
+            [](const DrawCallMaterial& material) { return material.m_textureSlot == 13; });
+        Check(mouth != instance->m_materialOverride.end() && mouth->m_texture != nullptr &&
+            mouth->m_transparencyType == TransparencyMode::Opaque,
+            "The witch mouth must use a real, non-additive frame rather than fire blending.");
+        const auto* closed = mouth->m_texture;
+        scene.HandleFireAnimations(2);
+        Check(mouth->m_texture == closed, "The renderer must not autonomously talk while the core holds a mouth frame.");
+        scene.SetFireAnimationFrame(13, 4);
+        scene.HandleFireAnimations(0);
+        Check(mouth->m_texture != closed, "Native mouth frame selection must update the rendered head material.");
+        level->ApplyRenderProperties(instance, head);
+        scene.AssignFireAnimations(*instance);
+        scene.HandleFireAnimations(0);
+        mouth = std::find_if(instance->m_materialOverride.begin(), instance->m_materialOverride.end(),
+            [](const DrawCallMaterial& material) { return material.m_textureSlot == 13; });
+        Check(mouth != instance->m_materialOverride.end() && mouth->m_texture != closed &&
+            mouth->m_transparencyType == TransparencyMode::Opaque,
+            "Core head-pose refreshes must preserve the mouth binding and native frame.");
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        RenderingSettings settings;
+        ProfilingStats stats;
+        Texture lightmap;
+        lightmap.CreatePlainWhite();
+        lightmap.m_atlasData = {0, 0, 0.5f, 0.5f};
+        const auto render = [&](const RenderableInstancePtr& object)
+        {
+            object->UpdateGlobalBounds();
+            const auto& bounds = object->GetGlobalBounds();
+            const auto center = bounds.GetCenter();
+            const float span = (std::max)(bounds.GetSphereRadius() * 3.f, 0.2f);
+            Matrix4 projection, transform;
+            projection.CreateOrthographic(span * 1.5f, span, 0.01f, span * 10.f);
+            transform.SetTranslation(Vector(center.GetX(), center.GetY(), center.GetZ() + span));
+            Camera camera;
+            camera.SetProjectionMatrix(projection);
+            camera.SetCameraTransformMatrix(transform);
+            VisibilityResult visible;
+            visible.m_mainCamera = &camera;
+            visible.m_visibleInstances.m_opaqueInstances.push_back({object.get(), 0});
+            visible.m_visibleInstances.m_visibleTransparencyTypes = object->GetUsedTransparencyMask();
+            visible.m_ambientColor = {1, 1, 1};
+            visible.m_fogColor = {0, 0, 0};
+            visible.m_fogFalloff = 0;
+            visible.m_lightmap = &lightmap;
+            const float black[4]{0, 0, 0, 1};
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            return target.Pixels(device, context);
+        };
+        bool allVisible = true;
+        for (const int slot : {5, 14, 15})
+        {
+            ::RawGameObject raw{};
+            Desperabis::EncodeGameObject(Desperabis::DecodeGameObject(bytes.data() + (slot - 2) * 54, 54),
+                raw.m_rawBytes, 54);
+            raw.m_level = level;
+            auto object = std::make_shared<RenderableInstance>(nullptr);
+            level->ApplyRenderProperties(object, raw);
+            scene.AddRenderableInstance(object);
+            scene.HandleFireAnimations(0);
+            const auto pixels = render(object);
+            const auto count = std::count_if(pixels.begin(), pixels.end(),
+                [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; });
+            std::cout << "Witch slot " << slot << ": " << count << " rendered pixels, "
+                << object->GetRenderable()->m_drawCalls.size() << " draw calls.\n";
+            allVisible &= count >= 8;
+        }
+        Check(allVisible, "Original witch head, animated arm and dog must draw actual pixels.");
+        scene.ClearScene();
+        class Host final : public Desperabis::GameContext
+        {
+            std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+            {
+                return FORCE_GET(FileManager::Instance().ReadDataFuture(FileManager::Instance().FilenameToNative(
+                    std::wstring(filename.begin(), filename.end()))));
+            }
+            void LoadLevel(const Desperabis::LevelLoadRequest& request) override
+            {
+                Desperabis::LevelLoadData data;
+                LoadLevelGeometry(request.levelNumber, data);
+                LoadLevelObjects(request.levelNumber, data);
+                InitializeLevelPlayerSpawn(data, {0, 0, 100});
+                CompleteLevelLoad(request.id, std::move(data));
+            }
+        } core;
+        core.StartLevel(90);
+        core.worldObjects[5].winY = 256;
+        core.worldObjects[5].winX = 3;
+        LevelScene room(90);
+        room.m_createGameObjects = false;
+        room.m_createMapIcons = false;
+        FORCE_WAIT(room.CreateScene());
+        std::array<RenderableInstancePtr, 166> objects;
+        for (std::size_t offset = 0; offset < bytes.size(); offset += 54)
+        {
+            ::RawGameObject raw{};
+            raw.m_level = level;
+            raw.m_objectNumber = static_cast<int>(offset / 54 + 2);
+            Desperabis::EncodeGameObject(core.GetObjectRenderState(raw.m_objectNumber), raw.m_rawBytes, 54);
+            if (!GamePlay::PropertyAccessorBase(raw).Isvalid()) { continue; }
+            auto object = std::make_shared<RenderableInstance>(nullptr,
+                static_cast<uint32_t>(GamePlay::VisibilityFilter::GameObjects));
+            level->ApplyRenderProperties(object, raw);
+            room.AddRenderableInstance(object);
+            objects[raw.m_objectNumber] = object;
+            LevelGameObject presentation(&room, raw);
+            presentation.m_renderInst = object;
+            FORCE_WAIT(GamePlay::CreateObjectBehavior(room, presentation, raw));
+        }
+        room.HandleFireAnimations(0);
+        Camera camera;
+        Matrix4 projection, transform;
+        projection.CreateProjection(1.5f, 70.f * static_cast<float>(Math::Pi / 180), 0.01f, 30.f);
+        transform.Create(Level::DespToPos(1430, -140, 3420), Vector(static_cast<float>(Math::Pi), 0, 0));
+        camera.SetProjectionMatrix(projection);
+        camera.SetCameraTransformMatrix(transform);
+        DefaultVisibilityContext visibility;
+        VisibilitySettings visibilitySettings;
+        const auto renderRoom = [&]
+        {
+            VisibilityResult visible;
+            visibility.ComputeResultFor(&camera, &room, visible, settings, visibilitySettings, stats);
+            const float black[4]{0, 0, 0, 1};
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            return target.Pixels(device, context);
+        };
+        const auto roomPixels = renderRoom();
+        for (int slot : {5, 14, 15})
+        {
+            objects[slot]->SetVisible(false);
+            const auto omitted = renderRoom();
+            int changed = 0;
+            for (std::size_t i = 0; i < omitted.size(); ++i) { changed += omitted[i] != roomPixels[i]; }
+            std::cout << "Witch room slot " << slot << ": " << changed << " visible pixels.\n";
+            Check(changed >= 8, "Linked witch components must be visible in the actual room, not behind its wall.");
+            objects[slot]->SetVisible(true);
+        }
+        room.SetFireAnimationFrame(13, 4);
+        room.HandleFireAnimations(0);
+        const auto talking = renderRoom();
+        int mouthPixels = 0;
+        for (std::size_t i = 0; i < talking.size(); ++i) { mouthPixels += talking[i] != roomPixels[i]; }
+        std::cout << "Witch room mouth: " << mouthPixels << " changed pixels.\n";
+        Check(mouthPixels >= 8, "Native mouth frames must visibly change the witch's face in the actual room.");
+        const auto mouthOverride = std::find_if(objects[5]->m_materialOverride.begin(), objects[5]->m_materialOverride.end(),
+            [](const DrawCallMaterial& material) { return material.m_textureSlot == 13; });
+        Check(mouthOverride != objects[5]->m_materialOverride.end(), "The real scene must retain the mouth override.");
+        auto& mouthMaterial = *mouthOverride;
+        room.SetFireAnimationFrame(13, 0);
+        room.HandleFireAnimations(0);
+        mouthMaterial.m_depthOffset = 0;
+        mouthMaterial.ComputeHash();
+        const auto unoffsetClosed = renderRoom();
+        room.SetFireAnimationFrame(13, 4);
+        room.HandleFireAnimations(0);
+        mouthMaterial.m_depthOffset = 0;
+        mouthMaterial.ComputeHash();
+        const auto unoffsetTalking = renderRoom();
+        int unoffsetPixels = 0;
+        for (std::size_t i = 0; i < talking.size(); ++i) { unoffsetPixels += unoffsetClosed[i] != unoffsetTalking[i]; }
+        std::cout << "Witch mouth without overlay offset: " << unoffsetPixels << " changed pixels.\n";
+        Check(unoffsetPixels == 0, "The original base-face quad must reproduce the missing-mouth depth occlusion.");
+        room.HandleFireAnimations(0);
+        for (const int slot : {14, 15})
+        {
+            std::array<std::vector<std::uint32_t>, 2> poses;
+            for (int phase = 0; phase < 2; ++phase)
+            {
+                auto pose = core.GetObjectRenderState(slot);
+                pose.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(phase * 100);
+                ::RawGameObject raw{};
+                raw.m_level = level;
+                Desperabis::EncodeGameObject(pose, raw.m_rawBytes, 54);
+                level->ApplyRenderProperties(objects[slot], raw);
+                room.AssignFireAnimations(*objects[slot]);
+                room.HandleFireAnimations(0);
+                poses[phase] = renderRoom();
+            }
+            int changed = 0;
+            for (std::size_t i = 0; i < poses[0].size(); ++i) { changed += poses[0][i] != poses[1][i]; }
+            Check(changed >= 8, "Attached arm and dog morphs must visibly animate in the room after pose refreshes.");
+        }
+        room.ClearScene();
+    }
+
     std::array<Desperabis::RawGameObject, 8> OriginalItems()
     {
         std::array<Desperabis::RawGameObject, 8> items{};
@@ -2515,6 +2774,7 @@ int main(int argc, char* argv[])
         const auto items = OriginalItems();
         CheckTextControls(font);
         CheckTutorialFlames();
+        CheckWitchMouth(renderer, device.Get(), context.Get());
         CheckMutableWalls(renderer, device.Get(), context.Get());
         CheckWaterSurfaceDefinitions();
         CheckEnemyModels();
@@ -2577,6 +2837,30 @@ int main(int argc, char* argv[])
                 return target.Pixels(device.Get(), context.Get());
             };
             const auto render = [&] { return drawRecipe(core.GetApplicationPresentation()); };
+            {
+                using namespace Desperabis;
+                ApplicationPresentation cursor{ MenuPage::MainMenu, {
+                    UiFill{ { 0,0,360,240 }, { 0,0,0 } },
+                    UiBitmap{ { 48,37,0,0 }, UiBitmapSource::MenuCursor, 0,0,0,
+                        { 204,153,85 }, UiBitmapLayout::SpriteAnchor } } };
+                std::vector<std::uint32_t> previous;
+                for (std::uint8_t frame = 0; frame < 10; ++frame)
+                {
+                    auto& sword = std::get<UiBitmap>(cursor.commands.back());
+                    sword.animation = frame / 5;
+                    sword.frame = frame % 5;
+                    const auto pixels = drawRecipe(cursor);
+                    int goldPixels = 0;
+                    for (auto pixel : pixels)
+                    {
+                        const int r = pixel & 255, g = (pixel >> 8) & 255, b = (pixel >> 16) & 255;
+                        goldPixels += r > g && g > b && g > 10;
+                    }
+                    Check(goldPixels > 0 && pixels != previous,
+                        "All ten sword frames must render distinctly in the font palette, not the world palette.");
+                    previous = pixels;
+                }
+            }
             {
                 const float black[4]{ 0,0,0,1 };
                 context->ClearRenderTargetView(target.colorView.Get(), black);
@@ -2756,6 +3040,8 @@ int main(int argc, char* argv[])
                 "Unlit UI model pictures must not modify shared world materials.");
             core.SetMenuPage(Desperabis::MenuPage::MainMenu);
             Check(render() != baseline, "The main menu must have a distinct presentation.");
+            const auto herz = FORCE_GET(files.ReadDataFuture(files.FilenameToNative(L"GRAFIK\\HERZ.256")));
+            core.SetGameParts(herz.data(), herz.size());
             core.SetMenuPage(Desperabis::MenuPage::ChapterSelection);
             const auto partSelection = render();
             Check(partSelection != baseline && partSelection == render(),
@@ -2772,6 +3058,92 @@ int main(int argc, char* argv[])
             selectionInput.down = true;
             core.UpdateApplication(0, selectionInput);
             Check(render() != partSelection, "Part selection must visibly move focus to the next part.");
+            core.SetMenuPage(Desperabis::MenuPage::LoadGame);
+            const auto loadScreen = render();
+            core.SetMenuPage(Desperabis::MenuPage::SaveGame);
+            const auto saveScreen = render();
+            Check(loadScreen != baseline && saveScreen != loadScreen,
+                "Native load/save slot screens must render distinctly at every tested aspect ratio.");
+            selectionInput.down = false;
+            core.UpdateApplication(0, selectionInput);
+            core.UpdateApplication(0.11, selectionInput);
+            const auto rotated = render();
+            Check(rotated != saveScreen, "The native sword must rotate using the UI clock while gameplay is paused.");
+            for (std::size_t pixel = 0; pixel < saveScreen.size(); ++pixel)
+            {
+                if (saveScreen[pixel] == rotated[pixel]) { continue; }
+                const float x = (pixel % size.first - offsetX) / scale;
+                const float y = (pixel / size.first - offsetY) / scale;
+                Check(x >= 32 && x <= 68 && y >= 29 && y <= 44,
+                    "Sword animation must affect only its original anchored, half-height sprite footprint.");
+            }
+            auto editor = core.GetApplicationPresentation();
+            const auto firstRow = std::find_if(editor.commands.begin(), editor.commands.end(), [](const auto& command)
+            {
+                const auto* text = std::get_if<Desperabis::UiText>(&command);
+                return text && text->x == 80 && text->y == 32;
+            });
+            Check(firstRow != editor.commands.end(), "Save editing requires its original inline row.");
+            auto& name = std::get<Desperabis::UiText>(*firstRow);
+            const auto emptyEditor = drawRecipe(editor);
+            name.caret = true;
+            const auto emptyCaret = drawRecipe(editor);
+            Check(emptyCaret != emptyEditor, "An entirely erased name must render a visible inline caret without crashing.");
+            name.text = "Level 12";
+            const auto typedCaret = drawRecipe(editor);
+            name.caret = false;
+            const auto typed = drawRecipe(editor);
+            Check(typed != emptyEditor && typedCaret != typed, "The caret must blink after the actual typed name.");
+            const auto textMesh = font.CreateGlyphMesh(name.text, { 255,255,255,255 });
+            const float caretX = 80 + textMesh->GetExtent().x * name.scale + 1;
+            int caretPixels = 0;
+            for (std::size_t pixel = 0; pixel < typed.size(); ++pixel)
+            {
+                if (typed[pixel] == typedCaret[pixel]) { continue; }
+                const float x = (pixel % size.first - offsetX) / scale;
+                const float y = (pixel / size.first - offsetY) / scale;
+                Check(x >= caretX - 1 && x <= caretX + 2 && y >= 31 && y <= 46,
+                    "Blinking must stay immediately after the name, on the selected row.");
+                ++caretPixels;
+            }
+            Check(caretPixels > 0, "Inline caret checks must cover actual rendered pixels.");
+            for (const auto value : { "", "   ", "_" })
+            {
+                name.text = value;
+                name.caret = false;
+                Check(drawRecipe(editor) == emptyEditor,
+                    "Empty, whitespace-only and glyphless text meshes must be harmless in the text renderer.");
+            }
+            for (const auto page : { Desperabis::MenuPage::MainMenu, Desperabis::MenuPage::AlternateMainMenu,
+                Desperabis::MenuPage::ChapterSelection, Desperabis::MenuPage::LoadGame, Desperabis::MenuPage::SaveGame })
+            {
+                core.SetMenuPage(page);
+                int backdrops = 0, cursors = 0;
+                for (const auto& command : core.GetApplicationPresentation().commands)
+                {
+                    const auto* bitmap = std::get_if<Desperabis::UiBitmap>(&command);
+                    if (!bitmap) { continue; }
+                    backdrops += bitmap->source == Desperabis::UiBitmapSource::MenuBackground &&
+                        bitmap->layout == Desperabis::UiBitmapLayout::Stretch;
+                    cursors += bitmap->source == Desperabis::UiBitmapSource::MenuCursor;
+                }
+                Check(backdrops == 1 && cursors == 1, "Every menu-family page must use the native background and sword.");
+                const auto screen = render();
+                for (std::size_t pixel = 0; pixel < screen.size(); ++pixel)
+                {
+                    const float y = (pixel / size.first - offsetY) / scale;
+                    if (y >= 205 && y < 225)
+                    {
+                        Check(screen[pixel] == saveScreen[pixel], "Menu pages must share the same full-width native backdrop.");
+                    }
+                }
+            }
+            if (argc >= 5 && size.first == 360)
+            {
+                name.text = "Level 12";
+                name.caret = true;
+                target.SaveBitmap(argv[4], drawRecipe(editor));
+            }
             core.SetMenuPage(Desperabis::MenuPage::Inventory);
         }
         std::vector<std::uint32_t> previousMap;

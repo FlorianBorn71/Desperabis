@@ -240,7 +240,14 @@ namespace
 
     void TestUnimplementedBoundaries()
     {
-        GameContext context;
+        class MissingLoader final : public GameContext
+        {
+            std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+            {
+                if (filename == "LEVEL\\LEVELS.INF") { return std::vector<std::uint8_t>(51 * 124); }
+                throw std::logic_error("Missing test asset loader.");
+            }
+        } context;
         for (const auto page : { MenuPage::Gameplay, MenuPage::MainMenu, MenuPage::Settings,
             MenuPage::Configuration, MenuPage::ChapterSelection, MenuPage::LoadGame,
             MenuPage::SaveGame, MenuPage::Inventory, MenuPage::UnidentifiedPage5,
@@ -252,6 +259,8 @@ namespace
             Check(context.GetMenuPage() == page, "An unimplemented page must not silently succeed.");
         }
         context.SetMenuPage(MenuPage::ChapterSelection);
+        constexpr std::uint8_t herz[]{ 1, 0, 1, 0, 1, 'X', 1, 50 };
+        context.SetGameParts(herz, sizeof(herz));
         ExpectError<std::logic_error>([&] { context.StartNewGame(1); });
         Check(context.GetMenuPage() == MenuPage::ChapterSelection && !context.hasActiveGame &&
             context.GetRuntimeState() == GameRuntimeState::LoadFailed && !context.GetLevelLoadError().empty(),

@@ -35,7 +35,7 @@ This outline is a search guide; it is not all independently verified yet.
 | XMS interface detection | `1E48:044D` | `INT 2Fh` with AX=`4300`, checks AL=`80`, then AX=`4310`, saves ES:BX at DS:`ECB0`, calls the returned interface, compares AX with `0200`. Strong evidence for XMS support; bulk-upload behavior not yet traced. |
 | Application state dispatcher | `0000:E8C4` | Repeated dispatch on DS:`DC5E`; returns when byte DS:`D4F9` becomes nonzero. Observed control flow. |
 | Main menu | `0000:A625` | Handles selection and writes dispatcher states; calls drawing helper `0000:A568`. Main-menu identification is strongly supported by the referenced German menu strings. |
-| New-game/chapter selection candidate | `0000:8299` | Reached through the New Game menu item; selector calls `0000:0D30` on acceptance. Exact chapter metadata is not decoded. |
+| New-game/chapter selection | `0000:8299` | Reached through New Game; selector calls `0000:0D30` on acceptance. Names and full level sequences are paired Pascal rows in `GRAFIK/HERZ.256`; see [HERZ/SPL contract](BehaviorRecovery.md#native-savegames-and-herz-part-data). |
 | Settings / configuration candidates | `0000:851D`, `0000:92C0` | Reached through the corresponding main-menu choices and states. Their individual controls are not yet mapped. |
 | Fresh-game initializer | `0000:0D30` | Resets inventory, meters and weapons after chapter acceptance. Full resource-loading/story metadata remain unresolved; the port resets known state and uses normal level loading. |
 | Normal gameplay-loop candidate | `0000:E2A3` | State `0` handler, with timer-counter waiting, repeated updates, object-behavior call, and frame work. Strong structural match. |

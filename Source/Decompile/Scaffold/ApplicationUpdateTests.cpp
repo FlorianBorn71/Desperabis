@@ -6,11 +6,15 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 
 using namespace Desperabis;
 
 namespace
 {
+    std::filesystem::path originalAssets;
     void Check(bool condition, const char* message)
     {
         if (!condition) { throw std::runtime_error(message); }
@@ -41,6 +45,20 @@ namespace
         bool fail = false;
         bool reportFailure = false;
         std::vector<LevelLoadRequest> requests;
+        std::array<std::optional<std::vector<std::uint8_t>>, 10> saves{};
+        bool writeFails = false;
+        std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+        {
+            std::ifstream file(originalAssets / filename, std::ios::binary);
+            if (!file) { throw std::runtime_error("Missing test asset."); }
+            return { std::istreambuf_iterator<char>(file), {} };
+        }
+        std::optional<std::vector<std::uint8_t>> ReadSaveFile(std::uint8_t slot) override { return saves.at(slot - 1); }
+        void WriteSaveFile(std::uint8_t slot, const std::vector<std::uint8_t>& bytes) override
+        {
+            if (writeFails) { throw std::runtime_error("Test disk is full."); }
+            saves.at(slot - 1) = bytes;
+        }
         int healthNotifications = 0;
         void OnPlayerHealthChanged(std::int32_t, std::int32_t) override { ++healthNotifications; }
         void LoadLevel(const LevelLoadRequest& request) override
@@ -48,7 +66,18 @@ namespace
             requests.push_back(request);
             if (fail) { throw std::runtime_error("New-game fixture failed to load."); }
             if (reportFailure) { FailLevelLoad(request.id, "New-game fixture reported failure."); return; }
-            if (synchronous) { CompleteLevelLoad(request.id, MakeLevel()); }
+            if (synchronous)
+            {
+                if (GetPendingSaveGame())
+                {
+                    LevelLoadData data;
+                    LoadLevelGeometry(request.levelNumber, data);
+                    LoadLevelObjects(request.levelNumber, data);
+                    InitializeLevelPlayerSpawn(data, { 0, 0, 100 });
+                    CompleteLevelLoad(request.id, std::move(data));
+                }
+                else { CompleteLevelLoad(request.id, MakeLevel()); }
+            }
         }
         static LevelLoadData MakeLevel()
         {
@@ -197,7 +226,7 @@ namespace
         Tap(host, input, InputKey::UiConfirmKey);
         Tap(host, input, InputKey::UiCancelKey);
         Check(host.GetMenuPage() == MenuPage::MainMenu, "Suppressed Resume and Escape must remain gated.");
-        Move(host, input, InputKey::UiDownKey, 2);
+        Move(host, input, InputKey::UiDownKey, 4);
         Tap(host, input, InputKey::UiConfirmKey);
         Check(host.GetMenuPage() == MenuPage::Quit && !host.UpdateApplication(100, input).tick &&
             host.GetApplicationPresentation().commands.empty(), "Quit must be requested by the core without more simulation.");
@@ -219,6 +248,18 @@ namespace
             for (const auto& command : host.GetApplicationPresentation().commands)
             {
                 if (const auto* text = std::get_if<UiText>(&command); text && text->text == value) { return true; }
+            }
+            return false;
+        };
+        const auto focusedPart = [](const GameContext& host, std::size_t part)
+        {
+            for (const auto& command : host.GetApplicationPresentation().commands)
+            {
+                if (const auto* bitmap = std::get_if<UiBitmap>(&command); bitmap &&
+                    bitmap->source == UiBitmapSource::MenuCursor && bitmap->bounds.y == 37.f + part * 30.f)
+                {
+                    return true;
+                }
             }
             return false;
         };
@@ -263,9 +304,10 @@ namespace
             Move(host, input, InputKey::UiUpKey, 4);
             Move(host, input, InputKey::UiDownKey, part);
             constexpr std::array<int, 3> starts{ 50, 30, 10 };
-            Check(hasText(host, "Training level") && hasText(host, "Part 1") && hasText(host, "Part 2") &&
-                hasText(host, "Starts at level " + std::to_string(starts[part])),
-                "Part selection must expose exactly the playable part starts.");
+            Check(hasText(host, host.GetGameParts()[0].name) && hasText(host, host.GetGameParts()[1].name) &&
+                hasText(host, host.GetGameParts()[2].name) && focusedPart(host, static_cast<std::size_t>(part)) &&
+                !hasText(host, "Starts at level " + std::to_string(starts[part])),
+                "Part selection must use HERZ labels and omit the level-start prompt.");
             input.Set(InputKey::AttackKey, true);
             input.Set(InputKey::DebugNextLevelKey, true);
             const auto transition = Tap(host, input, InputKey::UiConfirmKey);
@@ -298,7 +340,7 @@ namespace
             {
                 for (int i = 0; i < 6; ++i) { Tap(host, input, InputKey::DebugNextLevelKey); }
                 Check(host.GetLoadedLevelNumber() == 16,
-                    "New Game Part 2 followed by six Tab advances must reach the forest.");
+                    "Skipping the unported HERZ introduction followed by six advances must reach the forest.");
             }
         }
         Host cancelled;
@@ -309,7 +351,7 @@ namespace
         Move(cancelled, input, InputKey::UiDownKey);
         Tap(cancelled, input, InputKey::UiConfirmKey);
         Move(cancelled, input, InputKey::UiDownKey, 5);
-        Check(hasText(cancelled, "Starts at level 10"), "Part navigation must stop at Part 2.");
+        Check(focusedPart(cancelled, 2), "Part navigation must stop at the final HERZ part.");
         Tap(cancelled, input, InputKey::UiCancelKey);
         Check(cancelled.GetMenuPage() == MenuPage::MainMenu && cancelled.requests.size() == 1 &&
             Same(cancelled.inventory[0], Item(CollisionType::Medicine, 42)),
@@ -319,7 +361,7 @@ namespace
         cancelled.UpdateApplication(0, input);
         cancelled.UpdateApplication(1, input);
         Check(cancelled.GetMenuPage() == MenuPage::ChapterSelection && cancelled.requests.size() == 1 &&
-            hasText(cancelled, "Starts at level 50"),
+            focusedPart(cancelled, 0),
             "Selection reentry must reset focus and held Enter must not immediately start the highlighted part.");
         input.keys.fill(false);
         cancelled.UpdateApplication(0, input);
@@ -370,6 +412,119 @@ namespace
         Check(failed.GetMenuPage() == MenuPage::ChapterSelection && !failed.hasActiveGame &&
             failed.GetLevelLoadError() == "New-game fixture reported failure.",
             "A host-reported synchronous failure must not look like successful New Game.");
+    }
+
+    void TestSaveLoadMenus()
+    {
+        Host host;
+        Input input;
+        Ready(host, input);
+        host.gold = 23;
+        host.playerLife = 123 * 65536 + 17;
+        const auto contains = [&host](std::string_view value)
+        {
+            for (const auto& command : host.GetApplicationPresentation().commands)
+            {
+                if (const auto* text = std::get_if<UiText>(&command); text && text->text.find(value) != std::string::npos)
+                {
+                    return true;
+                }
+            }
+            return false;
+        };
+        const auto open = [&](int row)
+        {
+            Tap(host, input, InputKey::MainMenuKey);
+            Move(host, input, InputKey::UiDownKey, row);
+            Tap(host, input, InputKey::UiConfirmKey);
+        };
+        open(3);
+        const auto row = [&host](float y)
+        {
+            for (const auto& command : host.GetApplicationPresentation().commands)
+            {
+                if (const auto* text = std::get_if<UiText>(&command); text && text->x == 80 && text->y == y)
+                {
+                    return *text;
+                }
+            }
+            throw std::runtime_error("Missing native save row.");
+        };
+        Check(host.GetMenuPage() == MenuPage::SaveGame && row(32).text.empty() && !contains("Empty"),
+            "Unused slots must be blank native rows, without labels or numbering.");
+        const auto seed = host.randomSeed;
+        Check(!host.UpdateApplication(1, input).tick && host.randomSeed == seed,
+            "Save/load menus must freeze the world and RNG.");
+        Tap(host, input, InputKey::UiConfirmKey);
+        Check(row(32).text.empty() && row(32).caret, "Empty slots must start editing in place with a visible caret.");
+        host.UpdateApplication(0.6, input);
+        Check(!row(32).caret, "The inline caret must blink while the world remains paused.");
+        host.QueueTextInput(std::string(20, '\b') + "River gate");
+        host.UpdateApplication(0, input);
+        Check(row(32).text == "River gate" && row(32).caret,
+            "Save names must replace their row in place, with a separate caret.");
+        host.QueueTextInput(std::string(20, '\b'));
+        host.UpdateApplication(0, input);
+        Check(row(32).text.empty() && row(32).caret, "Erasing every character must keep a valid empty editor.");
+        Tap(host, input, InputKey::UiConfirmKey);
+        Check(contains("Enter a save name.") && !host.saves[0],
+            "An empty name must report validation without saving or leaving the editor.");
+        host.QueueTextInput("River gate");
+        host.UpdateApplication(0, input);
+        const auto savedFrame = Tap(host, input, InputKey::UiConfirmKey);
+        Check(host.GetMenuPage() == MenuPage::Gameplay && !savedFrame.tick && host.saves[0] &&
+            NativeSaveGame::Decode(*host.saves[0]).Name() == "River gate",
+            "Confirming a name must write a native SPL and return without simulating a transition frame.");
+        const auto original = *host.saves[0];
+        host.gold = 99;
+        host.playerLife = 42 * 65536;
+        open(2);
+        Check(host.GetMenuPage() == MenuPage::LoadGame && contains("River gate"),
+            "Load slots must show names read from SPL headers.");
+        const auto loadedFrame = Tap(host, input, InputKey::UiConfirmKey);
+        Check(!loadedFrame.tick && host.GetMenuPage() == MenuPage::Gameplay &&
+            host.GetRuntimeState() == GameRuntimeState::Ready && host.gold == 23 &&
+            host.playerLife == 123 * 65536 + 17,
+            "Loading must restore saved progress even when reloading the same level.");
+        open(3);
+        Tap(host, input, InputKey::UiConfirmKey);
+        host.QueueTextInput(std::string(20, '\b') + "Cancelled");
+        host.UpdateApplication(0, input);
+        Tap(host, input, InputKey::UiCancelKey);
+        Check(host.GetMenuPage() == MenuPage::SaveGame && *host.saves[0] == original,
+            "Escape while editing must not overwrite an existing slot.");
+        Tap(host, input, InputKey::UiConfirmKey);
+        host.QueueTextInput(std::string(20, '\b') + std::string(30, 'A'));
+        host.UpdateApplication(0, input);
+        Check(row(32).text == std::string(NativeSaveGame::NameCapacity, 'A') && row(32).caret,
+            "Save names must stop at the original 20-byte limit.");
+        host.writeFails = true;
+        Tap(host, input, InputKey::UiConfirmKey);
+        Check(host.GetMenuPage() == MenuPage::SaveGame && contains("Test disk is full.") &&
+            *host.saves[0] == original, "Save failures must be visible and preserve the previous slot.");
+        host.writeFails = false;
+        Tap(host, input, InputKey::UiConfirmKey);
+        Check(host.GetMenuPage() == MenuPage::Gameplay &&
+            NativeSaveGame::Decode(*host.saves[0]).Name() == std::string(NativeSaveGame::NameCapacity, 'A'),
+            "Confirming an edited existing slot must overwrite immediately without another prompt.");
+        open(3);
+        Tap(host, input, InputKey::UiConfirmKey);
+        Tap(host, input, InputKey::UiCancelKey);
+        Tap(host, input, InputKey::UiCancelKey);
+        Tap(host, input, InputKey::UiCancelKey);
+        Check(host.GetMenuPage() == MenuPage::Gameplay, "Cancelling save UI must return through the main menu.");
+        host.saves[1] = original;
+        host.saves[1]->back() ^= 1;
+        open(2);
+        Move(host, input, InputKey::UiDownKey);
+        const auto requests = host.requests.size();
+        Tap(host, input, InputKey::UiConfirmKey);
+        Check(contains("checksum mismatch") && host.requests.size() == requests &&
+            host.GetMenuPage() == MenuPage::LoadGame && host.gold == 23,
+            "Corrupt slots must report an error without starting a load or replacing the current game.");
+        Move(host, input, InputKey::UiDownKey);
+        Tap(host, input, InputKey::UiConfirmKey);
+        Check(contains("This slot is empty."), "An empty slot must not pretend to load successfully.");
     }
 
     void TestInventorySelectionAndNavigation()
@@ -748,19 +903,22 @@ namespace
         {
             if (const auto* text = std::get_if<UiText>(&command))
             {
-                Check(text->layout == UiTextLayout::TopAligned, "Main-menu text must preserve its existing metrics.");
+                Check(text->layout == UiTextLayout::Menu, "Menu text must use the original 480-line pixel aspect.");
             }
         }
     }
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    if (argc != 2) { throw std::invalid_argument("Expected the original asset directory."); }
+    originalAssets = argv[1];
     try
     {
         TestFrameTimingAndRoutes();
         TestGatesLoadingAndQuit();
         TestNewGameSelection();
+        TestSaveLoadMenus();
         TestInventorySelectionAndNavigation();
         TestRepeatPulseAndInputLeakage();
         TestPotionCompatibility();

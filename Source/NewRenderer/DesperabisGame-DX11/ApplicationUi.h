@@ -63,6 +63,9 @@ private:
     CachedMesh m_heldWeaponMesh;
     const Texture* m_heldWeaponTexture = nullptr;
     std::shared_ptr<Texture> m_mapPaper, m_collisionMap;
+    std::shared_ptr<Texture> m_menuBackground;
+    std::shared_ptr<TextureAnim> m_menuCursor;
+    std::shared_ptr<TextMesh> m_textCaret;
     std::vector<Color4> m_mapPaperPixels;
     std::shared_ptr<Texture> m_geometryMap;
     const Desperabis::Level* m_geometryMapSource = nullptr;

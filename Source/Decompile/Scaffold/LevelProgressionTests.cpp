@@ -12,6 +12,7 @@ using namespace Desperabis;
 
 namespace
 {
+    std::filesystem::path originalAssets;
     void Check(bool condition, const char* message)
     {
         if (!condition) { throw std::runtime_error(message); }
@@ -93,7 +94,7 @@ namespace
 
         std::vector<std::uint8_t> LoadFile(std::string_view filename) override
         {
-            std::ifstream stream(original / std::string(filename), std::ios::binary);
+            std::ifstream stream((original.empty() ? originalAssets : original) / std::string(filename), std::ios::binary);
             if (!stream) { throw std::runtime_error("Missing original fixture: " + std::string(filename)); }
             return { std::istreambuf_iterator<char>(stream), {} };
         }
@@ -119,9 +120,9 @@ namespace
 
     void TestDestinationsAndCompletion()
     {
-        constexpr std::array<std::int16_t, 26> sequence{
-            50, 30, 31, 32, 33, 36, 34, 35,
-            10, 11, 12, 13, 14, 15, 16, 17, 18, 90, 19, 20, 21, 22, 23, 24, 25, 26 };
+        constexpr std::array<std::int16_t, 29> sequence{
+            50, 29, 30, 31, 32, 33, 36, 34, 35,
+            9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 90, 19, 20, 21, 22, 23, 24, 97, 25, 26 };
         for (std::size_t i = 0; i < sequence.size(); ++i)
         {
             Host host;
@@ -315,7 +316,7 @@ namespace
         host.UpdateApplication(0, input);
         input.Set(InputKey::DebugNextGamePartKey, true);
         host.UpdateApplication(0, input);
-        Check(host.GetLoadedLevelNumber() == 10, "Core must choose the next game-part entry.");
+        Check(host.GetLoadedLevelNumber() == 10, "Core must choose the next playable HERZ game-part entry.");
     }
 
     void TestOriginalNewGame(const std::filesystem::path& original)
@@ -370,6 +371,7 @@ int main(int argc, char** argv)
     try
     {
         if (argc != 2) { throw std::invalid_argument("Expected the original assets directory."); }
+        originalAssets = argv[1];
         TestDestinationsAndCompletion();
         TestContactAndTickBoundary();
         TestInventoryAndAsyncLoading();

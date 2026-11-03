@@ -7,6 +7,7 @@ bool DrawCall::IsBatchableWith(const DrawCall& other) const
     if (m_material.m_textureSlot != other.m_material.m_textureSlot
         || m_material.m_useAlphaTest != other.m_material.m_useAlphaTest
         || m_material.m_applyLighting != other.m_material.m_applyLighting
+        || m_material.m_depthOffset != other.m_material.m_depthOffset
         //|| m_material.m_textureRepeat != other.m_material.m_textureRepeat
         || m_material.m_reflectionType != other.m_material.m_reflectionType
         || m_material.m_transparencyType != other.m_material.m_transparencyType)
@@ -39,6 +40,10 @@ uint64_t DrawCall::ComputeBatchingKey() const
     // Atlas packing must not erase source material slots needed by instance overrides.
     uint64_t slot = (uint64_t)(m_material.m_textureSlot + 1);
     batchingKey |= slot << 28;
+    if (m_material.m_depthOffset != 0.f)
+    {
+        batchingKey ^= static_cast<uint64_t>(std::hash<float>{}(m_material.m_depthOffset));
+    }
 
     return batchingKey;
 
@@ -48,6 +53,10 @@ void DrawCallMaterial::ComputeHash()
 {
     m_materialHash = *((uint32_t*)&m_opacity) ^ 0x55555555;
     m_materialHash ^= m_applyLighting ? 17 : 0;
+    if (m_depthOffset != 0.f)
+    {
+        m_materialHash ^= static_cast<uint32_t>(std::hash<float>{}(m_depthOffset));
+    }
 }
 
 void DrawCallMaterial::SetOpacity(float opacity)

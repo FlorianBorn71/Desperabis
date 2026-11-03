@@ -293,6 +293,7 @@ namespace Desperabis
 
     void GameContext::CompleteLevelLoad(std::uint64_t requestId, LevelLoadData data)
     {
+        const bool restoringSave = pendingSaveGame.has_value();
         if (!pendingLevelLoad || pendingLevelLoad->id != requestId)
         {
             throw std::logic_error("Level completion does not match the pending request.");
@@ -358,6 +359,7 @@ namespace Desperabis
         soundListenerZ = worldObjects[1].posZ;
         lightingCache = newLighting;
         field_DC34 = 0;
+        if (pendingSaveGame) { RestoreSaveGame(); }
         loadedLevelNumber = pendingLevelLoad->levelNumber;
         pendingLevelLoad.reset();
         levelLoadError.clear();
@@ -366,7 +368,7 @@ namespace Desperabis
         SetMenuPage(MenuPage::Gameplay);
         applicationPageChanged = true;
         applicationTickAccumulator = 0;
-        UpdateModelAttachments();
+        if (!restoringSave) { UpdateModelAttachments(); }
         for (std::size_t slot = 1; slot < worldObjects.size(); ++slot)
         {
             NotifyObjectCreated(worldObjects[slot]);
@@ -381,6 +383,7 @@ namespace Desperabis
         }
         if (error.empty()) { throw std::invalid_argument("Level loading failures require an error message."); }
         levelLoadError = error;
+        pendingSaveGame.reset();
         pendingLevelLoad.reset();
         runtimeState = GameRuntimeState::LoadFailed;
     }
@@ -767,13 +770,33 @@ namespace Desperabis
     {
         if (levelNumber <= 0) { throw std::invalid_argument("Geometry loading requires a positive level number."); }
         const auto filename = "LEVEL\\FELD" + std::to_string(levelNumber) + ".256";
-        const auto payload = LoadFile(filename);
+        std::vector<std::uint8_t> payload;
+        if (pendingSaveGame)
+        {
+            payload.resize(Level::GeometryStreamSize);
+            payload[0] = 49;
+            payload[2] = 39;
+            std::copy_n(pendingSaveGame->bytes.data() + NativeSaveGame::Geometry, 14000, payload.data() + 4);
+        }
+        else { payload = LoadFile(filename); }
         auto loadedLevel = std::make_unique<Level>();
         loadedLevel->LoadGeometry(payload.data(), payload.size());
-        loadedLevel->BuildCollisionMap();
-        const auto info = LoadFile("LEVEL\\LEVELS.INF");
+        if (pendingSaveGame)
+        {
+            loadedLevel->collisionMap = std::make_unique<CollisionMap>();
+            auto& map = *loadedLevel->collisionMap;
+            map.widthMinusOne = pendingSaveGame->Word(NativeSaveGame::Map);
+            map.heightMinusOne = pendingSaveGame->Word(NativeSaveGame::Map + 2);
+            const auto count = (static_cast<std::size_t>(map.widthMinusOne) + 1) *
+                (static_cast<std::size_t>(map.heightMinusOne) + 1);
+            std::copy_n(pendingSaveGame->bytes.data() + NativeSaveGame::Map + 4, count, map.data);
+        }
+        else { loadedLevel->BuildCollisionMap(); }
+        const auto info = pendingSaveGame ? std::vector<std::uint8_t>(
+            pendingSaveGame->bytes.begin() + NativeSaveGame::Info,
+            pendingSaveGame->bytes.begin() + NativeSaveGame::Info + 124) : LoadFile("LEVEL\\LEVELS.INF");
         constexpr std::size_t recordSize = 124;
-        const auto recordOffset = static_cast<std::size_t>(levelNumber) * recordSize;
+        const auto recordOffset = pendingSaveGame ? 0 : static_cast<std::size_t>(levelNumber) * recordSize;
         if (info.size() % recordSize != 0 || info.size() < recordOffset + recordSize)
         {
             throw std::invalid_argument("LEVEL\\LEVELS.INF: expected complete 124-byte records including the requested level.");
@@ -788,6 +811,7 @@ namespace Desperabis
         const auto repeatHeight = static_cast<std::int16_t>(
             info[recordOffset + 116] > 0 ? info[recordOffset + 117] * 5 : 0);
         loadedLevel->hasSky = info[recordOffset + 96] != 0;
+        std::copy_n(info.data() + recordOffset, recordSize, loadedLevel->nativeInfo.data());
         data.level = std::move(loadedLevel);
         data.floorRepeatHeight = repeatHeight;
         data.ambientSound = info[recordOffset + 100];
@@ -822,7 +846,9 @@ namespace Desperabis
     {
         if (levelNumber <= 0) { throw std::invalid_argument("Object loading requires a positive level number."); }
         const auto filename = "LEVEL\\OBJPOS" + std::to_string(levelNumber) + ".DAT";
-        const auto payload = LoadFile(filename);
+        const auto payload = pendingSaveGame ? std::vector<std::uint8_t>(
+            pendingSaveGame->bytes.begin() + NativeSaveGame::Player + 54,
+            pendingSaveGame->bytes.begin() + NativeSaveGame::Player + 164 * 54) : LoadFile(filename);
         constexpr std::size_t firstSlot = 2;
         constexpr std::size_t lastSlot = 164;
         constexpr auto recordSize = sizeof(RawGameObject);
@@ -838,13 +864,53 @@ namespace Desperabis
             data.objects[slot] = offset < payload.size() ?
                 DecodeGameObject(payload.data() + offset, recordSize) : RawGameObject{};
         }
+        if (pendingSaveGame)
+        {
+            data.objects[1] = DecodeGameObject(pendingSaveGame->bytes.data() + NativeSaveGame::Player, 54);
+            data.objects[165] = DecodeGameObject(pendingSaveGame->bytes.data() + NativeSaveGame::Player + 164 * 54, 54);
+        }
         if (data.level)
         {
+            bool needsShopDescriptions = false;
             for (const auto& object : data.objects)
             {
-                if (object.health <= 0 || (object.behavior != BehaviorType::Dragon &&
-                    object.behavior != BehaviorType::DragonDying)) { continue; }
-                const int slot = object.modelId - 30;
+                if (object.health <= 0) { continue; }
+                needsShopDescriptions |= object.behavior == BehaviorType::WitchHead;
+                if (object.behavior != BehaviorType::TrackFireAnimation &&
+                    object.behavior != BehaviorType::WitchMouthAnimation) { continue; }
+                const int animation = object.itemValue;
+                if (animation < 1 || animation >= static_cast<int>(data.level->trackedTextureFrameCounts.size()) ||
+                    object.behaviorParameter == 0)
+                {
+                    throw std::invalid_argument("Tracked texture requires animation 1..7 and a nonzero period.");
+                }
+                auto& frames = data.level->trackedTextureFrameCounts[animation];
+                if (frames != 0) { continue; }
+                const auto bytes = LoadFile("ANIMS\\FACKEL" + std::to_string(animation) + ".AN2");
+                if (bytes.size() < 2 || bytes[0] == 0 || bytes[1] == 0 || bytes[0] * bytes[1] > 255)
+                {
+                    throw std::invalid_argument("Tracked texture requires a valid native animation frame count.");
+                }
+                frames = static_cast<std::uint16_t>(bytes[0] * bytes[1]);
+            }
+            if (needsShopDescriptions)
+            {
+                const auto bytes = LoadFile("LEVEL\\BEZEICH.TXT");
+                data.level->LoadObjectDescriptions(bytes.data(), bytes.size());
+            }
+            for (const auto& object : data.objects)
+            {
+                if (object.health <= 0) { continue; }
+                const RawGameObject* parent = &object;
+                if (object.renderPlacementMode == 20 && WrapSignedWord(object.generalPurpose3) > 0 &&
+                    object.doorLockOrGroupBitmask > 0)
+                {
+                    parent = &data.objects.at(object.doorLockOrGroupBitmask);
+                    if (parent->health <= 0 || parent->modelId <= 30) { continue; }
+                }
+                else if (object.behavior != BehaviorType::Dragon &&
+                    object.behavior != BehaviorType::DragonDying) { continue; }
+                const int slot = parent->modelId - 30;
                 if (slot < 0 || slot >= static_cast<int>(data.level->modelAnchors.size()) ||
                     data.level->modelFileIndices[slot] == 0)
                 {
@@ -879,6 +945,7 @@ namespace Desperabis
         const std::array<std::int16_t, 3>& direction)
     {
         if (!data.level) { throw std::invalid_argument("Player start selection requires loaded level geometry."); }
+        if (pendingSaveGame) { return; }
         std::optional<PlayerCamera> spawn;
         // 1E48:1CC6 scans columns first, retaining the last exact E0+1 match.
         for (std::size_t column = 0; column < Level::Width; ++column)
@@ -916,6 +983,7 @@ namespace Desperabis
         RefreshUnderwaterPresentation();
         applicationPageChanged = true;
         applicationTickAccumulator = 0;
+        menuAnimationSeconds = saveCaretSeconds = 0;
         navigationRepeatKey.reset();
         navigationRepeatSeconds = 0;
         if (page == MenuPage::Inventory)
@@ -928,6 +996,14 @@ namespace Desperabis
         else { inventorySource.reset(); }
         if (page == MenuPage::MainMenu || page == MenuPage::AlternateMainMenu) { mainMenuFocus = 0; }
         if (page == MenuPage::ChapterSelection) { chapterFocus = 0; }
+        if (page == MenuPage::LoadGame || page == MenuPage::SaveGame)
+        {
+            saveFocus = 0;
+            editingSaveName = false;
+            saveName.clear();
+            saveError.clear();
+            queuedText.clear();
+        }
     }
 
     bool GameContext::CanResumeGame() const
@@ -2255,6 +2331,7 @@ namespace Desperabis
 
     WeaponActionStatus GameContext::AttackWithSelectedWeapon()
     {
+        if (selectedWeapon == WeaponType::ShopGold) { return WeaponActionStatus::NoEffect; }
         if (weaponAnimationSpeed != 0 || !weaponReady || positionalSoundsSuppressed)
         {
             return WeaponActionStatus::NoEffect;
@@ -2522,6 +2599,12 @@ namespace Desperabis
                     GetStepToward(weaponAnimationSpeed, 0, ticks));
             }
         };
+        if (selectedWeapon == WeaponType::ShopGold)
+        {
+            weaponAnimationSpeed = 100;
+            if (selectedWeapon != requestedWeapon) { CommitWeaponSelection(); }
+            return WeaponActionStatus::Applied;
+        }
         if (selectedWeapon == WeaponType::None)
         {
             if (field_D500)
@@ -3374,11 +3457,54 @@ namespace Desperabis
         return { InteractionStatus::Applied };
     }
 
+    void Level::LoadObjectDescriptions(const std::uint8_t* data, std::size_t size)
+    {
+        if (!data || size == 0) { throw std::invalid_argument("Object descriptions require BEZEICH.TXT."); }
+        std::vector<std::string> descriptions(1);
+        const std::string_view text(reinterpret_cast<const char*>(data), size);
+        for (std::size_t start = 0; start < text.size();)
+        {
+            const auto end = text.find_first_of("\r\n", start);
+            const auto line = text.substr(start, end == std::string_view::npos ? text.size() - start : end - start);
+            if (line == "@") { objectDescriptions = std::move(descriptions); return; }
+            descriptions.emplace_back(line);
+            if (end == std::string_view::npos) { break; }
+            start = end + 1;
+            if (text[end] == '\r' && start < text.size() && text[start] == '\n') { ++start; }
+        }
+        throw std::invalid_argument("BEZEICH.TXT is missing its terminating @ line.");
+    }
+
+    void GameContext::DescribeShopItem(RawGameObject& object)
+    {
+        if (object.collisionType != CollisionType::BuyItem || WrapSignedWord(object.generalPurpose3) >= 1) { return; }
+        if (!level || object.generalPurpose1 >= level->objectDescriptions.size())
+        {
+            throw std::out_of_range("Shop description references an unavailable BEZEICH.TXT entry.");
+        }
+        auto text = level->objectDescriptions[object.generalPurpose1];
+        if (!text.empty()) { text.erase(0, 1); }
+        if (text.size() > 50) { text.clear(); }
+        object.generalPurpose3 = 40;
+        const auto price = text.find('=');
+        if (price != std::string::npos)
+        {
+            text.replace(price, 1, std::to_string(object.doorLockOrGroupBitmask));
+        }
+        PromptUserMessage(text, WrapSignedWord(-3 * static_cast<int>(text.size())));
+        PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId), 255, 514, 1);
+    }
+
     void GameContext::PromptUserMessage(std::string_view, std::int16_t)
     {
     }
 
     bool GameContext::IsUserMessageActive() const
+    {
+        return false;
+    }
+
+    bool GameContext::IsBottomUserMessageActive() const
     {
         return false;
     }

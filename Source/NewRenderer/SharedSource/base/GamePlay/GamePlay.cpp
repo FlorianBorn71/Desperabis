@@ -314,8 +314,8 @@ namespace GamePlay
         BT_ENUM2STRING(RoofTopThunderHandler2);
         BT_ENUM2STRING(RoofTopThunderHandler3);
         BT_ENUM2STRING(TutorialTrigger);
-        BT_ENUM2STRING(Behavior_206);
-        BT_ENUM2STRING(Behavior_209);
+        BT_ENUM2STRING(ForceWeaponSelection);
+        BT_ENUM2STRING(WitchMouthAnimation);
         BT_ENUM2STRING(BuyItem);
         BT_ENUM2STRING(CutSceneCloud);
 
@@ -420,6 +420,7 @@ namespace GamePlay
         WT_ENUM2STRING(TrapOrPole);
         WT_ENUM2STRING(Electricity);
         WT_ENUM2STRING(Showel);
+        WT_ENUM2STRING(ShopGold);
 
         return ReturnUnknown((int)t);
     }
@@ -500,7 +501,7 @@ namespace GamePlay
         PropertyAccessorBase props(rawGo);
         BehaviorType btype = props.GetBehaviorType();
 
-        if (btype == BehaviorType::TrackFireAnimation)
+        if (btype == BehaviorType::TrackFireAnimation || btype == BehaviorType::WitchMouthAnimation)
         {
             int torchlightTexAnim = rawGo.m_rawBytes[34];
             int targetTexSlot = rawGo.m_rawBytes[44] + 12;
@@ -524,7 +525,7 @@ namespace GamePlay
             default:
                 assert(false);
             }
-            scene.AddFireAnimation(torchAnim, targetTexSlot, speed);
+            scene.AddFireAnimation(torchAnim, targetTexSlot, speed, btype != BehaviorType::WitchMouthAnimation);
 
         }
         else if (btype == BehaviorType::LightSource)

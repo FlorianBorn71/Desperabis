@@ -149,7 +149,7 @@ void Scene::AddDebugGeometry(const std::vector<DebugLine>& lineBuffer)
     }
 }
 
-void Scene::AddFireAnimation(std::shared_ptr<TextureAnim> torchAnim, int targetSlot, float speed)
+void Scene::AddFireAnimation(std::shared_ptr<TextureAnim> torchAnim, int targetSlot, float speed, bool additive)
 {
     if (targetSlot < 0 || targetSlot >= 16 || !torchAnim || torchAnim->m_frames.empty() ||
         !std::isfinite(speed) || speed <= 0.f)
@@ -158,12 +158,26 @@ void Scene::AddFireAnimation(std::shared_ptr<TextureAnim> torchAnim, int targetS
     }
     m_fireAnimations[targetSlot].m_torchAnim = torchAnim;
     m_fireAnimations[targetSlot].m_speed = speed;
+    m_fireAnimations[targetSlot].m_additive = additive;
+    m_fireAnimations[targetSlot].m_frame = additive ? -1 : 0;
+}
+
+void Scene::SetFireAnimationFrame(int targetSlot, int frame)
+{
+    if (targetSlot < 0 || targetSlot >= 16 || !m_fireAnimations[targetSlot].m_torchAnim ||
+        frame < 0 || frame >= static_cast<int>(m_fireAnimations[targetSlot].m_torchAnim->m_frames.size()))
+    {
+        throw std::out_of_range("Tracked texture frame requires a loaded animation and a valid frame.");
+    }
+    m_fireAnimations[targetSlot].m_frame = frame;
 }
 
 void Scene::AddFireAnimationInstance(RenderableInstance& instance, std::size_t materialIndex)
 {
     auto& targetMaterial = instance.m_materialOverride.at(materialIndex);
-    targetMaterial.m_transparencyType = TransparencyMode::Additive; // fire animation = additive
+    const int slot = targetMaterial.m_textureSlot;
+    if (slot < 0 || slot >= 16) { throw std::out_of_range("Animated texture slot must be in 0..15."); }
+    if (m_fireAnimations[slot].m_additive) { targetMaterial.m_transparencyType = TransparencyMode::Additive; }
     for (auto& animation : m_fireAnimationInstances)
     {
         if (animation.m_targetInstance == &instance && animation.m_materialIndex == materialIndex)
@@ -243,6 +257,16 @@ void Scene::HandleFireAnimations(double elapsedTime)
         {
             // gets here from some level geometry. Assign null to prevent rendering
             mat.m_texture = nullptr;// AssetManager::Instance().GetPlainWhiteTexture();
+            continue;
+        }
+        if (slot.m_frame >= 0)
+        {
+            mat.m_transparencyType = slot.m_additive ? TransparencyMode::Additive : TransparencyMode::Opaque;
+            mat.m_texture = &slot.m_torchAnim->m_frames[slot.m_frame];
+            // The native painter overlays the mouth on a face quad that otherwise hides it with depth testing.
+            mat.m_depthOffset = slot.m_additive ? 0.f : 0.5f * DespToFloat;
+            mat.ComputeHash();
+            anim.m_targetInstance->ComputeTransparencyMask();
             continue;
         }
 

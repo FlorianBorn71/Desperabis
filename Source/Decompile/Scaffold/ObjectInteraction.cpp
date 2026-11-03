@@ -207,8 +207,29 @@ namespace Desperabis
             if (object.health == 1000) { return HandleDoorInteraction(object, state); }
             break;
 
-        case CollisionType::BookWithCode:
         case CollisionType::BuyItem:
+        {
+            if (object.itemValue <= 0) { return { InteractionStatus::NoEffect }; }
+            if (object.itemValue < 2 || static_cast<std::size_t>(object.itemValue) >= state.worldObjects.size() ||
+                state.worldObjects[object.itemValue].collisionType == CollisionType::BuyItem)
+            {
+                throw std::out_of_range("Shop stock must reference a non-proxy world slot 2..165.");
+            }
+            const auto price = object.doorLockOrGroupBitmask;
+            if (price > 0 && state.gold < price)
+            {
+                state.PromptUserMessage("Nicht genug Gold", 90);
+                return { InteractionStatus::NoEffect };
+            }
+            if (price > 0) { state.gold = WrapSignedWord(state.gold - price); }
+            auto& stock = state.worldObjects[object.itemValue];
+            stock.collisionMask = 255;
+            const auto result = HandlePlayerObjectInteraction(stock, state);
+            // Native 09BE consumes the proxy even if the linked pickup reports a full inventory.
+            state.SetObjectHealth(object, 0);
+            return result;
+        }
+        case CollisionType::BookWithCode:
         case CollisionType::WheelToLiftRope:
         case CollisionType::VaseToGrab:
         case CollisionType::MirrorToGrab:

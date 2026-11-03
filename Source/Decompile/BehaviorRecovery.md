@@ -6,6 +6,98 @@ each recovered case an editable, named home without hiding missing behavior.
 
 ## Game context and application flow
 
+### Witch shop (level 90)
+
+All live behavior selectors in original `OBJPOS90.DAT` now have recovered
+implementations. Evidence:
+[witch dispatcher/head](witch-level-evidence.txt),
+[head/transaction helpers](witch-shop-helpers-evidence.txt),
+[tracked texture frame normalization](witch-texture-decoder-evidence.txt),
+[shop update](flame-tracking-evidence.txt), and
+[player collision branches](player-collision-evidence.txt).
+
+- `BuyItem` (208, `10AC:D3A3`) is a **proxy**, not the item itself.
+  Word 34 links another world slot; word 46 is its signed gold price;
+  word 36 indexes `LEVEL/BEZEICH.TXT`. Byte 52 optionally hides a unique
+  weapon already present in `weaponInventorySlots`. Hide the proxy when
+  its linked stock no longer has health 1000, and restrict its collision
+  mask by the native view-angle sectors (0..3 and 29..31).
+- Collision 17 calls `0EF0:0994` before recursively performing the linked
+  item's ordinary interaction. Positive prices are deducted immediately;
+  nonpositive prices are free. The linked collision mask becomes 255.
+  `09BE` removes the proxy **even when the inventory is full**; in that
+  case the paid-for stock remains available in the world. Stacking,
+  ammunition, poison and duplicate-weapon handling reuse ordinary pickups.
+  The port additionally reports insufficient funds with `Nicht genug Gold`;
+  the native affordability helper itself only returns false.
+- `WitchHead` (207, `10AC:CF64..D1D8`) tracks the player when its nodding
+  pose permits rotation, tilts toward any selected contact, and randomly
+  runs its blink/morph cycle. Selecting a shop proxy formats the first `=`
+  in its localized description with the price and plays its original
+  byte-5 sample at full volume, source 514, limit 1. Preserve physical
+  blank lines in `BEZEICH.TXT`, its leading metadata character, and the
+  native 50-character description limit. Word 40 becomes 40 on description;
+  it only counts down while the proxy's Manhattan player distance exceeds
+  50, preventing speech from repeatedly restarting while selecting it.
+- Behavior 209 is now `WitchMouthAnimation`, not another fire emitter:
+  **`FACKEL7.AN2` contains five mouth frames**. It chooses randomized phases
+  during bottom-anchored speech, otherwise phase 1, and reuses the tracked
+  texture helper of behavior 202. Native elapsed/period/remainder words
+  and one-based frame wrapping are retained. The renderer binds reserved
+  slot 13 non-additively and uses core-produced frames, not an independent
+  always-talking animation. `IsBottomUserMessageActive()` lets the host
+  expose the relevant message state while retaining ownership of prompts.
+- Behavior 206 is now `ForceWeaponSelection`; it assigns both requested
+  and selected weapon bytes from word 34. In the witch room this is
+  `WeaponType::ShopGold` (10), not an ordinary weapon:
+  [native weapon branch](weapon-sequence-evidence.txt) `0000:C41D..C479`
+  sets the phase to 100 and draws the gold counter instead of a weapon.
+  The port displays a top-left `Gold: <balance>` text HUD (rather than
+  reproducing the native bitmap backing), suppresses attacks, and never
+  sends selector 10 to the first-person weapon renderer.
+- `UnderwaterPlants` (54) is also used for the witch petting the dog
+  (identified by the author, not inferred from the animation code):
+  sine-weighted morphs, a signed phase advancing by velocity X, and a
+  nonrepeating random target allowed by the word-34 mask.
+- The arm (slot 14, behavior 54) and dog (slot 15, `IdleAnimation` 15)
+  use **render placement 20**, not their stored editor positions.
+  Word 46 names parent slot 9; word 40 names the parent's one-based
+  **polygon**, not a vertex. Body polygons 30 and 31 are type-9 links
+  to vertices 31 and 34. Native `0000:5301..53AB` patches the polygon's
+  last byte with the child slot; `1E48:8133..827D` draws that child at
+  the transformed parent vertex and adds child velocity Y to parent yaw.
+  See [native attachment evidence](witch-model-attachments-evidence.txt).
+  `GetObjectRenderState` resolves these poses from current parent geometry
+  without modifying native world/save coordinates. Hosts must compare
+  this resolved state, so parent-only movement refreshes children too.
+- The mouth quad lies slightly **behind** the base face. Native painter
+  ordering overlays it; modern depth testing previously hid it despite
+  a correctly bound texture. Non-additive tracked mouth materials now
+  receive a half-DOS-unit view-depth offset, leaving projected XY and
+  every ordinary/fire material unchanged. Regenerate embedded DX11
+  shader bytecode after changing the shader, as described in
+  [the generator instructions](../NewRenderer/GenerateBuiltInCpps/readme.md).
+- `CurtainOpens` (134) interpolates word 42 toward signed word 36, stepping
+  by word 40 times behavior ticks. Collision 11 automatically clears the
+  mask, copies velocity Z into the rate, and requests the authored sound
+  with native random attenuation. No interaction key is required and the
+  cleared mask prevents repeated triggering. Both original curtains end
+  at morph weight 95.
+
+`WitchLevelTests.cpp` exercises every live original behavior, all ten
+offerings, insufficient/exact/free purchases, full/stacked inventory,
+duplicate blades, fireball ammunition, ownership suppression, localized
+speech and sample routing, distance-gated cooldown, both curtains,
+dog-petting/head/mouth animation and native save continuation. WARP tests
+load the original witch head and confirm its actual slot-13 material
+tracks selected mouth frames and remains opaque through pose refreshes.
+They also render the complete room with normal visibility/depth: removing
+the resolved arm or dog changes over 1,700 pixels each, both morphs visibly
+animate, and switching mouth frames in the speaking head pose changes 35
+pixels. Disabling only its depth offset reproduces zero changed mouth
+pixels. Core tests check linkage, parent transforms/movement, dead-parent
+suppression, and unchanged native save bytes after pose resolution.
+
 ### Third-part push contacts, crabs and oil
 
 [Dispatcher evidence](crab-oil-dispatch-evidence.txt) and
@@ -157,7 +249,7 @@ The DX11 game continues to use core collision rather than renderer physics.
 Fresh loads consume the saved floor plane and object records. Completed tiles
 are already final; each live front prepares only its remaining path, and its
 saved frame pair/progress restores the partial tile. Dead fronts need no replay.
-This does not add a new savegame UI/load flow.
+The [native save/load flow](#native-savegames-and-herz-part-data) also restores these wall bytes.
 
 `level-sixteen-seventeen-behaviors` checks every original front tick against an
 independent full-record/floor/collision/RNG reference, plus strict completion
@@ -238,7 +330,8 @@ the existing map-texture refresh therefore also reflects the missing walls.
 
 Fresh builds use the stored wall plane, including headerless 50x40 savegame
 planes: already-cleared tiles generate no wall faces, and dead/moved triggers
-do not require event replay. This does not add a new savegame UI/load flow.
+do not require event replay. The [native save/load flow](#native-savegames-and-herz-part-data)
+rebuilds these ranges from the saved wall plane.
 Visibility islands depend on floor/ceiling/water occupancy rather than wall
 separation, so no island rebuild is needed. Renderer-side physics is unchanged
 and unused by the core-driven DX11 game.
@@ -446,7 +539,8 @@ outer state machine lives in
   before invoking `InitializeNewGame(chapter)`. The default initializer clears
   inventory, gold, poison and maps; restores life/oxygen and native weapon
   resource/animation defaults; clears death suppression and pause; and calls
-  `StartLevel(50/30/10)` for Training/Part 1/Part 2. Host debug/audio preferences
+  `StartLevel` for the first playable entry of the selected HERZ part (50/30/10
+  with original data). Host debug/audio preferences
   are preserved. The original selector calls
   `0000:0D30(1, chapter)`; cancellation returns to the main menu without loading.
   See [chapter-selection evidence](ui-chapter-evidence.txt) and
@@ -470,14 +564,124 @@ the complete gameplay frame loop, and a missing host level loader throw descript
 `std::logic_error` exceptions. No page silently succeeds, loads resources,
 or substitutes a partial object update for a gameplay loop.
 `InitializeNewGame` now implements the recovered reset subset and uses normal
-host resource loading; complete story/resource metadata and native chapter
-unlocking remain unrecovered. The existing console remains a behavior probe; it does
+host resource loading and decoded HERZ metadata; native chapter
+unlocking and introduction playback remain unported. The existing console remains a behavior probe; it does
 not call the unimplemented application loop.
 
 [ApplicationFlowTests.cpp](Scaffold/ApplicationFlowTests.cpp) exercises all
 65,536 state words against the recovered routing table, menu availability,
 chapter acceptance/cancellation/failure, inventory entry, and a complete scripted
 main-menu/submenu/new-game/gameplay/inventory/quit sequence.
+
+### Native savegames and HERZ part data
+
+[SaveGame.cpp](Scaffold/SaveGame.cpp) decodes both formats without renderer
+dependencies. `PackingTool/Texture.cpp::FromMissionText` is the authoritative
+HERZ builder, fed by localized `MissionsMenu.txt`. The normal 4-byte image
+header gives width/height minus one. Alternating rows hold a Pascal part name
+and a counted byte list of level resource indices. An optional uncounted `96`
+immediately after the list marks END/credits. Original lists are:
+
+- Training: `50`.
+- Crystal Ball: `29,30,31,32,33,36,34,35`.
+- Rescue of Grant: `9,10,11,12,13,14,15,16,17,18,90,19,20,21,22,23,24,97,25,26,END`.
+
+Names come verbatim from HERZ, not translated constants. New Game and EndLevel
+follow these lists rather than numeric addition or a compiled table.
+By the author's temporary choice, entries with `LEVELS.INF` byte 100 >= 100
+are skipped while their introduction playback remains unported: original 9
+and 29. The full sequence is still saved, so level 10/30 has ordinal 2.
+Level 97 has selector 2 and is not skipped.
+
+The original writer at `0000:96E9` and loader at `0000:99B6` establish the
+following little-endian layout; see [bounded native instructions](savegame-format-evidence.txt).
+
+| Offset | Bytes | Content |
+|---|---:|---|
+| 0 | 21 | Pascal save name, at most 20 DOS bytes |
+| 21 | 2 | Version 38 (`0x26`) |
+| 23 | 64 | Part level count, full sequence, optional END 96 |
+| 87 | 16 | Opaque DS:EC92 runtime block |
+| 103 | 124 | Native level-info/resource record |
+| 227 | 2 | **1-based ordinal into the saved sequence** |
+| 229 | 2 | Player heading |
+| 231 | 6 | Working camera X/Y/Z words |
+| 237 | 2 | Body height |
+| 239 | 4 | Opaque DS:D508 state |
+| 243 | 2 | Object count, 165 |
+| 245 | 8910 | 165 complete 54-byte records, native slots 1..165 |
+| 9155 | 810 | 15 inventory records; core exposes 14, preserves the last |
+| 9965 | 49 | Native meters/state including fixed-point life and oxygen |
+| 10014 | 64 | 32 weapon amount words |
+| 10078 | 64 | 32 weapon/inventory registry words |
+| 10142 | 16 | Weapon selection, hand and animation state |
+| 10158 | 5 | Switch-group masks |
+| 10163 | 1 | Player render table |
+| 10164 | 14000 | Seven native 50x40 geometry planes |
+| 24164 | 4+W*H | Collision map: dimensions minus one, then exact pixels |
+| after map | 1 | hasMap |
+| last 4 | 4 | **32-bit unsigned sum of every preceding byte** |
+
+Plane order is walls, floor objects, ceiling objects, floor heights, room
+heights, surface flags, collision materials. Resolve the actual level as
+`bytes[23 + ordinal]`: level-info byte 103 is a story index, not a reliable
+resource number. The old renderer's guessed index/remapping and mutating
+16-bit checksum are removed, as is its unintended save write during reads.
+
+`NativeSaveGame::Decode` checks version, sizes, counts, ordinal, map dimensions
+(at most 200x200), and checksum before any level request. `LoadGame` uses the
+normal deferred-load contract, but core helpers populate from the saved
+geometry/map/objects/info and do not select a new player marker. The renderer
+loads a privately owned `Level` into `LevelScene`, not AssetManager's normal
+level cache. Completion restores inventory, resources, meters, heading/body,
+weapon animation, switch masks, map flag and saved progression. Installation
+does not recompute model attachments or apply a host cheat loadout, which
+would mutate the original object snapshot before its first simulation tick.
+Unknown prefix fields and the unused inventory record survive resaving.
+Fresh saves seed the three integer display-meter words from current life,
+gold and oxygen; imported saves retain their native display/smoothing state.
+The meter initializer `1E48:D4F7` writes the display word at descriptor+8;
+see [initializer instructions](skeleton-fragment-tail-evidence.txt).
+No incompatible modern-only RNG/timer extensions are appended.
+
+The nonblocking F1 menu provides Load Game and Save Game pages with ten
+original slots, editable 20-byte names, explicit errors and normal transition
+input gates. `QueueTextInput` accepts DOS bytes/backspace; the Windows host
+converts WM_CHAR to CP437 and rejects unsupported characters. Host hooks read
+and atomically replace `Bin/SaveGames/STAND1.SPL` through `STAND10.SPL`, shared
+by Debug and Release. Save confirmation first enters editing; the second Enter
+overwrites, and Escape cancels editing without changing the slot. Loading
+never substitutes a normal level file for a snapshot.
+
+The menu family (main/alternate main, part selection, load and save) shares
+`BACKGR2.256` with `BACKGR2.PAL`, the torch/sword/crystal-ball backdrop.
+Its full 360x480 image maps to the 360x240 logical canvas; menu glyphs and
+the sword likewise use half-height geometry, without changing inventory
+font metrics. The selection indicator uses all ten `CURSOR.AN2` frames
+(2x5, font grayscale palette and the same gold tint as text), including
+each frame's native anchor. UI animation clocks run while simulation is
+paused and do not consume gameplay ticks/RNG.
+
+Load/save rows are unnumbered and unused slots draw no label. Editing replaces
+the selected row, with a blinking caret positioned from actual font extents,
+including an entirely erased name. Enter saves directly without an overwrite
+question; an empty submitted name reports a validation error. The native
+editor checks length against `0x14` at `0000:A2A0`, and places rows at X=85,
+Y=35*slot+35 in the 480-line space. See
+[menu/editor instructions](save-menu-layout-evidence.txt). The modern recipe
+retains that 17.5-pixel row spacing and the 20-byte Pascal-name capacity.
+Empty/whitespace/glyphless text legitimately has no GPU runtime; the shared
+DX11 text renderer skips invalid empty meshes before accessing native batches.
+
+[SaveGameTests.cpp](Scaffold/SaveGameTests.cpp) validates all 55 supplied original
+saves through actual core installation and demands byte-identical same-name
+resaves. It also checks custom HERZ order, fresh saves, malformed input,
+deferred installation, mutable geometry and continuing a partial flood.
+[ApplicationUpdateTests.cpp](Scaffold/ApplicationUpdateTests.cpp) checks
+name editing/cancellation/limits, disk errors, empty/corrupt slots, same-level
+restore and paused/transition timing. WARP covers saved geometry, resource
+indices, owned scene installation and slot recipes. This is format/round-trip
+verification; it is not a claim of testing the resulting files inside DOSBox.
 
 ## Existing object knowledge
 
@@ -1401,7 +1605,7 @@ GameCore samples each key once, handles page-key/confirm/cancel rising edges,
 and supplies navigation repeat (350 ms initial delay, then 100 ms; at most
 one repeated step per frame). F1 opens the main menu; F2 opens inventory
 only with a ready level and the native shared gate enabled. The main menu
-supports Resume/New Game/Quit; the part selector supports Up/Down, Enter and
+supports Resume/New Game/Load Game/Save Game/Quit; the part selector supports Up/Down, Enter and
 Escape, sharing the same navigation repeat and transition input gates.
 New Game is disabled during an outstanding load. All three parts are exposed
 for development rather than emulating the native DS:`3131` availability gate.

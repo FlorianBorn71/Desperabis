@@ -187,10 +187,10 @@ namespace Desperabis
         TrackFireAnimation = 202,
         FireballImpact = 204,
         TriggerObject = 205, // inside Cathedral
-        Behavior_206 = 206, // could be witch-manager
+        ForceWeaponSelection = 206,
         WitchHead = 207,
         BuyItem = 208,
-        Behavior_209 = 209, // could be witch-manager
+        WitchMouthAnimation = 209,
         TutorialTrigger = 210,
         CrystalBallTableInCutScene = 211, // for the crystal ball
         SkullInCutScene = 212, // the skull in the crystal ball
@@ -347,6 +347,7 @@ namespace Desperabis
         TrapOrPole = 6,
         Electricity = 7,
         Showel = 8,
+        ShopGold = 10,
         Lentils = 20,
         Scythe = 24
     };

@@ -107,6 +107,7 @@ void RenderContextDX11::RenderTextMeshes(const std::vector<const TextMeshInstanc
         }
 
         TextMesh& mesh = *instance->GetMesh();
+        if (!mesh.IsValid()) { continue; }
         mesh.CreateRuntimes(m_rendererDX11);
         NativeTextMeshObjectDX11* nativeMesh = mesh.GetNativeRuntimeObj<NativeTextMeshObjectDX11>();
         assert(nativeMesh != nullptr);

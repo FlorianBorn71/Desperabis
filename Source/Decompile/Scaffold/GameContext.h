@@ -4,6 +4,7 @@
 #include "GameEnums.h"
 #include "GameRuntime.h"
 #include "Sound.h"
+#include "SaveGame.h"
 
 #include <array>
 #include <cstddef>
@@ -154,6 +155,7 @@ namespace Desperabis
         std::size_t geometryHeight = Height;
         std::uint64_t geometryRevision = 0;
         bool hasSky = false; // LEVELS.INF byte 96: a loaded sky bitmap enables native weather flashes.
+        std::array<std::uint8_t, 124> nativeInfo{};
 
         struct HeightSurface
         {
@@ -166,8 +168,12 @@ namespace Desperabis
         std::array<std::uint8_t, 16> modelFileIndices{};
         std::array<std::shared_ptr<ModelAnchorGeometry>, 16> modelAnchors{};
         std::array<std::vector<std::string>, 16> textureMessages;
+        std::vector<std::string> objectDescriptions;
+        std::array<std::uint16_t, 8> trackedTextureFrameCounts{};
+        std::array<std::uint16_t, 16> trackedTextureFrames{};
 
         void LoadTextureMessages(std::size_t slot, const std::uint8_t* data, std::size_t size);
+        void LoadObjectDescriptions(const std::uint8_t* data, std::size_t size);
 
         void LoadGeometry(const std::uint8_t* data, std::size_t size);
         void BuildCollisionMap();
@@ -180,11 +186,13 @@ namespace Desperabis
         struct Frame
         {
             std::vector<std::array<std::int16_t, 3>> vertices;
+            std::vector<std::uint8_t> linkedObjectVertices;
             std::optional<std::uint8_t> billboardVertex, muzzleVertex;
         };
         std::vector<std::vector<Frame>> animations;
         void Load(const std::uint8_t* data, std::size_t size);
-        std::optional<std::array<std::int16_t, 3>> Sample(const RawGameObject& object, bool muzzle) const;
+        std::optional<std::array<std::int16_t, 3>> Sample(const RawGameObject& object, bool muzzle,
+            std::uint16_t linkedPolygon = 0) const;
     };
 
     struct LightningLine
@@ -306,6 +314,8 @@ namespace Desperabis
         ApplicationUpdateResult UpdateApplication(double elapsedSeconds, InputHandler& input);
         ApplicationPresentation GetApplicationPresentation() const;
         const std::array<RawGameObject, 166>& GetWorldObjects() const;
+        // Resolve renderer-only attachments without rewriting native save records.
+        RawGameObject GetObjectRenderState(std::size_t slot) const;
         // Immediate game-thread hooks for active (health > 0) world slots 1..165.
         // Destruction sees the old record; creation sees the initialized replacement.
         // Hooks must not throw or mutate the world/reenter gameplay.
@@ -339,6 +349,13 @@ namespace Desperabis
         bool OpenInventory();
         void OpenMap();
         void StartNewGame(std::int16_t chapter);
+        void LoadGameParts();
+        void SetGameParts(const std::uint8_t* bytes, std::size_t size);
+        const std::vector<GamePart>& GetGameParts() const;
+        void LoadGame(std::vector<std::uint8_t> bytes);
+        std::vector<std::uint8_t> CaptureSaveGame(std::string_view name);
+        const std::vector<std::uint8_t>* GetPendingSaveGame() const;
+        void QueueTextInput(std::string_view text);
 
         bool hasActiveGame = false; // Original resume/save availability flag, separate from page selection.
         // Partial normal keyboard/terrain controller, not the complete native player simulation.
@@ -466,6 +483,8 @@ namespace Desperabis
         // The app owns prompt bytes, lifetime and presentation. Empty text requests a reset on level completion.
         virtual void PromptUserMessage(std::string_view text, std::int16_t duration);
         virtual bool IsUserMessageActive() const;
+        virtual bool IsBottomUserMessageActive() const;
+        void DescribeShopItem(RawGameObject& object);
         InteractionResult HandleTextPromptContact(RawGameObject& object);
         std::uint16_t Random(std::uint16_t range);
         double RandomReal();
@@ -536,6 +555,8 @@ namespace Desperabis
     protected:
         // Logical asset names, e.g. LEVEL\OBJPOS11.DAT; failures must throw.
         virtual std::vector<std::uint8_t> LoadFile(std::string_view filename);
+        virtual std::optional<std::vector<std::uint8_t>> ReadSaveFile(std::uint8_t slot);
+        virtual void WriteSaveFile(std::uint8_t slot, const std::vector<std::uint8_t>& bytes);
         // Loads FELD geometry, LEVELS.INF surface metadata and the initial static collision map.
         void LoadLevelGeometry(std::int16_t levelNumber, LevelLoadData& data);
         // Selects the exact normal map marker and derives eye Y from the pending level's terrain.
@@ -559,6 +580,22 @@ namespace Desperabis
         virtual void InitializeNewGame(std::int16_t chapter);
 
     private:
+        void EnsureGameParts();
+        const std::vector<std::uint8_t>& CurrentLevelOrder();
+        std::optional<std::uint8_t> NextPlayableLevel(const std::vector<std::uint8_t>& order, std::size_t first);
+        void RestoreSaveGame();
+        void RefreshSaveSlots();
+        std::vector<GamePart> gameParts;
+        std::vector<std::uint8_t> activeLevelOrder;
+        bool activePartHasCredits = false;
+        std::vector<std::uint8_t> nativeSavePrefix;
+        std::optional<NativeSaveGame> pendingSaveGame;
+        struct SaveSlot { std::string name, error; bool occupied = false; };
+        std::array<SaveSlot, 10> saveSlots{};
+        std::uint8_t saveFocus = 0;
+        bool editingSaveName = false;
+        std::string saveName, queuedText, saveError;
+        double menuAnimationSeconds = 0, saveCaretSeconds = 0;
         void WriteCollisionMapByte(std::size_t address, std::uint8_t value);
         std::vector<LightningFlash> lightningFlashes;
         void UpdateInventoryInput(bool confirm);

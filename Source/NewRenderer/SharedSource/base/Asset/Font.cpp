@@ -34,8 +34,12 @@ void Font::SetSpaceWidth(float width)
 }
 
 std::shared_ptr<TextMesh> Font::CreateGlyphMesh(std::string_view text, const Color4& color,
-	HorizontalAlignment horizontalAlignment, VerticalAlignment verticalAlignment) const
+	HorizontalAlignment horizontalAlignment, VerticalAlignment verticalAlignment, float verticalScale) const
 {
+	if (!std::isfinite(verticalScale) || verticalScale <= 0.f)
+	{
+		throw std::invalid_argument("Font vertical scale must be finite and positive.");
+	}
 	const auto separator = text.find_first_of("\\\n");
 	if (separator != std::string_view::npos)
 	{
@@ -76,8 +80,9 @@ std::shared_ptr<TextMesh> Font::CreateGlyphMesh(std::string_view text, const Col
 		}
 		for (auto& batch : mesh->m_batches)
 		{
-			for (auto& vertex : batch.m_vertices) { vertex.m_position.y -= anchorY; }
+			for (auto& vertex : batch.m_vertices) { vertex.m_position.y = (vertex.m_position.y - anchorY) * verticalScale; }
 		}
+		mesh->m_extent.y *= verticalScale;
 		if (Renderer::IsReady()) { mesh->CreateRuntimes(Renderer::Instance()); }
 		return mesh;
 	}
@@ -186,13 +191,13 @@ std::shared_ptr<TextMesh> Font::CreateGlyphMesh(std::string_view text, const Col
 
 	if (hasGlyphBounds || penX > 0.f)
 	{
-		mesh->m_extent = { maxX - minX, maxY - minY };
+		mesh->m_extent = { maxX - minX, (maxY - minY) * verticalScale };
 		for (TextMeshBatch& batch : mesh->m_batches)
 		{
 			for (TextVertex& vertex : batch.m_vertices)
 			{
 				vertex.m_position.x -= anchorX;
-				vertex.m_position.y -= anchorY;
+				vertex.m_position.y = (vertex.m_position.y - anchorY) * verticalScale;
 			}
 		}
 	}

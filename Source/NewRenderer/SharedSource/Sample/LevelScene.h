@@ -6,7 +6,7 @@
 class LevelScene : public Scene 
 {
 public:
-    LevelScene(int levelIndex);
+    LevelScene(int levelIndex, std::shared_ptr<Level> loadedLevel = {});
 
     virtual FUTURE(void) CreateScene() override;
     virtual void ClearScene() override;
@@ -20,4 +20,6 @@ public:
     Level* m_level = nullptr;
     bool m_createGameObjects = true;
     bool m_createMapIcons = true;
+private:
+    std::shared_ptr<Level> m_loadedLevel;
 };
