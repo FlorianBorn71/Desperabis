@@ -174,7 +174,7 @@ namespace
                 entry.type == BehaviorType::MummieGuard || entry.type == BehaviorType::Gorilla ||
                 entry.type == BehaviorType::AirborneLeaf || entry.type == BehaviorType::GroundLeaf ||
                 entry.type == BehaviorType::RainDrop || entry.type == BehaviorType::FlyingArrow ||
-                entry.type == BehaviorType::Frog ||
+                entry.type == BehaviorType::Frog || entry.type == BehaviorType::ExtinguishLava ||
                 entry.type == BehaviorType::Behavior_11 ||
                 entry.type == BehaviorType::Harvestman || entry.type == BehaviorType::Devil)
             {
@@ -203,7 +203,7 @@ namespace
                 entry.type == BehaviorType::Frog || entry.type == BehaviorType::Behavior_11 ||
                 entry.type == BehaviorType::BatOutdoor || entry.type == BehaviorType::LavaSmoke ||
                 entry.type == BehaviorType::RollingRockSlope || entry.type == BehaviorType::RollingRock ||
-                entry.type == BehaviorType::Shark ||
+                entry.type == BehaviorType::Shark || entry.type == BehaviorType::ExtinguishLava ||
                 entry.type == BehaviorType::Door ||
                 entry.type == BehaviorType::TutorialTrigger ||
                 entry.type == BehaviorType::LightningGenerator || entry.type == BehaviorType::WindController ||

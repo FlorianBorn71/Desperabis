@@ -1,0 +1,96 @@
+DESPERAB.EXE SHA-256:
+219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+
+Selected instruction evidence from bounded Ghidra decoding of 0000:0D30.
+Addresses are module-relative; far-call operands retain analysis addresses.
+The function returns at 0000:0F10 with RET 4.
+See ui-chapter-evidence.txt for the caller at 0000:8299: Escape returns to
+the main menu; Enter pushes (1, chosenChapter) and calls 0000:0D30.
+
+Native fresh-game state
+-----------------------
+0000:0DF7  C6 06 FA D4 00           MOV byte ptr [0xd4fa],0x0
+0000:0E15  BF EC 2D                 MOV DI,0x2dec
+0000:0E18  1E                       PUSH DS
+0000:0E19  57                       PUSH DI
+0000:0E1A  68 2A 03                 PUSH 0x32a
+0000:0E1D  6A 00                    PUSH 0x0
+0000:0E1F  9A 8C 1B E4 3C           CALLF 0x3000:e9cc
+
+Clears positional-sound/depletion suppression and 810 inventory bytes.
+The port owns fourteen exposed inventory records; it clears those records.
+Native then clears the scratch object at DS:8272 (54 bytes), conditionally
+calls 0000:0427(1,1,1), and clears 49 bytes beginning at DS:2DBA.
+
+0000:0E4F  C6 06 DC 2D 01           MOV byte ptr [0x2ddc],0x1
+0000:0E64  BF BA 2D                 MOV DI,0x2dba
+0000:0E67  1E                       PUSH DS
+0000:0E68  57                       PUSH DI
+0000:0E69  68 68 01                 PUSH 0x168
+0000:0E6C  68 68 01                 PUSH 0x168
+0000:0E6F  6A 01                    PUSH 0x1
+0000:0E71  9A F7 D4 48 2E           CALLF 0x3000:b977
+0000:0E76  BF CE 2D                 MOV DI,0x2dce
+0000:0E79  1E                       PUSH DS
+0000:0E7A  57                       PUSH DI
+0000:0E7B  68 68 01                 PUSH 0x168
+0000:0E7E  68 68 01                 PUSH 0x168
+0000:0E81  68 C8 00                 PUSH 0xc8
+0000:0E84  9A F7 D4 48 2E           CALLF 0x3000:b977
+
+Enables player map collisions, initializes life maximum/current to 360,
+and oxygen maximum/current to 360 (meter tag 200). The far target is the
+already recovered meter initializer at module 1E48:D4F7.
+0000:0E89..0E8F stores chapter+30 in DS:2DE9; this is not evidence that
+the level number itself is chapter+30.
+
+0000:0E92  C6 06 B6 DD 00           MOV byte ptr [0xddb6],0x0
+0000:0E97  C6 06 B7 DD 00           MOV byte ptr [0xddb7],0x0
+0000:0E9C  C6 06 B9 DD 00           MOV byte ptr [0xddb9],0x0
+0000:0EA1  C6 06 BA DD 00           MOV byte ptr [0xddba],0x0
+0000:0EA8  A3 BB DD                 MOV [0xddbb],AX
+0000:0EAD  A3 BD DD                 MOV [0xddbd],AX
+0000:0EB2  A3 BF DD                 MOV [0xddbf],AX
+0000:0EB5  C6 06 C5 DD 01           MOV byte ptr [0xddc5],0x1
+0000:0EBA  C6 06 B8 DD 00           MOV byte ptr [0xddb8],0x0
+
+The AX stores above each follow XOR AX,AX. Selected/requested weapon,
+hands, animation phase/position/recoil and sprite frame reset; ready=1.
+
+0000:0EBF  BF 36 DD                 MOV DI,0xdd36
+0000:0EC2  1E                       PUSH DS
+0000:0EC3  57                       PUSH DI
+0000:0EC4  6A 40                    PUSH 0x40
+0000:0EC6  6A 00                    PUSH 0x0
+0000:0EC8  9A 8C 1B E4 3C           CALLF 0x3000:e9cc
+0000:0ECD  C7 06 46 DD 64 00        MOV word ptr [0xdd46],0x64
+0000:0ED3  C7 06 64 DD 64 00        MOV word ptr [0xdd64],0x64
+0000:0ED9  C7 06 5E DD E8 03        MOV word ptr [0xdd5e],0x3e8
+0000:0EDF  BF 76 DD                 MOV DI,0xdd76
+0000:0EE2  1E                       PUSH DS
+0000:0EE3  57                       PUSH DI
+0000:0EE4  6A 40                    PUSH 0x40
+0000:0EE6  6A 00                    PUSH 0x0
+0000:0EE8  9A 8C 1B E4 3C           CALLF 0x3000:e9cc
+
+Clears 32 weapon resource words; seeds entries 8=100, 23=100, 20=1000.
+Clears the 32-word weapon-to-inventory registry.
+The memory-clear far target above is module 2CE4:1B8C.
+The remaining initializer seeds scratch-player collision dimensions and
+inventory focus, then returns. Normal port level installation already
+resets movement, posture, map collision mode, lighting and world objects.
+
+Port boundaries
+---------------
+The functional core-owned selector offers Training -> 50, Part 1 -> 30,
+Part 2 -> 10, using the existing playable-part ordering. The mapping is
+the port's explicit integration of known part starts, not a decoded
+chapter-resource row. New Game resets progress before normal StartLevel.
+Deferred loading and explicit failures use the existing load contract;
+accepted New Game does not promise rollback of old progress on failure.
+Host debug/audio preferences survive; host cheat loadouts apply as usual.
+
+The native selector clamps DS:3131+1 to 2..3 available parts. The port
+exposes all three for reconstruction/testing rather than inventing unlock
+state. Native helper 0000:81F2..8294 reads alternating chapter/game-name
+rows from DS:05C0; exact label metadata and carousel art remain unported.

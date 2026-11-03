@@ -17,6 +17,8 @@ namespace Desperabis
         constexpr std::array<std::int16_t, 26> PlayableLevels{
             50, 30, 31, 32, 33, 36, 34, 35,
             10, 11, 12, 13, 14, 15, 16, 17, 18, 90, 19, 20, 21, 22, 23, 24, 25, 26 };
+        constexpr std::array<std::int16_t, 3> PartStartLevels{ 50, 30, 10 };
+        constexpr std::array<const char*, 3> PartNames{ "Training level", "Part 1", "Part 2" };
 
         bool IsGamePartStart(std::int16_t level) { return level == 50 || level == 30 || level == 10; }
 
@@ -108,6 +110,30 @@ namespace Desperabis
         if (next == PlayableLevels.end()) { throw std::logic_error("No next game part is available."); }
         PrepareLevelProgression(true);
         StartLevel(*next);
+    }
+
+    void GameContext::InitializeNewGame(std::int16_t chapter)
+    {
+        const auto start = PartStartLevels.at(static_cast<std::size_t>(chapter - 1));
+        inventory = {};
+        gold = arrowPoison = 0;
+        hasMap = false;
+        weaponAmounts.fill(0);
+        weaponAmounts[8] = weaponAmounts[23] = 100;
+        weaponAmounts[20] = 1000;
+        weaponInventorySlots.fill(0);
+        selectedWeapon = requestedWeapon = WeaponType::None;
+        weaponSpriteFrame = weaponHand = requestedWeaponHand = 0;
+        weaponAnimationSpeed = weaponAnimationPosition = weaponAnimationRecoil = 0;
+        weaponElectricityFiring = false;
+        weaponReady = true;
+        playerLifeMaximum = 360;
+        playerLifeDeltaSuppressed = playerHitEffectTicks = 0;
+        ApplyPlayerLifeDelta(360 * 65536 - playerLife);
+        positionalSoundsSuppressed = false;
+        field_D500 = true;
+        paused = false;
+        StartLevel(start);
     }
 
     InteractionResult GameContext::HandleLevelEndContact(RawGameObject& object, bool interactionPressed)
@@ -237,14 +263,28 @@ namespace Desperabis
             else
             {
                 if (navigation == InputKey::UiUpKey && mainMenuFocus > 0) { --mainMenuFocus; }
-                if (navigation == InputKey::UiDownKey && mainMenuFocus < 1) { ++mainMenuFocus; }
+                if (navigation == InputKey::UiDownKey && mainMenuFocus < 2) { ++mainMenuFocus; }
                 if (wasPressed(InputKey::UiConfirmKey))
                 {
-                    if (mainMenuFocus == 1) { SelectMainMenuAction(MainMenuAction::Quit); }
+                    if (mainMenuFocus == 2) { SelectMainMenuAction(MainMenuAction::Quit); }
+                    else if (mainMenuFocus == 1) { SelectMainMenuAction(MainMenuAction::NewGame); }
                     else if (runtimeState == GameRuntimeState::Ready)
                     {
                         SelectMainMenuAction(MainMenuAction::ResumeGame);
                     }
+                }
+            }
+            break;
+        case MenuPage::ChapterSelection:
+            if (wasPressed(InputKey::UiCancelKey)) { SetMenuPage(MenuPage::MainMenu); }
+            else
+            {
+                if (navigation == InputKey::UiUpKey && chapterFocus > 0) { --chapterFocus; }
+                if (navigation == InputKey::UiDownKey &&
+                    static_cast<std::size_t>(chapterFocus) + 1 < PartStartLevels.size()) { ++chapterFocus; }
+                if (wasPressed(InputKey::UiConfirmKey) && runtimeState != GameRuntimeState::Loading)
+                {
+                    StartNewGame(static_cast<std::int16_t>(chapterFocus + 1));
                 }
             }
             break;
@@ -383,10 +423,27 @@ namespace Desperabis
             text(180, 36, "Desperabis", bright, 1, UiTextAlignment::Center);
             text(180, 90, "Resume game", runtimeState == GameRuntimeState::Ready && CanResumeGame() ?
                 (mainMenuFocus == 0 ? bright : normal) : dark, 0.8f, UiTextAlignment::Center);
-            text(180, 120, "Quit", mainMenuFocus == 1 ? bright : normal, 0.8f, UiTextAlignment::Center);
-            draw.emplace_back(UiFill{ { 94, mainMenuFocus == 0 ? 87.f : 117.f, 3, 15 }, bright });
-            text(180, 185, "New game loading saving and settings", dark, 0.5f, UiTextAlignment::Center);
-            text(180, 198, "are not implemented yet", dark, 0.5f, UiTextAlignment::Center);
+            text(180, 120, "New game", runtimeState == GameRuntimeState::Loading ? dark :
+                (mainMenuFocus == 1 ? bright : normal), 0.8f, UiTextAlignment::Center);
+            text(180, 150, "Quit", mainMenuFocus == 2 ? bright : normal, 0.8f, UiTextAlignment::Center);
+            draw.emplace_back(UiFill{ { 94, 87.f + mainMenuFocus * 30.f, 3, 15 }, bright });
+            text(180, 198, "Loading saving and settings", dark, 0.5f, UiTextAlignment::Center);
+            text(180, 211, "are not implemented yet", dark, 0.5f, UiTextAlignment::Center);
+            return result;
+        }
+        if (menuPage == MenuPage::ChapterSelection)
+        {
+            text(180, 36, "New game", bright, 1, UiTextAlignment::Center);
+            for (std::size_t part = 0; part < PartNames.size(); ++part)
+            {
+                text(180, 90.f + static_cast<float>(part) * 30.f, PartNames[part],
+                    part == chapterFocus ? bright : normal, 0.8f, UiTextAlignment::Center);
+            }
+            draw.emplace_back(UiFill{ { 94, 87.f + chapterFocus * 30.f, 3, 15 }, bright });
+            text(180, 183, "Starts at level " + std::to_string(PartStartLevels[chapterFocus]),
+                normal, 0.55f, UiTextAlignment::Center);
+            text(180, 203, "Up/Down: select  Enter: start", normal, 0.5f, UiTextAlignment::Center);
+            text(180, 216, "Esc: back", normal, 0.5f, UiTextAlignment::Center);
             return result;
         }
         if (menuPage != MenuPage::Inventory)

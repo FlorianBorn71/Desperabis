@@ -30,7 +30,7 @@
 
 namespace
 {
-	constexpr int g_startLevelIndex = 10;
+	constexpr int g_startLevelIndex = 50;
 	bool g_cheatMode = true;
 
 	constexpr int g_numObjectSlots = static_cast<int>(std::tuple_size_v<decltype(Desperabis::GameContext::worldObjects)>);
@@ -643,6 +643,8 @@ namespace
 		if (!geometry) { throw std::logic_error("World presentation requires loaded core geometry."); }
 		level->SynchronizeWallTiles(&geometry->wallTextures[0][0],
 		    Desperabis::Level::Width, Desperabis::Level::Height, Desperabis::Level::Width);
+		level->SynchronizeFloorTiles(&geometry->floorObjects[0][0],
+		    Desperabis::Level::Width, Desperabis::Level::Height, Desperabis::Level::Width);
 		for (int slot = 2; slot <= 164; slot++)
 		{
 			RawGameObject& state = g_objectState[slot];
@@ -902,13 +904,14 @@ namespace
 
 		Desperabis::ApplicationUpdateResult application;
 		const auto levelBeforeUpdate = g_gameCore->GetLoadedLevelNumber();
+		const auto* sceneBeforeUpdate = g_scene.get();
 		try
 		{
 			{
 				ProfilingScope _(g_profilingStats.m_duration_game);
 				application = g_gameCore->UpdateApplication(deltaTime, input);
 			}
-			if (g_gameCore->GetLoadedLevelNumber() != levelBeforeUpdate)
+			if (g_scene.get() != sceneBeforeUpdate || g_gameCore->GetLoadedLevelNumber() != levelBeforeUpdate)
 			{
 				if (g_gameCore->GetRuntimeState() == Desperabis::GameRuntimeState::Ready)
 				{

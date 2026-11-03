@@ -38,10 +38,16 @@ namespace
     {
     public:
         bool synchronous = true;
+        bool fail = false;
+        bool reportFailure = false;
+        std::vector<LevelLoadRequest> requests;
         int healthNotifications = 0;
         void OnPlayerHealthChanged(std::int32_t, std::int32_t) override { ++healthNotifications; }
         void LoadLevel(const LevelLoadRequest& request) override
         {
+            requests.push_back(request);
+            if (fail) { throw std::runtime_error("New-game fixture failed to load."); }
+            if (reportFailure) { FailLevelLoad(request.id, "New-game fixture reported failure."); return; }
             if (synchronous) { CompleteLevelLoad(request.id, MakeLevel()); }
         }
         static LevelLoadData MakeLevel()
@@ -191,7 +197,7 @@ namespace
         Tap(host, input, InputKey::UiConfirmKey);
         Tap(host, input, InputKey::UiCancelKey);
         Check(host.GetMenuPage() == MenuPage::MainMenu, "Suppressed Resume and Escape must remain gated.");
-        Move(host, input, InputKey::UiDownKey);
+        Move(host, input, InputKey::UiDownKey, 2);
         Tap(host, input, InputKey::UiConfirmKey);
         Check(host.GetMenuPage() == MenuPage::Quit && !host.UpdateApplication(100, input).tick &&
             host.GetApplicationPresentation().commands.empty(), "Quit must be requested by the core without more simulation.");
@@ -204,6 +210,166 @@ namespace
         ExpectError<std::logic_error>([&] { host.UpdateApplication(0, input); });
         ExpectError<std::logic_error>([&] { host.GetApplicationPresentation(); });
         Check(host.GetMenuPage() == MenuPage::Presentation20, "Future presentation pages must not silently skip.");
+    }
+
+    void TestNewGameSelection()
+    {
+        const auto hasText = [](const GameContext& host, const std::string& value)
+        {
+            for (const auto& command : host.GetApplicationPresentation().commands)
+            {
+                if (const auto* text = std::get_if<UiText>(&command); text && text->text == value) { return true; }
+            }
+            return false;
+        };
+        for (int part = 0; part < 3; ++part)
+        {
+            Host host;
+            Input input;
+            Ready(host, input);
+            host.inventory[4] = Item(CollisionType::Key, 123);
+            host.gold = 17;
+            host.arrowPoison = 20;
+            host.hasMap = true;
+            host.playerLife = 123 * 65536;
+            host.playerLifeMaximum = 200;
+            host.playerLifeDeltaSuppressed = 1;
+            host.playerHitEffectTicks = 99;
+            host.positionalSoundsSuppressed = true;
+            host.DEBUG_noPlayerCollision = true;
+            host.soundEnabled = false;
+            host.playerOxygen = 5;
+            host.weaponAmounts.fill(200);
+            host.weaponInventorySlots.fill(5);
+            host.selectedWeapon = host.requestedWeapon = WeaponType::Fireball;
+            host.weaponAnimationSpeed = host.weaponAnimationPosition = 100;
+            host.weaponSpriteFrame = host.weaponHand = host.requestedWeaponHand = 2;
+            host.weaponElectricityFiring = true;
+            host.weaponAnimationRecoil = 99;
+            host.weaponReady = false;
+            host.SetPaused(true);
+            Tap(host, input, InputKey::MainMenuKey);
+            Check(hasText(host, "New game"), "The main menu must expose New Game.");
+            Move(host, input, InputKey::UiDownKey);
+            Tap(host, input, InputKey::UiConfirmKey);
+            Check(host.GetMenuPage() == MenuPage::ChapterSelection && host.requests.size() == 1 &&
+                Same(host.inventory[4], Item(CollisionType::Key, 123)),
+                "Entering part selection must not reset or replace the active game.");
+            const auto objects = host.worldObjects;
+            const auto seed = host.randomSeed;
+            Check(!host.UpdateApplication(10, input).tick &&
+                std::memcmp(objects.data(), host.worldObjects.data(), sizeof(objects)) == 0 &&
+                host.randomSeed == seed, "Part selection must freeze gameplay and RNG.");
+            Move(host, input, InputKey::UiUpKey, 4);
+            Move(host, input, InputKey::UiDownKey, part);
+            constexpr std::array<int, 3> starts{ 50, 30, 10 };
+            Check(hasText(host, "Training level") && hasText(host, "Part 1") && hasText(host, "Part 2") &&
+                hasText(host, "Starts at level " + std::to_string(starts[part])),
+                "Part selection must expose exactly the playable part starts.");
+            input.Set(InputKey::AttackKey, true);
+            input.Set(InputKey::DebugNextLevelKey, true);
+            const auto transition = Tap(host, input, InputKey::UiConfirmKey);
+            Check(!transition.tick && transition.worldDeltaSeconds == 0 && transition.timing.behaviorTicks == 0 &&
+                host.GetLoadedLevelNumber() == starts[part] && host.requests.size() == 2 &&
+                host.GetRuntimeState() == GameRuntimeState::Ready && host.GetMenuPage() == MenuPage::Gameplay &&
+                !host.IsPaused(), "Part acceptance must load once, unpause, and not simulate the transition frame.");
+            Check(host.inventory[4].health == 0 && host.gold == 0 && host.arrowPoison == 0 && !host.hasMap &&
+                host.playerLifeMaximum == 360 && host.playerLife == 360 * 65536 &&
+                host.playerLifeDeltaSuppressed == 0 && host.playerHitEffectTicks == 0 &&
+                host.playerOxygen == GameContext::PlayerOxygenMaximum && host.healthNotifications == 1 &&
+                host.selectedWeapon == WeaponType::None && host.requestedWeapon == WeaponType::None &&
+                host.weaponSpriteFrame == 0 && host.weaponHand == 0 && host.requestedWeaponHand == 0 &&
+                host.weaponAnimationSpeed == 0 && host.weaponAnimationPosition == 0 && host.weaponAnimationRecoil == 0 &&
+                host.weaponReady && !host.weaponElectricityFiring && !host.positionalSoundsSuppressed,
+                "New Game must reset carried inventory, money, poison, maps, vital meters and weapon commands.");
+            Check(host.DEBUG_noPlayerCollision && !host.soundEnabled &&
+                !host.basicPlayerMovementEnabled && !host.behaviorDispatchEnabled,
+                "New Game must preserve host debug, audio and simulation preferences.");
+            const GameContext defaults;
+            Check(host.weaponAmounts == defaults.weaponAmounts &&
+                host.weaponInventorySlots == defaults.weaponInventorySlots,
+                "New Game must restore native resource defaults, not carry ammunition from the old game.");
+            Check(host.UpdateApplication(1.0 / 33, input).tick.has_value() && host.requests.size() == 2 &&
+                host.GetLoadedLevelNumber() == starts[part],
+                "The next frame must resume simulation without a held Tab skipping the chosen starting level.");
+            input.keys.fill(false);
+            host.UpdateApplication(0, input);
+            if (part == 2)
+            {
+                for (int i = 0; i < 6; ++i) { Tap(host, input, InputKey::DebugNextLevelKey); }
+                Check(host.GetLoadedLevelNumber() == 16,
+                    "New Game Part 2 followed by six Tab advances must reach the forest.");
+            }
+        }
+        Host cancelled;
+        Input input;
+        Ready(cancelled, input);
+        cancelled.inventory[0] = Item(CollisionType::Medicine, 42);
+        Tap(cancelled, input, InputKey::MainMenuKey);
+        Move(cancelled, input, InputKey::UiDownKey);
+        Tap(cancelled, input, InputKey::UiConfirmKey);
+        Move(cancelled, input, InputKey::UiDownKey, 5);
+        Check(hasText(cancelled, "Starts at level 10"), "Part navigation must stop at Part 2.");
+        Tap(cancelled, input, InputKey::UiCancelKey);
+        Check(cancelled.GetMenuPage() == MenuPage::MainMenu && cancelled.requests.size() == 1 &&
+            Same(cancelled.inventory[0], Item(CollisionType::Medicine, 42)),
+            "Cancelling selection must return to the menu without losing progress.");
+        Move(cancelled, input, InputKey::UiDownKey);
+        input.Set(InputKey::UiConfirmKey, true);
+        cancelled.UpdateApplication(0, input);
+        cancelled.UpdateApplication(1, input);
+        Check(cancelled.GetMenuPage() == MenuPage::ChapterSelection && cancelled.requests.size() == 1 &&
+            hasText(cancelled, "Starts at level 50"),
+            "Selection reentry must reset focus and held Enter must not immediately start the highlighted part.");
+        input.keys.fill(false);
+        cancelled.UpdateApplication(0, input);
+
+        Host deferred;
+        deferred.basicPlayerMovementEnabled = false;
+        deferred.behaviorDispatchEnabled = false;
+        deferred.synchronous = false;
+        deferred.SetMenuPage(MenuPage::ChapterSelection);
+        Input pendingInput;
+        deferred.UpdateApplication(0, pendingInput);
+        Tap(deferred, pendingInput, InputKey::UiConfirmKey);
+        Check(deferred.GetRuntimeState() == GameRuntimeState::Loading &&
+            deferred.GetPendingLevelLoad()->levelNumber == 50 && !deferred.hasActiveGame &&
+            !deferred.UpdateApplication(1, pendingInput).tick,
+            "Deferred New Game must remain loading, not report a ready active game.");
+        deferred.SetMenuPage(MenuPage::MainMenu);
+        Check(!deferred.SelectMainMenuAction(MainMenuAction::NewGame),
+            "New Game must be disabled while a load is pending.");
+        const auto request = *deferred.GetPendingLevelLoad();
+        deferred.inventory[0] = Item(CollisionType::Medicine, 42);
+        deferred.gold = 9;
+        ExpectError<std::logic_error>([&] { deferred.StartNewGame(2); });
+        Check(deferred.requests.size() == 1 && deferred.GetPendingLevelLoad()->id == request.id &&
+            Same(deferred.inventory[0], Item(CollisionType::Medicine, 42)) && deferred.gold == 9,
+            "A pending load must not be overwritten or reset by another new game.");
+        deferred.CompleteLevelLoad(request.id, Host::MakeLevel());
+        Check(deferred.GetRuntimeState() == GameRuntimeState::Ready && deferred.hasActiveGame &&
+            deferred.GetMenuPage() == MenuPage::Gameplay, "Deferred new-game completion must enter gameplay.");
+
+        Host failed;
+        Input failureInput;
+        failed.fail = true;
+        failed.SetMenuPage(MenuPage::ChapterSelection);
+        failed.UpdateApplication(0, failureInput);
+        ExpectError<std::runtime_error>([&] { Tap(failed, failureInput, InputKey::UiConfirmKey); });
+        Check(failed.GetRuntimeState() == GameRuntimeState::LoadFailed &&
+            failed.GetMenuPage() == MenuPage::ChapterSelection && !failed.hasActiveGame &&
+            !failed.GetPendingLevelLoad() && !failed.GetLevelLoadError().empty(),
+            "Failed New Game must expose its load error and not transition to successful gameplay.");
+        for (const auto part : { -1, 0, 4 })
+        {
+            ExpectError<std::invalid_argument>([&] { failed.StartNewGame(static_cast<std::int16_t>(part)); });
+        }
+        failed.fail = false;
+        failed.reportFailure = true;
+        ExpectError<std::runtime_error>([&] { failed.StartNewGame(1); });
+        Check(failed.GetMenuPage() == MenuPage::ChapterSelection && !failed.hasActiveGame &&
+            failed.GetLevelLoadError() == "New-game fixture reported failure.",
+            "A host-reported synchronous failure must not look like successful New Game.");
     }
 
     void TestInventorySelectionAndNavigation()
@@ -594,6 +760,7 @@ int main()
     {
         TestFrameTimingAndRoutes();
         TestGatesLoadingAndQuit();
+        TestNewGameSelection();
         TestInventorySelectionAndNavigation();
         TestRepeatPulseAndInputLeakage();
         TestPotionCompatibility();

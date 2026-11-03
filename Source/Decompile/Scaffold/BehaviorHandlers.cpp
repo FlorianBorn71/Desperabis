@@ -2446,9 +2446,36 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::AttackingBull, 0x3A36 };
     }
 
-    DispatchResult Function_ExtinguishLava(RawGameObject&, GameContext&)
+    DispatchResult Function_ExtinguishLava(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::ExtinguishLava, 0x3A69 };
+        if (object.health == 1000)
+        {
+            const auto volume = context.GetSoundVolumeAt(object.posX, object.posZ);
+            for (int tick = 0; tick < context.tickCount; ++tick)
+            {
+                context.PlaySoundEffect(static_cast<SoundEffect>(context.Random(2) == 0 ? 10 : 43),
+                    volume, object, 1);
+                object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity +
+                    std::abs(static_cast<int>(object.velocityX)) + std::abs(static_cast<int>(object.velocityZ)));
+                while (object.blendWeightOrSpriteOpacity > 100)
+                {
+                    object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity - 100);
+                    object.itemValue = WrapSignedWord(object.itemValue - 1);
+                    if (object.itemValue < 1) { context.SetObjectHealth(object, 0); }
+                    if (context.field_D500)
+                    {
+                        context.ExtinguishLavaTile(object.posX, object.posZ, object.behaviorParameter);
+                    }
+                    object.posX = WrapSignedWord(object.posX + SignWord(object.velocityX) * 100);
+                    object.posZ = WrapSignedWord(object.posZ + SignWord(object.velocityZ) * 100);
+                }
+            }
+        }
+        else
+        {
+            object.posY = WrapSignedWord(context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ) - 4);
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::ExtinguishLava, 0x3A69 };
     }
 
     DispatchResult Function_FloodingWater(RawGameObject&, GameContext&)

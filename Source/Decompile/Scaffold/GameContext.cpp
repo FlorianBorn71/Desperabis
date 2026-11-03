@@ -927,6 +927,7 @@ namespace Desperabis
         }
         else { inventorySource.reset(); }
         if (page == MenuPage::MainMenu || page == MenuPage::AlternateMainMenu) { mainMenuFocus = 0; }
+        if (page == MenuPage::ChapterSelection) { chapterFocus = 0; }
     }
 
     bool GameContext::CanResumeGame() const
@@ -950,7 +951,10 @@ namespace Desperabis
             if (!CanResumeGame()) { return false; }
             SetMenuPage(MenuPage::Gameplay);
             break;
-        case MainMenuAction::NewGame: SetMenuPage(MenuPage::ChapterSelection); break;
+        case MainMenuAction::NewGame:
+            if (pendingLevelLoad) { return false; }
+            SetMenuPage(MenuPage::ChapterSelection);
+            break;
         case MainMenuAction::LoadGame: SetMenuPage(MenuPage::LoadGame); break;
         case MainMenuAction::SaveGame:
             if (!CanResumeGame()) { return false; }
@@ -986,13 +990,15 @@ namespace Desperabis
 
     void GameContext::StartNewGame(std::int16_t chapter)
     {
-        if (chapter <= 0)
+        if (chapter < 1 || chapter > 3)
         {
-            throw std::invalid_argument("A new game requires a positive chapter number.");
+            throw std::invalid_argument("A new game requires a part number in 1..3.");
         }
+        if (pendingLevelLoad) { throw std::logic_error("A level load is already in progress."); }
         InitializeNewGame(chapter);
-        hasActiveGame = true;
-        menuPage = MenuPage::Gameplay;
+        if (runtimeState == GameRuntimeState::LoadFailed) { throw std::runtime_error(levelLoadError); }
+        if (runtimeState != GameRuntimeState::Loading) { hasActiveGame = true; }
+        SetMenuPage(MenuPage::Gameplay);
     }
 
     void GameContext::RunApplication()
@@ -1120,11 +1126,6 @@ namespace Desperabis
     {
         throw std::logic_error("Application page " +
             std::to_string(static_cast<std::uint16_t>(page)) + " is not implemented.");
-    }
-
-    void GameContext::InitializeNewGame(std::int16_t)
-    {
-        throw std::logic_error("New-game resource loading and initialization are not implemented.");
     }
 
     std::int16_t GameContext::RandomSigned(std::uint16_t radius)
@@ -2957,6 +2958,47 @@ namespace Desperabis
                 }
             }
             if (horizontal) { break; }
+        }
+    }
+
+    void GameContext::ExtinguishLavaTile(std::int16_t x, std::int16_t z, std::uint8_t floorFrame)
+    {
+        if (!level || !collisionMap)
+        {
+            throw std::runtime_error("River flooding requires level geometry and collision-map memory.");
+        }
+        const auto cell = GetHeightCell(x, z);
+        auto& floor = level->floorObjects[cell.row][cell.column];
+        const auto replacement = static_cast<std::uint8_t>((floor & 0xe0) | (floorFrame & 31));
+        if (floor != replacement)
+        {
+            floor = replacement;
+            ++level->geometryRevision;
+            collisionmapUploadDirty = true;
+        }
+        const auto column = WrapSignedWord(x - 112) / 25;
+        const auto row = WrapSignedWord(162 - WrapSignedWord(z - 38) / 25);
+        // 10AC:01D6 replaces only pixels with bit 7 set, in an inclusive 5x5 footprint.
+        for (int dx = -3; dx <= 1; ++dx)
+        {
+            for (int dz = -3; dz <= 1; ++dz)
+            {
+                const auto px = WrapSignedWord(column + dx);
+                const auto pz = WrapSignedWord(row + dz);
+                if (px < 0 || pz < 0 || px > collisionMap->widthMinusOne || pz > collisionMap->heightMinusOne)
+                {
+                    continue;
+                }
+                const auto address = static_cast<std::size_t>(pz) * (collisionMap->widthMinusOne + 1u) + px;
+                if (address >= std::size(collisionMap->data))
+                {
+                    throw std::out_of_range("River flooding exceeds collision-map storage.");
+                }
+                if ((collisionMap->data[address] & 128) == 128)
+                {
+                    WriteCollisionMapByte(offsetof(CollisionMap, data) + address, 2);
+                }
+            }
         }
     }
 

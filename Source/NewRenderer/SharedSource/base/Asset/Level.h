@@ -21,6 +21,7 @@ public:
 	void ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& rawGO, Texture* spriteOverride = nullptr) const;
     RenderableInstancePtr CreatePlayerObject();
     std::size_t SynchronizeWallTiles(const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride);
+    std::size_t SynchronizeFloorTiles(const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride);
 	float GetHeightAtPos(const Vector& pos) const 
     {
         return m_cellArray.GetHeightAtPos(pos);
@@ -37,7 +38,7 @@ protected:
 
     void InitLevelInfo(const LevelInfo& info);
     void CreateWallGeometry();
-    void AddStaticCellObject(int x, int y, byte rawVal, HeightLevel atHeight);
+    RenderableInstancePtr AddStaticCellObject(int x, int y, byte rawVal, HeightLevel atHeight);
     void CreateSkyGeometry();
     void CreateSkyCylinderMesh(std::vector<DrawCall>& drawcalls, ModelLoadingContext& context, ModelConversionContext& conversion, Texture* skyTexture, float repetitionsU, float relHeight, const Color4& col, TransparencyMode transparency);
     void CreateStars(std::vector<DrawCall>& drawcalls, ModelLoadingContext& context, ModelConversionContext& conversion, int count);
@@ -76,6 +77,13 @@ protected:
         RenderableInstancePtr instance;
     };
     std::vector<MutableWall> m_mutableWalls;
+    struct MutableFloor
+    {
+        int column, row;
+        byte originalFloor, replacementFloor;
+        RenderableInstancePtr original, replacement;
+    };
+    std::vector<MutableFloor> m_mutableFloors;
 
     std::shared_ptr<Renderable> m_skyRenderable;
     std::shared_ptr<Texture> m_lightmap;

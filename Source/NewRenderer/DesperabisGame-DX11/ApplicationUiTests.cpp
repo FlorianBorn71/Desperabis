@@ -190,7 +190,7 @@ namespace
     class FlameScene final : public Scene
     {
     public:
-        FUTURE(void) CreateScene() override { CO_RETURN; }
+        FUTURE(void) CreateScene() override { m_sceneReady = true; CO_RETURN; }
         std::size_t BindingCount() const { return m_fireAnimationInstances.size(); }
         bool HasFlameSlot(int slot) const { return m_fireAnimations[slot].m_torchAnim != nullptr; }
     };
@@ -855,7 +855,23 @@ namespace
             }
             const auto& Walls() const { return m_wallGeometry; }
             const auto& MutableWalls() const { return m_mutableWalls; }
+            const auto& MutableFloors() const { return m_mutableFloors; }
             const Scene& WallScene() const { return m_scene; }
+            RenderableInstancePtr UpdateFront(const Desperabis::RawGameObject& object)
+            {
+                if (!m_front)
+                {
+                    FORCE_WAIT(m_scene.CreateScene());
+                    m_front = std::make_shared<RenderableInstance>();
+                    m_scene.AddRenderableInstance(m_front);
+                }
+                RawGameObject raw{};
+                raw.m_level = this;
+                Desperabis::EncodeGameObject(object, raw.m_rawBytes, sizeof(raw.m_rawBytes));
+                ApplyRenderProperties(m_front, raw);
+                m_front->SetVisible(object.health > 0);
+                return m_front;
+            }
             void ReadGrid(const LevelInfo& info, const std::vector<byte>& geometry, bool readHeader)
             {
                 InitLevelInfo(info);
@@ -871,6 +887,7 @@ namespace
             }
         private:
             FlameScene m_scene;
+            RenderableInstancePtr m_front;
         };
         class WallVisibility final : public DefaultVisibilityContext
         {
@@ -1308,6 +1325,251 @@ namespace
             std::abs(padding.m_floorHeight + 510.f * DespToFloat) < 0.0001f &&
             std::abs(padding.m_ceilingHeight + 410.f * DespToFloat) < 0.0001f,
             "Loading a smaller file must reset all native padding instead of retaining the previous level's cells.");
+
+        auto* forestAssets = FORCE_GET(AssetManager::Instance().LoadLevel(16));
+        const auto forestFeld = read(L"LEVEL\\FELD16.256");
+        auto forestObjects = read(L"LEVEL\\OBJPOS16.DAT");
+        Desperabis::Level forestGeometry;
+        forestGeometry.LoadGeometry(forestFeld.data(), forestFeld.size());
+        forestGeometry.BuildCollisionMap();
+        Desperabis::GameContext forestCore;
+        forestCore.level = &forestGeometry;
+        forestCore.collisionMap = forestGeometry.collisionMap.get();
+        int frontSlot = 0;
+        for (std::size_t offset = 0; offset < forestObjects.size(); offset += 54)
+        {
+            const int slot = static_cast<int>(offset / 54) + 2;
+            forestCore.ReplaceWorldObject(slot, Desperabis::DecodeGameObject(forestObjects.data() + offset, 54));
+            if (!frontSlot && forestCore.worldObjects[slot].behavior == Desperabis::BehaviorType::ExtinguishLava)
+            {
+                frontSlot = slot;
+            }
+        }
+        Check(frontSlot != 0, "Original forest must provide a water-front fixture.");
+        WallLevel forest;
+        forest.Build(forestAssets->GetLevelInfo(), forestGeometry, forestObjects);
+        Check(forest.MutableFloors().size() == 127 && level.MutableFloors().empty(),
+            "Only the forest's 127 authored river-path tiles must acquire switchable floor variants.");
+        for (const auto& floor : forest.MutableFloors())
+        {
+            Check(floor.original && floor.replacement && floor.original->GetVisible() &&
+                !floor.replacement->GetVisible() &&
+                (floor.originalFloor & 0xe0) == (floor.replacementFloor & 0xe0) &&
+                (floor.original->GetTransform().GetTranslation() -
+                    floor.replacement->GetTransform().GetTranslation()).GetLength() < 0.00001f,
+                "River variants must retain native model placement/bank/rotation and show only the original initially.");
+        }
+        const auto forestInstances = forest.Walls();
+        std::vector<std::shared_ptr<IGraphicsRuntimeObject>> forestBuffers;
+        for (const auto& instance : forestInstances) { forestBuffers.push_back(instance->GetRenderable()->m_runtime); }
+        const auto syncForest = [&]
+        {
+            return forest.SynchronizeFloorTiles(&forestGeometry.floorObjects[0][0], 50, 40, 50);
+        };
+        Check(syncForest() == 0, "Dormant river synchronization must be idempotent.");
+        forestCore.ActivateObjectGroup(1);
+        std::size_t completed = 0;
+        std::size_t savedRemaining = 0;
+        std::unique_ptr<WallLevel> midwaySave;
+        for (int tick = 0; tick < 800; ++tick)
+        {
+            forestCore.tickCount = 1;
+            for (std::size_t slot = 2; slot < forestCore.worldObjects.size(); ++slot)
+            {
+                if (forestCore.worldObjects[slot].behavior == Desperabis::BehaviorType::ExtinguishLava)
+                {
+                    Desperabis::UpdateObject(forestCore.worldObjects[slot], forestCore);
+                }
+            }
+            completed += syncForest();
+            if (tick == 100)
+            {
+                auto savedObjects = forestObjects;
+                for (std::size_t offset = 0; offset < savedObjects.size(); offset += 54)
+                {
+                    Desperabis::EncodeGameObject(forestCore.worldObjects[offset / 54 + 2], savedObjects.data() + offset, 54);
+                }
+                midwaySave = std::make_unique<WallLevel>();
+                midwaySave->Build(forestAssets->GetLevelInfo(), forestGeometry, savedObjects);
+                savedRemaining = 127 - completed;
+                Check(completed > 0 && savedRemaining > 0 && midwaySave->MutableFloors().size() == savedRemaining &&
+                    midwaySave->SynchronizeFloorTiles(&forestGeometry.floorObjects[0][0], 50, 40, 50) == 0,
+                    "Midway loading must preserve completed tiles and prepare only each front's remaining path.");
+            }
+        }
+        Check(completed == 127 && syncForest() == 0,
+            "Four original fronts must switch every authored river tile exactly once.");
+        Check(midwaySave->SynchronizeFloorTiles(&forestGeometry.floorObjects[0][0], 50, 40, 50) == savedRemaining,
+            "A midway-loaded river must continue through all its remaining prepared tiles.");
+        for (const auto& floor : forest.MutableFloors())
+        {
+            Check(!floor.original->GetVisible() && floor.replacement->GetVisible(),
+                "Completed river tiles must replace the lava model, not overlay it.");
+        }
+        for (std::size_t i = 0; i < forestInstances.size(); ++i)
+        {
+            Check(forest.Walls()[i] == forestInstances[i] &&
+                forest.Walls()[i]->GetRenderable()->m_runtime == forestBuffers[i],
+                "Flooding must not allocate instances or rebuild/upload terrain buffers at runtime.");
+        }
+        for (std::size_t offset = 0; offset < forestObjects.size(); offset += 54)
+        {
+            Desperabis::EncodeGameObject(forestCore.worldObjects[offset / 54 + 2], forestObjects.data() + offset, 54);
+        }
+        WallLevel completedSave;
+        completedSave.Build(forestAssets->GetLevelInfo(), forestGeometry, forestObjects);
+        Check(completedSave.MutableFloors().empty(),
+            "A completed saved river must load the final floor models without reviving dead front paths.");
+
+        auto originalFront = Desperabis::DecodeGameObject(
+            read(L"LEVEL\\OBJPOS16.DAT").data() + (frontSlot - 2) * 54, 54);
+        const int riverColumn = originalFront.posX / 100 - 1;
+        const int riverRow = 40 - originalFront.posZ / 100;
+        Desperabis::Level riverGeometry;
+        for (auto& row : riverGeometry.floorHeights) { std::fill(std::begin(row), std::end(row), byte(100)); }
+        for (auto& row : riverGeometry.roomHeights) { std::fill(std::begin(row), std::end(row), byte(70)); }
+        riverGeometry.floorObjects[riverRow][riverColumn] = 138;
+        riverGeometry.BuildCollisionMap();
+        Desperabis::GameContext riverCore;
+        riverCore.level = &riverGeometry;
+        riverCore.collisionMap = riverGeometry.collisionMap.get();
+        originalFront.itemValue = 1;
+        originalFront.blendWeightOrSpriteOpacity = 0;
+        originalFront.posY = -204;
+        originalFront.health = 1000;
+        riverCore.ReplaceWorldObject(2, originalFront);
+        std::vector<byte> riverObjects(54);
+        Desperabis::EncodeGameObject(originalFront, riverObjects.data(), 54);
+        WallLevel river;
+        river.Build(forestAssets->GetLevelInfo(), riverGeometry, riverObjects);
+        const Vector riverCenter = Level::DespToPos(100 * riverColumn + 150, -200, 4050 - 100 * riverRow);
+        const auto renderRiver = [&](WallLevel& drawn, const Desperabis::RawGameObject& front)
+        {
+            drawn.UpdateFront(front);
+            Camera camera;
+            Matrix4 projection, transform;
+            projection.CreateOrthographic(130.f * DespToFloat, 130.f * DespToFloat, 0.01f, 30.f);
+            transform.Create(riverCenter + Vector(0, 300.f * DespToFloat, 0),
+                Vector(0, -static_cast<float>(Math::Pi * 0.5), 0));
+            camera.SetProjectionMatrix(projection);
+            camera.SetCameraTransformMatrix(transform);
+            RenderingSettings waterSettings;
+            waterSettings.gridVisibility = false;
+            waterSettings.fullbrightRendering = true;
+            VisibilitySettings viewSettings;
+            VisibilityResult visible;
+            visibility.ComputeResultFor(&camera, &drawn.WallScene(), visible, waterSettings, viewSettings, stats);
+            visible.m_lightmap = &lightmap;
+            visible.m_fogFalloff = 0;
+            const float black[]{ 0,0,0,1 };
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+            renderer.RenderSceneElements(visible, waterSettings, stats);
+            for (const auto& water : visible.m_visibleWater)
+            {
+                for (const auto& entry : water.m_waterReceiver)
+                {
+                    Check(entry.m_instance->GetVisible(),
+                        "Water passes must never submit the hidden riverbed variant or expired front.");
+                }
+            }
+            return target.Pixels(device, context);
+        };
+        const auto riverStart = renderRiver(river, riverCore.worldObjects[2]);
+        riverCore.tickCount = 12;
+        Desperabis::UpdateObject(riverCore.worldObjects[2], riverCore);
+        const auto riverPartial = renderRiver(river, riverCore.worldObjects[2]);
+        const auto frontInstance = river.UpdateFront(riverCore.worldObjects[2]);
+        const Vector frontPosition = frontInstance->GetTransform().GetTranslation();
+        Check(std::fabs(frontPosition.GetY() -
+            (river.GetCellArray().GetHeightAtPos(frontPosition) + 2.f * DespToFloat)) < 0.00001f &&
+            riverCore.worldObjects[2].posY == -204,
+            "Flood rendering must sit above the riverbed without changing the native core object's height.");
+        std::size_t morphPixels = 0;
+        for (std::size_t i = 0; i < riverStart.size(); ++i) { morphPixels += riverStart[i] != riverPartial[i]; }
+        Check(std::abs(frontInstance->m_blendWeight - 0.48f) < 0.00001f &&
+            frontInstance->GetBlendTargetRenderable() && morphPixels > 100,
+            "The original frame-4/5 water front must visibly morph at core-authored partial progress.");
+        Desperabis::EncodeGameObject(riverCore.worldObjects[2], riverObjects.data(), 54);
+        WallLevel partialSave;
+        partialSave.Build(forestAssets->GetLevelInfo(), riverGeometry, riverObjects);
+        Check(renderRiver(partialSave, riverCore.worldObjects[2]) == riverPartial,
+            "A saved partially flooded tile must render pixel-identically with its saved morph weight.");
+        riverCore.tickCount = 14;
+        Desperabis::UpdateObject(riverCore.worldObjects[2], riverCore);
+        Check(river.SynchronizeFloorTiles(&riverGeometry.floorObjects[0][0], 50, 40, 50) == 1 &&
+            riverCore.worldObjects[2].health == 0, "The terminal front must reveal its prepared final riverbed.");
+        const auto riverEnd = renderRiver(river, riverCore.worldObjects[2]);
+        Desperabis::EncodeGameObject(riverCore.worldObjects[2], riverObjects.data(), 54);
+        WallLevel riverSave;
+        riverSave.Build(forestAssets->GetLevelInfo(), riverGeometry, riverObjects);
+        Check(riverEnd == renderRiver(riverSave, riverCore.worldObjects[2]) && riverEnd != riverStart,
+            "Completed runtime river geometry must visibly change and match freshly loaded saved floors.");
+        Check(renderRiver(forest, forestCore.worldObjects[frontSlot]) ==
+            renderRiver(completedSave, forestCore.worldObjects[frontSlot]) &&
+            renderRiver(forest, forestCore.worldObjects[frontSlot]) ==
+            renderRiver(*midwaySave, forestCore.worldObjects[frontSlot]),
+            "Original forest runtime, completed save and continued midway save must render pixel-identically.");
+        riverGeometry.floorObjects[riverRow][riverColumn] = 138;
+        Check(river.SynchronizeFloorTiles(&riverGeometry.floorObjects[0][0], 50, 40, 50) == 1,
+            "Prepared river variants must support restoration without a rebuild.");
+        std::vector<byte> stridedFloors(53 * 40, 0);
+        stridedFloors[riverRow * 53 + riverColumn] = 139;
+        Check(river.SynchronizeFloorTiles(stridedFloors.data(), 50, 40, 53) == 1 &&
+            river.SynchronizeFloorTiles(stridedFloors.data(), 50, 40, 53) == 0,
+            "Floor synchronization must honor row stride and avoid repeated changes.");
+        stridedFloors[riverRow * 53 + riverColumn] = 140;
+        rejected = false;
+        try { river.SynchronizeFloorTiles(stridedFloors.data(), 50, 40, 53); }
+        catch (const std::runtime_error&) { rejected = true; }
+        Check(rejected, "Unprepared river floor variants must fail explicitly.");
+        rejected = false;
+        try { river.SynchronizeFloorTiles(stridedFloors.data(), 49, 40, 53); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        Check(rejected, "Floor synchronization must reject mismatched backing dimensions.");
+        riverGeometry.floorObjects[riverRow][riverColumn] = 138;
+        auto invalidFront = originalFront;
+        invalidFront.behaviorParameter = 31;
+        std::vector<byte> invalidObjects(54);
+        Desperabis::EncodeGameObject(invalidFront, invalidObjects.data(), 54);
+        rejected = false;
+        try { WallLevel invalid; invalid.Build(forestAssets->GetLevelInfo(), riverGeometry, invalidObjects); }
+        catch (const std::runtime_error&) { rejected = true; }
+        Check(rejected, "Unavailable river model variants must report an explicit asset error.");
+        invalidFront = originalFront;
+        invalidFront.posX = 0;
+        Desperabis::EncodeGameObject(invalidFront, invalidObjects.data(), 54);
+        rejected = false;
+        try { WallLevel invalid; invalid.Build(forestAssets->GetLevelInfo(), riverGeometry, invalidObjects); }
+        catch (const std::runtime_error&) { rejected = true; }
+        Check(rejected, "River paths outside native tile storage must fail before building geometry.");
+        for (const auto values : { std::pair<byte, byte>{ 1, 3 }, { 0, 3 }, { 16, 3 }, { 1, 0 } })
+        {
+            riverGeometry.floorObjects[riverRow][riverColumn] = values.first;
+            auto quadFront = originalFront;
+            quadFront.behaviorParameter = values.second;
+            std::vector<byte> duplicateFronts(108);
+            Desperabis::EncodeGameObject(quadFront, duplicateFronts.data(), 54);
+            Desperabis::EncodeGameObject(quadFront, duplicateFronts.data() + 54, 54);
+            WallLevel quad;
+            quad.Build(forestAssets->GetLevelInfo(), riverGeometry, duplicateFronts);
+            Check(quad.MutableFloors().size() == 1,
+                "Duplicate river fronts must share one tile binding, including textured and empty floors.");
+            const auto& floor = quad.MutableFloors()[0];
+            if (floor.original && floor.replacement)
+            {
+                Check(floor.original->GetRenderable()->m_runtime == floor.replacement->GetRenderable()->m_runtime,
+                    "Textured river variants must share the island's immutable buffers, just like mutable walls.");
+            }
+            riverGeometry.floorObjects[riverRow][riverColumn] = values.second;
+            Check(quad.SynchronizeFloorTiles(&riverGeometry.floorObjects[0][0], 50, 40, 50) == 1 &&
+                (!floor.original || !floor.original->GetVisible()) &&
+                (!floor.replacement || floor.replacement->GetVisible()),
+                "Textured and empty floor variants must switch visibility without duplicate or missing faces.");
+        }
+        std::cout << "Forest flooding: 127 original river tiles, unchanged GPU buffers, core-driven water-front morph pixels, "
+            "partial/completed save pixels, midway continuation, visibility, restoration and stride passed ("
+            << morphPixels << " morph pixels).\n";
         std::cout << "Native grid: original tutorial pixels, four original padded grids/save planes, "
             "all wall shapes/facings at authored and physical edges, full floor/ceiling/water/model footprints, "
             "live wall sync and 0/80 vertices passed.\n";
@@ -2494,6 +2756,22 @@ int main(int argc, char* argv[])
                 "Unlit UI model pictures must not modify shared world materials.");
             core.SetMenuPage(Desperabis::MenuPage::MainMenu);
             Check(render() != baseline, "The main menu must have a distinct presentation.");
+            core.SetMenuPage(Desperabis::MenuPage::ChapterSelection);
+            const auto partSelection = render();
+            Check(partSelection != baseline && partSelection == render(),
+                "Part selection must render a stable core-owned presentation.");
+            struct SelectionInput final : Desperabis::InputHandler
+            {
+                bool down = false;
+                bool IsKeyPressed(Desperabis::InputKey key) override
+                {
+                    return down && key == Desperabis::InputKey::UiDownKey;
+                }
+            } selectionInput;
+            core.UpdateApplication(0, selectionInput);
+            selectionInput.down = true;
+            core.UpdateApplication(0, selectionInput);
+            Check(render() != partSelection, "Part selection must visibly move focus to the next part.");
             core.SetMenuPage(Desperabis::MenuPage::Inventory);
         }
         std::vector<std::uint32_t> previousMap;

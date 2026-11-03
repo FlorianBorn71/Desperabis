@@ -62,8 +62,11 @@ For the first explained case and shared collision-map pointer, see
 - `level-sixteen-seventeen-evidence.txt`,
   `level-sixteen-seventeen-support-evidence.txt`,
   `level-sixteen-seventeen-lifecycle-evidence.txt`: recovered frog, outdoor
-  bat, lava smoke, sloped rolling-rock and shark paths. `ExtinguishLava` remains
-  deliberately deferred.
+  bat, lava smoke, sloped rolling-rock and shark paths.
+- `forest-flooding-evidence.txt`: native `ExtinguishLava` morph/stepping,
+  floor-frame replacement and conditional collision-map rectangle. Implemented
+  with switchable renderer floor variants and original/saved-state regressions;
+  see [forest flooding](BehaviorRecovery.md#forest-river-flooding-and-lava-extinguishing).
 - `initial-import.txt`: generated memory map and initial instruction report.
 - `high-level-evidence.txt`: focused instruction evidence for the control-flow map.
 - `ui-evidence.txt`: UI page dispatch, F2 inventory navigation, shared input/text
@@ -71,6 +74,8 @@ For the first explained case and shared collision-map pointer, see
   See [UI architecture](HighLevelStructure.md#ui-pages-shared-helpers-and-element-lists).
 - `ui-chapter-evidence.txt`: chapter-selection cancellation and acceptance,
   including the original new-game initialization call.
+- `new-game-initialization-evidence.txt`: recovered fresh-game resets and
+  their relationship to the functional part selector and normal level loading.
 - `Scaffold/GameContext.h/.cpp`: context class with all member definitions in
   one implementation file: application flow/page hooks, object allocation,
   sound/random numbers, collision/height queries, and prompts.
@@ -328,12 +333,22 @@ presentation after completion, and do not carry the old frame's simulation
 into the new scene. See [progression and exit recovery](BehaviorRecovery.md#core-owned-level-progression-and-levelend).
 Interactive hosts call `UpdateApplication(elapsedSeconds, input)` every frame,
 including paused, loading and zero-simulation-tick frames. GameCore checks
-F1/F2 input, dispatches gameplay/main-menu/inventory/map updates, and owns the
+F1/F2 input, dispatches gameplay/main-menu/part-selection/inventory/map updates, and owns the
 33 Hz accumulator. Inspect the optional `result.tick`, synchronize render
 instances from `GetWorldObjects()`, and use `result.worldDeltaSeconds` for
 world presentation clocks. Draw the core-authored `GetApplicationPresentation()`
 recipe on its original 360x240 logical canvas; the host only resolves assets and scales
 that canvas. No modal UI override is required.
+F1 exposes Resume, New Game and Quit. New Game opens a three-part selector:
+Training starts level 50, Part 1 starts 30, and Part 2 starts 10. Up/Down
+selects, Enter starts and Escape returns without altering the current game.
+All three parts are available for reconstruction/testing; native unlock state
+and the animated DOS selector artwork are not yet modeled. Acceptance clears
+carried inventory/resources and restores the native vital/weapon defaults
+before requesting the existing host level loader. Host cheats/preferences
+remain intact. Part 2 followed by six Tab advances reaches forest level 16.
+Startup remains the training level. See the
+[new-game contract](BehaviorRecovery.md#game-context-and-application-flow).
 Inventory recipes reference the original frame/action/resource art and palette
 shade states rather than replacement widgets. See the
 [native layout recovery](HighLevelStructure.md#original-inventory-artwork-and-placement).
@@ -343,6 +358,9 @@ to distinguish gameplay from modal screens. `ApplicationUi::UploadCollisionMap`
 consumes `GameContext::collisionmapUploadDirty` only after a successful upload.
 Runtime collision edits must use the context's pixel/span helpers, which route
 through `WriteCollisionMapByte`; do not bypass dirty tracking with raw writes.
+`SyncGameObjects` also passes the full native floor plane to
+`Level::SynchronizeFloorTiles` for the prebuilt `ExtinguishLava` river variants;
+the core remains responsible for morph progress, collision and floor writes.
 Level installation and floor-footprint changes also invalidate map presentation.
 `ApplicationUi::UploadGeometryMap` independently caches the modal/wall-preview
 texture by loaded level and `geometryRevision`. `ApplyMapMaterial` changes only

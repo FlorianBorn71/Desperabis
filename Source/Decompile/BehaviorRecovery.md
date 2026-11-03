@@ -87,8 +87,9 @@ The authored `Frog` (12), `BatOutdoor` (17), `LavaSmoke` (200),
 [support evidence](level-sixteen-seventeen-support-evidence.txt), and
 [lifecycle evidence](level-sixteen-seventeen-lifecycle-evidence.txt).
 They remain core-owned simulation rather than renderer-side object behaviors.
-`ExtinguishLava` (130) is deliberately still unimplemented: its geometry
-changes are outside this recovery batch.
+`ExtinguishLava` (130) and its mutable riverbed presentation are now implemented
+as described below; the separate final-level `FloodingWater` (131) remains
+unrecovered.
 
 Native entries are `10AC:8BC4` (frog), `10AC:5BE7` (outdoor bat),
 `10AC:38D6` (shark), `0000:1CA6` (sloped rock), and `0000:4EFB` (lava
@@ -107,6 +108,64 @@ the previous four-samples-in-one-plane guard threw and repeatedly aborted
 the rest of the gameplay update. Boundary queries now use bounded native
 cross-plane reads; 49,152 boundary coordinate pairs are compared against
 an independent DS-byte-image reference.
+
+### Forest river flooding and lava extinguishing
+
+[Native flooding evidence](forest-flooding-evidence.txt) recovers
+`ExtinguishLava` at `0000:3A69..3BEF`. Level 16 has four dormant health-1001
+fronts with model 32, animation 5, frames 4/5. Existing switch-group activation
+sets their health to 1000; no renderer-owned simulation or new trigger is needed.
+Their lengths are 23, 22, 41 and 41 tiles (127 total).
+
+At health other than 1000, the handler sets Y to interpolated terrain minus
+four, even with zero simulation ticks. At health 1000, each behavior substep:
+
+1. Selects sound effect 10 or 43 with `Random(2)`, using the dispatch's initial
+   positional volume and the ordinary one-instance-per-source sound limit.
+2. Adds `abs(velocityX) + abs(velocityZ)` to the signed-word morph weight.
+3. While the weight is **greater than 100**, subtracts 100 and decrements
+   `itemValue`, the remaining-tile count. A count below one clears health
+   through `SetObjectHealth`, but does not skip the final commit or stop the
+   current native batch.
+4. With DS:`D500` enabled, replaces the current floor byte with
+   `(oldFloor & 0xE0) | (behaviorParameter & 31)`. This is a **model-frame
+   replacement**, preserving rotation/bank bits, not a surface-flags change.
+   The native one-based tile uses `posX/100`, `41-posZ/100` and stride 50.
+   `10AC:01D6` changes collision pixels to 2 only where `(pixel & 128)==128`,
+   over inclusive X/Z offsets -3..1 at the world-to-map coordinate. Bounds
+   clip each pixel individually. Runtime writes use the map dirty-tracking helper.
+5. Advances X/Z by `sign(velocityX/Z)*100`, not by the velocity magnitudes.
+
+The renderer scans live raw fronts and their remaining paths before building
+terrain. Only affected floors receive original/replacement variants; static
+model variants share the original model buffers, and textured-quad variants
+share the island buffers. Normal material batching is unchanged elsewhere.
+The low five bits select the completed frame (11 or 13 in level 16), while
+the moving object supplies the partial-tile morph through the existing
+`ApplyRenderProperties` frame pair and weight. There is no generic quad added
+on top of the original shoreline/lava mesh; native model materials continue
+through the existing per-range water passes.
+
+`SyncGameObjects` calls `Level::SynchronizeFloorTiles` on the full native plane.
+Each registered tile accepts only its prepared original/replacement values.
+The renderer updates the grid byte and switches instance visibility, without
+rebuilding/uploading buffers. Missing/conflicting variants and invalid paths
+fail explicitly. No front means no floor splitting or per-tile flood polling.
+Floor changes increment core `geometryRevision` and invalidate map presentation.
+The DX11 game continues to use core collision rather than renderer physics.
+
+Fresh loads consume the saved floor plane and object records. Completed tiles
+are already final; each live front prepares only its remaining path, and its
+saved frame pair/progress restores the partial tile. Dead fronts need no replay.
+This does not add a new savegame UI/load flow.
+
+`level-sixteen-seventeen-behaviors` checks every original front tick against an
+independent full-record/floor/collision/RNG reference, plus strict completion
+thresholds, signed wrap, batched terminal ordering, activation, dormant height,
+body-mode suppression, dirty tracking and clipped collision footprints.
+`ApplicationUiTests` completes all 127 tiles with stable instance/buffer identity,
+continues a midway-loaded river, exercises textured/empty variants and stride,
+and compares actual WARP pixels for partial morphs and partial/completed saves.
 
 ### Native special-surface geometry
 
@@ -383,10 +442,19 @@ outer state machine lives in
   choice without changing pages. Resume/save use `hasActiveGame` together with
   the original shared suppression gate. Escape retains its distinct native gate.
 - `OpenInventory()` represents the gated gameplay-to-F2 transition.
-- `StartNewGame(chapter)` invokes `InitializeNewGame(chapter)` before marking
-  the game active and selecting gameplay. The original selector calls
+- `StartNewGame(chapter)` validates parts 1..3 and rejects an outstanding load
+  before invoking `InitializeNewGame(chapter)`. The default initializer clears
+  inventory, gold, poison and maps; restores life/oxygen and native weapon
+  resource/animation defaults; clears death suppression and pause; and calls
+  `StartLevel(50/30/10)` for Training/Part 1/Part 2. Host debug/audio preferences
+  are preserved. The original selector calls
   `0000:0D30(1, chapter)`; cancellation returns to the main menu without loading.
-  See [chapter-selection evidence](ui-chapter-evidence.txt).
+  See [chapter-selection evidence](ui-chapter-evidence.txt) and
+  [new-game reset evidence](new-game-initialization-evidence.txt).
+  Deferred loads remain `Loading` until completion and do not claim a new
+  active game prematurely. Synchronous failures stay on the selector and
+  propagate explicit errors. Like native initialization, progress is reset
+  before loading: a failed accepted New Game is not a rollback to old progress.
 
 The blocking recovery page bodies are protected virtual member functions,
 operating on their own context rather than receiving another context reference.
@@ -398,12 +466,12 @@ outer dispatcher. Unknown presentation bodies have an explicit shared hook;
 verified forced outer transitions are still applied after those bodies return.
 
 **The legacy blocking driver remains an executable skeleton.** Default page hooks,
-the complete gameplay frame loop, and new-game loading throw descriptive
+the complete gameplay frame loop, and a missing host level loader throw descriptive
 `std::logic_error` exceptions. No page silently succeeds, loads resources,
 or substitutes a partial object update for a gameplay loop.
-`InitializeNewGame` is responsible for the unrecovered complete initialization,
-including level resources and gameplay-mode flags. Chapter availability belongs
-to the chapter selector. The existing console remains a behavior probe; it does
+`InitializeNewGame` now implements the recovered reset subset and uses normal
+host resource loading; complete story/resource metadata and native chapter
+unlocking remain unrecovered. The existing console remains a behavior probe; it does
 not call the unimplemented application loop.
 
 [ApplicationFlowTests.cpp](Scaffold/ApplicationFlowTests.cpp) exercises all
@@ -1332,9 +1400,13 @@ The host sets `MainMenuKey` (F1), `InventoryKey` (F2), the four UI arrow states,
 GameCore samples each key once, handles page-key/confirm/cancel rising edges,
 and supplies navigation repeat (350 ms initial delay, then 100 ms; at most
 one repeated step per frame). F1 opens the main menu; F2 opens inventory
-only with a ready level and the native shared gate enabled. The first-pass
-main menu supports Resume/Quit and explicitly labels the other menu pages
-unimplemented. Escape resumes only when a loaded game and the native gate
+only with a ready level and the native shared gate enabled. The main menu
+supports Resume/New Game/Quit; the part selector supports Up/Down, Enter and
+Escape, sharing the same navigation repeat and transition input gates.
+New Game is disabled during an outstanding load. All three parts are exposed
+for development rather than emulating the native DS:`3131` availability gate.
+The selector uses a static text recipe, not the native animated carousel.
+Escape resumes only when a loaded game and the native gate
 allow it. Quit is a core state, translated into window shutdown by the host.
 Unsupported nonblocking pages throw rather than invoking a blocking callback.
 
@@ -1373,15 +1445,16 @@ lookups, not a stretched generic bar. See the
 This still does **not** claim pixel-identical DOS rendering: model projection,
 model centering and the disabled electricity model's tint use the modern
 adapter; the per-item description/animation path is not yet ported.
-The main menu remains a first-pass Resume/Quit page. Advancing source phase
+The main menu and part selector remain functional text presentations. Advancing source phase
 by 17 at 33 Hz is a port timing policy, not a measured native inventory-loop
 frequency.
-Books, cutscenes, chapter/new-game flow, settings and save/load pages remain
+Books, cutscenes, native chapter artwork/unlock metadata, settings and save/load pages remain
 unimplemented and can be added as further nonblocking page handlers.
 The host's Tab level navigation remains a development shortcut, not game flow.
 
 `ApplicationUpdateTests.cpp` tests routing, gates, timing, input leakage,
-navigation/repeat, all pulse phases, record swaps, hand references, native potion
+navigation/repeat, all three new-game starts/resets/failures, cancellation,
+same-part reloads, Tab reachability to level 16, all pulse phases, record swaps, hand references, native potion
 boundaries and recipe contents. DX11's `ApplicationUiTests.vcxproj` renders
 original items through D3D11 WARP at native/wide/portrait sizes, verifies cache
 stability/material isolation, and rejects D3D11 errors.

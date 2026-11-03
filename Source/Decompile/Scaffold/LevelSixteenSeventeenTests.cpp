@@ -34,8 +34,9 @@ namespace
 
     struct Context : GameContext
     {
-        int creations = 0;
+        int creations = 0, destructions = 0;
         void OnObjectCreated(int) override { ++creations; }
+        void OnObjectDestroyed(int) override { ++destructions; }
     };
 
     struct Fixture
@@ -458,6 +459,179 @@ namespace
         Check(rejected, "Unmodeled DOS memory must still fail explicitly rather than wrap or clamp.");
     }
 
+    void TestExtinguishLava()
+    {
+        Fixture f;
+        auto& object = f.Object();
+        object.health = 1001;
+        object.velocityX = 4;
+        object.itemValue = 2;
+        object.behaviorParameter = 43;
+        object.posY = 500;
+        f.Run(BehaviorType::ExtinguishLava, 0);
+        Check(object.posY == -4 && object.posX == 1800 && object.itemValue == 2 &&
+            f.context.randomSeed == 0,
+            "Dormant river fronts must follow terrain minus four even at zero ticks, without flooding or RNG.");
+        f.context.ActivateObjectGroup(1);
+        Check(object.health == 1000, "Opening the native switch group must activate dormant water fronts.");
+        f.level.floorObjects[20][17] = 138;
+        object.blendWeightOrSpriteOpacity = 96;
+        f.Run(BehaviorType::ExtinguishLava);
+        Check(object.blendWeightOrSpriteOpacity == 100 && object.posX == 1800 &&
+            f.level.floorObjects[20][17] == 138 && f.level.geometryRevision == 0,
+            "The native completion threshold is strictly greater than 100, not greater-or-equal.");
+        for (std::size_t i = 0; i < std::size(f.level.collisionMap->data); ++i)
+        {
+            f.level.collisionMap->data[i] = static_cast<std::uint8_t>(i % 256);
+        }
+        const auto before = *f.level.collisionMap;
+        f.context.collisionmapUploadDirty = false;
+        f.Run(BehaviorType::ExtinguishLava);
+        Check(object.blendWeightOrSpriteOpacity == 4 && object.posX == 1900 &&
+            object.itemValue == 1 && object.health == 1000 && f.level.floorObjects[20][17] == 139 &&
+            f.level.geometryRevision == 1 && f.context.collisionmapUploadDirty,
+            "Completion must preserve the floor bank/rotation, decrement length, step one tile and dirty maps.");
+        for (int row = 0; row < 200; ++row)
+        {
+            for (int column = 0; column < 200; ++column)
+            {
+                const int index = row * 200 + column;
+                const bool inside = column >= 64 && column <= 68 && row >= 81 && row <= 85;
+                const auto expected = inside && (before.data[index] & 128) ? 2 : before.data[index];
+                Check(f.level.collisionMap->data[index] == expected,
+                    "Flooding must conditionally replace bit-7 pixels in exactly the native inclusive 5x5 footprint.");
+            }
+        }
+        f.context.collisionmapUploadDirty = false;
+        const auto revision = f.level.geometryRevision;
+        f.context.ExtinguishLavaTile(1800, 2000, 43);
+        Check(f.level.geometryRevision == revision && !f.context.collisionmapUploadDirty,
+            "An unchanged floor and collision footprint must not cause repeated map uploads.");
+        object.blendWeightOrSpriteOpacity = 100;
+        f.Run(BehaviorType::ExtinguishLava);
+        Check(object.health == 0 && object.itemValue == 0 && object.posX == 2000 &&
+            f.context.destructions == 1 && f.level.floorObjects[20][18] == 11,
+            "The terminal tile must still commit and move after immediate lifetime notification.");
+
+        Fixture disabled;
+        disabled.context.field_D500 = false;
+        disabled.Object().velocityZ = -6;
+        disabled.Object().itemValue = 1;
+        disabled.Object().blendWeightOrSpriteOpacity = 100;
+        disabled.Run(BehaviorType::ExtinguishLava, 2);
+        Check(disabled.Object().health == 0 && disabled.Object().posZ == 1900 &&
+            disabled.Object().blendWeightOrSpriteOpacity == 12 && disabled.level.geometryRevision == 0 &&
+            disabled.context.destructions == 1,
+            "Body mode suppresses floor/collision edits, not front motion, expiration or remaining batched ticks.");
+
+        Fixture multiple;
+        multiple.Object().velocityX = 201;
+        multiple.Object().velocityZ = -100;
+        multiple.Object().itemValue = 1;
+        multiple.Object().behaviorParameter = 45;
+        multiple.Object().blendWeightOrSpriteOpacity = 100;
+        multiple.Run(BehaviorType::ExtinguishLava);
+        Check(multiple.Object().health == 0 && multiple.Object().itemValue == -3 &&
+            multiple.Object().posX == 2200 && multiple.Object().posZ == 1600 &&
+            multiple.Object().blendWeightOrSpriteOpacity == 1 && multiple.context.destructions == 1,
+            "Large morph increments must process every crossed tile, even after native health expiration.");
+        Fixture wrapping;
+        wrapping.Object().velocityX = 4;
+        wrapping.Object().blendWeightOrSpriteOpacity = 32766;
+        wrapping.Run(BehaviorType::ExtinguishLava);
+        Check(wrapping.Object().blendWeightOrSpriteOpacity == -32766 && wrapping.Object().posX == 1800,
+            "Morph addition must wrap as a signed DOS word before testing completion.");
+
+        bool rejected = false;
+        try { f.context.ExtinguishLavaTile(32767, 2000, 11); }
+        catch (const std::overflow_error&) { rejected = true; }
+        Check(rejected, "Invalid native tile division must fail explicitly.");
+        Fixture clipped;
+        clipped.Fill(128);
+        clipped.context.ExtinguishLavaTile(100, 4095, 13);
+        Check(clipped.level.collisionMap->data[0] == 2 && clipped.level.collisionMap->data[2] == 128,
+            "Collision footprints at the map edge must clip per pixel rather than wrap or reject the whole rectangle.");
+    }
+
+    void TestOriginalFlooding(const std::filesystem::path& root)
+    {
+        const auto read = [&](const std::string& filename)
+        {
+            std::ifstream file(root / filename, std::ios::binary);
+            Check(static_cast<bool>(file), "Cannot read original forest flooding fixture.");
+            return std::vector<std::uint8_t>{ std::istreambuf_iterator<char>(file), {} };
+        };
+        const auto feld = read("FELD16.256");
+        const auto records = read("OBJPOS16.DAT");
+        int fronts = 0, completedTiles = 0;
+        for (std::size_t offset = 0; offset < records.size(); offset += 54)
+        {
+            auto original = DecodeGameObject(records.data() + offset, 54);
+            if (original.behavior != BehaviorType::ExtinguishLava) { continue; }
+            ++fronts;
+            Check(original.modelId == 32 && original.modelAnim == 5 && original.animFrame == 4 &&
+                original.modelFrame2 == 5 && original.health == 1001,
+                "Original forest fronts must retain their native model, morph pair and dormant group.");
+            Level level;
+            level.LoadGeometry(feld.data(), feld.size());
+            level.BuildCollisionMap();
+            Context context;
+            context.level = &level;
+            context.collisionMap = level.collisionMap.get();
+            context.ReplaceWorldObject(2, original);
+            context.ActivateObjectGroup(1);
+            auto expected = context.worldObjects[2];
+            std::array<std::uint8_t, 2000> floors{};
+            std::memcpy(floors.data(), level.floorObjects, floors.size());
+            auto map = *level.collisionMap;
+            std::uint32_t seed = 0;
+            context.soundEffectsLoaded = true;
+            context.soundEffects[9] = { 2, { 1, 2, 0, 0 } };
+            context.soundEffects[42] = { 1, { 3, 0, 0, 0 } };
+            int steps = 0;
+            for (; expected.health > 0 && steps < 2000; ++steps)
+            {
+                const auto effect = Next(seed, 2) == 0 ? 9 : 42;
+                Next(seed, context.soundEffects[effect].sampleCount);
+                expected.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(Word(
+                    expected.blendWeightOrSpriteOpacity + std::abs(expected.velocityX) + std::abs(expected.velocityZ)));
+                while (expected.blendWeightOrSpriteOpacity > 100)
+                {
+                    expected.blendWeightOrSpriteOpacity -= 100;
+                    if (--expected.itemValue < 1) { expected.health = 0; }
+                    const int index = (41 - expected.posZ / 100) * 50 + expected.posX / 100 - 51;
+                    floors[index] = static_cast<std::uint8_t>((floors[index] & 224) + (expected.behaviorParameter & 31));
+                    const int px = (expected.posX - 112) / 25;
+                    const int pz = 162 - (expected.posZ - 38) / 25;
+                    for (int dz = -3; dz <= 1; ++dz)
+                    {
+                        for (int dx = -3; dx <= 1; ++dx)
+                        {
+                            if (px + dx < 0 || pz + dz < 0 ||
+                                px + dx > map.widthMinusOne || pz + dz > map.heightMinusOne) { continue; }
+                            auto& pixel = map.data[(pz + dz) * (map.widthMinusOne + 1) + px + dx];
+                            if ((pixel & 128) == 128) { pixel = 2; }
+                        }
+                    }
+                    expected.posX += static_cast<std::int16_t>(((expected.velocityX > 0) - (expected.velocityX < 0)) * 100);
+                    expected.posZ += static_cast<std::int16_t>(((expected.velocityZ > 0) - (expected.velocityZ < 0)) * 100);
+                    ++completedTiles;
+                }
+                context.tickCount = 1;
+                Check(UpdateObject(context.worldObjects[2], context).status == DispatchStatus::ExecutedCase &&
+                    std::memcmp(&context.worldObjects[2], &expected, sizeof(expected)) == 0 &&
+                    std::memcmp(level.floorObjects, floors.data(), floors.size()) == 0 &&
+                    std::memcmp(context.collisionMap, &map, sizeof(map)) == 0 && context.randomSeed == seed,
+                    "Every original forest flooding tick must match the independent record, floor, collision and RNG oracle.");
+            }
+            Check(expected.health == 0 && context.destructions == 1 &&
+                steps > 300 && steps < 2000,
+                "Every original water front must finish its complete path and emit one destruction notification.");
+        }
+        Check(fronts == 4 && completedTiles == 127,
+            "Original level 16 must complete exactly four water fronts and 127 authored river tiles.");
+    }
+
     void TestOriginalFixtures(const std::filesystem::path& root)
     {
         struct Host final : Context
@@ -540,6 +714,9 @@ int main(int argc, char** argv)
         std::cout << "Shark passed.\n";
         TestTimerAndHeightBoundaries();
         TestHeightPlaneBoundaries();
+        TestExtinguishLava();
+        TestOriginalFlooding(argv[1]);
+        std::cout << "Forest flooding: native morph thresholds, lifetime, collision masks, four original paths and RNG passed.\n";
         TestOriginalFixtures(argv[1]);
         std::cout << "Level 16/17 frog, outdoor bat, lava smoke, slope rock and shark passed.\n";
         return 0;

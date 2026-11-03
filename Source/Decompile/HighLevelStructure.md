@@ -37,7 +37,7 @@ This outline is a search guide; it is not all independently verified yet.
 | Main menu | `0000:A625` | Handles selection and writes dispatcher states; calls drawing helper `0000:A568`. Main-menu identification is strongly supported by the referenced German menu strings. |
 | New-game/chapter selection candidate | `0000:8299` | Reached through the New Game menu item; selector calls `0000:0D30` on acceptance. Exact chapter metadata is not decoded. |
 | Settings / configuration candidates | `0000:851D`, `0000:92C0` | Reached through the corresponding main-menu choices and states. Their individual controls are not yet mapped. |
-| Level-start candidate | `0000:0D30` | Called after the new-game selector and during startup/other transitions. Full resource-loading and story-book boundaries are unresolved. |
+| Fresh-game initializer | `0000:0D30` | Resets inventory, meters and weapons after chapter acceptance. Full resource-loading/story metadata remain unresolved; the port resets known state and uses normal level loading. |
 | Normal gameplay-loop candidate | `0000:E2A3` | State `0` handler, with timer-counter waiting, repeated updates, object-behavior call, and frame work. Strong structural match. |
 | Alternate gameplay/presentation loop | `0000:E589` | Used by several special states; shares timing and object-behavior calls with the normal loop. Its exact demo/intro/replay roles remain unresolved. |
 | Object-behavior routine | `0000:1094` | Matches the author's DOSBox hook after address conversion; iterates 54-byte records and dispatches on record offset `+08`. Author-supplied alias: `DESP_GamePlay`. |
@@ -565,9 +565,15 @@ API has been added. Remaining visual work includes native per-item descriptions,
 preview animation, exact model projection and disabled-model shading.
 Exact DOS loop-to-wall-clock pulse timing also remains unmeasured.
 The legacy blocking driver retains its separate modal hooks; unsupported
-nonblocking pages and complete game initialization still fail explicitly.
+nonblocking pages and missing host loading still fail explicitly.
 The [chapter selector export](ui-chapter-evidence.txt) confirms that Escape
 returns to the main menu and acceptance invokes `0000:0D30(1, chapter)`.
+The [initializer evidence](new-game-initialization-evidence.txt) identifies
+the fresh-game meter/weapon/inventory resets. The nonblocking selector now
+offers Training (50), Part 1 (30) and Part 2 (10), following the existing
+playable-part sequence. All three are exposed for reconstruction/testing;
+native unlock state, label-resource metadata and animated selector artwork
+are not claimed as ported. Cancelling leaves the current game untouched.
 See [the scaffold contract](BehaviorRecovery.md#game-context-and-application-flow).
 
 ## Gameplay timing and ordering

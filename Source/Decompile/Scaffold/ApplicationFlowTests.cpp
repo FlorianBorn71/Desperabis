@@ -253,8 +253,9 @@ namespace
         }
         context.SetMenuPage(MenuPage::ChapterSelection);
         ExpectError<std::logic_error>([&] { context.StartNewGame(1); });
-        Check(context.GetMenuPage() == MenuPage::ChapterSelection && !context.hasActiveGame,
-            "The default new-game boundary must not pretend to load a level.");
+        Check(context.GetMenuPage() == MenuPage::ChapterSelection && !context.hasActiveGame &&
+            context.GetRuntimeState() == GameRuntimeState::LoadFailed && !context.GetLevelLoadError().empty(),
+            "New Game without a host loader must report load failure, not successful gameplay.");
     }
 }
 

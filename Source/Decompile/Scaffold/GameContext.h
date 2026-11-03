@@ -499,6 +499,7 @@ namespace Desperabis
         void SetDoorCollisionMapAtWorldXZ(std::int16_t x, std::int16_t z, std::uint16_t value);
         void SetBarrierCollisionMapAtWorldXZ(std::int16_t x, std::int16_t z,
             std::int16_t heading, std::uint8_t value);
+        void ExtinguishLavaTile(std::int16_t x, std::int16_t z, std::uint8_t floorFrame);
 
         // Original 1E48:CF49: X/Z word arguments, RETF 4; returns a byte in AL.
         std::uint8_t GetCollisionMapPixelAtWorldXZ(std::int16_t x, std::int16_t z) const;
@@ -553,7 +554,8 @@ namespace Desperabis
         virtual MenuPage ShowSaveGame();
         virtual MenuPage ShowInventory();
         virtual MenuPage ShowUnrecoveredPage(MenuPage page);
-        // Native chapter acceptance calls the level-start routine with (1, chapter).
+        // Part 1..3 selects training (50), first part (30), or second part (10).
+        // Resets carried progress before requesting the normal host level load.
         virtual void InitializeNewGame(std::int16_t chapter);
 
     private:
@@ -566,6 +568,7 @@ namespace Desperabis
         std::uint16_t inventoryPulsePhase = 0;
         double inventoryPulseAccumulator = 0;
         std::uint8_t mainMenuFocus = 0;
+        std::uint8_t chapterFocus = 0;
         double applicationTickAccumulator = 0;
         static constexpr std::size_t InputKeyCount = static_cast<std::size_t>(InputKey::Count);
         std::array<bool, InputKeyCount> applicationPreviousKeys{};

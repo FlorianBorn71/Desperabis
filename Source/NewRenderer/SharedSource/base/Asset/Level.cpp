@@ -471,6 +471,13 @@ namespace
             DrawCall drawCall;
         };
         std::vector<MutableDrawCall> m_mutableWalls;
+        struct MutableFloorDrawCall
+        {
+            std::size_t floorIndex;
+            bool replacement;
+            DrawCall drawCall;
+        };
+        std::vector<MutableFloorDrawCall> m_mutableFloors;
 	};
 
 
@@ -546,7 +553,7 @@ namespace
 } // anonymous namespace
 
 
-void Level::AddStaticCellObject(int x, int y, byte rawVal, HeightLevel atHeight)
+RenderableInstancePtr Level::AddStaticCellObject(int x, int y, byte rawVal, HeightLevel atHeight)
 {
     auto staticGeom0 = m_levelInfo.GetModelAnim(2);
     auto staticGeom1 = m_levelInfo.GetModelAnim(3);
@@ -560,7 +567,7 @@ void Level::AddStaticCellObject(int x, int y, byte rawVal, HeightLevel atHeight)
         float pitch = isFloor ? 0.f : Math::Pi;
         ModelAnim* modelAnim = (c >= 160) ? staticGeom1.get() : staticGeom0.get();
         if (modelAnim == nullptr)
-            return;
+            return nullptr;
         int frame = c & 31;
         int anim = frame / 5;
         int animFrame = frame % 5;
@@ -582,12 +589,14 @@ void Level::AddStaticCellObject(int x, int y, byte rawVal, HeightLevel atHeight)
 			vol.m_tileRange.m_minZ = vol.m_tileRange.m_maxZ = (int8_t)y;
             vol.m_visibilityIsland = m_cellArray.GetCell(x, y).m_visibilityIsland;
             m_wallGeometry.push_back(inst);
+            return inst;
         }
         else
         {
-            assert(false);
+            throw std::runtime_error("Static floor/ceiling tile references an unavailable model frame.");
         }
     }
+    return nullptr;
 }
 
 
@@ -818,6 +827,40 @@ void Level::CreateWallGeometry()
         }
         mutableTiles[row * m_cellArray.m_sizeX + column] = true;
     }
+    std::vector<int> mutableFloorIndices(m_cellArray.m_cell.size(), -1);
+    for (const auto& object : m_rawGameObject)
+    {
+        const GamePlay::PropertyAccessorBase props(object);
+        if (!props.Isvalid() || props.GetBehaviorType() != GamePlay::BehaviorType::ExtinguishLava) { continue; }
+        int x = object.m_rawShorts[6];
+        int z = object.m_rawShorts[8];
+        const int dx = (object.m_rawShorts[9] > 0) - (object.m_rawShorts[9] < 0);
+        const int dz = (object.m_rawShorts[11] > 0) - (object.m_rawShorts[11] < 0);
+        for (int remaining = object.m_rawShorts[17]; remaining > 0; --remaining, x += dx * 100, z += dz * 100)
+        {
+            const int column = x / 100 - 1;
+            const int row = 40 - z / 100;
+            if (!m_cellArray.IsInside(column, row))
+            {
+                throw std::runtime_error("River flooding path is outside level geometry.");
+            }
+            const auto index = row * m_cellArray.m_sizeX + column;
+            const byte original = m_cellArray.GetCell(column, row).m_floor;
+            const byte replacement = (original & 0xe0) | (object.m_rawBytes[52] & 31);
+            if (mutableFloorIndices[index] >= 0)
+            {
+                if (m_mutableFloors[mutableFloorIndices[index]].replacementFloor != replacement)
+                {
+                    throw std::runtime_error("Overlapping river flooding paths require conflicting floor variants.");
+                }
+            }
+            else if (original != replacement)
+            {
+                mutableFloorIndices[index] = static_cast<int>(m_mutableFloors.size());
+                m_mutableFloors.push_back({ column, row, original, replacement, nullptr, nullptr });
+            }
+        }
+    }
 
     for (int y = 0; y < m_cellArray.m_sizeZ; y++)
     {
@@ -907,31 +950,54 @@ void Level::CreateWallGeometry()
 
             if (addFloor)
             {
-                int firstIndex = (int)indices.size();
-                int c = cell.m_floor;
-                if (c > 0 && c < 32 && c != 16)
+                const int floorIndex = mutableFloorIndices[i];
+                const auto addVariant = [&](byte c, bool replacement)
                 {
-                    int texIndex = c & 15;
-                    AddFloorOrCeiling(HeightLevel::Floor, islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x, y, false);
-                    DrawCall dc;
-                    dc.m_material.m_transparencyType = TransparencyMode::Opaque;
-                    dc.m_material.m_opacity = 1.f;
-                    dc.m_material.m_textureSlot = (char)(texIndex);
-                    //dc.m_material.m_textureRepeat = true;
-                    dc.m_firstIndex = firstIndex;
-                    dc.m_primitiveCount = ((int)indices.size() - firstIndex) / 3;
-                    dc.m_material.m_useAlphaTest = false;
-                    dc.m_material.m_applyLighting = true;
-                    dc.m_material.ComputeHash();
-                    if (dc.m_primitiveCount > 0)
+                    if (c > 0 && c < 32 && c != 16)
                     {
-                        dc.m_material.m_texture = m_levelInfo.GetLevelTexture(texIndex).get(); // prevent it from using the torchlight tex
-                        islandWalls.m_dcs.emplace_back(dc);
+                        const int firstIndex = static_cast<int>(indices.size());
+                        const int texIndex = c & 15;
+                        AddFloorOrCeiling(HeightLevel::Floor, islandWalls.m_vertexCache,
+                            islandWalls.m_conversion.m_vertices, indices, x, y, false);
+                        DrawCall dc;
+                        dc.m_material.m_transparencyType = TransparencyMode::Opaque;
+                        dc.m_material.m_opacity = 1.f;
+                        dc.m_material.m_textureSlot = static_cast<char>(texIndex);
+                        dc.m_firstIndex = firstIndex;
+                        dc.m_primitiveCount = (static_cast<int>(indices.size()) - firstIndex) / 3;
+                        dc.m_material.m_useAlphaTest = false;
+                        dc.m_material.m_applyLighting = true;
+                        dc.m_material.m_texture = m_levelInfo.GetLevelTexture(texIndex).get();
+                        dc.m_material.ComputeHash();
+                        if (dc.m_primitiveCount > 0)
+                        {
+                            if (floorIndex < 0) { islandWalls.m_dcs.push_back(dc); }
+                            else
+                            {
+                                islandWalls.m_mutableFloors.push_back(
+                                    { static_cast<std::size_t>(floorIndex), replacement, dc });
+                            }
+                        }
                     }
-                }
-                else
+                    else
+                    {
+                        auto inst = AddStaticCellObject(x, y, c, HeightLevel::Floor);
+                        if (floorIndex >= 0)
+                        {
+                            if (c > 31 && !inst)
+                            {
+                                throw std::runtime_error("River flooding requires a valid floor model variant.");
+                            }
+                            auto& floor = m_mutableFloors[floorIndex];
+                            (replacement ? floor.replacement : floor.original) = inst;
+                            if (inst) { inst->SetVisible(!replacement); }
+                        }
+                    }
+                };
+                addVariant(cell.m_floor, false);
+                if (floorIndex >= 0)
                 {
-                    AddStaticCellObject(x, y, cell.m_floor, HeightLevel::Floor);
+                    addVariant(m_mutableFloors[floorIndex].replacementFloor, true);
                 }
             } // add floor
             
@@ -1006,7 +1072,8 @@ void Level::CreateWallGeometry()
     for (int islandId = 0; islandId <= maxIslands; islandId++)
     {
 		if (perIslandConversion[islandId] == nullptr ||
-            (perIslandConversion[islandId]->m_dcs.empty() && perIslandConversion[islandId]->m_mutableWalls.empty()))
+            (perIslandConversion[islandId]->m_dcs.empty() && perIslandConversion[islandId]->m_mutableWalls.empty() &&
+                perIslandConversion[islandId]->m_mutableFloors.empty()))
 		{
             continue;
 		}
@@ -1024,6 +1091,16 @@ void Level::CreateWallGeometry()
             const auto first = indices.begin() + wall.drawCall.m_firstIndex;
             islandWalls.m_conversion.m_sortedIndices.insert(islandWalls.m_conversion.m_sortedIndices.end(),
                 first, first + wall.drawCall.m_primitiveCount * 3);
+            newdcs.push_back(dc);
+        }
+        const auto mutableFloorStart = newdcs.size();
+        for (const auto& floor : islandWalls.m_mutableFloors)
+        {
+            auto dc = floor.drawCall;
+            dc.m_firstIndex = static_cast<int>(islandWalls.m_conversion.m_sortedIndices.size());
+            const auto first = indices.begin() + floor.drawCall.m_firstIndex;
+            islandWalls.m_conversion.m_sortedIndices.insert(islandWalls.m_conversion.m_sortedIndices.end(),
+                first, first + floor.drawCall.m_primitiveCount * 3);
             newdcs.push_back(dc);
         }
         islandWalls.m_conversion.GeneratePerTriangleNormals(islandWalls.m_conversion.m_sortedIndices.data(), (int)islandWalls.m_conversion.m_sortedIndices.size(), 0);
@@ -1060,7 +1137,14 @@ void Level::CreateWallGeometry()
             m_cellArray.GetTileAssignment(inst->GetTransform().GetTranslation(), bounds);
             bounds.m_visibilityIsland = islandId;
             m_wallGeometry.push_back(inst);
-            if (drawCallIndex >= staticDrawCallCount)
+            if (drawCallIndex >= mutableFloorStart)
+            {
+                const auto& variant = islandWalls.m_mutableFloors[drawCallIndex - mutableFloorStart];
+                auto& floor = m_mutableFloors[variant.floorIndex];
+                (variant.replacement ? floor.replacement : floor.original) = inst;
+                inst->SetVisible(!variant.replacement);
+            }
+            else if (drawCallIndex >= staticDrawCallCount)
             {
                 const auto& wall = islandWalls.m_mutableWalls[drawCallIndex - staticDrawCallCount];
                 m_mutableWalls.push_back({ wall.column, wall.row,
@@ -1104,6 +1188,32 @@ std::size_t Level::SynchronizeWallTiles(
             ++changed;
         }
         m_cellArray.GetCell(wall.column, wall.row).m_wallTextures = value;
+    }
+    return changed;
+}
+
+std::size_t Level::SynchronizeFloorTiles(
+    const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride)
+{
+    if (!tiles || width != static_cast<std::size_t>(m_cellArray.m_sizeX) ||
+        height != static_cast<std::size_t>(m_cellArray.m_sizeZ) || rowStride < width)
+    {
+        throw std::invalid_argument("Floor synchronization requires matching level dimensions and tile storage.");
+    }
+    std::size_t changed = 0;
+    for (const auto& floor : m_mutableFloors)
+    {
+        const byte value = tiles[floor.row * rowStride + floor.column];
+        if (value != floor.originalFloor && value != floor.replacementFloor)
+        {
+            throw std::runtime_error("River floor synchronization requires a prepared tile variant.");
+        }
+        auto& cell = m_cellArray.GetCell(floor.column, floor.row);
+        if (cell.m_floor == value) { continue; }
+        if (floor.original) { floor.original->SetVisible(value == floor.originalFloor); }
+        if (floor.replacement) { floor.replacement->SetVisible(value == floor.replacementFloor); }
+        cell.m_floor = value;
+        ++changed;
     }
     return changed;
 }
@@ -1260,7 +1370,14 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
 
 		assert(model->m_drawCalls.size() > 0 && model->m_drawCalls.size() < 16);
 		inst->m_uniformScale = 1.f; // not scalable  rawGO.GetScale();
-        inst->SetTransformAndUpdate(prop.GetTransform());
+        auto transform = prop.GetTransform();
+        if (prop.GetBehaviorType() == GamePlay::BehaviorType::ExtinguishLava)
+        {
+            const Vector pos = transform.GetTranslation();
+            // Keep the morphing flood surface two DOS units above the floor to avoid riverbed z-fighting.
+            transform.SetTranslation(Vector(pos.GetX(), m_cellArray.GetHeightAtPos(pos) + 2.f * DespToFloat, pos.GetZ()));
+        }
+        inst->SetTransformAndUpdate(transform);
         inst->SetVisible(true);
 	}
     else if (GamePlay::IsSpriteDisplayType(display))

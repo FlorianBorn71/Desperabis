@@ -318,6 +318,26 @@ namespace
         Check(host.GetLoadedLevelNumber() == 10, "Core must choose the next game-part entry.");
     }
 
+    void TestOriginalNewGame(const std::filesystem::path& original)
+    {
+        constexpr std::array<std::int16_t, 3> starts{ 50, 30, 10 };
+        for (std::size_t part = 0; part < starts.size(); ++part)
+        {
+            Host host;
+            host.original = original;
+            host.StartNewGame(static_cast<std::int16_t>(part + 1));
+            const auto* previous = host.GetLevel();
+            Check(host.GetLoadedLevelNumber() == starts[part] && host.GetRuntimeState() == GameRuntimeState::Ready &&
+                host.GetMenuPage() == MenuPage::Gameplay && host.GetLevel()->geometryWidth > 0 &&
+                host.worldObjects[1].health > 0, "New Game must install each part's original assets and player.");
+            host.inventory[2].health = 1000;
+            host.StartNewGame(static_cast<std::int16_t>(part + 1));
+            Check(host.requests.size() == 2 && host.requests[0].id != host.requests[1].id &&
+                host.GetLevel() != previous && host.inventory[2].health == 0,
+                "Restarting the same part must actually reload its assets and discard carried inventory.");
+        }
+    }
+
     void TestOriginalExit(const std::filesystem::path& original)
     {
         Host host;
@@ -354,6 +374,7 @@ int main(int argc, char** argv)
         TestContactAndTickBoundary();
         TestInventoryAndAsyncLoading();
         TestCoreNavigationInput();
+        TestOriginalNewGame(argv[1]);
         TestOriginalExit(argv[1]);
         std::cout << "Level progression tests passed.\n";
         return 0;
