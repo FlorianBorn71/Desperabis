@@ -55,6 +55,42 @@ chunking, multiple flashes and cleanup.
 Both standalone project and solution builds write to the repository's `Bin` folder:
 Release uses `Bin`, and Debug uses `Bin\Debug`.
 
+## Polygon normal generation
+
+Normals are baked during geometry conversion, using a single normal vertex
+attribute. There is no runtime flat/smooth switch or F6 binding. Pixel lighting
+always normalizes interpolated normals with `normalize`, including billboard normals.
+
+Models default to `SlopedFaces`: exactly horizontal or vertical faces retain flat
+normals, including vertical faces at arbitrary yaw. All other faces smooth across
+shared edges, regardless of material or bend angle. Flat faces neither inherit nor
+contribute to sloped-face normals. Classification uses a normalized-component
+tolerance of 0.000001 for numerical noise, not an architectural crease angle.
+
+Normals remain corner-angle weighted across UV/render-vertex splits. Surfaces
+that only touch at a vertex and non-manifold edges are not welded. Generated
+reverse faces use separate normal groups. Compatible animation frames use their
+animation's first frame to classify face orientation, avoiding policy changes as
+a model animates.
+
+`Model::m_normalGeneration` can be set before conversion to `SlopedFaces`,
+`ConnectedMaterial`, the original per-edge `CreaseAngle`, `Smooth`, or `Flat`.
+`ConnectedMaterial` promotes a connected same-material patch when a noncoplanar
+edge passes `creaseAngleDegrees` (default 60); `CreaseAngle` applies that threshold
+per edge. The default `SlopedFaces` policy does not use this angle. This is a conversion-time
+per-model override, not mutable runtime material state; no asset-specific override
+table is imposed yet.
+
+Generated floor and ceiling tiles always use full smoothing, in separate normal
+groups. Generated wall meshes always retain flat face normals, regardless of
+angle. Three-dimensional objects, including models used as floors or ceilings,
+use the sloped-face policy above unless explicitly overridden.
+
+The WARP tests cover the original sewer tunnel models from levels 21 and 22,
+including arches stored in the floor-model layer. They reproduce normals pointing
+against their own triangles under the previous patch policy and verify that the
+default policy leaves every tested lit corner in its triangle's own hemisphere.
+
 ## First-person weapons
 
 The core's `GetWeaponView()` now drives all named weapon views: walking bob,

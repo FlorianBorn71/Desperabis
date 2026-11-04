@@ -399,6 +399,10 @@ namespace
         vertices.emplace_back().SetTextured(v1, col, { u1,0 });
         vertices.emplace_back().SetTextured(v2, col, { u1,1 });
         vertices.emplace_back().SetTextured(v3, col, { u0,1 });
+        for (int i = vertexStart; i < vertexStart + 4; ++i)
+        {
+            vertices[i].NormalGroup = 2 + static_cast<uint16_t>(heightAt);
+        }
         //Vertex.GenerateNormals(vertices, vertexStart, 4, !isFloor);
 
         if (heightAt != HeightLevel::Ceiling)
@@ -1076,7 +1080,27 @@ void Level::CreateWallGeometry()
             newdcs.push_back(dc);
         }
         islandWalls.m_conversion.GeneratePerTriangleNormals(islandWalls.m_conversion.m_sortedIndices.data(), (int)islandWalls.m_conversion.m_sortedIndices.size(), 0);
-        //GeometryUtils::SmoothNormals(conversion, newdcs, 0);
+        std::vector<DrawCall> smoothSurfaces;
+        for (const auto& dc : newdcs)
+        {
+            const int end = dc.m_firstIndex + dc.m_primitiveCount * 3;
+            for (int i = dc.m_firstIndex; i < end; i += 3)
+            {
+                const auto vertex = islandWalls.m_conversion.m_sortedIndices[i];
+                // Group zero is generated wall geometry: retain its face normals at every angle.
+                if (islandWalls.m_conversion.m_vertices[vertex].NormalGroup == 0) { continue; }
+                if (smoothSurfaces.empty() ||
+                    smoothSurfaces.back().m_firstIndex + smoothSurfaces.back().m_primitiveCount * 3 != i)
+                {
+                    DrawCall surface;
+                    surface.m_firstIndex = i;
+                    smoothSurfaces.push_back(surface);
+                }
+                ++smoothSurfaces.back().m_primitiveCount;
+            }
+        }
+        GeometryUtils::SmoothNormals(islandWalls.m_conversion, smoothSurfaces, 0,
+            static_cast<int>(islandWalls.m_context.m_vertexPos.size()), {NormalGenerationMode::Smooth});
 
         m_wallGeometryRuntime = Renderer::Instance().CreateModelBuffers(islandWalls.m_conversion);
 

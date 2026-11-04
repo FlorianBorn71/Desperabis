@@ -582,6 +582,473 @@ namespace
             "Color controls must not leak into subsequent messages.");
     }
 
+    void CheckNormalGenerationPolicies()
+    {
+        Check(NormalGenerationSettings{}.mode == NormalGenerationMode::SlopedFaces,
+            "3D models must default to smoothing only sloped faces.");
+        const auto generate = [](const ModelLoadingContext& input, const std::vector<char>& materialSlots,
+            NormalGenerationMode mode = NormalGenerationMode::ConnectedMaterial)
+        {
+            Model model;
+            model.m_numPositions = static_cast<uint16_t>(input.m_vertexPos.size());
+            model.m_numPolygons = static_cast<uint16_t>(input.m_polygons.size());
+            ModelConversionContext conversion(input);
+            std::vector<DrawCall> draws;
+            GeometryUtils::ConvertPolygons(model, conversion, draws);
+            Check(draws.size() == materialSlots.size(), "Normal-policy fixtures must retain one draw range per source face.");
+            for (std::size_t i = 0; i < draws.size(); ++i) { draws[i].m_material.m_textureSlot = materialSlots[i]; }
+            GeometryUtils::OptimizeDrawCalls(model.m_drawCalls, conversion.m_sortedIndices, conversion.m_indices, draws);
+            GeometryUtils::SmoothNormals(conversion, model.m_drawCalls, 0, model.m_numPositions, {mode});
+            return std::move(conversion.m_vertices);
+        };
+        const auto difference = [](const ModelVertex& a, const ModelVertex& b)
+        {
+            return Vector(a.Normal.x - b.Normal.x, a.Normal.y - b.Normal.y, a.Normal.z - b.Normal.z).GetLength();
+        };
+        ModelLoadingContext patch;
+        patch.m_vertexPos = {{0,0,0}, {1,0,0}, {0,1,0}, {-1,0,0.5f}, {0,1,4}};
+        patch.m_polygons = {{3,120,1,2,3,0}, {3,120,1,3,4,0}, {3,120,1,4,5,0}};
+        const auto promoted = generate(patch, {0,0,0});
+        const auto smooth = generate(patch, {0,0,0}, NormalGenerationMode::Smooth);
+        const auto crease = generate(patch, {0,0,0}, NormalGenerationMode::CreaseAngle);
+        const auto flat = generate(patch, {0,0,0}, NormalGenerationMode::Flat);
+        int sharpCorners = 0;
+        for (std::size_t i = 0; i < promoted.size(); ++i)
+        {
+            Check(difference(promoted[i], smooth[i]) < 0.00001f,
+                "A qualifying bend must promote the whole connected material patch to full smoothing.");
+            if (promoted[i].PositionIndex == 3 && promoted[i].NormalGroup == 0 &&
+                difference(promoted[i], crease[i]) > 0.1f) { ++sharpCorners; }
+        }
+        Check(sharpCorners == 2, "Patch promotion must smooth both sides of the connected edge sharper than 90 degrees.");
+
+        const auto boundary = generate(patch, {0,0,1});
+        const auto isolatedTrigger = generate(patch, {0,1,1});
+        for (std::size_t i = 0; i < promoted.size(); ++i)
+        {
+            Check(difference(boundary[i], crease[i]) < 0.00001f,
+                "Distinct source slots in the same texture must stop promotion at the material boundary.");
+            Check(difference(isolatedTrigger[i], flat[i]) < 0.00001f,
+                "A bent edge between different materials must not trigger smoothing within either material.");
+        }
+        auto disconnected = patch;
+        disconnected.m_vertexPos.insert(disconnected.m_vertexPos.end(), {{3,0,0}, {4,0,0}, {3,1,0}, {3,0,1}});
+        disconnected.m_polygons.insert(disconnected.m_polygons.end(), {{3,120,6,7,8,0}, {3,120,6,8,9,0}});
+        const auto separate = generate(disconnected, {0,0,0,0,0});
+        const auto separateFlat = generate(disconnected, {0,0,0,0,0}, NormalGenerationMode::Flat);
+        for (std::size_t i = promoted.size(); i < separate.size(); ++i)
+        {
+            Check(difference(separate[i], separateFlat[i]) < 0.00001f,
+                "A disconnected right-angle patch must remain flat even when the same material is smooth elsewhere.");
+        }
+        auto slopes = patch;
+        for (auto& p : slopes.m_vertexPos)
+        {
+            const float y = p.y * 0.8660254f - p.z * 0.5f;
+            const float z = p.y * 0.5f + p.z * 0.8660254f;
+            p = {p.x * 0.9396926f - y * 0.34202014f, p.x * 0.34202014f + y * 0.9396926f, z};
+        }
+        const auto sloped = generate(slopes, {0,1,2}, NormalGenerationMode::SlopedFaces);
+        const auto fullySmooth = generate(slopes, {0,1,2}, NormalGenerationMode::Smooth);
+        const auto slopedCrease = generate(slopes, {0,1,2}, NormalGenerationMode::CreaseAngle);
+        int sharpened = 0;
+        for (std::size_t i = 0; i < sloped.size(); ++i)
+        {
+            Check(difference(sloped[i], fullySmooth[i]) < 0.00001f,
+                "Sloped faces must fully smooth across material boundaries, including edges sharper than 90 degrees.");
+            sharpened += difference(sloped[i], slopedCrease[i]) > 0.1f;
+        }
+        Check(sharpened > 0, "The sloped fixture must exercise sharp edges beyond the old crease threshold.");
+        for (int fixture = 0; fixture < 5; ++fixture)
+        {
+            ModelLoadingContext pair;
+            pair.m_polygons = {{3,120,1,2,3,0}, {3,120,2,1,4,0}};
+            if (fixture == 0) { pair.m_vertexPos = {{0,0,0}, {1,0,0}, {0,0,1}, {0,1,1}}; }
+            if (fixture == 1) { pair.m_vertexPos = {{0,0,0}, {1,0,1}, {0,1,0}, {0,-1,0.5f}}; }
+            if (fixture == 2) { pair.m_vertexPos = {{0,0,0}, {0,1,0}, {1,0,1}, {-1,0,2}}; }
+            if (fixture == 3) { pair.m_vertexPos = {{0,0,0}, {1,0,0}, {0,0.0001f,1}, {0,1,1}}; }
+            if (fixture == 4) { pair.m_vertexPos = {{0,0,0}, {1,0,1}, {0,1,0.0001f}, {0,-1,0.5f}}; }
+            const auto actual = generate(pair, {0,1}, NormalGenerationMode::SlopedFaces);
+            const auto expected = generate(pair, {0,1}, fixture < 3 ? NormalGenerationMode::Flat : NormalGenerationMode::Smooth);
+            const auto unsmoothed = generate(pair, {0,1}, NormalGenerationMode::Flat);
+            int smoothed = 0;
+            for (std::size_t i = 0; i < actual.size(); ++i)
+            {
+                Check(difference(actual[i], expected[i]) < 0.00001f,
+                    "Only exactly horizontal/vertical faces must stay flat, including vertical faces at arbitrary yaw.");
+                smoothed += difference(actual[i], unsmoothed[i]) > 0.01f;
+            }
+            Check(fixture < 3 || smoothed > 0,
+                "Almost horizontal/vertical faces must exercise real smoothing, not a broad angular tolerance.");
+        }
+        std::cout << "Connected material normals: bent-edge promotion past 90 degrees, source-slot boundaries, "
+            "isolated triggers and disconnected same-material patches passed; default sloped faces smooth across materials, "
+            "horizontal/vertical faces stay flat.\n";
+    }
+
+    int CountPromotedModelCorners(const Model& model, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        const auto* mesh = model.GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
+        const auto vertices = ReadBuffer<ModelVertex>(device, context, mesh->m_vertexBuffer.Get());
+        const auto indices = ReadBuffer<uint16_t>(device, context, mesh->m_indexBuffer.Get());
+        ModelLoadingContext input;
+        input.m_vertexPos = ReadBuffer<VertexPosition>(device, context, mesh->m_positionBuffer.Get());
+        ModelConversionContext crease(input);
+        crease.m_vertices = vertices;
+        crease.m_sortedIndices = indices;
+        GeometryUtils::SmoothNormals(crease, model.m_drawCalls, model.m_positionOfs, model.m_numPositions,
+            {NormalGenerationMode::CreaseAngle});
+        int promoted = 0;
+        for (const auto& dc : model.m_drawCalls)
+        {
+            if (!dc.m_material.m_applyLighting || dc.m_material.m_transparencyType == TransparencyMode::Water) { continue; }
+            for (int i = dc.m_firstIndex; i < dc.m_firstIndex + dc.m_primitiveCount * 3; i += 3)
+            {
+                if (vertices[indices[i]].StretchMode != (uint16_t)VertexStretchMode::None ||
+                    vertices[indices[i + 1]].StretchMode != (uint16_t)VertexStretchMode::None ||
+                    vertices[indices[i + 2]].StretchMode != (uint16_t)VertexStretchMode::None) { continue; }
+                Vector triangle[3];
+                for (int corner = 0; corner < 3; ++corner)
+                {
+                    const auto& p = input.m_vertexPos[model.m_positionOfs + vertices[indices[i + corner]].PositionIndex];
+                    triangle[corner].Set(p.x, p.y, p.z, 0.f);
+                }
+                auto face = (triangle[1] - triangle[0]).GetCross(triangle[2] - triangle[0]);
+                face.Normalize();
+                for (int corner = 0; corner < 3; ++corner)
+                {
+                    const auto& before = crease.m_vertices[crease.m_sortedIndices[i + corner]].Normal;
+                    const auto& after = vertices[indices[i + corner]].Normal;
+                    if ((face - Vector(before.x, before.y, before.z)).GetLength() < 0.00001f &&
+                        (face - Vector(after.x, after.y, after.z)).GetLength() > 0.01f) { ++promoted; }
+                }
+            }
+        }
+        return promoted;
+    }
+
+    void CheckSewerCeilingNormals(ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        for (const int number : {21,22})
+        {
+            const auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(number));
+            std::vector<const Model*> checked;
+            int previousFlipped = 0, corners = 0;
+            for (const auto& cell : level->GetCellArray().m_cell)
+            {
+                for (const int raw : {cell.m_floor, cell.m_ceiling})
+                {
+                    if (raw <= 31) { continue; }
+                    const auto animation = level->GetLevelInfo().GetModelAnim(raw >= 160 ? 3 : 2);
+                    Check(animation != nullptr, "Sewer tunnel tiles must resolve their original model bank.");
+                    const auto* model = animation->GetModelSafe((raw & 31) / 5, (raw & 31) % 5);
+                    Check(model != nullptr, "Sewer tunnel tiles must resolve their original model frame.");
+                    if (std::find(checked.begin(), checked.end(), model) != checked.end()) { continue; }
+                    checked.push_back(model);
+                    const auto* mesh = model->GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
+                    const auto vertices = ReadBuffer<ModelVertex>(device, context, mesh->m_vertexBuffer.Get());
+                    const auto indices = ReadBuffer<uint16_t>(device, context, mesh->m_indexBuffer.Get());
+                    ModelLoadingContext input;
+                    input.m_vertexPos = ReadBuffer<VertexPosition>(device, context, mesh->m_positionBuffer.Get());
+                    ModelConversionContext previous(input);
+                    previous.m_vertices = vertices;
+                    previous.m_sortedIndices = indices;
+                    GeometryUtils::SmoothNormals(previous, model->m_drawCalls, model->m_positionOfs, model->m_numPositions,
+                        {NormalGenerationMode::ConnectedMaterial});
+                    for (const auto& dc : model->m_drawCalls)
+                    {
+                        if (!dc.m_material.m_applyLighting || dc.m_material.m_transparencyType == TransparencyMode::Water) { continue; }
+                        for (int i = dc.m_firstIndex; i < dc.m_firstIndex + dc.m_primitiveCount * 3; i += 3)
+                        {
+                            if (vertices[indices[i]].StretchMode != (uint16_t)VertexStretchMode::None ||
+                                vertices[indices[i + 1]].StretchMode != (uint16_t)VertexStretchMode::None ||
+                                vertices[indices[i + 2]].StretchMode != (uint16_t)VertexStretchMode::None) { continue; }
+                            Vector triangle[3];
+                            for (int c = 0; c < 3; ++c)
+                            {
+                                const auto& p = input.m_vertexPos[model->m_positionOfs + vertices[indices[i + c]].PositionIndex];
+                                triangle[c].Set(p.x, p.y, p.z, 0.f);
+                            }
+                            auto face = (triangle[1] - triangle[0]).GetCross(triangle[2] - triangle[0]);
+                            if (face.GetLength() == 0.f) { continue; }
+                            face.Normalize();
+                            for (int c = 0; c < 3; ++c)
+                            {
+                                const auto& n = vertices[indices[i + c]].Normal;
+                                const auto& old = previous.m_vertices[previous.m_sortedIndices[i + c]].Normal;
+                                const float dot = face.GetX() * n.x + face.GetY() * n.y + face.GetZ() * n.z;
+                                previousFlipped += face.GetX() * old.x + face.GetY() * old.y + face.GetZ() * old.z < -0.00001f;
+                                Check(std::abs(Vector(n.x, n.y, n.z).GetLength() - 1.f) < 0.00001f && dot > 0.000001f,
+                                    "Original sewer tunnel normals must be unit length and face into each triangle's own hemisphere.");
+                                ++corners;
+                            }
+                        }
+                    }
+                }
+            }
+            Check(!checked.empty() && corners > 0, "Sewer fixtures must exercise real polygonal ceiling tiles.");
+            Check(previousFlipped > 0, "Original sewer models must reproduce opposing normals with the previous patch policy.");
+            std::cout << "Sewer " << number << ": " << checked.size() << " tunnel models, " << corners
+                << " lit polygon corners; opposing normals reduced from " << previousFlipped << " to zero.\n";
+        }
+    }
+
+    void CheckSmoothPolygonNormals(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        CheckSewerCeilingNormals(device, context);
+        CheckNormalGenerationPolicies();
+        ModelLoadingContext input;
+        input.m_vertexPos = { {9,9,9}, {8,8,8}, {-1,0,0}, {1,0,0}, {0,1,0.35f}, {0,-1,0.35f} };
+        input.m_polygons = { {3,120,1,2,3,0}, {3,121,2,1,4,0} };
+        Model model;
+        model.m_vertexOfs = model.m_positionOfs = 2;
+        model.m_numPositions = 4;
+        model.m_numPolygons = 2;
+        ModelConversionContext conversion(input);
+        conversion.m_modelPositionOfs = 2;
+        conversion.m_numPositions = 4;
+        GeometryUtils::Convert(model, conversion);
+        Check(conversion.m_vertices.size() == 12, "Both folded triangles must retain their generated reverse faces.");
+        for (const auto& vertex : conversion.m_vertices)
+        {
+            const auto& smooth = vertex.Normal;
+            const float length = Vector(smooth.x, smooth.y, smooth.z).GetLength();
+            Check(std::abs(length - 1.f) < 0.00001f, "Smooth polygon normals must be finite unit vectors.");
+            if (vertex.PositionIndex < 2)
+            {
+                Check(std::abs(smooth.x) < 0.00001f && std::abs(smooth.y) < 0.00001f &&
+                    std::abs(smooth.z - (vertex.NormalGroup == 0 ? -1.f : 1.f)) < 0.00001f,
+                    "Shared corners across split render vertices must smooth, with opposite reverse-face normals.");
+            }
+        }
+
+        const auto firstVertices = conversion.m_vertices;
+        input.m_vertexPos.insert(input.m_vertexPos.end(), { {-1,0,0}, {1,0,0}, {0,-1,0.35f}, {0,1,0.35f} });
+        Model second;
+        second.m_vertexOfs = second.m_positionOfs = 6;
+        second.m_numPositions = 4;
+        second.m_numPolygons = 2;
+        conversion.m_modelPositionOfs = 6;
+        GeometryUtils::Convert(second, conversion);
+        for (std::size_t i = 0; i < firstVertices.size(); ++i)
+        {
+            const auto& a = firstVertices[i].Normal;
+            const auto& b = conversion.m_vertices[i].Normal;
+            Check(a.x == b.x && a.y == b.y && a.z == b.z,
+                "Later animation frames must neither mix with nor overwrite earlier frames' normals.");
+        }
+        Check(conversion.m_vertices[firstVertices.size()].Normal.z > 0.999f,
+            "Later frames must calculate normals from their own nonzero position offset.");
+        for (auto& vertex : conversion.m_vertices) { vertex.Color = {200,200,200,0}; }
+        model.m_runtime = renderer.CreateModelBuffers(conversion);
+
+        Model flatModel, narrowCreaseModel;
+        ModelConversionContext flatConversion(input), narrowConversion(input);
+        for (auto* fixture : {&flatModel, &narrowCreaseModel})
+        {
+            fixture->m_vertexOfs = fixture->m_positionOfs = 2;
+            fixture->m_numPositions = 4;
+            fixture->m_numPolygons = 2;
+        }
+        flatModel.m_normalGeneration.mode = NormalGenerationMode::Flat;
+        narrowCreaseModel.m_normalGeneration.mode = NormalGenerationMode::CreaseAngle;
+        narrowCreaseModel.m_normalGeneration.creaseAngleDegrees = 30.f;
+        for (auto* fixture : {&flatConversion, &narrowConversion})
+        {
+            fixture->m_modelPositionOfs = 2;
+            fixture->m_numPositions = 4;
+        }
+        GeometryUtils::Convert(flatModel, flatConversion);
+        GeometryUtils::Convert(narrowCreaseModel, narrowConversion);
+        for (std::size_t i = 0; i < flatConversion.m_vertices.size(); ++i)
+        {
+            const auto& a = flatConversion.m_vertices[i].Normal;
+            const auto& b = narrowConversion.m_vertices[i].Normal;
+            Check(Vector(a.x - b.x, a.y - b.y, a.z - b.z).GetLength() < 0.00001f,
+                "A configurable 30-degree crease must keep the 39-degree fold hard.");
+            flatConversion.m_vertices[i].Color = narrowConversion.m_vertices[i].Color = {200,200,200,0};
+        }
+        flatModel.m_runtime = renderer.CreateModelBuffers(flatConversion);
+        narrowCreaseModel.m_runtime = renderer.CreateModelBuffers(narrowConversion);
+
+        ModelLoadingContext quads;
+        quads.m_vertexPos = { {0,0,0}, {1,0,0}, {1,1,0}, {0,1,0}, {0,0,1}, {1,0,1} };
+        quads.m_polygons = { {6,0,1,2,3,4}, {6,0,5,6,2,1} };
+        ModelAnim owner;
+        Model corner;
+        corner.m_owner = &owner;
+        corner.m_numPositions = 6;
+        corner.m_numPolygons = 2;
+        corner.m_normalGeneration.mode = NormalGenerationMode::Smooth;
+        ModelConversionContext quadConversion(quads);
+        GeometryUtils::Convert(corner, quadConversion);
+        for (const auto& vertex : quadConversion.m_vertices)
+        {
+            if (vertex.PositionIndex != 0) { continue; }
+            Check(std::abs(vertex.Normal.y - std::sqrt(0.5f)) < 0.00001f &&
+                std::abs(vertex.Normal.z - std::sqrt(0.5f)) < 0.00001f,
+                "A quad diagonal must not bias smooth normals relative to an adjacent unsplit corner.");
+        }
+        for (std::size_t i = 0; i < quadConversion.m_vertices.size(); ++i)
+        {
+            quadConversion.m_vertices[i].NormalGroup = i < 4 ? 2 : 0;
+        }
+        quadConversion.GeneratePerTriangleNormals(quadConversion.m_sortedIndices.data(),
+            static_cast<int>(quadConversion.m_sortedIndices.size()), 0);
+        GeometryUtils::SmoothNormals(quadConversion, corner.m_drawCalls, 0, 6, {NormalGenerationMode::Smooth});
+        for (std::size_t i = 0; i < quadConversion.m_vertices.size(); ++i)
+        {
+            const auto& normal = quadConversion.m_vertices[i].Normal;
+            Check(i < 4 ? std::abs(normal.z - 1.f) < 0.00001f : std::abs(normal.y - 1.f) < 0.00001f,
+                "Fully smooth heightmap surfaces must not inherit normals from a connected wall group.");
+        }
+        Model hardCorner;
+        hardCorner.m_owner = &owner;
+        hardCorner.m_numPositions = 6;
+        hardCorner.m_numPolygons = 2;
+        ModelConversionContext hardConversion(quads);
+        GeometryUtils::Convert(hardCorner, hardConversion);
+        for (const auto& vertex : hardConversion.m_vertices)
+        {
+            Check((std::abs(vertex.Normal.y - 1.f) < 0.00001f && std::abs(vertex.Normal.z) < 0.00001f) ||
+                (std::abs(vertex.Normal.z - 1.f) < 0.00001f && std::abs(vertex.Normal.y) < 0.00001f),
+                "Default sloped-face smoothing must preserve horizontal/vertical stair and box faces.");
+        }
+        ModelLoadingContext foldedQuad;
+        foldedQuad.m_vertexPos = { {0,0,0}, {1,0,0}, {0,1,0}, {0,0,1} };
+        foldedQuad.m_polygons = { {6,0,1,2,3,4} };
+        Model splitCorner;
+        splitCorner.m_owner = &owner;
+        splitCorner.m_numPositions = 4;
+        splitCorner.m_numPolygons = 1;
+        ModelConversionContext splitConversion(foldedQuad);
+        GeometryUtils::Convert(splitCorner, splitConversion);
+        Check(splitConversion.m_vertices.size() == 6 &&
+            splitConversion.m_sortedIndices[0] != splitConversion.m_sortedIndices[3] &&
+            splitConversion.m_sortedIndices[2] != splitConversion.m_sortedIndices[4],
+            "Hard edges must split previously shared render vertices into independent normal fans.");
+        ModelConversionContext flatTriangles(foldedQuad);
+        for (uint16_t i = 0; i < 4; ++i)
+        {
+            flatTriangles.m_vertices.emplace_back().SetTextured(i, Color4{255,255,255,0}, {0,0});
+        }
+        flatTriangles.m_sortedIndices = {0,1,2,0,2,3,0,0,0};
+        flatTriangles.GeneratePerTriangleNormals(flatTriangles.m_sortedIndices.data(), 9, 0);
+        for (int i = 0; i < 9; ++i)
+        {
+            const auto& normal = flatTriangles.m_vertices[flatTriangles.m_sortedIndices[i]].Normal;
+            Check(i < 3 ? std::abs(normal.z - 1.f) < 0.00001f :
+                i < 6 ? std::abs(normal.x - 1.f) < 0.00001f :
+                Vector(normal.x, normal.y, normal.z).GetLength() == 0.f,
+                "Flat normals must remain independent across shared corners, including degenerate neighboring triangles.");
+        }
+
+        ModelLoadingContext touching;
+        touching.m_vertexPos = { {0,0,0}, {1,0,0}, {0,1,0}, {-1,0,0}, {0,0,1} };
+        touching.m_polygons = { {3,120,1,2,3,0}, {3,120,1,4,5,0} };
+        Model disconnected;
+        disconnected.m_numPositions = 5;
+        disconnected.m_numPolygons = 2;
+        disconnected.m_normalGeneration.mode = NormalGenerationMode::Smooth;
+        ModelConversionContext touchingConversion(touching);
+        GeometryUtils::Convert(disconnected, touchingConversion);
+        for (const auto& vertex : touchingConversion.m_vertices)
+        {
+            Check(std::abs(vertex.Normal.y * vertex.Normal.z) < 0.00001f,
+                "Full smoothing must not weld disconnected faces that only share a vertex.");
+        }
+
+        ModelAnim animated;
+        animated.m_numAnims = 1;
+        animated.m_numFrames = 3;
+        ModelLoadingContext frames;
+        frames.m_vertexPos = { {-1,0,0}, {1,0,0}, {0,1,0.35f}, {0,-1,0.35f},
+            {-1,0,0}, {1,0,0}, {0,1,2}, {0,-1,2},
+            {-1,0,0}, {1,0,0}, {0,1,0}, {0,-1,0.35f} };
+        frames.m_polygons = { {3,120,1,2,3,0}, {3,121,2,1,4,0},
+            {3,120,1,2,3,0}, {3,121,2,1,4,0},
+            {3,120,1,2,3,0}, {3,121,2,1,4,0} };
+        ModelConversionContext frameConversion(frames);
+        for (int frame = 0; frame < 3; ++frame)
+        {
+            auto* mesh = animated.GetModel(0, frame);
+            mesh->m_numPositions = 4;
+            mesh->m_numPolygons = 2;
+            mesh->m_positionOfs = frame * 4;
+            mesh->m_polygonOfs = frame * 2;
+            frameConversion.m_modelPositionOfs = mesh->m_positionOfs;
+            GeometryUtils::Convert(*mesh, frameConversion);
+        }
+        Check(frameConversion.m_vertices[12].Normal.z < -0.999f &&
+            std::abs(frameConversion.m_vertices[12].Normal.y) < 0.00001f,
+            "A later frame bent past 90 degrees must retain the first frame's smooth edge classification.");
+        Check(std::abs(frameConversion.m_vertices[24].Normal.y) > 0.01f,
+            "A later frame becoming exactly vertical must retain the first frame's sloped-face classification.");
+
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        Texture lightmap;
+        lightmap.CreatePlainWhite();
+        lightmap.m_atlasData = {0,0,0.5f,0.5f};
+        Camera camera;
+        Matrix4 projection, transform;
+        projection.CreateOrthographic(4.5f, 3.f, 0.01f, 20.f);
+        transform.SetTranslation(Vector(0,0,5));
+        camera.SetProjectionMatrix(projection);
+        camera.SetCameraTransformMatrix(transform);
+        RenderingSettings settings;
+        ProfilingStats stats;
+        const auto render = [&](const Renderable& mesh, float scale = 1.f)
+        {
+            RenderableInstance instance(&mesh);
+            instance.m_uniformScale = scale;
+            instance.ComputeTransparencyMask();
+            instance.UpdateGlobalBounds();
+            VisibilityResult visible;
+            visible.m_mainCamera = &camera;
+            visible.m_visibleInstances.m_opaqueInstances.push_back({&instance, 0});
+            visible.m_visibleInstances.m_visibleTransparencyTypes = instance.GetUsedTransparencyMask();
+            visible.m_ambientColor = {0.6f,0.6f,0.6f};
+            visible.m_ambientNrmlContribution = 0.8f;
+            visible.m_fogColor = {0,0,0};
+            visible.m_fogFalloff = 0;
+            visible.m_lightmap = &lightmap;
+            const float black[4]{0,0,0,1};
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            Check(stats.m_numDrawCalls > 0, "Smooth-normal lighting fixtures must submit actual GPU draw calls.");
+            return target.Pixels(device, context);
+        };
+        const auto flat = render(flatModel);
+        const auto smooth = render(model);
+        int changed = 0, visible = 0;
+        for (std::size_t i = 0; i < flat.size(); ++i)
+        {
+            changed += flat[i] != smooth[i];
+            visible += (flat[i] & 0xffffff) != 0;
+        }
+        std::cout << "Folded polygon lighting: " << visible << " visible pixels, " << changed << " changed pixels.\n";
+        Check(visible > 100 && changed > 100, "Smooth normals must change actual pixel lighting on the folded mesh.");
+        Check(render(narrowCreaseModel) == flat, "Crease-preserved edges must match the baked flat-mode pixels.");
+        Check(render(model) == smooth, "Baked normals must render identically without rebuilding geometry.");
+        for (auto billboard : { GeometryUtils::CreateSpriteMesh(false),
+            GeometryUtils::CreateCameraBillboardQuadMesh(1,1,Color4{255,255,255,0}) })
+        {
+            auto& material = billboard->m_drawCalls[0].m_material;
+            material.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
+            material.m_applyLighting = true;
+            material.ComputeHash();
+            const auto original = render(*billboard, 200.f);
+            Check(std::count_if(original.begin(), original.end(),
+                [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; }) > 5,
+                "Billboard regression checks must draw actual lit pixels.");
+            Check(render(*billboard, 200.f) == original, "Lit billboard rendering must remain stable.");
+        }
+        std::cout << "Baked normals: 60/30-degree creases, smooth/flat overrides, hard vertex splits, disconnected fans, "
+            "stable animation creases, reverse faces, quad weighting and actual lighting pixels passed.\n";
+    }
+
     void CheckEnemyModels()
     {
         auto* gorillaLevel = FORCE_GET(AssetManager::Instance().LoadLevel(16));
@@ -865,6 +1332,7 @@ namespace
                 for (const auto& instance : m_wallGeometry) { m_scene.AddRenderableInstance(instance); }
             }
             const auto& Walls() const { return m_wallGeometry; }
+            const auto& GeneratedWalls() const { return m_wallRenderables; }
             const auto& MutableWalls() const { return m_mutableWalls; }
             const auto& MutableFloors() const { return m_mutableFloors; }
             const Scene& WallScene() const { return m_scene; }
@@ -919,6 +1387,79 @@ namespace
             return FORCE_GET(FileManager::Instance().ReadDataFuture(
                 FileManager::Instance().FilenameToNative(filename)));
         };
+        int promotedCaveCorners = 0;
+        for (const int number : {17,18})
+        {
+            auto* caveAssets = FORCE_GET(AssetManager::Instance().LoadLevel(number));
+            WallLevel cave;
+            cave.BuildOriginal(caveAssets->GetLevelInfo(), read(L"LEVEL\\FELD" + std::to_wstring(number) + L".256"));
+            std::vector<ID3D11Buffer*> inspected;
+            int changed = 0, wallCorners = 0;
+            for (const auto& renderable : cave.GeneratedWalls())
+            {
+                const auto* mesh = renderable->GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
+                auto* buffer = mesh->m_vertexBuffer.Get();
+                if (std::find(inspected.begin(), inspected.end(), buffer) != inspected.end()) { continue; }
+                inspected.push_back(buffer);
+                const auto vertices = ReadBuffer<ModelVertex>(device, context, buffer);
+                const auto positions = ReadBuffer<VertexPosition>(device, context, mesh->m_positionBuffer.Get());
+                const auto indices = ReadBuffer<uint16_t>(device, context, mesh->m_indexBuffer.Get());
+                for (const auto& vertex : vertices)
+                {
+                    if (vertex.StretchMode != (uint16_t)VertexStretchMode::None) { continue; }
+                    const Vector normal(vertex.Normal.x, vertex.Normal.y, vertex.Normal.z);
+                    const float length = normal.GetLength();
+                    Check(std::isfinite(length) && (length < 0.00001f || std::abs(length - 1.f) < 0.0001f),
+                        "Original cave geometry buffers must contain finite, normalized normals.");
+                }
+                for (std::size_t i = 0; i < indices.size(); i += 3)
+                {
+                    Vector triangle[3];
+                    for (int corner = 0; corner < 3; ++corner)
+                    {
+                        const auto& p = positions[vertices[indices[i + corner]].PositionIndex];
+                        triangle[corner].Set(p.x, p.y, p.z, 0.f);
+                    }
+                    auto face = (triangle[1] - triangle[0]).GetCross(triangle[2] - triangle[0]);
+                    face.Normalize();
+                    for (int corner = 0; corner < 3; ++corner)
+                    {
+                        const auto& vertex = vertices[indices[i + corner]];
+                        const auto& n = vertex.Normal;
+                        const float difference = (face - Vector(n.x, n.y, n.z)).GetLength();
+                        if (vertex.NormalGroup == 0)
+                        {
+                            ++wallCorners;
+                            Check(difference < 0.00001f,
+                                "Every generated wall corner must retain its triangle's face normal, regardless of angle.");
+                        }
+                        else { changed += difference > 0.01f; }
+                    }
+                }
+            }
+            Check(wallCorners > 0 && changed > 0,
+                "Original caves must have flat generated walls alongside genuinely smoothed heightmap surfaces.");
+            std::cout << "Cave " << number << ": " << wallCorners << " flat wall corners, "
+                << changed << " smoothed heightmap corners.\n";
+            int promoted = 0;
+            bool hasModelBank = false;
+            for (const int bank : {2,3})
+            {
+                const auto animation = caveAssets->GetLevelInfo().GetModelAnim(bank);
+                if (animation == nullptr) { continue; }
+                hasModelBank = true;
+                for (int row = 0; row < animation->m_numAnims; ++row)
+                {
+                    const auto* model = animation->GetModel(row, 0);
+                    if (!model->HasOwnDrawcalls()) { continue; }
+                    promoted += CountPromotedModelCorners(*model, device, context);
+                }
+            }
+            Check(hasModelBank, "Original caves must provide at least one floor/ceiling model bank.");
+            promotedCaveCorners += promoted;
+            std::cout << "Cave " << number << ": " << promoted << " original model corners promoted beyond per-edge shading.\n";
+        }
+        Check(promotedCaveCorners > 0, "Connected-material promotion must affect the real cave floor/ceiling models.");
         const auto feld = read(L"LEVEL\\FELD11.256");
         auto objects = read(L"LEVEL\\OBJPOS11.DAT");
         Desperabis::Level geometry;
@@ -2565,6 +3106,7 @@ namespace
             visible.m_visibleInstances.m_opaqueInstances.push_back({object.get(), 0});
             visible.m_visibleInstances.m_visibleTransparencyTypes = object->GetUsedTransparencyMask();
             visible.m_ambientColor = {1, 1, 1};
+            visible.m_ambientNrmlContribution = 0.6f;
             visible.m_fogColor = {0, 0, 0};
             visible.m_fogFalloff = 0;
             visible.m_lightmap = &lightmap;
@@ -2588,6 +3130,25 @@ namespace
             const auto pixels = render(object);
             const auto count = std::count_if(pixels.begin(), pixels.end(),
                 [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; });
+            if (slot == 5)
+            {
+                const auto* mesh = object->GetRenderable()->GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
+                const auto vertices = ReadBuffer<ModelVertex>(device, context, mesh->m_vertexBuffer.Get());
+                const auto indices = ReadBuffer<uint16_t>(device, context, mesh->m_indexBuffer.Get());
+                int changed = 0;
+                for (const auto& dc : object->GetRenderable()->m_drawCalls)
+                {
+                    for (int i = dc.m_firstIndex; i < dc.m_firstIndex + dc.m_primitiveCount * 3; i += 3)
+                    {
+                        const auto& a = vertices[indices[i]].Normal;
+                        const auto& b = vertices[indices[i + 1]].Normal;
+                        changed += Vector(a.x - b.x, a.y - b.y, a.z - b.z).GetLength() > 0.01f;
+                    }
+                }
+                Check(changed > 0, "The original witch head must contain baked interpolated polygon normals.");
+                Check(render(object) == pixels, "The witch's baked shading must remain stable across repeated draws.");
+                std::cout << "Witch baked lighting: " << changed << " triangles have interpolated normals.\n";
+            }
             std::cout << "Witch slot " << slot << ": " << count << " rendered pixels, "
                 << object->GetRenderable()->m_drawCalls.size() << " draw calls.\n";
             allVisible &= count >= 8;
@@ -2773,6 +3334,7 @@ int main(int argc, char* argv[])
         }
         const auto items = OriginalItems();
         CheckTextControls(font);
+        CheckSmoothPolygonNormals(renderer, device.Get(), context.Get());
         CheckTutorialFlames();
         CheckWitchMouth(renderer, device.Get(), context.Get());
         CheckMutableWalls(renderer, device.Get(), context.Get());

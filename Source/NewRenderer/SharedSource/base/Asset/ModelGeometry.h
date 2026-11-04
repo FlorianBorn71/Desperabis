@@ -164,7 +164,7 @@ struct ModelVertex
     uint16_t PositionIndex;
     uint16_t SecondPosition;
 	uint16_t StretchMode;
-    uint16_t Padding;
+    uint16_t NormalGroup = 0;
 
     Vector2 TexCoord;
     Vector2 StretchParams;
@@ -251,6 +251,21 @@ struct ModelPolygon
 };
 
 
+enum class NormalGenerationMode
+{
+    CreaseAngle,
+    Smooth,
+    Flat,
+    ConnectedMaterial,
+    SlopedFaces
+};
+
+struct NormalGenerationSettings
+{
+    NormalGenerationMode mode = NormalGenerationMode::SlopedFaces;
+    float creaseAngleDegrees = 60.f;
+};
+
 struct ModelLoadingContext
 {
     // before conversion
@@ -267,7 +282,7 @@ struct ModelConversionContext
     }
     void AddToBounds(const VertexPosition& pos, float rad);
     void GeneratePolygonNormals(const uint16_t* firstIndex, int numIndices, int positionIndexOfs);
-    void GeneratePerTriangleNormals(const uint16_t* firstIndex, int numIndices, int positionIndexOfs);
+    void GeneratePerTriangleNormals(uint16_t* firstIndex, int numIndices, int positionIndexOfs);
     void GenerateBoundingVolume(BoundingVolume& vol) const;
     void GeneratePhysicsGeometry(const std::vector<DrawCall>& drawCalls, TriangularShapeDesc& out_desc);
 
@@ -293,7 +308,8 @@ namespace GeometryUtils
 	void ConvertPolygons(class Model& model, ModelConversionContext& context, std::vector<DrawCall>& drawcalls);
 	void AddModelReferences(class Model& model, ModelConversionContext& context);
     void OptimizeDrawCalls(std::vector<DrawCall>& newDrawCalls, std::vector<uint16_t>& newIndices, const std::vector<uint16_t>& indices, const std::vector<DrawCall>& drawCalls);
-    void SmoothNormals(ModelConversionContext& context, const std::vector<DrawCall>& drawCalls, int vertexOfs);
+    void SmoothNormals(ModelConversionContext& context, const std::vector<DrawCall>& drawCalls,
+        int positionOfs, int positionCount, const NormalGenerationSettings& settings = {}, int referencePositionOfs = -1);
 
     std::shared_ptr<Renderable> CreateSpriteMesh(bool flipU);
     // screen aligned (camera facing) quad, e.g. to highlight items in a top down view

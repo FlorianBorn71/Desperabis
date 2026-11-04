@@ -6,6 +6,7 @@
 #include <Asset/AssetManager.h>
 #include <Asset/DebugGeometry.h>
 #include <Renderer/DrawCall.h>
+#include <unordered_map>
 
 constexpr const bool g_performanceOptimizationsEnabled = true;
 
@@ -110,46 +111,64 @@ void ModelConversionContext::AddToBounds(const VertexPosition& pos, float rad)
     m_visibilityBox.Add(Vector(pos.x, pos.y, pos.z), rad);
 }
 
-void ModelConversionContext::GeneratePolygonNormals(const uint16_t* firstIndex, int numIndices, int positionIndexOfs)
+namespace
 {
 #ifdef ENABLE_ADVANCED_RENDERING
-    uint16_t idx0 = firstIndex[0];
-    uint16_t idx1 = firstIndex[1];
-    uint16_t idx2 = firstIndex[2];
-    ModelVertex& mv0 = m_vertices[idx0];
-    ModelVertex& mv1 = m_vertices[idx1];
-    ModelVertex& mv2 = m_vertices[idx2];
-
-    const VertexPosition& p0 = m_input.m_vertexPos[mv0.GetPositionIndex1() + positionIndexOfs];
-    const VertexPosition& p1 = m_input.m_vertexPos[mv1.GetPositionIndex1() + positionIndexOfs];
-    const VertexPosition& p2 = m_input.m_vertexPos[mv2.GetPositionIndex1() + positionIndexOfs];
-    Vector d1(p0.x - p1.x, p0.y - p1.y, p0.z - p1.z);
-    Vector d2(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
-    Vector nrml = d2.GetCross(d1);
-    nrml.Normalize();
-
-
-    for (int i = 0; i < numIndices; i++)
+    Vector CalculatePolygonNormal(const ModelConversionContext& context, const uint16_t* firstIndex, int positionIndexOfs)
     {
-        ModelVertex& mv = m_vertices[firstIndex[i]];
-        mv.Normal = nrml;
+        const auto& p0 = context.m_input.m_vertexPos[context.m_vertices[firstIndex[0]].GetPositionIndex1() + positionIndexOfs];
+        const auto& p1 = context.m_input.m_vertexPos[context.m_vertices[firstIndex[1]].GetPositionIndex1() + positionIndexOfs];
+        const auto& p2 = context.m_input.m_vertexPos[context.m_vertices[firstIndex[2]].GetPositionIndex1() + positionIndexOfs];
+        Vector d1(p0.x - p1.x, p0.y - p1.y, p0.z - p1.z);
+        Vector d2(p2.x - p1.x, p2.y - p1.y, p2.z - p1.z);
+        Vector normal = d2.GetCross(d1);
+        normal.Normalize();
+        return normal;
     }
-
-    /*
-    for (auto& mv : m_vertices)
-    {
-        mv.Normal = { 0,0,1 };
-    }
-    */
 #endif
 }
 
-void ModelConversionContext::GeneratePerTriangleNormals(const uint16_t* firstIndex, int numIndices, int positionIndexOfs)
+void ModelConversionContext::GeneratePolygonNormals(const uint16_t* firstIndex, int numIndices, int positionIndexOfs)
 {
+#ifdef ENABLE_ADVANCED_RENDERING
+    const Vector normal = CalculatePolygonNormal(*this, firstIndex, positionIndexOfs);
+
+    for (int i = 0; i < numIndices; i++)
+    {
+        m_vertices[firstIndex[i]].Normal = normal;
+    }
+#endif
+}
+
+void ModelConversionContext::GeneratePerTriangleNormals(uint16_t* firstIndex, int numIndices, int positionIndexOfs)
+{
+#ifdef ENABLE_ADVANCED_RENDERING
+    std::vector<bool> assigned(m_vertices.size(), false);
     for (int i = 0; i < numIndices; i += 3, firstIndex += 3)
     {
-        GeneratePolygonNormals(firstIndex, 3, positionIndexOfs);
+        const Vector normal = CalculatePolygonNormal(*this, firstIndex, positionIndexOfs);
+        for (int corner = 0; corner < 3; ++corner)
+        {
+            uint16_t index = firstIndex[corner];
+            if (assigned[index])
+            {
+                const auto& previous = m_vertices[index].Normal;
+                if ((Vector(previous.x, previous.y, previous.z) - normal).GetLength() < 0.000001f) { continue; }
+                if (m_vertices.size() >= 65536)
+                {
+                    throw std::runtime_error("Flat normal generation exceeds the 16-bit render vertex limit.");
+                }
+                const ModelVertex vertex = m_vertices[index];
+                index = static_cast<uint16_t>(m_vertices.size());
+                m_vertices.push_back(vertex);
+                assigned.push_back(false);
+                firstIndex[corner] = index;
+            }
+            m_vertices[index].Normal = normal;
+            assigned[index] = true;
+        }
     }
+#endif
 }
 
 void ModelConversionContext::GenerateBoundingVolume(BoundingVolume& vol) const
@@ -266,7 +285,7 @@ namespace
     }
 
 
-    void AddSolidColorTriangle(ModelConversionContext& context, uint16_t i0, uint16_t i1, uint16_t i2, const Color4& solidColor)
+    void AddSolidColorTriangle(ModelConversionContext& context, uint16_t i0, uint16_t i1, uint16_t i2, const Color4& solidColor, bool backFace = false)
     {
         const VertexPosition* vertexPositions = &context.m_input.m_vertexPos[context.m_modelPositionOfs];
         auto& vertices(context.m_vertices);
@@ -283,6 +302,10 @@ namespace
         vertices.emplace_back().SetUntextured(p0, ColorFromBrightness(i0, solidColor));
         vertices.emplace_back().SetUntextured(p1, ColorFromBrightness(i1, solidColor));
         vertices.emplace_back().SetUntextured(p2, ColorFromBrightness(i2, solidColor));
+        for (int i = vertexStart; i < vertexStart + 3; ++i)
+        {
+            vertices[i].NormalGroup = backFace ? 1 : 0;
+        }
         //Vertex.GenerateNormals(vertices, vertexStart, 3, false);
 
         indices.push_back((uint16_t)(vertexStart + 2));
@@ -579,7 +602,7 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
 
             // doublesided with two normals
             AddSolidColorTriangle(context, p.i0, p.i1, p.i2, solidColor);
-            AddSolidColorTriangle(context, p.i2, p.i1, p.i0, solidColor);
+            AddSolidColorTriangle(context, p.i2, p.i1, p.i0, solidColor, true);
             dc.m_primitiveCount = ((int)indices.size() - dc.m_firstIndex) / 3;
             AddDrawcall();
         }
@@ -730,6 +753,26 @@ void GeometryUtils::Convert(Model& model, ModelConversionContext& context)
     {
         model.m_drawCalls = dcs;
     }
+    int referencePositionOfs = model.m_positionOfs;
+    if (model.m_owner != nullptr && model.m_frameNr > 0)
+    {
+        const Model* reference = model.m_owner->GetModelSafe(model.m_animNr, 0);
+        if (reference != nullptr && reference->m_numPositions == model.m_numPositions &&
+            reference->m_numPolygons == model.m_numPolygons)
+        {
+            bool matchingTopology = true;
+            for (int i = 0; i < model.m_numPolygons && matchingTopology; ++i)
+            {
+                const auto& a = context.m_input.m_polygons[reference->m_polygonOfs + i];
+                const auto& b = context.m_input.m_polygons[model.m_polygonOfs + i];
+                matchingTopology = a.GetPolyType() == b.GetPolyType() &&
+                    a.i0 == b.i0 && a.i1 == b.i1 && a.i2 == b.i2 && a.i3 == b.i3;
+            }
+            if (matchingTopology) { referencePositionOfs = reference->m_positionOfs; }
+        }
+    }
+    GeometryUtils::SmoothNormals(context, model.m_drawCalls, model.m_positionOfs, model.m_numPositions,
+        model.m_normalGeneration, referencePositionOfs);
 
     context.GenerateBoundingVolume(model.m_localBounds);
 
@@ -804,15 +847,35 @@ void GeometryUtils::OptimizeDrawCalls(std::vector<DrawCall>& newDrawCalls, std::
 }
 
 
-void GeometryUtils::SmoothNormals(ModelConversionContext& context, const std::vector<DrawCall>& drawCalls, int vertexOfs)
+void GeometryUtils::SmoothNormals(ModelConversionContext& context, const std::vector<DrawCall>& drawCalls,
+    int positionOfs, int positionCount, const NormalGenerationSettings& settings, int referencePositionOfs)
 {
 #ifdef ENABLE_ADVANCED_RENDERING
-    const int vertexCount = (int)context.m_input.m_vertexPos.size() - vertexOfs;
-    context.m_perVertexNormal.clear();
-    context.m_perVertexNormal.resize(vertexCount);
-
-    uint8_t plainGeometry = (uint8_t)VertexStretchMode::None;
-    VertexPosition* pos = const_cast<VertexPosition*>(context.m_input.m_vertexPos.data()) + vertexOfs;
+    if (settings.mode == NormalGenerationMode::Flat) { return; }
+    if (settings.creaseAngleDegrees < 0.f || settings.creaseAngleDegrees > 180.f ||
+        !std::isfinite(settings.creaseAngleDegrees))
+    {
+        throw std::invalid_argument("Normal crease angle must be finite and between 0 and 180 degrees.");
+    }
+    if (referencePositionOfs < 0) { referencePositionOfs = positionOfs; }
+    const float minimumDot = cosf(settings.creaseAngleDegrees * static_cast<float>(Math::Pi / 180.0));
+    struct Triangle
+    {
+        uint16_t vertices[3];
+        int indices[3];
+        int positions[3];
+        uint16_t group;
+        const DrawCall* drawCall;
+        Vector normal, referenceNormal;
+        float angles[3];
+    };
+    std::vector<Triangle> triangles;
+    const auto readPosition = [&](int offset, int index)
+    {
+        assert(index < positionCount);
+        const auto& p = context.m_input.m_vertexPos[offset + index];
+        return Vector(p.x, p.y, p.z, 0.f);
+    };
 
     for (const DrawCall& dc : drawCalls)
     {
@@ -822,55 +885,170 @@ void GeometryUtils::SmoothNormals(ModelConversionContext& context, const std::ve
             const ModelVertex& v0 = context.m_vertices[ind[0]];
             const ModelVertex& v1 = context.m_vertices[ind[1]];
             const ModelVertex& v2 = context.m_vertices[ind[2]];
-            if (v0.StretchMode != plainGeometry || v1.StretchMode != plainGeometry || v2.StretchMode != plainGeometry)
+            if (v0.StretchMode != (uint16_t)VertexStretchMode::None ||
+                v1.StretchMode != (uint16_t)VertexStretchMode::None ||
+                v2.StretchMode != (uint16_t)VertexStretchMode::None)
             {
                 continue;
             }
-            int i0 = v0.GetPositionIndex1();
-            int i1 = v1.GetPositionIndex1();
-            int i2 = v2.GetPositionIndex1();
-            context.m_perVertexNormal[i0] += Vector(v0.Normal.x, v0.Normal.y, v0.Normal.z, 0.f);
-            context.m_perVertexNormal[i1] += Vector(v1.Normal.x, v1.Normal.y, v1.Normal.z, 0.f);
-            context.m_perVertexNormal[i2] += Vector(v2.Normal.x, v2.Normal.y, v2.Normal.z, 0.f);
+            Triangle triangle{};
+            triangle.group = v0.NormalGroup;
+            triangle.drawCall = &dc;
+            assert(v1.NormalGroup == triangle.group && v2.NormalGroup == triangle.group);
+            Vector positions[3], referencePositions[3];
+            for (int corner = 0; corner < 3; ++corner)
+            {
+                triangle.vertices[corner] = ind[corner];
+                triangle.indices[corner] = dc.m_firstIndex + i * 3 + corner;
+                triangle.positions[corner] = context.m_vertices[ind[corner]].GetPositionIndex1();
+                positions[corner] = readPosition(positionOfs, triangle.positions[corner]);
+                referencePositions[corner] = readPosition(referencePositionOfs, triangle.positions[corner]);
+            }
+            triangle.normal = (positions[1] - positions[0]).GetCross(positions[2] - positions[0]);
+            triangle.normal.Normalize();
+            triangle.referenceNormal = (referencePositions[1] - referencePositions[0]).GetCross(referencePositions[2] - referencePositions[0]);
+            triangle.referenceNormal.Normalize();
+            for (int corner = 0; corner < 3; ++corner)
+            {
+                Vector a = positions[(corner + 1) % 3] - positions[corner];
+                const Vector b = positions[(corner + 2) % 3] - positions[corner];
+                const float dot = a.GetX() * b.GetX() + a.GetY() * b.GetY() + a.GetZ() * b.GetZ();
+                triangle.angles[corner] = atan2f(a.GetCross(b).GetLength(), dot);
+            }
+            triangles.push_back(triangle);
         }
     }
 
-    // normalize:
-    for (int i = 0; i < vertexCount; i++)
+    const auto cornerCount = triangles.size() * 3;
+    std::vector<std::size_t> parents(cornerCount);
+    for (std::size_t i = 0; i < cornerCount; ++i) { parents[i] = i; }
+    const auto root = [](std::vector<std::size_t>& parents, std::size_t corner)
     {
-        //context.m_perVertexNormal[i].Set(pos[i].x, pos[i].y, -pos[i].z *0.f); // cylindrical normals
-        context.m_perVertexNormal[i].Normalize(); // could be zero length
-    }
-
-    // assign back
-	for (const DrawCall& dc : drawCalls)
-	{
-		const uint16_t* ind = &context.m_sortedIndices[dc.m_firstIndex];
-		for (int i = 0; i < dc.m_primitiveCount; i++, ind += 3)
+        while (parents[corner] != corner)
         {
-            ModelVertex& v0 = context.m_vertices[ind[0]];
-            ModelVertex& v1 = context.m_vertices[ind[1]];
-            ModelVertex& v2 = context.m_vertices[ind[2]];
-            if (v0.StretchMode != plainGeometry || v1.StretchMode != plainGeometry || v2.StretchMode != plainGeometry)
-            {
-                continue;
-            }
-            int i0 = v0.GetPositionIndex1();
-            int i1 = v1.GetPositionIndex1();
-            int i2 = v2.GetPositionIndex1();
-            if (context.m_perVertexNormal[i0].GetLength() > 0.01f)
-            {
-				v0.Normal = context.m_perVertexNormal[i0];
-            }
-			if (context.m_perVertexNormal[i1].GetLength() > 0.01f)
-			{
-				v1.Normal = context.m_perVertexNormal[i1];
-			}
-			if (context.m_perVertexNormal[i2].GetLength() > 0.01f)
-			{
-				v2.Normal = context.m_perVertexNormal[i2];
-			}
+            parents[corner] = parents[parents[corner]];
+            corner = parents[corner];
         }
+        return corner;
+    };
+    struct Edge
+    {
+        std::size_t triangle;
+        int corner;
+    };
+    std::unordered_map<uint64_t, std::vector<Edge>> edges;
+    for (std::size_t i = 0; i < triangles.size(); ++i)
+    {
+        const auto& triangle = triangles[i];
+        for (int corner = 0; corner < 3; ++corner)
+        {
+            const int a = triangle.positions[corner], b = triangle.positions[(corner + 1) % 3];
+            if (a == b) { continue; }
+            const uint64_t key = (uint64_t(triangle.group) << 32) |
+                (uint64_t((std::min)(a, b)) << 16) | uint64_t((std::max)(a, b));
+            edges[key].push_back({i, corner});
+        }
+    }
+    const auto normalDot = [](const Triangle& a, const Triangle& b)
+    {
+        return a.referenceNormal.GetX() * b.referenceNormal.GetX() +
+            a.referenceNormal.GetY() * b.referenceNormal.GetY() + a.referenceNormal.GetZ() * b.referenceNormal.GetZ();
+    };
+    std::vector<std::size_t> patches(triangles.size());
+    std::vector<bool> smoothPatch(triangles.size(), false);
+    for (std::size_t i = 0; i < patches.size(); ++i) { patches[i] = i; }
+    if (settings.mode == NormalGenerationMode::ConnectedMaterial)
+    {
+        for (const auto& entry : edges)
+        {
+            if (entry.second.size() != 2) { continue; }
+            const auto a = entry.second[0].triangle, b = entry.second[1].triangle;
+            const auto& ta = triangles[a];
+            const auto& tb = triangles[b];
+            if (ta.referenceNormal.GetLength() == 0.f || tb.referenceNormal.GetLength() == 0.f ||
+                !ta.drawCall->IsBatchableWith(*tb.drawCall)) { continue; }
+            const auto pa = root(patches, a), pb = root(patches, b);
+            const float dot = normalDot(ta, tb);
+            // Coplanar triangulation diagonals must not turn boxes and stairs into smooth patches.
+            const bool bentSmoothEdge = dot + 0.000001f >= minimumDot && dot < 1.f - 0.000001f;
+            patches[pa] = pb;
+            smoothPatch[pb] = smoothPatch[pb] || smoothPatch[pa] || bentSmoothEdge;
+        }
+    }
+    // Only shared edges connect smoothing fans; touching vertices and non-manifold edges stay separate.
+    for (const auto& entry : edges)
+    {
+        if (entry.second.size() != 2) { continue; }
+        const auto a = entry.second[0], b = entry.second[1];
+        const auto& ta = triangles[a.triangle];
+        const auto& tb = triangles[b.triangle];
+        if (ta.referenceNormal.GetLength() == 0.f || tb.referenceNormal.GetLength() == 0.f) { continue; }
+        if (settings.mode == NormalGenerationMode::SlopedFaces)
+        {
+            const auto isHorizontalOrVertical = [](const Vector& normal)
+            {
+                constexpr float tolerance = 0.000001f;
+                return std::abs(normal.GetY()) <= tolerance ||
+                    (std::abs(normal.GetX()) <= tolerance && std::abs(normal.GetZ()) <= tolerance);
+            };
+            if (isHorizontalOrVertical(ta.referenceNormal) || isHorizontalOrVertical(tb.referenceNormal)) { continue; }
+        }
+        const float dot = normalDot(ta, tb);
+        if (settings.mode == NormalGenerationMode::CreaseAngle && dot + 0.000001f < minimumDot) { continue; }
+        if (settings.mode == NormalGenerationMode::ConnectedMaterial &&
+            (!ta.drawCall->IsBatchableWith(*tb.drawCall) ||
+                (!smoothPatch[root(patches, a.triangle)] && dot < 1.f - 0.000001f))) { continue; }
+        for (const int ca : {a.corner, (a.corner + 1) % 3})
+        {
+            for (const int cb : {b.corner, (b.corner + 1) % 3})
+            {
+                if (ta.positions[ca] == tb.positions[cb])
+                {
+                    parents[root(parents, a.triangle * 3 + ca)] = root(parents, b.triangle * 3 + cb);
+                }
+            }
+        }
+    }
+    context.m_perVertexNormal.assign(cornerCount, Vector(0, 0, 0, 0));
+    for (std::size_t i = 0; i < cornerCount; ++i)
+    {
+        Vector weightedNormal = triangles[i / 3].normal;
+        weightedNormal *= triangles[i / 3].angles[i % 3];
+        context.m_perVertexNormal[root(parents, i)] += weightedNormal;
+    }
+    for (auto& normal : context.m_perVertexNormal)
+    {
+        normal.Normalize();
+    }
+    std::unordered_map<uint64_t, uint16_t> splitVertices;
+    std::unordered_map<uint16_t, std::size_t> firstFan;
+    for (std::size_t i = 0; i < cornerCount; ++i)
+    {
+        const auto& triangle = triangles[i / 3];
+        const auto fan = root(parents, i);
+        const uint16_t original = triangle.vertices[i % 3];
+        const uint64_t key = (uint64_t(fan) << 16) | original;
+        auto found = splitVertices.find(key);
+        uint16_t vertexIndex;
+        if (found != splitVertices.end()) { vertexIndex = found->second; }
+        else
+        {
+            vertexIndex = original;
+            if (!firstFan.emplace(original, fan).second)
+            {
+                if (context.m_vertices.size() >= 65536)
+                {
+                    throw std::runtime_error("Normal generation exceeds the 16-bit render vertex limit.");
+                }
+                const ModelVertex vertex = context.m_vertices[original];
+                vertexIndex = static_cast<uint16_t>(context.m_vertices.size());
+                context.m_vertices.push_back(vertex);
+            }
+            splitVertices.emplace(key, vertexIndex);
+            const Vector& normal = context.m_perVertexNormal[fan];
+            if (normal.GetLength() > 0.f) { context.m_vertices[vertexIndex].Normal = normal; }
+        }
+        context.m_sortedIndices[triangle.indices[i % 3]] = vertexIndex;
     }
 #endif
 }

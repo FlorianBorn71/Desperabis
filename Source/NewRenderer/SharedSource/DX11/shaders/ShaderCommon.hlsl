@@ -501,7 +501,8 @@ float4 ps_main(PixelShaderInput input) : SV_TARGET
         float2 lmCoord = input.worldPosition.xz * LightmapScaleOfs.xy + LightmapScaleOfs.zw;
         float3 lightmapColor = lightmap.Sample(defaultSampler, lmCoord).xyz;
 
-        finalColor.xyz = finalColor.xyz * DynamicLightingColor(input.worldPosition.xyz, input.normal, lightmapColor);
+        float3 normal = normalize(input.normal);
+        finalColor.xyz = finalColor.xyz * DynamicLightingColor(input.worldPosition.xyz, normal, lightmapColor);
         //finalColor.xyz = DynamicLightingColor(input.worldPosition.xyz, input.normal, float3(0,0,0)) * 4;
 #endif
         finalColor.xyz = ApplyFog(finalColor.xyz, input.worldPosition.w);

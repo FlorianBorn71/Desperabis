@@ -18,4 +18,5 @@ public:
     int m_animNr = 0;
     int m_frameNr = 0;
     int m_numUnsupportedPrimitives = 0;
+    NormalGenerationSettings m_normalGeneration;
 };
