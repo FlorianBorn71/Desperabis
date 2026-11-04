@@ -175,6 +175,7 @@ namespace
                 entry.type == BehaviorType::AirborneLeaf || entry.type == BehaviorType::GroundLeaf ||
                 entry.type == BehaviorType::RainDrop || entry.type == BehaviorType::FlyingArrow ||
                 entry.type == BehaviorType::Frog || entry.type == BehaviorType::ExtinguishLava ||
+                entry.type == BehaviorType::AnacondaHeadDying ||
                 entry.type == BehaviorType::Behavior_11 ||
                 entry.type == BehaviorType::Harvestman || entry.type == BehaviorType::Devil)
             {
@@ -246,6 +247,9 @@ namespace
                 entry.type == BehaviorType::Bubble || entry.type == BehaviorType::BubblePop ||
                 entry.type == BehaviorType::Crab || entry.type == BehaviorType::BurnableOilPuddle ||
                 entry.type == BehaviorType::Dragon || entry.type == BehaviorType::DragonDying ||
+                entry.type == BehaviorType::LiftUp || entry.type == BehaviorType::RechargeElectricity ||
+                entry.type == BehaviorType::FireExhauster || entry.type == BehaviorType::AnancondaHead ||
+                entry.type == BehaviorType::AnancondaTailSegment || entry.type == BehaviorType::AnacondaHeadDying ||
                 entry.type == BehaviorType::DragonHead || entry.type == BehaviorType::FireballImpact ||
                 entry.type == BehaviorType::UnderwaterPlants || entry.type == BehaviorType::CurtainOpens ||
                 entry.type == BehaviorType::TrackFireAnimation || entry.type == BehaviorType::ForceWeaponSelection ||

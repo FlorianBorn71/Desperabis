@@ -75,7 +75,11 @@ namespace Desperabis
             context.playerHitEffectTicks = 8;
             return { InteractionStatus::Applied };
         }
-        if (object.collisionType == CollisionType::Devil)
+        if (object.collisionType == CollisionType::Devil ||
+            object.collisionType == CollisionType::BatIndoor ||
+            object.collisionType == CollisionType::Shark ||
+            object.collisionType == CollisionType::AnacondaTail ||
+            object.collisionType == CollisionType::AnacondaHead)
         {
             return context.HandleDamageObjectContact(object);
         }

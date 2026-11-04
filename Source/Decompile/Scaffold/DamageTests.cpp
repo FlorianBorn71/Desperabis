@@ -357,7 +357,7 @@ namespace
                 expected.collisionType = CollisionType::None; expected.collisionMask = 0;
                 break;
             case CollisionType::AnacondaHead:
-                expected.behavior = BehaviorType::Behavior_87; expected.health = 2000;
+                expected.behavior = BehaviorType::AnacondaHeadDying; expected.health = 2000;
                 expected.modelAnim = 3; expected.animFrame = 3; expected.modelFrame2 = 0; expected.renderPlacementMode = 1;
                 break;
             case CollisionType::AnacondaTail:

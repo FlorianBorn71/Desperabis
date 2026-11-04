@@ -528,7 +528,7 @@ namespace Desperabis
     DispatchResult Function_FlyingArrow(RawGameObject& object, GameContext& context)
     {
         if (object.itemValue != 0 && object.itemValue != 11 && object.itemValue != 3 && object.itemValue != 103 &&
-            object.itemValue != 4 && object.itemValue != 5 && object.itemValue != 6)
+            object.itemValue != 4 && object.itemValue != 5 && object.itemValue != 6 && object.itemValue != 7)
         {
             return { DispatchStatus::UnimplementedHandler, BehaviorType::FlyingArrow, 0x1E1A };
         }
@@ -589,6 +589,22 @@ namespace Desperabis
                 const auto target = context.FindCollidingObject(object);
                 if (target > 1) { context.DamageObject(context.worldObjects[target], 200); }
                 object.collisionMask = 1;
+            }
+            else if (object.itemValue == 7)
+            {
+                if (object.spriteScale < 70)
+                {
+                    object.spriteScale = static_cast<std::uint8_t>(object.spriteScale + context.Random(3) + 1);
+                }
+                else { context.SetObjectHealth(object, 0); }
+                object.generalPurpose2 = static_cast<std::uint16_t>(object.generalPurpose2 + context.Random(2) + 1);
+                while (WrapSignedWord(object.generalPurpose2) > 6)
+                {
+                    object.generalPurpose2 -= 7;
+                    object.velocityY = WrapSignedWord(object.velocityY + 1);
+                }
+                object.blendWeightOrSpriteOpacity = object.health;
+                if (object.health < 18) { object.animFrame = 1; }
             }
             else if (object.itemValue == 3)
             {

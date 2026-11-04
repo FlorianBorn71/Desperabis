@@ -482,6 +482,8 @@ namespace Desperabis
             std::uint8_t footstepEffect = 0;
             if (field_D500)
             {
+                const auto previousX = player.posX;
+                const auto previousZ = player.posZ;
                 int contacts = 0;
                 for (std::size_t slot = 2; slot <= 164 && contacts < 50; ++slot)
                 {
@@ -497,6 +499,21 @@ namespace Desperabis
                     if (candidate.collisionType == CollisionType::ClimbableLadder && candidate.health == 1000)
                     {
                         terrainSlopeEnabled = false;
+                    }
+                    if (candidate.collisionType == CollisionType::RechargeElectricity)
+                    {
+                        HandleDamageObjectContact(candidate);
+                        continue;
+                    }
+                    if (candidate.collisionType == CollisionType::PushingEnemy && !DEBUG_noPlayerCollision)
+                    {
+                        candidate.velocityX = 0;
+                        candidate.velocityZ = 0;
+                        player.posX = WrapSignedWord(previousX +
+                            SignWord(WrapSignedWord(player.posX - candidate.posX)));
+                        player.posZ = WrapSignedWord(previousZ +
+                            SignWord(WrapSignedWord(player.posZ - candidate.posZ)));
+                        continue;
                     }
                     if (!DEBUG_noPlayerCollision &&
                         (candidate.collisionType == CollisionType::PushPlayer ||
@@ -580,6 +597,17 @@ namespace Desperabis
             auto x = WrapSignedWord(player.posX + deltaX);
             auto z = WrapSignedWord(player.posZ + deltaZ);
             eyeY = WrapSignedWord(eyeY + playerVerticalSpeed);
+            const auto contactSlot = FindPlayerCollision();
+            if (contactSlot != 0 && worldObjects[contactSlot].collisionType == CollisionType::LiftUp)
+            {
+                const auto& lift = worldObjects[contactSlot];
+                x = WrapSignedWord(player.posX + SignWord(WrapSignedWord(lift.posX - player.posX)));
+                z = WrapSignedWord(player.posZ + SignWord(WrapSignedWord(lift.posZ - player.posZ)));
+                eyeY = WrapSignedWord(lift.posY + playerBodyHeight + bob);
+                playerVerticalSpeed = 1;
+                bridgeSupported = true;
+                terrainSlopeEnabled = false;
+            }
             const auto walkingSpeed = std::abs(static_cast<int>(playerForwardSpeed)) +
                 std::abs(static_cast<int>(playerSidewaysSpeed));
             if (!playerUnderwater && walkingSpeed > 1)
@@ -1320,6 +1348,16 @@ namespace Desperabis
         return { InteractionStatus::Applied };
     }
 
+    void GameContext::ApplyLatchedPlayerContactDamage(RawGameObject& object)
+    {
+        if (object.generalPurpose2 == 0)
+        {
+            playerHitEffectTicks = 8;
+            ApplyPlayerLifeDelta(-29491 * static_cast<std::int32_t>(object.behaviorParameter));
+        }
+        object.generalPurpose2 = 1;
+    }
+
     InteractionResult GameContext::HandleCrabContact(RawGameObject& object)
     {
         if (!behaviorDispatchEnabled) { return { InteractionStatus::NoEffect }; }
@@ -1572,6 +1610,74 @@ namespace Desperabis
             InitializeSmokeParticle(particle, x, y, z, linked.collisionRadiusXZ, 1, linked.renderPlacementMode);
         }
         NotifyObjectCreated(particle);
+    }
+
+    std::uint16_t GameContext::SpawnEmitterProjectile(const RawGameObject& source)
+    {
+        if (source.generalPurpose1 != 1 && source.generalPurpose1 != 11 && source.generalPurpose1 != 7)
+        {
+            throw std::invalid_argument("Unrecovered emitter projectile selector.");
+        }
+        const auto emitter = source;
+        const auto slot = FindFreeOrLowestHealthObjectIndex();
+        RawGameObject shot;
+        shot.health = 1000;
+        shot.collisionMask = 1;
+        shot.spriteScale = 35;
+        shot.behavior = BehaviorType::FlyingArrow;
+        shot.collisionType = CollisionType::FlyingArrow;
+        shot.posX = emitter.posX; shot.posY = emitter.posY; shot.posZ = emitter.posZ;
+        GetClampedDirectionDisplacement(shot.velocityX, shot.velocityZ,
+            emitter.winY & 511, emitter.generalPurpose1 == 7 ?
+                emitter.behaviorParameter : emitter.doorLockOrGroupBitmask);
+        shot.modelAnim = 1;
+        shot.displayType = DisplayType::VectorNormal;
+        if (emitter.generalPurpose1 == 1)
+        {
+            shot.modelId = 31;
+            shot.animFrame = 2;
+            shot.winY = static_cast<std::int16_t>((emitter.winY & 511) + 256);
+            shot.behaviorParameter = 140;
+            shot.collisionRadiusXZ = 10;
+            shot.collisionRadiusY = 8;
+        }
+        else if (emitter.generalPurpose1 == 7)
+        {
+            shot.modelId = 1;
+            shot.modelAnim = 5;
+            shot.animFrame = 2;
+            shot.displayType = DisplayType::SpriteTransparent;
+            shot.blendWeightOrSpriteOpacity = 20;
+            shot.itemValue = 7;
+            shot.velocityY = -1;
+            shot.behaviorParameter = 25;
+            shot.collisionRadiusXZ = 10;
+            shot.collisionRadiusY = 10;
+            shot.spriteScale = 5;
+            shot.winY = static_cast<std::int16_t>(Random(2));
+            shot.health = static_cast<std::int16_t>(Random(5) + 22);
+            shot.renderPlacementMode = 1;
+        }
+        else
+        {
+            shot.modelId = emitter.modelId;
+            shot.animFrame = 1;
+            shot.modelFrame2 = 2;
+            shot.renderPlacementMode = 1;
+            shot.collisionType = static_cast<CollisionType>(130);
+            shot.collisionRadiusXZ = 22;
+            shot.collisionRadiusY = 3;
+            PlaySoundEffect(static_cast<SoundEffect>(86), GetSoundVolumeAt(shot.posX, shot.posZ), 500, 1);
+            shot.generalPurpose1 = static_cast<std::uint16_t>(emitter.velocityY);
+            shot.doorLockOrGroupBitmask = emitter.velocityZ;
+            shot.itemValue = 11;
+            shot.winY = static_cast<std::int16_t>(Random(512));
+            shot.generalPurpose3 = static_cast<std::uint16_t>(emitter.velocityX);
+        }
+        shot.posY = std::max(shot.posY,
+            WrapSignedWord(GetTerrainFloorHeight(shot.posX, shot.posY, shot.posZ) + 8));
+        ReplaceWorldObject(slot, shot);
+        return slot;
     }
 
     void GameContext::SpawnActivationParticle(std::int16_t x, std::int16_t y, std::int16_t z,
@@ -1913,7 +2019,7 @@ namespace Desperabis
             if (object.groupIndexOrLock < 1)
             {
                 play(48, GetSoundVolume(0), 1);
-                object.behavior = BehaviorType::Behavior_87; object.health = 2000;
+                object.behavior = BehaviorType::AnacondaHeadDying; SetObjectHealth(object, 2000);
                 object.modelAnim = 3; object.animFrame = 3; object.modelFrame2 = 0; object.renderPlacementMode = 1;
             }
             else
@@ -1925,7 +2031,7 @@ namespace Desperabis
         case CollisionType::AnacondaTail:
             if (object.groupIndexOrLock < 1)
             {
-                object.health = 2000; play(3, volume, 1); object.modelAnim = 3; object.animFrame = 1;
+                SetObjectHealth(object, 2000); play(3, volume, 1); object.modelAnim = 3; object.animFrame = 1;
             }
             return;
         case CollisionType::AttachableDamageObject:

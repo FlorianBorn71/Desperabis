@@ -293,6 +293,15 @@ integration is not currently reproduced by this repository.
 
 ### Host-driven renderer integration
 
+Cave levels 17/18 now cover all authored live behavior handlers and their
+required fire-jet/death dependencies. This includes lift riding, electricity
+recharge/beam feedback, anaconda chain motion/death, and the missing shark,
+bat and anaconda player-contact responses, gorilla repulsion and pedestal
+touch damage. See
+[cave recovery](BehaviorRecovery.md#cave-levels-17-and-18),
+[BehaviorHandlers.cpp](Scaffold/BehaviorHandlers.cpp) and the original-asset
+`cave-levels` regression suite. Native object/save layouts are unchanged.
+
 Level 15's dragon is implemented in
 [DragonBehaviors.cpp](Scaffold/DragonBehaviors.cpp), including pursuit, animated
 walking, six-direction head/mouth frames, close breath, distant three-fireball

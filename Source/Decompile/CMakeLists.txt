@@ -28,7 +28,6 @@ add_library(behavior-recovery STATIC
     Scaffold/BehaviorHandlers.cpp
     Scaffold/EnemyBehaviors.cpp
     Scaffold/DragonBehaviors.cpp
-    Scaffold/LevelFifteenTraps.cpp
     Scaffold/ModelAnchors.cpp
     Scaffold/WeatherBehaviors.cpp
     Scaffold/WeaponPresentation.cpp
@@ -50,6 +49,10 @@ foreach(target Continuous Experimental Nightly NightlyMemoryCheck)
     endif()
 endforeach()
 if(BUILD_TESTING)
+    add_executable(cave-level-tests Scaffold/CaveLevelTests.cpp)
+    target_link_libraries(cave-level-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME cave-levels COMMAND cave-level-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original")
     add_executable(witch-level-tests Scaffold/WitchLevelTests.cpp)
     target_link_libraries(witch-level-tests PRIVATE Desperabis::GameCore)
     add_test(NAME witch-level COMMAND witch-level-tests
@@ -185,7 +188,7 @@ foreach(target behavior-recovery desperabis-recovery)
     endif()
 endforeach()
 if(BUILD_TESTING)
-    foreach(target savegame-tests tutorial-tests ambient-tests behavior-recovery-tests application-flow-tests application-update-tests fireplace-tests particle-tests floating-debris-tests rat-snake-tests cockroach-tests bat-indoor-tests mummy-tests skeleton-tests damage-tests weapon-tests ranged-weapon-tests game-runtime-tests player-posture-tests player-look-tests player-support-tests player-health-tests level-sixteen-seventeen-tests)
+    foreach(target cave-level-tests savegame-tests tutorial-tests ambient-tests behavior-recovery-tests application-flow-tests application-update-tests fireplace-tests particle-tests floating-debris-tests rat-snake-tests cockroach-tests bat-indoor-tests mummy-tests skeleton-tests damage-tests weapon-tests ranged-weapon-tests game-runtime-tests player-posture-tests player-look-tests player-support-tests player-health-tests level-sixteen-seventeen-tests)
         set_target_properties(${target} PROPERTIES FOLDER "Tests")
         if(MSVC)
             target_compile_options(${target} PRIVATE /W4 /WX)

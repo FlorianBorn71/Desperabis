@@ -12,6 +12,32 @@ namespace Desperabis
 {
     namespace
     {
+        std::int16_t SineOffset(std::int16_t angle, std::int16_t scale)
+        {
+            std::int16_t x, z;
+            GetClampedDirectionDisplacement(x, z, angle, scale);
+            return x;
+        }
+
+        const RawGameObject& PreviousSegment(const RawGameObject& object, const GameContext& context)
+        {
+            const auto slot = object.doorLockOrGroupBitmask;
+            if (slot < 0 || static_cast<std::size_t>(slot) >= context.worldObjects.size())
+            {
+                throw std::out_of_range("Anaconda predecessor is outside slots 0..165.");
+            }
+            return context.worldObjects[slot];
+        }
+
+        void AimSegmentPitch(RawGameObject& object, const RawGameObject& previous)
+        {
+            const auto dx = WrapSignedWord(previous.posX - object.posX);
+            const auto dy = WrapSignedWord(previous.posY - object.posY);
+            const auto dz = WrapSignedWord(previous.posZ - object.posZ);
+            object.winX = GetVectorAngle(WrapSignedWord(-dy),
+                WrapSignedWord(-std::abs(static_cast<int>(dx)) - std::abs(static_cast<int>(dz))));
+        }
+
         void AdvanceTrackedTexture(RawGameObject& object, GameContext& context)
         {
             if (object.behaviorParameter == 0 || !context.level || object.itemValue < 1 ||
@@ -2029,14 +2055,34 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::ActivatableLadder, 0x26B5 };
     }
 
-    DispatchResult Function_LiftUp(RawGameObject&, GameContext&)
+    DispatchResult Function_LiftUp(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::LiftUp, 0x26D6 };
+        if (object.health == 1000)
+        {
+            object.collisionType = CollisionType::LiftUp;
+            object.velocityY = context.OverlapsPlayer(object) ? 1 : -2;
+            object.posY = WrapSignedWord(object.posY + object.velocityY * context.tickCount);
+            const auto floor = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
+            object.posY = std::max(object.posY, floor);
+            if (object.posY != floor)
+            {
+                context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+                    context.GetSoundVolumeAt(object.posX, object.posZ), object, 1);
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::LiftUp, 0x26D6 };
     }
 
-    DispatchResult Function_RechargeElectricity(RawGameObject&, GameContext&)
+    DispatchResult Function_RechargeElectricity(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::RechargeElectricity, 0x277C };
+        const auto distance = context.GetSoundDistanceAt(object.posX, object.posZ);
+        if (WrapSignedWord(std::abs(static_cast<int>(WrapSignedWord(distance - 100)))) < 21 &&
+            context.selectedWeapon == WeaponType::Electricity && context.weaponAmounts[7] < 360)
+        {
+            context.weaponAmounts[7] = WrapSignedWord(context.weaponAmounts[7] + 2 * context.tickCount + 2);
+            context.AttackWithSelectedWeapon();
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::RechargeElectricity, 0x277C };
     }
 
     DispatchResult Function_Lorry(RawGameObject&, GameContext&)
@@ -2099,9 +2145,27 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::BearTrapAmmo, 0x285C };
     }
 
-    DispatchResult Function_FireExhauster(RawGameObject&, GameContext&)
+    DispatchResult Function_FireExhauster(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::FireExhauster, 0x288D };
+        for (int tick = 0; tick < context.tickCount; ++tick)
+        {
+            const auto phase = WrapSignedWord(object.generalPurpose1);
+            if (phase == object.groupIndexOrLock)
+            {
+                context.PlaySoundEffect(static_cast<SoundEffect>(22),
+                    context.GetSoundVolumeAt(object.posX, object.posZ), object, 1);
+            }
+            if ((phase & 1) != 0 && phase <= object.groupIndexOrLock)
+            {
+                auto source = object;
+                source.generalPurpose1 = 7;
+                const auto slot = context.SpawnEmitterProjectile(source);
+                if (&context.worldObjects[slot] == &object) { break; }
+            }
+            object.generalPurpose1 = phase < 1 ? static_cast<std::uint16_t>(object.itemValue) :
+                static_cast<std::uint16_t>(phase - 1);
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::FireExhauster, 0x288D };
     }
 
     DispatchResult Function_Behavior_82(RawGameObject&, GameContext&)
@@ -2119,19 +2183,155 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::ItemHiddenInBox, 0x2A65 };
     }
 
-    DispatchResult Function_AnancondaHead(RawGameObject&, GameContext&)
+    DispatchResult Function_AnancondaHead(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::AnancondaHead, 0x2A80 };
+        if (object.health == 1000)
+        {
+            for (int tick = 0; tick < context.tickCount; ++tick)
+            {
+                const auto distance = context.GetSoundDistanceAt(object.posX, object.posZ);
+                if (WrapSignedWord(object.generalPurpose1) > 0)
+                {
+                    --object.generalPurpose1;
+                    object.doorLockOrGroupBitmask = -3;
+                }
+                else { object.doorLockOrGroupBitmask = 1; }
+                std::int16_t x = 0, z = 0;
+                std::uint16_t obstacle = 0;
+                context.QueryCollisionMapNeighborhood(
+                    WrapSignedWord(object.posX + object.velocityX * object.doorLockOrGroupBitmask),
+                    object.posZ, 1, x, z, obstacle, 0x38);
+                if (obstacle != 0) { object.velocityX = WrapSignedWord(-object.velocityX); }
+                else if (x != 0) { object.velocityX = WrapSignedWord(std::abs(static_cast<int>(object.velocityX)) * x); }
+                context.QueryCollisionMapNeighborhood(object.posX,
+                    WrapSignedWord(object.posZ + object.velocityZ * object.doorLockOrGroupBitmask),
+                    1, x, z, obstacle, 0x38);
+                if (obstacle != 0) { object.velocityZ = WrapSignedWord(-object.velocityZ); }
+                else if (z != 0) { object.velocityZ = WrapSignedWord(std::abs(static_cast<int>(object.velocityZ)) * z); }
+                if (context.Random(50) == 0 && x == 0 && z == 0 && obstacle != 8)
+                {
+                    if (context.Random(3) == 0)
+                    {
+                        object.velocityX = WrapSignedWord(context.Random(5) - 2);
+                        object.velocityZ = WrapSignedWord(context.Random(5) - 2);
+                    }
+                    else
+                    {
+                        object.velocityX = static_cast<std::int16_t>(
+                            2 * SignWord(WrapSignedWord(context.soundListenerX - object.posX)));
+                        object.velocityZ = static_cast<std::int16_t>(
+                            2 * SignWord(WrapSignedWord(context.soundListenerZ - object.posZ)));
+                    }
+                }
+                if (object.winX < 512)
+                {
+                    const auto threshold = distance < 200 ? context.Random(40) + 60 : 2;
+                    if (object.winX >= 12) { object.velocityY = -1; }
+                    if (object.winX <= threshold || object.velocityY == 0) { object.velocityY = 2; }
+                    object.posY = WrapSignedWord(
+                        context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ) +
+                        std::abs(static_cast<int>(SineOffset(object.winX, 25))));
+                }
+                else { object.velocityY = 0; }
+                if (context.field_D500)
+                {
+                    object.posX = WrapSignedWord(object.posX + object.velocityX * object.doorLockOrGroupBitmask);
+                    object.posZ = WrapSignedWord(object.posZ + object.velocityZ * object.doorLockOrGroupBitmask);
+                    object.winX = WrapSignedWord(object.winX + object.velocityY);
+                }
+                auto angle = WrapSignedWord(obstacle);
+                if (WrapSignedWord(std::abs(static_cast<int>(object.velocityX)) +
+                    std::abs(static_cast<int>(object.velocityZ))) > 0)
+                {
+                    angle = GetVectorAngle(WrapSignedWord(-object.velocityX), WrapSignedWord(-object.velocityZ));
+                }
+                if (WrapSignedWord(std::abs(static_cast<int>(WrapSignedWord(angle - object.winY)))) > 256)
+                {
+                    angle = WrapSignedWord(angle + 512);
+                }
+                object.winY = WrapSignedWord(object.winY + GetStepToward(object.winY, angle, 20));
+                if (object.modelFrame2 == 0)
+                {
+                    const auto view = GetVectorAngle(WrapSignedWord(object.posX - context.soundListenerX),
+                        WrapSignedWord(context.soundListenerZ - object.posZ));
+                    object.animFrame = ((object.winY + view) & 511) <= 256 ? 2 : 1;
+                }
+                else
+                {
+                    object.blendWeightOrSpriteOpacity = WrapSignedWord(
+                        object.blendWeightOrSpriteOpacity + 7) % 200;
+                }
+                object.generalPurpose2 = object.winX < 5 ?
+                    static_cast<std::uint16_t>((object.generalPurpose2 + context.Random(17)) & 511) : 0;
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::AnancondaHead, 0x2A80 };
     }
 
-    DispatchResult Function_AnancondaTailSegment(RawGameObject&, GameContext&)
+    DispatchResult Function_AnancondaTailSegment(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::AnancondaTailSegment, 0x2ABB };
+        for (int tick = 0; tick < context.tickCount && context.field_D500; ++tick)
+        {
+            const auto& previous = PreviousSegment(object, context);
+            if (object.health == 1000)
+            {
+                object.winY = GetVectorAngle(WrapSignedWord(previous.posX - object.posX),
+                    WrapSignedWord(previous.posZ - object.posZ));
+                object.generalPurpose2 = static_cast<std::uint16_t>((previous.generalPurpose2 + 51) & 511);
+                if (object.velocityX == 0)
+                {
+                    object.velocityX = WrapSignedWord(std::abs(static_cast<int>(previous.velocityX)) +
+                        std::abs(static_cast<int>(previous.velocityZ)));
+                }
+                object.winY = static_cast<std::int16_t>((object.winY +
+                    SineOffset(WrapSignedWord(object.generalPurpose2), WrapSignedWord(3 * object.velocityX))) & 511);
+                object.generalPurpose1 = previous.collisionType == CollisionType::AnacondaHead ? 20 : 25;
+                std::int16_t dx, dz;
+                GetClampedDirectionDisplacement(dx, dz, object.winY, WrapSignedWord(object.generalPurpose1));
+                object.posX = WrapSignedWord(previous.posX - dx);
+                object.posY = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
+                if (object.velocityY > 0)
+                {
+                    // CS:8192 stores the extended-precision factor 2.56 (one cycle per 200 blend steps).
+                    const auto phase = WrapSignedWord(static_cast<std::int32_t>(
+                        std::nearbyint(object.blendWeightOrSpriteOpacity * 2.56)) +
+                        30 * context.FindWorldObjectSlot(object));
+                    object.posY = WrapSignedWord(object.posY + object.velocityY + SineOffset(phase, 18));
+                }
+                object.posY = ArithmeticShiftRight(WrapSignedWord(previous.posY + object.posY), 1);
+                object.posZ = WrapSignedWord(previous.posZ - dz);
+                std::int16_t correctionX = 0, correctionZ = 0;
+                std::uint16_t obstacle = 0;
+                context.QueryCollisionMapNeighborhood(object.posX, object.posZ, 4,
+                    correctionX, correctionZ, obstacle, 0x38);
+                object.posX = WrapSignedWord(object.posX + correctionX);
+                object.posZ = WrapSignedWord(object.posZ + correctionZ);
+                object.winY = GetVectorAngle(WrapSignedWord(previous.posX - object.posX),
+                    WrapSignedWord(previous.posZ - object.posZ));
+                AimSegmentPitch(object, previous);
+                object.winZ = 0;
+                context.SetObjectHealth(object, previous.health);
+                object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity + 4) % 200;
+            }
+            else if (object.health == 2000)
+            {
+                object.collisionMask = 0;
+                const auto floor = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
+                object.posY = WrapSignedWord(object.posY + GetStepToward(object.posY, floor, 1));
+                AimSegmentPitch(object, previous);
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::AnancondaTailSegment, 0x2ABB };
     }
 
-    DispatchResult Function_Behavior_87(RawGameObject&, GameContext&)
+    DispatchResult Function_AnacondaHeadDying(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_87, 0x2AE9 };
+        object.collisionMask = 0;
+        object.winX = WrapSignedWord(object.winX +
+            GetStepToward(object.winX, object.winX < 256 ? 0 : 512, WrapSignedWord(5 * context.tickCount)));
+        const auto floor = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
+        object.posY = WrapSignedWord(object.posY + GetStepToward(object.posY, floor, context.tickCount));
+        return { DispatchStatus::ExecutedCase, BehaviorType::AnacondaHeadDying, 0x2AE9 };
     }
 
     DispatchResult Function_AttachableDamageObject(RawGameObject&, GameContext&)

@@ -6,6 +6,56 @@ each recovered case an editable, named home without hiding missing behavior.
 
 ## Game context and application flow
 
+### Cave levels 17 and 18
+
+The original live `OBJPOS17.DAT` and `OBJPOS18.DAT` selectors, including the
+anaconda entrance trigger and spawned fire-jet projectiles, now run without
+unimplemented handlers. The missing pieces were:
+
+| Level | Previously missing | Native implementation |
+|---|---|---|
+| 17 | Shark contact damage | Collision 65 uses byte 52 times signed 16.16 life delta -29491; the shark's existing attack animation controls whether its collision mask is active. |
+| 17 | Gorilla physical contact | Collision 35 stops the enemy's X/Z velocity and repels the player one unit on each overlapping axis per movement substep. |
+| 18 | Indoor bat and anaconda contact damage | Collisions 14, 33 and 34 use that same direct-contact response, without Enter. |
+| 18 | Lift behavior and player support | Selector/collision 76 raises an occupied lift by one unit per behavior tick, lowers an empty lift by two, clamps to terrain, and centers/carries the player with grounded support. |
+| 18 | Electricity pedestal | Selector 77 charges only selected weapon 7 within Manhattan distance 80..120, adds `2*ticks+2` below charge 360, then invokes the ordinary electricity attack/beam. The limit test precedes the addition; temporary overshoot is native. Physical contact with collision 77 inflicts byte-52 shock damage per movement substep. |
+| 18 | Fire jets and their projectile dependency | Selector 81 counts down word 36, emits on odd phases at/below word 44, and reloads from word 34. Factory variant 7 uses byte 52 as speed; the resulting `FlyingArrow` flame has native growth, upward acceleration, fade/frame transition, expiry, and one-shot contact damage. |
+| 18 | Anaconda head, body and death state | Selectors 85/86 implement head steering, terrain-relative pitch, hit recoil, linked segment following and death propagation. Selector 87 is now named `AnacondaHeadDying` (numeric value unchanged). |
+
+These are reusable object behaviors, not level-specific logic.
+Implementation: [BehaviorHandlers.cpp](Scaffold/BehaviorHandlers.cpp), shared emitter
+factory in [GameContext.cpp](Scaffold/GameContext.cpp), flame updates
+in [EnemyBehaviors.cpp](Scaffold/EnemyBehaviors.cpp), and the existing player
+movement/contact paths. No cave-specific renderer workaround is needed.
+
+The authored anaconda is head slot 11 followed by slots
+36, 37, 49, 50, 51, 56, 57, 58, 59, 60. Each segment's word 46 points to its
+predecessor, not necessarily the preceding numeric slot. Original trigger 61
+activates health group 1010. A live segment copies predecessor health after
+following; health 2000 disables contact and settles the corpse. Head motion and
+tail following use the native DS:D500 body-mode gate, not the unrelated map
+collision switch. All continuation state remains in native object/save fields.
+
+Evidence:
+[dispatcher](cave-dispatch-evidence.txt),
+[head/tail and shared helpers](cave-helpers-evidence.txt),
+[death, projectile initialization and view helpers](cave-support-evidence.txt),
+[complete fire recipe](cave-flame-evidence.txt),
+[projectile updates](cave-projectile-evidence.txt), and
+[player contacts/lift support](player-collision-evidence.txt), plus
+[pedestal shock/gorilla repulsion](cave-contact-support-evidence.txt).
+The tail's embedded extended-precision constant at `10AC:8192` is 2.56;
+the emulator interrupt sequence multiplies blend phase by it before rounding
+to an integer sine-table angle.
+
+`cave-levels` uses both original levels for full gameplay ticks and checks the
+activated anaconda encounter, contact damage, lift riding/return, recharge
+boundaries and beam cost, pedestal shock, gorilla repulsion,
+fire cadence/projectile lifecycle, chain death and
+native SPL continuation (with an equal RNG stream). Adjacent bridge support,
+crab/gorilla/spider behavior and cave-17 shark motion retain their existing
+focused regression suites.
+
 ### Witch shop (level 90)
 
 All live behavior selectors in original `OBJPOS90.DAT` now have recovered
@@ -158,7 +208,7 @@ PictureMap interactions are implemented by the modal flow described below.
 `SpearOnGroundTrap` (44, `0000:1E98` -> `10AC:8AD3`) are now implemented,
 including the original level-15 slot-3 emitter and all six floor-spear records.
 The recovered shared projectile initializer and latched player-contact damage
-live in `Scaffold/LevelFifteenTraps.cpp`, not renderer-side simulation.
+live in [GameContext.cpp](Scaffold/GameContext.cpp), not renderer-side simulation.
 The emitted ordinary `FlyingArrow` path is implemented alongside the existing
 dragon-debris variant. The shared emitter's fountain variant is covered too;
 unsupported synthetic selectors remain explicit failures rather than silently

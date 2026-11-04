@@ -90,7 +90,7 @@ namespace Desperabis
         ItemHiddenInBox = 84, // an item that is shown when a box is opened in level 36
         AnancondaHead = 85,
         AnancondaTailSegment = 86,
-        Behavior_87 = 87,
+        AnacondaHeadDying = 87,
         AttachableDamageObject = 88, // for Kraken arms inside sewerage. But also used for attached machine parts for RotatingMachineCenter
         KrakenHead = 89, // inside sewerage
         EndBossHead = 91,
