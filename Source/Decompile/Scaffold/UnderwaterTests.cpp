@@ -101,7 +101,7 @@ namespace
         host.playerUnderwater = false;
         Step(host);
         Check(host.playerOxygen == GameContext::PlayerOxygenMaximum &&
-            host.transitions == std::vector<bool>({true, false}), "Surfacing must refill oxygen and clear tint.");
+            host.transitions == std::vector<bool>({true, false}), "Surfacing must refill oxygen and clear underwater fog.");
         host.playerUnderwater = true;
         host.playerOxygen = 0;
         host.playerLife = 100;
@@ -133,7 +133,7 @@ namespace
         Check(audio.starts == 2 && audio.underwater, "Unpause must resume the underwater loop.");
         host.SetMenuPage(MenuPage::Inventory);
         Check(!audio.underwater && host.transitions.back() == false && host.playerOxygen == oxygen,
-            "Modal pages must clear tint/audio without refilling oxygen.");
+            "Modal pages must clear underwater view/audio without refilling oxygen.");
         host.SetMenuPage(MenuPage::Gameplay);
         Check(audio.underwater && host.transitions.back(), "Returning to gameplay must restore the view.");
         host.soundEnabled = false;
@@ -145,9 +145,11 @@ namespace
         host.Load();
         Check(!audio.underwater && !host.playerUnderwater &&
             host.playerOxygen == GameContext::PlayerOxygenMaximum && !host.transitions.back(),
-            "Loading must reset oxygen and leave no stale loop or blue tint.");
+            "Loading must reset oxygen and leave no stale loop or underwater fog.");
         host.playerUnderwater = true;
         Step(host);
+        const std::uint8_t parts[] = {1,0,1,0,1,'T',1,12};
+        host.SetGameParts(parts, sizeof(parts));
         host.EndLevel(true);
         Check(!audio.underwater && !host.transitions.back() && !host.playerUnderwater,
             "Game-part completion must clear the underwater view and sound.");
@@ -198,7 +200,68 @@ namespace
         host.worldObjects[1].posY = static_cast<std::int16_t>(host.GetTerrainFloorHeight(1500, 0, 2500) + 20);
         Step(host);
         Check(host.playerUnderwater && host.playerOxygen == GameContext::PlayerOxygenMaximum - 14625 &&
-            host.transitions.back(), "Real floor-following movement must drive oxygen and the tint callback.");
+            host.transitions.back(), "Real floor-following movement must drive oxygen and the underwater view callback.");
+    }
+
+    void SetTerrain(Host& host, std::uint8_t surface)
+    {
+        std::fill(std::begin(host.collisionMap->data), std::end(host.collisionMap->data), surface);
+        host.basicPlayerMovementEnabled = true;
+    }
+
+    void TestTerrainDamage()
+    {
+        constexpr auto full = 360 * 65536;
+        for (int surface = 0; surface < 256; ++surface)
+        {
+            Host host;
+            host.Load();
+            SetTerrain(host, static_cast<std::uint8_t>(surface));
+            Step(host);
+            const auto mode = surface >> 6;
+            const auto expected = mode == 3 ? 0 : full - (mode == 1 ? 2 : mode == 2 ? 4 : 0) * 29491;
+            Check(host.playerLife == expected && host.worldObjects[1].health == 1000 &&
+                host.healthChanges == (mode != 0),
+                "Only collision-map bits 6..7 may select terrain damage; all low-six-bit combinations must agree.");
+        }
+        Host batch, single;
+        batch.Load();
+        single.Load();
+        SetTerrain(batch, 128);
+        SetTerrain(single, 128);
+        Step(batch, 13);
+        for (int i = 0; i < 13; ++i) { Step(single); }
+        Check(batch.playerLife == full - 13 * 4 * 29491 && batch.playerLife == single.playerLife &&
+            batch.healthChanges == 13 && single.healthChanges == 13,
+            "Terrain damage must scale with controller steps, including batched ticks.");
+        SetTerrain(batch, 0);
+        Step(batch, 5);
+        Check(batch.playerLife == single.playerLife, "Returning to the safe path must stop terrain damage.");
+
+        for (int gate = 0; gate < 4; ++gate)
+        {
+            Host host;
+            host.Load();
+            SetTerrain(host, 128);
+            if (gate == 0) { host.DEBUG_noPlayerCollision = true; }
+            if (gate == 1) { host.playerLifeDeltaSuppressed = 1; }
+            if (gate == 2) { host.behaviorDispatchEnabled = false; }
+            if (gate == 3) { host.field_D500 = false; }
+            Step(host, 5);
+            Check(host.playerLife == full && host.healthChanges == 0,
+                "Terrain damage must honor cheats, life suppression, behavior enable and map enable.");
+        }
+        for (const int height : {5, 6, 40})
+        {
+            Host host;
+            host.Load();
+            SetTerrain(host, 128);
+            // Gravity subtracts one before the contact test.
+            host.worldObjects[1].posY += static_cast<std::int16_t>(height);
+            Step(host);
+            Check(host.playerLife == (height == 5 ? full - 4 * 29491 : full),
+                "Damage must require a strict less-than-five eye/support gap, not just a hazardous X/Z cell.");
+        }
     }
 }
 
@@ -209,7 +272,8 @@ int main()
         TestOxygen();
         TestLifecycleAndAudio();
         TestBubblesAndMovement();
-        std::cout << "PASS: native oxygen/drowning, looping audio, lifecycle callbacks, exhaled bubbles and surface pops.\n";
+        TestTerrainDamage();
+        std::cout << "PASS: native oxygen/drowning, terrain damage, looping audio, lifecycle callbacks, exhaled bubbles and surface pops.\n";
         return 0;
     }
     catch (const std::exception& error)

@@ -1449,7 +1449,7 @@ RenderableInstancePtr Level::CreatePlayerObject()
 }
 
 
-FUTURE(void) Level::PopulateScene(Scene& scene, bool createGameObjects, bool addMapIcons)
+FUTURE(std::shared_ptr<PlayerLight>) Level::PopulateScene(Scene& scene, bool createGameObjects, bool addMapIcons)
 {
     AssetManager& assets = AssetManager::Instance();
 
@@ -1498,7 +1498,7 @@ FUTURE(void) Level::PopulateScene(Scene& scene, bool createGameObjects, bool add
 	scene.SetClearColor(clearColF);
 
     // player light:
-    std::shared_ptr<LightSource> playerLight = std::make_shared<PlayerLight>(&scene);
+    auto playerLight = std::make_shared<PlayerLight>(&scene);
     scene.AddLightSource(playerLight);
 
     // lightmap:
@@ -1654,6 +1654,7 @@ FUTURE(void) Level::PopulateScene(Scene& scene, bool createGameObjects, bool add
     }
 
     scene.SetInitialPosition(m_playerStartPos);
+    CO_RETURN playerLight;
 }
 
 

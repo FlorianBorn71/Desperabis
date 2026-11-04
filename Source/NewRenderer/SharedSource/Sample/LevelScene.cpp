@@ -39,7 +39,7 @@ FUTURE(void) LevelScene::CreateScene()
     {
         m_level = CO_AWAIT assets.LoadLevel(m_levelIndex);
     }
-    CO_AWAIT m_level->PopulateScene(*this, m_createGameObjects, m_createMapIcons);
+    m_playerLight = CO_AWAIT m_level->PopulateScene(*this, m_createGameObjects, m_createMapIcons);
 #endif
     m_sceneReady = true;
 }
@@ -47,6 +47,7 @@ FUTURE(void) LevelScene::CreateScene()
 void LevelScene::ClearScene()
 {
     Scene::ClearScene();
+    m_playerLight.reset();
 }
 
 void LevelScene::Update(double elapsedTime)

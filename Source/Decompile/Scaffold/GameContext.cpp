@@ -707,6 +707,16 @@ namespace Desperabis
                 footstep = false;
                 playerWalkPhase = WrapSignedWord(playerWalkPhase + Random(6) + 2);
             }
+            // DEFE..DF68: upper collision-map bits encode ground-contact damage, not terrain type.
+            if (behaviorDispatchEnabled && WrapSignedWord(eyeY - supportY) < 5)
+            {
+                switch (surface >> 6)
+                {
+                case 1: ApplyPlayerLifeDelta(-2 * 29491); break;
+                case 2: ApplyPlayerLifeDelta(-4 * 29491); break;
+                case 3: ApplyPlayerLifeDelta(-playerLife); break;
+                }
+            }
             if (footstep)
             {
                 const auto volume = GetSoundVolume(WrapSignedWord(430 + Random(150)));
@@ -721,7 +731,6 @@ namespace Desperabis
             UpdatePlayerUnderwater();
             ++result.simulatedTicks;
         }
-        // TODO: Port remaining damage/contact modes; selected interactions run in Tick after movement.
         return result;
     }
 

@@ -58,7 +58,7 @@ Release uses `Bin`, and Debug uses `Bin\Debug`.
 ## Polygon normal generation
 
 Normals are baked during geometry conversion, using a single normal vertex
-attribute. There is no runtime flat/smooth switch or F6 binding. Pixel lighting
+attribute. There is no runtime flat/smooth switch. Pixel lighting
 always normalizes interpolated normals with `normalize`, including billboard normals.
 
 Models default to `SlopedFaces`: exactly horizontal or vertical faces retain flat
@@ -157,12 +157,38 @@ named weapon using original level-10/11/50 assets and occluding world depth.
 ## Underwater view
 
 GameCore emits `OnUnderwaterChanged` for the active underwater gameplay view and
-`OnPlayerOxygenChanged` when its fixed-point oxygen changes. The host enables a
-cached fullscreen quad with multiplicative RGB `(96,160,255)/255` after world
-effects and the first-person weapon, before pickup previews and HUD text.
-The tint survives pause and viewport resizing; menus, surfacing and level/part
-transitions clear it without polling. This blue multiplier is a visual
-adaptation, not an exact reproduction of DOS palette cycling.
+`OnPlayerOxygenChanged` when its fixed-point oxygen changes. The host enables
+darker, desaturated gray-green distance fog, replacing the fullscreen tint. Its
+linear RGB is `(0.045,0.065,0.055)`, with an exponential attenuation distance of
+400 native units and a start 160 units behind the camera, so nearby geometry
+is hazy but distant attenuation is more gradual.
+World geometry (including fullbright materials), water receivers and the
+first-person weapon use this fog; sky is hidden against the matching gray-green
+clear color. Pickup previews and HUD text remain unaffected. The effect survives
+pause and viewport resizing; menus, surfacing and level/part transitions restore
+the level's original fog without mutating it. Underwater fog remains active when
+ordinary level fog is disabled. This is a visual adaptation, not DOS palette cycling.
+
+The application selects this policy through per-view `RenderingSettings`:
+`fogOverride` supplies color, falloff, distance offset and an independent
+`affectUnlit` flag; `renderSky` and `clearColorOverride` control presentation.
+The renderer has no underwater state or underwater-specific parameters.
+Weapon rendering inherits the world settings; model previews discard the fog
+override. The host retains base settings for HUD and menu rendering.
+
+The player light automatically switches to **blue** while submerged; F6 cycling
+is disabled. The blue mode uses
+RGB `(32,80,255)` with a 220-unit radius and a base multiplier of 6.0,
+oscillating from 4.2 to 7.8 over six seconds of world time. The dominant
+blue creates a visible nearby pool while red/green retain surface detail. Normal retains
+the original steady white light, 1.5 multiplier and 600-unit radius. Surfacing restores
+normal white lighting; entering water again automatically restores blue lighting.
+Other scene lights are unchanged.
+`LevelScene` retains the typed `PlayerLight` created by `Level::PopulateScene`,
+so the host changes its mode directly without RTTI or searching scene lights.
+Clearing the scene releases that reference. Light color, radius and pulse tuning
+remain in `SharedSource/base/Renderer/LightSource.cpp`; application fog tuning is
+in `GameAppContext::GetWorldRenderSettings`.
 
 Underwater, the existing bottom health strip becomes two half-height rows:
 blue/white oxygen above health, using exactly the old total screen area. Outside
@@ -174,8 +200,8 @@ Pause, menus, sound disable, death and loading stop that loop.
 Water visibility preserves the material's reflection/refraction choice above
 the surface, but a reflecting surface seen from below uses refraction instead.
 DX11/OpenGL water receivers temporarily disable backface culling, then restore
-the prior state. WARP tests check actual tint multiplication, wide/portrait
-coverage, oxygen/health layout and underside refraction pixels.
+the prior state. WARP tests check depth-dependent fog pixels, dry restoration,
+wide/portrait coverage, oxygen/health layout and underside refraction pixels.
 Native bubbles use the original model/animation bank; no new artwork is added.
 The separately deferred localized underwater brightness behavior 104 remains
 unimplemented. See [native recovery](../../Decompile/BehaviorRecovery.md#underwater-oxygen-audio-and-bubbles).

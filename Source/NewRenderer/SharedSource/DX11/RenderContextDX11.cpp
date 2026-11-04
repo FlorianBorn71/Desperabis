@@ -83,7 +83,7 @@ void RenderContextDX11::SetBlendState(TransparencyMode mode)
     m_d3dContext->OMSetDepthStencilState(m_rendererDX11.m_depthState[(int)dsMode].Get(), 0);
 }
 
-void RenderContextDX11::RenderTextMeshes(const std::vector<const TextMeshInstance*>& instances, bool multiply)
+void RenderContextDX11::RenderTextMeshes(const std::vector<const TextMeshInstance*>& instances)
 {
     if (instances.empty())
     {
@@ -93,7 +93,7 @@ void RenderContextDX11::RenderTextMeshes(const std::vector<const TextMeshInstanc
     RenderTargetDX11* renderTarget = m_rendererDX11.GetRenderTarget<RenderTargetDX11>(RenderTargetPassType::MainView);
     assert(renderTarget != nullptr);
     renderTarget->BindAsTarget(false);
-    m_d3dContext->OMSetBlendState(multiply ? m_rendererDX11.m_multiplyBlendState.Get() :
+    m_d3dContext->OMSetBlendState(
         m_rendererDX11.m_blendState[(int)TransparencyMode::AlphaBlended].Get(), nullptr, 0xFFFFFFFFu);
     m_d3dContext->OMSetDepthStencilState(m_rendererDX11.m_depthState[(int)DepthWriteMode::None].Get(), 0);
     m_rendererDX11.m_textShader.Bind(m_d3dContext.Get());
@@ -206,6 +206,15 @@ void RenderContextDX11::TrackGlobals()
     globals.renderTargetSize = { fRTWidth, fRTHeight, 1.f / fRTWidth, 1.f / fRTHeight };
     float fogFalloff = m_elements.m_fogFalloff;
     globals.fogParameter = { m_elements.m_fogColor.x, m_elements.m_fogColor.y, m_elements.m_fogColor.z,  fogFalloff }; // matches clear color
+    globals.fogDistanceOffset = 0.f;
+    globals.fogOnUnlit = 0.f;
+    if (settings.fogOverride)
+    {
+        const auto& fog = *settings.fogOverride;
+        globals.fogParameter = { fog.color.x, fog.color.y, fog.color.z, fog.falloff };
+        globals.fogDistanceOffset = fog.distanceOffset;
+        globals.fogOnUnlit = fog.affectUnlit ? 1.f : 0.f;
+    }
     globals.ambientColor = { m_elements.m_ambientColor.x, m_elements.m_ambientColor.y, m_elements.m_ambientColor.z, m_elements.m_ambientNrmlContribution };
 #ifdef ENABLE_ADVANCED_RENDERING
     assert(m_elements.m_visibileLights.size() <= RendererDX11::MaxVisibleLights);
@@ -250,9 +259,9 @@ void RenderContextDX11::TrackGlobals()
 
     renderTarget->BindAsTarget(true);
     float clearcolor[4] = { 
-        pow(m_elements.m_fogColor.x, settings.gamma),
-		pow(m_elements.m_fogColor.y, settings.gamma),
-		pow(m_elements.m_fogColor.z, settings.gamma), 0 };
+        pow(globals.fogParameter.x, settings.gamma),
+		pow(globals.fogParameter.y, settings.gamma),
+		pow(globals.fogParameter.z, settings.gamma), 0 };
 
     renderTarget->Clear(clearcolor);
 

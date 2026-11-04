@@ -18,6 +18,7 @@
 #include <IO/FileManagerBuiltIn.h>
 #include <Renderer/RenderableInstance.h>
 #include <Renderer/TextMesh.h>
+#include <Renderer/LightSource.h>
 #include <Sample/FreeCamera.h>
 #include <Sample/LevelScene.h>
 #include <Renderer/Camera.h>
@@ -121,8 +122,21 @@ namespace
 		void OnUnderwaterChanged(bool underwater) override
 		{
 			m_underwaterView = underwater;
-			g_renderer.SetUnderwaterTint(underwater);
+			ApplyPlayerLightMode();
 			UpdateHealthBar();
+		}
+
+		RenderingSettings GetWorldRenderSettings() const
+		{
+			auto settings = g_renderSettings;
+			if (m_underwaterView)
+			{
+				settings.fogOverride = FogParameters{
+					{0.045f,0.065f,0.055f}, 1.f / (400.f * DespToFloat), 160.f * DespToFloat, true};
+				settings.renderSky = false;
+				settings.clearColorOverride = Vector4{0.045f,0.065f,0.055f,0.f};
+			}
+			return settings;
 		}
 
 		void OnPlayerOxygenChanged(std::int32_t previous, std::int32_t current) override
@@ -375,10 +389,19 @@ namespace
 					std::chrono::steady_clock::now() - g_startTime).count();
 			}
 			CompleteLevelLoad(request.id, std::move(data));
+			ApplyPlayerLightMode();
 		}
 
 	private:
 		LightningPresentation m_lightning;
+		void ApplyPlayerLightMode()
+		{
+			if (!g_scene) { return; }
+			if (const auto& light = g_scene->GetPlayerLight())
+			{
+				light->SetMode(m_underwaterView ? PlayerLight::Mode::Blue : PlayerLight::Mode::Normal);
+			}
+		}
 		void RemovePromptMesh()
 		{
 			if (m_promptInstance)
@@ -1121,7 +1144,7 @@ namespace
 					});
 				}
 			}
-			Renderer::Instance().RenderScene(g_scene.get(), g_renderSettings, g_visSettings, &g_profilingStats);
+			Renderer::Instance().RenderScene(g_scene.get(), g_gameCore->GetWorldRenderSettings(), g_visSettings, &g_profilingStats);
 			if (!presentation.commands.empty())
 			{
 				g_applicationUi.Draw(presentation, g_renderer, *g_scene->m_level, *g_promptFont, *g_hudAnimations,

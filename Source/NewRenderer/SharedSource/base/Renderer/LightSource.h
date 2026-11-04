@@ -125,8 +125,15 @@ private:
 class PlayerLight : public LightSource
 {
 public:
+    enum class Mode { Off, Blue, Normal };
+
     PlayerLight(Scene* scene);
     virtual ~PlayerLight() = default;
 
+    void SetMode(Mode mode);
     virtual void Update(double elapsedTime) override final;
+
+private:
+    Mode m_mode = Mode::Normal;
+    double m_bluePhase = 0.0;
 };

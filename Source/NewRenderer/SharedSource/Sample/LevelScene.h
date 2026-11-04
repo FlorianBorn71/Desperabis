@@ -3,6 +3,8 @@
 #include <DesperabisCommon.h>
 #include <Scene/Scene.h>
 
+class PlayerLight;
+
 class LevelScene : public Scene 
 {
 public:
@@ -14,6 +16,7 @@ public:
     virtual void Update(double elapsedTime) override;
 
     virtual const GridCellArray* GetGrid() const override;
+    const std::shared_ptr<PlayerLight>& GetPlayerLight() const { return m_playerLight; }
 
 public:
     int m_levelIndex = 0;
@@ -22,4 +25,5 @@ public:
     bool m_createMapIcons = true;
 private:
     std::shared_ptr<Level> m_loadedLevel;
+    std::shared_ptr<PlayerLight> m_playerLight;
 };

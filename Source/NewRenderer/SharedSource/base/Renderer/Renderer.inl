@@ -44,7 +44,7 @@ inline void Renderer::RenderScene_Impl(const VisibilityResult& elements, const R
 template <typename CONTEXT_TYPE>
 inline void Renderer::RenderSky(CONTEXT_TYPE& context, const VisibilityResult::VisibleInstances& instances)
 {
-    if (instances.m_skyInstances.size() > 0)
+    if (context.m_settings.renderSky && instances.m_skyInstances.size() > 0)
     {
         context.SetGeometryPassType(GeometryPassType::Sky);
 

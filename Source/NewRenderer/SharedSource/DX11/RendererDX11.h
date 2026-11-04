@@ -30,7 +30,6 @@ public:
     void SetItemPreview(std::shared_ptr<const RenderableInstance> instance, bool isSprite, const D3D11_VIEWPORT& viewport);
     // One-shot camera-space presentation after world effects, before pickup preview and HUD text.
     void SetWeaponDraw(std::function<void(const RenderingSettings&, ProfilingStats&)> draw) { m_weaponDraw = std::move(draw); }
-    void SetUnderwaterTint(bool enabled) { m_underwaterTintEnabled = enabled; }
 
 	virtual void RenderSceneElements(const VisibilityResult& elements, const RenderingSettings& renderSettings, ProfilingStats& stats) override final;
 
@@ -91,15 +90,12 @@ private:
     ComPtr<ID3D11SamplerState> m_samplerStateClamp;
     ComPtr<ID3D11BlendState> m_blendState[(int)TransparencyMode::TransparencyModeCount];
     ComPtr<ID3D11DepthStencilState> m_depthState[(int)DepthWriteMode::DepthModeCount];
-    ComPtr<ID3D11BlendState> m_multiplyBlendState;
     ComPtr<ID3D11RasterizerState> m_waterRasterizerState;
 
     std::atomic_int32_t m_runtimeIdCounter = 0;
     bool m_isStereo = false;
     std::shared_ptr<const RenderableInstance> m_itemPreview;
     std::function<void(const RenderingSettings&, ProfilingStats&)> m_weaponDraw;
-    bool m_underwaterTintEnabled = false;
-    std::shared_ptr<TextMeshInstance> m_underwaterTint;
     bool m_itemPreviewIsSprite = false;
     D3D11_VIEWPORT m_itemPreviewViewport = {};
 };

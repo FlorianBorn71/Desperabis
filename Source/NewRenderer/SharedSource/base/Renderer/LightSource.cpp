@@ -3,6 +3,7 @@
 #include <Renderer/Renderer.h>
 #include <Renderer/Camera.h>
 #include <Asset/GridCellArray.h>
+#include <stdexcept>
 
 LightSource::LightSource(Scene* scene)
     : GameObjectBase(scene)
@@ -104,13 +105,39 @@ void PulsatingLight::Update(double elapsedTime)
 PlayerLight::PlayerLight(Scene* scene)
     : LightSource(scene)
 {
-    SetRadius(600.f * DespToFloat);
-    SetColor(Color4{ 255, 255, 255, 255 }, 1.5f);
+    SetMode(Mode::Normal);
     SetCoronaSize(0); // no corona
+}
+
+void PlayerLight::SetMode(Mode mode)
+{
+    switch (mode)
+    {
+    case Mode::Off:
+        SetRadius(0.f);
+        break;
+    case Mode::Blue:
+        m_bluePhase = 0.0;
+        SetColor(Color4{ 32, 80, 255, 255 }, 6.f);
+        SetRadius(220.f * DespToFloat);
+        break;
+    case Mode::Normal:
+        SetColor(Color4{ 255, 255, 255, 255 }, 1.5f);
+        SetRadius(600.f * DespToFloat);
+        break;
+    default:
+        throw std::invalid_argument("Unknown player-light mode.");
+    }
+    m_mode = mode;
 }
 
 void PlayerLight::Update(double elapsedTime)
 {
     Vector pos = Renderer::Instance().GetOrCreateCamera()->GetCameraPosition();
     SetPosition(pos);
+    if (m_mode == Mode::Blue)
+    {
+        m_bluePhase = fmod(m_bluePhase + elapsedTime * (2.0 * Math::Pi / 6.0), 2.0 * Math::Pi);
+        m_multiplier = 6.f * (1.f + 0.3f * static_cast<float>(sin(m_bluePhase)));
+    }
 }

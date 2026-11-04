@@ -13,6 +13,7 @@
 #include <IO/FileManagerBuiltIn.h>
 #include <Physics/PhysicsInterface.h>
 #include <Renderer/Camera.h>
+#include <Renderer/LightSource.h>
 #include <Scene/Scene.h>
 #include <Sample/LevelScene.h>
 #include <d3d11sdklayers.h>
@@ -196,45 +197,139 @@ namespace
         bool HasFlameSlot(int slot) const { return m_fireAnimations[slot].m_torchAnim != nullptr; }
     };
 
+    void ConfigureUnderwaterView(RenderingSettings& settings, bool enabled)
+    {
+        settings.renderSky = !enabled;
+        if (enabled)
+        {
+            settings.fogOverride = FogParameters{
+                {0.045f,0.065f,0.055f}, 1.f / (400.f * DespToFloat), 160.f * DespToFloat, true};
+            settings.clearColorOverride = Vector4{0.045f,0.065f,0.055f,0};
+        }
+        else
+        {
+            settings.fogOverride.reset();
+            settings.clearColorOverride.reset();
+        }
+    }
+
     void CheckUnderwater(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
         const auto& white = *AssetManager::Instance().GetPlainWhiteTexture();
         RenderingSettings settings;
         ProfilingStats stats;
         Camera camera;
+        ModelLoadingContext positions;
+        positions.m_vertexPos = {{-1,-1,0,1}, {1,-1,0,1}, {1,1,0,1}, {-1,1,0,1}};
+        ModelConversionContext mesh(positions);
+        mesh.m_numPositions = 4;
+        for (uint16_t i = 0; i < 4; ++i)
+        {
+            mesh.AddToBounds(positions.m_vertexPos[i], 0.f);
+            mesh.m_vertices.emplace_back().SetTextured(i, Color4{200,100,50,0}, {0,0});
+        }
+        mesh.m_sortedIndices = {0,1,2,0,2,3,0,2,1,0,3,2};
+        mesh.GeneratePerTriangleNormals(mesh.m_sortedIndices.data(), 12, 0);
+        // Isolate fog/light color from which side of this two-sided test quad is visible.
+        for (auto& vertex : mesh.m_vertices) { vertex.Normal = {0,0,1}; }
+        Renderable model;
+        model.m_runtime = renderer.CreateModelBuffers(mesh);
+        model.m_numPositions = 4;
+        model.m_numPolygons = 2;
+        mesh.GenerateBoundingVolume(model.m_localBounds);
+        auto& draw = model.m_drawCalls.emplace_back();
+        draw.m_primitiveCount = 4;
+        draw.m_material.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
+        draw.m_material.m_transparencyType = TransparencyMode::Opaque;
+        draw.m_material.m_applyLighting = false;
+        draw.m_material.ComputeHash();
+        RenderableInstance instance(&model);
+        instance.ComputeTransparencyMask();
+        instance.UpdateGlobalBounds();
         for (const auto size : {std::pair<UINT, UINT>{360,240}, {240,360}, {720,480}})
         {
             Target target(device, size.first, size.second);
             renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
-            TextMeshInstance view(TextMesh::CreateTexturedQuad(white, static_cast<float>(size.first),
-                static_cast<float>(size.second)));
-            view.SetScale(1.f);
-            view.SetTintColor(Color4{200,100,50,255});
+            Matrix4 projection;
+            projection.CreateOrthographic(2.f, 2.f, 0.001f, 20.f);
+            camera.SetProjectionMatrix(projection);
             VisibilityResult visible;
             visible.m_mainCamera = &camera;
+            visible.m_visibleInstances.m_opaqueInstances.push_back({&instance, 0});
+            visible.m_visibleInstances.m_visibleTransparencyTypes = instance.GetUsedTransparencyMask();
+            visible.m_ambientColor = {1,1,1};
+            visible.m_ambientNrmlContribution = 0;
+            visible.m_fogColor = {0.6f,0.2f,0.1f};
+            visible.m_fogFalloff = 0.1f;
+            visible.m_lightmap = AssetManager::Instance().GetPlainWhiteTexture();
+            float distance = 0.01f * DespRelativeScaling;
             const auto render = [&]
             {
-                renderer.SetWeaponDraw([&](const RenderingSettings& drawSettings, ProfilingStats& drawStats)
-                {
-                    VisibilityResult empty;
-                    RenderContextDX11 draw(renderer, empty, drawSettings, drawStats);
-                    draw.RenderTextMeshes({&view});
-                });
+                Matrix4 transform;
+                transform.SetTranslation(Vector(0,0,distance));
+                camera.SetCameraTransformMatrix(transform);
+                context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
                 renderer.RenderSceneElements(visible, settings, stats);
                 return target.Pixels(device, context);
             };
             const auto pixelAt = [&](const auto& pixels, UINT x, UINT y)
                 { return pixels[static_cast<std::size_t>(y) * size.first + x] & 0xffffff; };
-            renderer.SetUnderwaterTint(false);
+            ConfigureUnderwaterView(settings, false);
             const auto normal = render();
-            Check(pixelAt(normal, 10, 10) == 0x3264c8, "Untinted view must preserve its original RGB.");
-            renderer.SetUnderwaterTint(true);
-            const auto tinted = render();
-            const auto rgb = pixelAt(tinted, 10, 10);
-            Check(std::abs(static_cast<int>(rgb & 255) - 75) <= 1 &&
-                std::abs(static_cast<int>((rgb >> 8) & 255) - 63) <= 1 && (rgb >> 16) == 50,
-                "Underwater must multiply the world/weapon RGB, not cover it with an alpha-blended blue sheet.");
-            Check(render() == tinted, "Underwater tint must remain active until the exit callback.");
+            Check(pixelAt(normal, 10, 10) == 0x3264c8, "Dry fullbright geometry must preserve its original RGB.");
+            ConfigureUnderwaterView(settings, true);
+            const auto submerged = render();
+            const auto rgb = pixelAt(submerged, 10, 10);
+            const auto checkFog = [&](std::uint32_t pixel, float depth)
+            {
+                const float weight = std::exp(-(depth + 160.f * DespToFloat) / (400.f * DespToFloat));
+                const float source[] = {200.f / 255, 100.f / 255, 50.f / 255};
+                const float fog[] = {0.045f, 0.065f, 0.055f};
+                for (int channel = 0; channel < 3; ++channel)
+                {
+                    const int expected = static_cast<int>(std::lround(255 * (fog[channel] +
+                        (source[channel] - fog[channel]) * weight)));
+                    Check(std::abs(static_cast<int>((pixel >> (8 * channel)) & 255) - expected) <= 1,
+                        "Underwater pixels must match muted gray-green fog with a farther-behind-camera start.");
+                }
+            };
+            checkFog(rgb, distance);
+            Check(render() == submerged, "Underwater fog must remain active until the exit callback.");
+            ConfigureUnderwaterView(settings, false);
+            renderer.SetItemPreview(std::make_shared<RenderableInstance>(instance), false, target.viewport);
+            const auto dryPreview = render();
+            Check(stats.m_numDrawCalls > 1, "The fog-isolation fixture must draw actual model-preview geometry.");
+            ConfigureUnderwaterView(settings, true);
+            renderer.SetItemPreview(std::make_shared<RenderableInstance>(instance), false, target.viewport);
+            const auto submergedPreview = render();
+            Check(pixelAt(dryPreview, size.first / 2, size.second / 2) ==
+                pixelAt(submergedPreview, size.first / 2, size.second / 2),
+                "Pickup model previews must not inherit the world's fog override.");
+            renderer.SetWeaponDraw([&](const RenderingSettings& drawSettings, ProfilingStats& drawStats)
+            {
+                RenderContextDX11 weapon(renderer, visible, drawSettings, drawStats);
+                weapon.BeginRendering();
+                weapon.BeginRenderTargetScope(RenderTargetPassType::MainView);
+                weapon.TrackGlobals();
+                context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
+                weapon.SetGeometryPassType(GeometryPassType::Instances);
+                weapon.SetBlendState(TransparencyMode::Opaque);
+                weapon.RenderInstance<GeometryPassType::Instances>(&instance, TransparencyMode::Opaque);
+                weapon.EndRenderTargetScope();
+                weapon.EndRendering();
+            });
+            Check(render() == submerged, "Camera-space weapon geometry must use the same near underwater fog.");
+            for (const float depth : {0.8f, 8.f})
+            {
+                distance = depth * DespRelativeScaling;
+                const auto distant = render();
+                checkFog(pixelAt(distant, 10, 10), distance);
+                Check(pixelAt(distant, 10, 10) != rgb, "World depth must change attenuation, unlike a fullscreen tint.");
+            }
+            settings.useFog = false;
+            checkFog(pixelAt(render(), 10, 10), distance);
+            settings.useFog = true;
+            distance = 0.01f * DespRelativeScaling;
             const float height = 20.f;
             auto meters = ApplicationUi::CreateVitalMeters(white,
                 {0.f, static_cast<float>(size.second) - height, static_cast<float>(size.first), height}, 0.5f, 0.25f);
@@ -251,7 +346,7 @@ namespace
                 pixelAt(hud, size.first / 8, size.second - 5) == 0xffffff &&
                 pixelAt(hud, 3 * size.first / 4, size.second - 5) == 0x181818 &&
                 pixelAt(hud, size.first / 2, size.second - 21) == rgb,
-                "Blue/white oxygen must sit above health within its old bounds, with HUD colors unaffected by tint.");
+                "Blue/white oxygen must sit above health within its old bounds, with HUD colors unaffected by fog.");
             visible.m_visibleTextMeshInstances.clear();
             auto dry = ApplicationUi::CreateVitalMeters(white,
                 {0.f, static_cast<float>(size.second) - height, static_cast<float>(size.first), height}, 0.5f, std::nullopt);
@@ -259,9 +354,253 @@ namespace
                 "Outside water the existing health meter must retain its full height.");
             auto empty = ApplicationUi::CreateVitalMeters(white, {0,0,100,20}, 0.f, 0.f);
             Check(empty.size() == 2, "Depleted meters must show backgrounds without zero-width geometry.");
-            renderer.SetUnderwaterTint(false);
-            Check(render() == normal, "Exit must remove the tint completely.");
+            ConfigureUnderwaterView(settings, false);
+            Check(render() == normal, "Exit must restore dry rendering completely.");
+            distance = 1.f * DespRelativeScaling;
+            settings.fogOverride = FogParameters{{0.4f,0.03f,0.08f}, 0.7f / DespRelativeScaling, 0.f, true};
+            const auto explicitUnlitFog = render();
+            const auto checkCustomFog = [&](std::uint32_t pixel, float offset)
+            {
+                const float weight = std::exp(0.7f / DespRelativeScaling * (-distance - offset));
+                const float color[] = {0.4f,0.03f,0.08f};
+                const float source[] = {200.f / 255,100.f / 255,50.f / 255};
+                for (int channel = 0; channel < 3; ++channel)
+                {
+                    const int expected = static_cast<int>(std::lround(255 * (color[channel] +
+                        (source[channel] - color[channel]) * weight)));
+                    Check(std::abs(static_cast<int>((pixel >> (8 * channel)) & 255) - expected) <= 1,
+                        "A caller-supplied non-underwater fog override must control the exact pixel color.");
+                }
+            };
+            checkCustomFog(pixelAt(explicitUnlitFog, 10, 10), 0.f);
+            settings.fogOverride->distanceOffset = 0.4f * DespRelativeScaling;
+            settings.fogOverride->affectUnlit = false;
+            Check(render() == normal, "Positive distance offset must not implicitly fog unlit materials.");
+            settings.fogOverride->affectUnlit = true;
+            checkCustomFog(pixelAt(render(), 10, 10), settings.fogOverride->distanceOffset);
+            settings.fogOverride.reset();
+            distance = 0.01f * DespRelativeScaling;
+            auto& override = instance.GetOrCreateMaterialOverrides().at(0);
+            override.m_applyLighting = true;
+            override.ComputeHash();
+            const auto dryLit = render();
+            ConfigureUnderwaterView(settings, true);
+            checkFog(pixelAt(render(), 10, 10), distance);
+            ConfigureUnderwaterView(settings, false);
+            Check(render() == dryLit, "Surfacing must restore the level's original fog color and falloff.");
+            PlayerLight playerLight(nullptr);
+            PackedLightSourceParams normalLight;
+            Check(playerLight.FillLightParams(normalLight) &&
+                std::abs(normalLight.PositionAndRadius.w - 600.f * DespToFloat) < 0.00001f &&
+                std::abs(normalLight.ColorAndPadding.x - 1.5f) < 0.00001f &&
+                std::abs(normalLight.ColorAndPadding.y - 1.5f) < 0.00001f &&
+                std::abs(normalLight.ColorAndPadding.z - 1.5f) < 0.00001f && playerLight.GetCoronaSize() == 0.f,
+                "The default above-water player light must retain its white color, radius, intensity and no corona.");
+            const auto& normalVector = mesh.m_vertices.front().Normal;
+            const float lightDistance = 0.25f * DespRelativeScaling;
+            playerLight.SetPosition(Vector(-normalVector.x * lightDistance,
+                -normalVector.y * lightDistance, -normalVector.z * lightDistance));
+            visible.m_ambientColor = {0,0,0};
+            ConfigureUnderwaterView(settings, true);
+            const auto renderLight = [&](PlayerLight::Mode mode)
+            {
+                playerLight.SetMode(mode);
+                visible.m_visibileLights.clear();
+                PackedLightSourceParams packed;
+                const bool enabled = playerLight.FillLightParams(packed);
+                Check(enabled == (mode != PlayerLight::Mode::Off),
+                    "Off player light must be omitted from GPU lighting, not just recolored.");
+                if (enabled)
+                {
+                    Check(std::abs(packed.PositionAndRadius.w -
+                        (mode == PlayerLight::Mode::Blue ? 220.f : 600.f) * DespToFloat) < 0.00001f,
+                        "Blue player light must retain its tuned radius; white must retain its original radius.");
+                    visible.m_visibileLights.push_back(packed);
+                }
+                return render();
+            };
+            const auto unlit = renderLight(PlayerLight::Mode::Off);
+            const auto blueLight = renderLight(PlayerLight::Mode::Blue);
+            Check(visible.m_visibileLights.front().ColorAndPadding.z >
+                visible.m_visibileLights.front().ColorAndPadding.x * 2.f,
+                "Blue player light must upload a cool color rather than change the whole fog.");
+            const auto whiteLight = renderLight(PlayerLight::Mode::Normal);
+            const auto lightPixel = [&](const auto& pixels, int channel)
+            {
+                return static_cast<int>((pixelAt(pixels, size.first / 2, size.second / 2) >> (8 * channel)) & 255);
+            };
+            const int blueRed = lightPixel(blueLight, 0) - lightPixel(unlit, 0);
+            const int blueBlue = lightPixel(blueLight, 2) - lightPixel(unlit, 2);
+            const int whiteRed = lightPixel(whiteLight, 0) - lightPixel(unlit, 0);
+            const int whiteBlue = lightPixel(whiteLight, 2) - lightPixel(unlit, 2);
+            Check(blueRed > 0 && blueBlue > 0 && whiteRed > blueRed &&
+                blueBlue * whiteRed > whiteBlue * blueRed,
+                ("Underwater light differences (blue R/B, white R/B): " + std::to_string(blueRed) + "/" +
+                    std::to_string(blueBlue) + ", " + std::to_string(whiteRed) + "/" +
+                    std::to_string(whiteBlue)).c_str());
+            Check(renderLight(PlayerLight::Mode::Off) == unlit &&
+                renderLight(PlayerLight::Mode::Normal) == whiteLight,
+                "Repeated player-light mode changes must restore identical off/normal pixels.");
+            playerLight.SetMode(PlayerLight::Mode::Blue);
+            const auto checkPulse = [&](float multiplier)
+            {
+                PackedLightSourceParams packed;
+                Check(playerLight.FillLightParams(packed), "Blue light must remain enabled throughout its pulse.");
+                const auto expected = Color4{32,80,255,255}.ToFloat(multiplier);
+                Check(std::abs(packed.ColorAndPadding.x - expected.x) < 0.00001f &&
+                    std::abs(packed.ColorAndPadding.y - expected.y) < 0.00001f &&
+                    std::abs(packed.ColorAndPadding.z - expected.z) < 0.00001f &&
+                    std::abs(packed.PositionAndRadius.w - 220.f * DespToFloat) < 0.00001f,
+                    "Blue light must pulse only its intensity, between 4.2 and 7.8, over six seconds.");
+            };
+            checkPulse(6.f);
+            playerLight.Update(1.5);
+            checkPulse(7.8f);
+            playerLight.Update(3.0);
+            checkPulse(4.2f);
+            playerLight.Update(1.5);
+            checkPulse(6.f);
+            playerLight.SetMode(PlayerLight::Mode::Blue);
+            for (int step = 0; step < 15; ++step) { playerLight.Update(0.1); }
+            checkPulse(7.8f);
+            playerLight.SetMode(PlayerLight::Mode::Normal);
+            playerLight.Update(1.5);
+            PackedLightSourceParams steadyWhite;
+            Check(playerLight.FillLightParams(steadyWhite) &&
+                std::abs(steadyWhite.ColorAndPadding.x - normalLight.ColorAndPadding.x) < 0.00001f &&
+                steadyWhite.PositionAndRadius.w == normalLight.PositionAndRadius.w,
+                "Returning to normal must restore steady white intensity and radius without oscillation.");
+            playerLight.SetMode(PlayerLight::Mode::Off);
+            playerLight.Update(1.5);
+            Check(!playerLight.FillLightParams(steadyWhite), "Updating an off player light must not re-enable it.");
+            visible.m_visibileLights.clear();
+            visible.m_ambientColor = {1,1,1};
+            ConfigureUnderwaterView(settings, false);
+            override.m_applyLighting = false;
+            override.ComputeHash();
+            visible.m_visibleInstances.m_opaqueInstances.clear();
+            visible.m_visibleInstances.m_skyInstances.push_back({&instance, 0});
+            visible.m_visibleInstances.m_visibleTransparencyTypes = TransparencyModeMask::SkyOpaqueBit;
+            override.m_transparencyType = TransparencyMode::SkyOpaque;
+            override.ComputeHash();
+            instance.SetTransform(Vector(0,0,-1), Vector(0,0,0));
+            const auto drySky = render();
+            Check(pixelAt(drySky, 10, 10) == 0x3264c8, "Sky fixture must be visible outside water.");
+            ConfigureUnderwaterView(settings, true);
+            Check(pixelAt(render(), 10, 10) == 0x0e110b,
+                "Underwater must hide the dry sky against the matching gray-green fog background.");
+            ConfigureUnderwaterView(settings, false);
+            override.m_transparencyType = TransparencyMode::Opaque;
+            override.ComputeHash();
+            instance.SetTransform(Vector(0,0,0), Vector(0,0,0));
         }
+        Target offsetTarget(device, 360, 240);
+        auto viewport = offsetTarget.viewport;
+        viewport.TopLeftX = 20;
+        viewport.TopLeftY = 30;
+        viewport.Width = 300;
+        viewport.Height = 180;
+        renderer.ReInitialize(offsetTarget.colorView.Get(), offsetTarget.depthView.Get(), viewport);
+        const float red[] = {1,0,0,1};
+        context->ClearRenderTargetView(offsetTarget.colorView.Get(), red);
+        ConfigureUnderwaterView(settings, true);
+        VisibilityResult emptyView;
+        emptyView.m_mainCamera = &camera;
+        renderer.RenderSceneElements(emptyView, settings, stats);
+        const auto offsetPixels = offsetTarget.Pixels(device, context);
+        Check((offsetPixels[10 * 360 + 10] & 0xffffff) == 0x0000ff &&
+            (offsetPixels[40 * 360 + 30] & 0xffffff) == 0x0e110b &&
+            (offsetPixels[220 * 360 + 330] & 0xffffff) == 0x0000ff,
+            "Underwater background must respect a nonzero viewport origin and preserve pixels outside it.");
+        ConfigureUnderwaterView(settings, false);
+        std::cout << "Underwater fog: muted gray-green near/far RGB, off/blue/normal player-light pixels, six-second blue pulse, weapon, sky/background, dry restoration and untouched HUD passed.\n";
+    }
+
+    void CheckUnderwaterLightPool(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        const float extent = 400.f * DespToFloat;
+        ModelLoadingContext positions;
+        positions.m_vertexPos = {{-extent,0,-extent,1}, {extent,0,-extent,1},
+            {extent,0,extent,1}, {-extent,0,extent,1}};
+        ModelConversionContext mesh(positions);
+        mesh.m_numPositions = 4;
+        for (uint16_t i = 0; i < 4; ++i)
+        {
+            mesh.AddToBounds(positions.m_vertexPos[i], 0.f);
+            mesh.m_vertices.emplace_back().SetTextured(i, Color4{255,255,255,0}, {0,0});
+        }
+        // Same winding and generated normals as a flat terrain floor, without synthetic normal overrides.
+        mesh.m_sortedIndices = {0,1,2,0,2,3};
+        mesh.GeneratePerTriangleNormals(mesh.m_sortedIndices.data(), 6, 0);
+        Renderable model;
+        model.m_runtime = renderer.CreateModelBuffers(mesh);
+        model.m_numPositions = 4;
+        model.m_numPolygons = 2;
+        mesh.GenerateBoundingVolume(model.m_localBounds);
+        auto& draw = model.m_drawCalls.emplace_back();
+        draw.m_primitiveCount = 2;
+        draw.m_material.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
+        draw.m_material.m_transparencyType = TransparencyMode::Opaque;
+        draw.m_material.m_applyLighting = true;
+        draw.m_material.ComputeHash();
+        auto instance = std::make_shared<RenderableInstance>(&model);
+        instance->ComputeTransparencyMask();
+        instance->UpdateGlobalBounds();
+        FlameScene scene;
+        FORCE_WAIT(scene.CreateScene());
+        scene.AddRenderableInstance(instance);
+        auto lightmap = std::make_shared<Texture>();
+        lightmap->CreatePlainWhite();
+        lightmap->m_atlasData = {0,0,0.5f,0.5f};
+        scene.SetLightmap(lightmap);
+        auto playerLight = std::make_shared<PlayerLight>(&scene);
+        scene.AddLightSource(playerLight);
+
+        const auto previousCamera = renderer.GetOrCreateCamera();
+        auto camera = std::make_shared<Camera>();
+        Matrix4 projection, transform;
+        projection.CreateOrthographic(extent * 2, extent * 2, 0.001f, 20.f);
+        transform.Create(Vector(0,45.f * DespToFloat,0,1), Vector(1,0,0,0),
+            Vector(0,0,-1,0), Vector(0,1,0,0));
+        camera->SetProjectionMatrix(projection);
+        camera->SetCameraTransformMatrix(transform);
+        renderer.SetCamera(camera);
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        RenderingSettings settings;
+        ConfigureUnderwaterView(settings, true);
+        VisibilitySettings visibilitySettings;
+        DefaultVisibilityContext visibility;
+        ProfilingStats stats;
+        const auto render = [&](PlayerLight::Mode mode)
+        {
+            playerLight->SetMode(mode);
+            playerLight->Update(0);
+            VisibilityResult visible;
+            visibility.ComputeResultFor(camera.get(), &scene, visible, settings, visibilitySettings, stats);
+            Check(visible.m_visibileLights.size() == (mode == PlayerLight::Mode::Off ? 0u : 1u) &&
+                visible.m_visibleInstances.m_opaqueInstances.size() == 1,
+                "The camera-following player light and terrain must pass normal visibility collection.");
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            return target.Pixels(device, context);
+        };
+        const auto off = render(PlayerLight::Mode::Off);
+        const auto blue = render(PlayerLight::Mode::Blue);
+        const auto channel = [](const auto& pixels, int x, int component)
+        {
+            return static_cast<int>((pixels[120 * 360 + x] >> (8 * component)) & 255);
+        };
+        Check(channel(blue,225,2) >= channel(off,225,2) + 60 &&
+            channel(blue,248,2) >= channel(off,248,2) + 25 &&
+            channel(blue,248,2) >= channel(blue,248,0) + 20 &&
+            channel(blue,248,2) >= channel(blue,248,1) + 15,
+            "The blue player light must create a visibly blue pool at 100 and 150 native units on real-facing terrain.");
+        Check(blue[120 * 360 + 338] == off[120 * 360 + 338],
+            "Terrain outside the 220-unit light radius must remain unchanged, not receive a global blue tint.");
+        ConfigureUnderwaterView(settings, false);
+        renderer.SetCamera(previousCamera);
+        std::cout << "Underwater blue pool: camera-following light, generated terrain normals, bright blue at 100/150 units and unchanged outside radius passed.\n";
     }
 
     void CheckUnderwaterSurface(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
@@ -3341,6 +3680,10 @@ namespace
         room.m_createGameObjects = false;
         room.m_createMapIcons = false;
         FORCE_WAIT(room.CreateScene());
+        std::weak_ptr<PlayerLight> playerLight = room.GetPlayerLight();
+        Check(!playerLight.expired() && std::any_of(room.GetLightSources().begin(), room.GetLightSources().end(),
+            [&](const auto& source) { return source.get() == room.GetPlayerLight().get(); }),
+            "LevelScene must retain the typed player light registered during population, without RTTI lookup.");
         std::array<RenderableInstancePtr, 166> objects;
         for (std::size_t offset = 0; offset < bytes.size(); offset += 54)
         {
@@ -3434,6 +3777,8 @@ namespace
             Check(changed >= 8, "Attached arm and dog morphs must visibly animate in the room after pose refreshes.");
         }
         room.ClearScene();
+        Check(!room.GetPlayerLight() && playerLight.expired(),
+            "Clearing a level scene must release the retained player light as well as the scene's light list.");
     }
 
     std::array<Desperabis::RawGameObject, 8> OriginalItems()
@@ -3508,6 +3853,7 @@ int main(int argc, char* argv[])
         CheckRainSprites(renderer, device.Get(), context.Get());
         CheckLightning(renderer, device.Get(), context.Get());
         CheckUnderwater(renderer, device.Get(), context.Get());
+        CheckUnderwaterLightPool(renderer, device.Get(), context.Get());
         CheckUnderwaterSurface(renderer, device.Get(), context.Get());
         const auto singleLine = font.CreateGlyphMesh("Nimm den Schl\x81ssel", Color4{ 204,102,0,255 },
             Font::HorizontalAlignment::Center, Font::VerticalAlignment::Center);

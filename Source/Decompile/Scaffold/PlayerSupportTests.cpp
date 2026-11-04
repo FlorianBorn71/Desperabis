@@ -55,6 +55,7 @@ namespace
     {
         std::filesystem::path root;
         using GameContext::LoadLevelObjects;
+        using GameContext::LoadLevelGeometry;
         void Load(std::int16_t eyeY = 45)
         {
             const auto request = StartLevel(11);
@@ -728,6 +729,51 @@ namespace
             Check(count > 0, "Expected original bridge records were not found.");
         }
     }
+
+    void TestOriginalHarmfulTerrain(const std::filesystem::path& root)
+    {
+        for (const auto fixture : {std::pair{16,131}, {25,132}, {25,196}, {25,2}})
+        {
+            Host host;
+            host.root = root;
+            LevelLoadData data;
+            host.LoadLevelGeometry(static_cast<std::int16_t>(fixture.first), data);
+            const auto& map = *data.level->collisionMap;
+            const int width = map.widthMinusOne + 1, height = map.heightMinusOne + 1;
+            int sample = -1;
+            for (int row = 1; row < height - 1 && sample < 0; ++row)
+            {
+                for (int col = 1; col < width - 1; ++col)
+                {
+                    if (map.data[row * width + col] != fixture.second) { continue; }
+                    bool interior = true;
+                    for (int dy = -1; dy <= 1; ++dy)
+                    {
+                        for (int dx = -1; dx <= 1; ++dx)
+                        {
+                            interior &= map.data[(row + dy) * width + col + dx] == fixture.second;
+                        }
+                    }
+                    if (interior) { sample = row * width + col; break; }
+                }
+            }
+            Check(sample >= 0, "Original lava/forest/path must contain the expected collision-map material.");
+            const auto x = static_cast<std::int16_t>(112 + (sample % width) * 25 + 12);
+            const auto z = static_cast<std::int16_t>(38 + (162 - sample / width) * 25 + 12);
+            data.playerSpawn = PlayerCamera{{x,45,z}, {0,0,100}};
+            const auto request = host.StartLevel(static_cast<std::int16_t>(fixture.first));
+            host.CompleteLevelLoad(request.id, std::move(data));
+            auto& player = host.worldObjects[1];
+            player.posY = static_cast<std::int16_t>(host.GetTerrainFloorHeight(x,45,z) +
+                host.playerBodyHeight - player.collisionRadiusY - 2);
+            Input input;
+            Step(host, input);
+            const auto mode = fixture.second >> 6;
+            Check(host.GetCollisionMapPixelAtWorldXZ(player.posX, player.posZ) == fixture.second &&
+                host.playerLife == (mode == 3 ? 0 : 360 * 65536 - (mode == 2 ? 4 * 29491 : 0)),
+                "Original level 16 lava and level 25 forest must damage/deplete life while the original path stays safe.");
+        }
+    }
 }
 
 int main(int argc, char** argv)
@@ -749,6 +795,7 @@ int main(int argc, char** argv)
         TestLaddersAndMapGates();
         TestOriginalTeleporters(argv[1]);
         TestOriginalBridges(argv[1]);
+        TestOriginalHarmfulTerrain(argv[1]);
         std::cout << "Player support, teleport, ladder and footstep tests passed.\n";
         return 0;
     }

@@ -105,7 +105,7 @@ protected:
         Matrix4Storage viewWorldMat[2]; // view -> world
         Matrix4Storage projectionMat[2];
         Matrix4Storage worldViewProjMat[2];
-        float gamma, inverseGamma, fPadding1, fPadding2;
+        float gamma, inverseGamma, fogDistanceOffset, fogOnUnlit;
         Float4Storage renderTargetSize; // xy=size, zw=1/size
         Float4Storage ambientColor; // rgb, normalmap contribution
         Float4Storage fogParameter; // rgb, falloff

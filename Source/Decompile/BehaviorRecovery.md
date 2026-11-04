@@ -3772,6 +3772,28 @@ hotkey swaps, blocked input, unsupported weapon status, and pickup-to-enemy-hit
 sequences through `Tick`. These are static-instruction-derived host tests,
 not DOS-runtime comparisons.
 
+### Harmful terrain contact
+
+`0000:DEFE..DF68` (see [controller evidence](player-support-footsteps-evidence.txt))
+checks the collision-map byte's **upper two bits**, independently of the low
+three-bit footstep/water category and FELD surface/light flags. With DS:`04CD`
+enabled and signed eye height minus terrain/body/bob support height **less than 5**:
+
+- Mode 0: no damage.
+- Mode 1: subtract **58982** signed 16.16 life per controller step.
+- Mode 2: subtract **117964** per step.
+- Mode 3: native immediate death (`1E48:D544`); the host depletes life through
+  the shared life API, retaining its suppression/debug protection and HUD callback.
+
+The rates use native DS:`0300` = **-29491**, multiplied by 2 or 4.
+This restores authored lava/burning-forest damage without hard-coded level or
+material IDs. Airborne players and elevated bridges escape damage once their
+eye/support gap reaches 5. Safe path bytes stop damage immediately.
+`ApplyPlayerLifeDelta` handles life suppression, debug protection, clamping,
+notifications and depletion state; the independent player object health is unchanged.
+`player-underwater` tests all 256 collision byte combinations, contact boundary,
+safe-path exit, gates and batched controller timing.
+
 ### Underwater oxygen, audio and bubbles
 
 Evidence: [controller tail](player-underwater-evidence.txt),
@@ -3809,11 +3831,11 @@ and [surface-pop animation](underwater-bubble-pop-evidence.txt).
 
 `OnUnderwaterChanged` explicitly enables/disables the active gameplay view;
 `OnPlayerOxygenChanged` reports fixed-point meter changes. Both are context-owned.
-Loading/part completion reset oxygen, the underwater flag, tint and loop.
+Loading/part completion reset oxygen, the underwater flag, fog and loop.
 Disabling basic movement requires the host to maintain `playerUnderwater`;
 the core still updates oxygen/audio/bubbles using frame-controller ticks.
 
-The renderer's global blue multiplication and compact blue/white oxygen HUD
+The renderer's muted gray-green distance fog and compact blue/white oxygen HUD
 are presentation adaptations, not an exact DOS palette recreation. Water
 reflection buckets switch to refraction below each surface; receiver rendering
 disables backface culling temporarily and restores it afterward. Above-water
@@ -3821,7 +3843,7 @@ reflection and explicitly refracting materials retain their previous behavior.
 The separate moving brightness patches of behavior **104** remain deliberately
 unimplemented. `player-underwater` and WARP tests cover meter thresholds,
 drowning, audio/view lifecycle, real movement, native bubbles/pops, half-height
-HUD bounds, multiplicative pixels, viewport resizing and underside refraction.
+HUD bounds, depth-dependent fog pixels, dry restoration, viewport resizing and underside refraction.
 
 ### First-person weapon presentation
 

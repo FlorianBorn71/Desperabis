@@ -13,7 +13,7 @@ cbuffer GlobalsConstantBuffer : register(b0)
     matrix ViewWorldMatLeftRight[2]; // view back to world
     matrix ProjMatLeftRight[2];
     matrix WorldViewProjMatLeftRight[2];
-    float Gamma, InverseGamma, fPadding1, fPadding2;
+    float Gamma, InverseGamma, FogDistanceOffset, FogOnUnlit;
     float4 RenderTargetSize; // xy=size, zw=1/size
     float4 AmbientColor; // xyz = color, w = contribution of up-normal
     float4 FogParameter; // xyz = color, w = fog scale
@@ -181,7 +181,7 @@ struct PixelShaderInput_Flames
 
 float GetFogWeight(float fogCoord)
 {
-    return saturate(exp(FogParameter.w * fogCoord));
+    return saturate(exp(FogParameter.w * (fogCoord - FogDistanceOffset)));
 }
 
 float3 ApplyFog(float3 currentColor, float fogCoord)
@@ -505,6 +505,9 @@ float4 ps_main(PixelShaderInput input) : SV_TARGET
         finalColor.xyz = finalColor.xyz * DynamicLightingColor(input.worldPosition.xyz, normal, lightmapColor);
         //finalColor.xyz = DynamicLightingColor(input.worldPosition.xyz, input.normal, float3(0,0,0)) * 4;
 #endif
+    }
+    if (ApplyLighting > 0.0f || FogOnUnlit > 0.0f)
+    {
         finalColor.xyz = ApplyFog(finalColor.xyz, input.worldPosition.w);
     }
 #endif

@@ -8,6 +8,8 @@
 #include <Scene/GameObject.h>
 #include <GamePlay/GamePlay.h>
 
+class PlayerLight;
+
 class D_IMPEXP Level : public AssetBase
 {
 public:
@@ -18,7 +20,7 @@ public:
     FUTURE(void) LoadFromSaveGame(std::wstring_view filename, const std::vector<LevelInfo>& infos);
     FUTURE(void) LoadSaveGameData(const byte* rawData, int dataSize);
 
-    FUTURE(void) PopulateScene(Scene& scene, bool createGameObjects, bool addMapIcons);
+    FUTURE(std::shared_ptr<PlayerLight>) PopulateScene(Scene& scene, bool createGameObjects, bool addMapIcons);
 	void ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& rawGO, Texture* spriteOverride = nullptr) const;
     RenderableInstancePtr CreatePlayerObject();
     std::size_t SynchronizeWallTiles(const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride);
