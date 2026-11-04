@@ -242,7 +242,7 @@ void Level::ReadLevelData(const byte* rawData, int dataSize, bool readSize)
             cell.m_relevantForVisibility = false;
 //            cell.m_relevantForVisibility = cell.m_ceiling != 0 || cell.m_floor != 0 || cell.m_wallTextures != 0;
             int c = rawDataWalls[i];
-            int brightness = (int)(c >> 4) * 155 / 15 + 100;
+            int brightness = (int)(c >> 5) * 155 / 7 + 100;
             cell.m_brightness.Set(brightness, brightness, brightness, 0);
         }
     }

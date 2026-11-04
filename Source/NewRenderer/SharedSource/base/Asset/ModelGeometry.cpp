@@ -217,12 +217,12 @@ namespace
 {
     Color4 ColorFromBrightness(int indexPlusOne)
     {
-        return Color4{ 255,255,255,0 }; // TODO
+        return Color4{ 255,255,255,0 };
     }
 
     Color4 ColorFromBrightness(int indexPlusOne, const Color4& solidColor)
     {
-        return solidColor; // TODO
+        return solidColor;
     }
 
 
@@ -493,6 +493,32 @@ namespace
 void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& context, std::vector<DrawCall>& drawcalls)
 {
     const Palette& palette = AssetManager::Instance().GetDefaultPalette();
+    std::vector<float> vertexBrightness(model.m_numPositions, -1.f);
+    for (int i = 0; i < model.m_numPolygons; ++i)
+    {
+        const auto& p = context.m_input.m_polygons[model.m_polygonOfs + i];
+        if (p.GetPolyType() != PolygonType::DarkenVertex) { continue; }
+        if (p.i0 == 0 || p.i0 > model.m_numPositions)
+        {
+            throw std::invalid_argument("Vertex brightness modifier references a position outside its model.");
+        }
+        const int code = p.something2;
+        float brightness;
+        if (code >= 192 && code <= 207)
+        {
+            brightness = 1.f + (code - 200) * 0.25f;
+        }
+        else if (code >= 208 && code <= 224)
+        {
+            // As in the previous approximation, treat the native conditional range as enabled.
+            brightness = 1.f + (code - 208) * 0.25f;
+        }
+        else
+        {
+            brightness = code >= 240 ? (code - 240) * 0.25f : 0.f;
+        }
+        vertexBrightness[p.i0 - 1] = (std::max)(0.f, (std::min)(brightness, 1.f));
+    }
 
     auto GetTexture = [&](int idx, TextureTransform& textureAtlas) -> Texture*
     {
@@ -520,6 +546,9 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
         DrawCall dc;
 
         const ModelPolygon& p = context.m_input.m_polygons[model.m_polygonOfs + i];
+        const std::size_t firstVertex = vertices.size();
+        const bool textured = p.GetPolyType() == PolygonType::TexturedWall ||
+            p.GetPolyType() == PolygonType::TexturedQuad || p.GetPolyType() == PolygonType::TexturedLine;
 
         auto AddDrawcall = [&]()
         {
@@ -530,6 +559,7 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
                 dc.m_material.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
             }
             */
+            if (textured) { dc.m_material.m_applyLighting = p.GetTextureLightingMode() != TextureLightingMode::Fullbright; }
             drawcalls.push_back(dc);
         };
 
@@ -676,7 +706,7 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
 
         case PolygonType::DarkenVertex:
         {
-            // already considered at load time
+            // Applied to all render copies of the source position after emitting geometry.
         }
         break;
 
@@ -716,6 +746,18 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
         default:
             model.m_numUnsupportedPrimitives++;
             break;
+        }
+        for (std::size_t vertex = firstVertex; vertex < vertices.size(); ++vertex)
+        {
+            auto& v = vertices[vertex];
+            float brightness = vertexBrightness[v.GetPositionIndex1()];
+            if (brightness < 0.f)
+            {
+                brightness = textured && p.GetTextureLightingMode() == TextureLightingMode::Dark ? 0.f : 1.f;
+            }
+            v.Color.r = static_cast<byte>(v.Color.r * brightness);
+            v.Color.g = static_cast<byte>(v.Color.g * brightness);
+            v.Color.b = static_cast<byte>(v.Color.b * brightness);
         }
     }
 }

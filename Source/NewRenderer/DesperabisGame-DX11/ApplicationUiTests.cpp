@@ -998,8 +998,12 @@ namespace
         camera.SetCameraTransformMatrix(transform);
         RenderingSettings settings;
         ProfilingStats stats;
-        const auto render = [&](const Renderable& mesh, float scale = 1.f)
+        const auto render = [&](const Renderable& mesh, float scale = 1.f, float fogFalloff = 0.f,
+            Vector3 fogColor = {0,0,0}, float cameraDistance = 5.f)
         {
+            Matrix4 cameraTransform;
+            cameraTransform.SetTranslation(Vector(0,0,cameraDistance));
+            camera.SetCameraTransformMatrix(cameraTransform);
             RenderableInstance instance(&mesh);
             instance.m_uniformScale = scale;
             instance.ComputeTransparencyMask();
@@ -1010,8 +1014,8 @@ namespace
             visible.m_visibleInstances.m_visibleTransparencyTypes = instance.GetUsedTransparencyMask();
             visible.m_ambientColor = {0.6f,0.6f,0.6f};
             visible.m_ambientNrmlContribution = 0.8f;
-            visible.m_fogColor = {0,0,0};
-            visible.m_fogFalloff = 0;
+            visible.m_fogColor = fogColor;
+            visible.m_fogFalloff = fogFalloff;
             visible.m_lightmap = &lightmap;
             const float black[4]{0,0,0,1};
             context->ClearRenderTargetView(target.colorView.Get(), black);
@@ -1045,6 +1049,165 @@ namespace
                 "Billboard regression checks must draw actual lit pixels.");
             Check(render(*billboard, 200.f) == original, "Lit billboard rendering must remain stable.");
         }
+        ModelAnim colorOwner;
+        const auto colorModel = [&](const std::vector<ModelPolygon>& modifiers, bool modifiersFirst = false,
+            TextureLightingMode lightingMode = TextureLightingMode::VertexLighting)
+        {
+            ModelLoadingContext source;
+            source.m_vertexPos = {{99,99,99}, {98,98,98}, {-1,-1,0}, {1,-1,0}, {1,1,0}, {-1,1,0}};
+            const auto flags = static_cast<uint8_t>(static_cast<uint8_t>(lightingMode) << 5);
+            source.m_polygons = {{6,flags,1,2,3,4}, {6,flags,4,3,2,1}};
+            source.m_polygons.insert(modifiersFirst ? source.m_polygons.begin() : source.m_polygons.end(),
+                modifiers.begin(), modifiers.end());
+            auto fixture = std::make_shared<Model>();
+            fixture->m_owner = &colorOwner;
+            fixture->m_vertexOfs = fixture->m_positionOfs = 2;
+            fixture->m_numPositions = 4;
+            fixture->m_numPolygons = static_cast<uint16_t>(source.m_polygons.size());
+            ModelConversionContext converted(source);
+            converted.m_modelPositionOfs = 2;
+            converted.m_numPositions = 4;
+            GeometryUtils::Convert(*fixture, converted);
+            for (const auto& vertex : converted.m_vertices)
+            {
+                Check(vertex.Color.a == 0, "Brightness modifiers must leave alpha/emissive channels untouched.");
+            }
+            for (auto& draw : fixture->m_drawCalls)
+            {
+                draw.m_material.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
+                draw.m_material.ComputeHash();
+            }
+            fixture->m_runtime = renderer.CreateModelBuffers(converted);
+            return fixture;
+        };
+        const auto uniformColorModel = [&](uint8_t code)
+        {
+            std::vector<ModelPolygon> modifiers;
+            for (uint8_t position = 1; position <= 4; ++position) { modifiers.push_back({8,code,position,0,0,0}); }
+            return colorModel(modifiers);
+        };
+        const auto plainColor = colorModel({});
+        const auto relativeColor = uniformColorModel(198);
+        const auto absoluteColor = uniformColorModel(241);
+        const Vector3 coloredFog{0.1f,0.2f,0.05f};
+        const auto baselinePixels = render(*plainColor);
+        const auto relativePixels = render(*relativeColor);
+        const auto absolutePixels = render(*absoluteColor);
+        const auto center = 120 * 360 + 180;
+        const float baselineRed = static_cast<float>(baselinePixels[center] & 255) / 255.f;
+        const float relativeRed = static_cast<float>(relativePixels[center] & 255) / 255.f;
+        const float absoluteRed = static_cast<float>(absolutePixels[center] & 255) / 255.f;
+        Check(std::abs(baselineRed - 0.6f) < 0.01f &&
+            std::abs(relativeRed - 0.6f * 127.f / 255.f) < 0.01f &&
+            std::abs(absoluteRed - 0.6f * 63.f / 255.f) < 0.01f,
+            "Actual shader pixels must match baked RGB multipliers even with fog disabled.");
+        const auto coloredFogPixels = render(*relativeColor, 1.f, 0.25f, coloredFog);
+        const float foggedRed = static_cast<float>(coloredFogPixels[center] & 255) / 255.f;
+        Check(std::abs(foggedRed - (0.1f + (0.6f * 127.f / 255.f - 0.1f) * expf(-1.25f))) < 0.01f &&
+            render(*absoluteColor, 1.f, 0.25f, coloredFog, 8.f) != render(*absoluteColor, 1.f, 0.25f, coloredFog),
+            "Authored RGB darkening must not replace or offset ordinary distance fog.");
+        const auto dark = colorModel({}, false, TextureLightingMode::Dark);
+        const auto fullbright = colorModel({}, false, TextureLightingMode::Fullbright);
+        Check((render(*dark)[center] & 0xffffff) == 0 && (render(*fullbright)[center] & 0xffffff) == 0xffffff,
+            "Native fixed-dark and fullbright textured primitives must remain distinct from normal lighting.");
+        const std::vector<ModelPolygon> mixedModifiers{{8,192,1,0,0,0}, {8,240,2,0,0,0},
+            {8,201,3,0,0,0}, {8,244,4,0,0,0}, {40,198,1,0,0,0}};
+        const auto mixed = colorModel(mixedModifiers);
+        const auto mixedFirst = colorModel(mixedModifiers, true);
+        Check(render(*mixed, 1.f, 0.25f, coloredFog) == render(*mixedFirst, 1.f, 0.25f, coloredFog),
+            "Modifier placement before or after visible primitives must not change the result.");
+        const auto* mixedMesh = mixed->GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
+        const auto mixedVertices = ReadBuffer<ModelVertex>(device, context, mixedMesh->m_vertexBuffer.Get());
+        int checkedCopies = 0;
+        for (const auto& vertex : mixedVertices)
+        {
+            const byte expected[]{127,0,255,255};
+            const auto brightness = expected[vertex.PositionIndex];
+            Check(vertex.Color.r == brightness && vertex.Color.g == brightness && vertex.Color.b == brightness &&
+                vertex.Color.a == 0,
+                "GPU vertex colors must follow source positions across split/reverse vertices, with the last modifier winning.");
+            ++checkedCopies;
+        }
+        Check(checkedCopies == 12, "Vertex-color tests must inspect all flat-split triangle corners of both quads.");
+        for (const uint8_t invalidPosition : {uint8_t(0), uint8_t(5)})
+        {
+            bool rejected = false;
+            try { colorModel({{8,192,invalidPosition,0,0,0}}); }
+            catch (const std::invalid_argument&) { rejected = true; }
+            Check(rejected, "Out-of-model brightness positions must report an explicit conversion error.");
+        }
+        class LightmapLevel final : public Level
+        {
+        public:
+            const Texture& Build()
+            {
+                std::vector<byte> planes(7 * 50 * 40, 0);
+                for (int i = 0; i < 50 * 40; ++i) { planes[5 * 50 * 40 + i] = static_cast<byte>(i); }
+                ReadLevelData(planes.data(), static_cast<int>(planes.size()), false);
+                CreateLightmap();
+                return *m_lightmap;
+            }
+        } lightmapLevel;
+        const auto& gridLightmap = lightmapLevel.Build();
+        Target lightmapCapture(device, 50, 40);
+        context->CopyResource(lightmapCapture.color.Get(),
+            gridLightmap.GetNativeRuntimeObj<NativeTextureObjectDX11>()->m_nativeTex.Get());
+        const auto lightmapPixels = lightmapCapture.Pixels(device, context);
+        for (int i = 0; i < 50 * 40; ++i)
+        {
+            const auto brightness = static_cast<byte>(100 + ((i & 255) >> 5) * 155 / 7);
+            const auto& cell = lightmapLevel.GetCellArray().m_cell[i];
+            Check(cell.m_brightness.r == brightness && cell.m_brightness.g == brightness &&
+                cell.m_brightness.b == brightness && (lightmapPixels[i] & 0xffffff) == brightness * 0x010101,
+                "The uploaded grid lightmap must use only the upper three surface bits, independent of all 32 surface selectors.");
+            const auto position = lightmapLevel.GetCellArray().GetCenterPos(i % 50, i / 50, HeightLevel::Floor);
+            Check(std::abs(position.x * gridLightmap.m_atlasData.scaleU + gridLightmap.m_atlasData.ofsU -
+                    (i % 50 + 0.5f) / 50.f) < 0.00001f &&
+                std::abs(position.z * gridLightmap.m_atlasData.scaleV + gridLightmap.m_atlasData.ofsV -
+                    (i / 50 + 0.5f) / 40.f) < 0.00001f,
+                "Each world-space tile center must sample its own lightmap texel center.");
+        }
+        const auto* burningForest = FORCE_GET(AssetManager::Instance().LoadLevel(25));
+        int darkForestCorners = 0, clearForestCorners = 0;
+        for (int frame = 0; frame < 5; ++frame)
+        {
+            const auto* tile = burningForest->GetLevelInfo().GetModelAnim(2)->GetModel(4, frame);
+            const auto* mesh = tile->GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
+            const auto vertices = ReadBuffer<ModelVertex>(device, context, mesh->m_vertexBuffer.Get());
+            const auto indices = ReadBuffer<uint16_t>(device, context, mesh->m_indexBuffer.Get());
+            for (const auto& dc : tile->m_drawCalls)
+            {
+                for (int i = dc.m_firstIndex; i < dc.m_firstIndex + dc.m_primitiveCount * 3; ++i)
+                {
+                    const auto& v = vertices[indices[i]];
+                    darkForestCorners += v.Color.r == 0 && v.Color.g == 0 && v.Color.b == 0;
+                    clearForestCorners += v.Color.r == 255 && v.Color.g == 255 && v.Color.b == 255;
+                }
+            }
+            const auto* forestTile = burningForest->GetLevelInfo().GetModelAnim(2)->GetModel(3, frame);
+            const auto* forestMesh = forestTile->GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
+            const auto forestVertices = ReadBuffer<ModelVertex>(device, context, forestMesh->m_vertexBuffer.Get());
+            const auto forestIndices = ReadBuffer<uint16_t>(device, context, forestMesh->m_indexBuffer.Get());
+            int fixedDarkCorners = 0;
+            for (const auto& dc : forestTile->m_drawCalls)
+            {
+                if (dc.m_material.m_textureSlot != 5) { continue; }
+                for (int i = dc.m_firstIndex; i < dc.m_firstIndex + dc.m_primitiveCount * 3; ++i)
+                {
+                    const auto& color = forestVertices[forestIndices[i]].Color;
+                    Check(color.r == 0 && color.g == 0 && color.b == 0 && color.a == 0,
+                        "Original burning-forest ground quads must honor their fixed-dark texture mode, not just path-edge modifiers.");
+                    ++fixedDarkCorners;
+                }
+            }
+            Check(frame == 4 || fixedDarkCorners > 0,
+                "The four original forest variants with ground quads must exercise their fixed-dark texture mode.");
+        }
+        Check(darkForestCorners > 0 && clearForestCorners > 0,
+            "Original burning-forest path tiles must upload both darkened and unmodified colors across their frames.");
+        std::cout << "Authored vertex colors: exact RGB and ordinary-fog pixels, fixed dark/fullbright texture modes, "
+            "record order and split vertices passed; original forest has " << darkForestCorners << " dark and "
+            << clearForestCorners << " clear corners.\n";
         std::cout << "Baked normals: 60/30-degree creases, smooth/flat overrides, hard vertex splits, disconnected fans, "
             "stable animation creases, reverse faces, quad weighting and actual lighting pixels passed.\n";
     }

@@ -197,6 +197,14 @@ enum class TriangleBlendType : uint8_t
     Reflection = 3
 };
 
+enum class TextureLightingMode : uint8_t
+{
+    VertexLighting = 0,
+    Fullbright = 1,
+    Dark = 2,
+    SpatialLighting = 3
+};
+
 struct ModelPolygon
 {
     uint8_t something1;
@@ -211,6 +219,11 @@ struct ModelPolygon
     uint8_t GetTextureIndex() const
     {
         return (uint8_t)(something2 & 15);
+    }
+
+    TextureLightingMode GetTextureLightingMode() const
+    {
+        return static_cast<TextureLightingMode>((something2 >> 5) & 3);
     }
 
     uint8_t GetSolidColorIndex() const

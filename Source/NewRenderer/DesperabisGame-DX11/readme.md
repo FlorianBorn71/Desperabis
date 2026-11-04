@@ -91,6 +91,40 @@ including arches stored in the floor-model layer. They reproduce normals pointin
 against their own triangles under the previous patch policy and verify that the
 default policy leaves every tested lit corner in its triangle's own hemisphere.
 
+## Authored vertex brightness and grid lightmap
+
+Type-8 `DarkenVertex` records multiply vertex RGB, leaving alpha/emissive channels
+unchanged. Their
+one-based position index applies to all render copies, including UV/normal splits
+and reverse faces. They are collected before conversion regardless of record
+order; the last modifier for a position wins, and frames remain independent.
+
+The RGB approximation uses `clamp(1 + (code - C8) / 4, 0, 1)` for C0..CF
+relative modifiers and `clamp((code - F0) / 4, 0, 1)` for F0..FF absolute
+modifiers. D0..E0 remains treated as enabled, with relative delta `(code - D0)/4`;
+the native conditional-enable flag is not emulated. Other codes select black.
+This bakes against unit reference brightness rather than implementing the
+original dynamic lighting or palette lookup. Positive adjustments saturate at
+the original RGB values. Distance fog is unchanged, and disabling fog no longer
+removes the authored darkening. The experimental fog vertex attribute and shader
+input have been removed.
+
+Textured walls, quads and strips also carry a lighting mode in bits 5..6 of their
+texture byte. Native `1E48:8AC3..8B98` uses base lighting for mode 0, fixed brightness
+5 for mode 1, leaves brightness zero for mode 2, and computes spatial lighting for
+mode 3. The RGB renderer approximates these as normal lighting, fullbright, black,
+and normal per-pixel lighting respectively. Explicit type-8 vertex modifiers take
+precedence over the fixed-dark default. This restores the dark ground quads in
+burning-forest VEKT45 row 3, not just the type-8 borders of path row 4. Normals and
+physical geometry are unchanged.
+
+The grid lightmap is still sampled in world X/Z for lit geometry, including
+placed floor models. It is a 50x40 texture built from the upper three bits of each
+surface-flags byte, mapped to the existing approximate 100..255 brightness range.
+The low five surface bits do not affect it. Many path and adjacent forest tiles
+in level 25 share brightness value 4: their contrast cannot come from that map
+alone. Authored primitive/vertex shading and the lightmap are separate layers.
+
 ## First-person weapons
 
 The core's `GetWeaponView()` now drives all named weapon views: walking bob,

@@ -622,12 +622,13 @@ than a second persistent 50x40 byte plane for the traced dynamic writes:
 
 The static plane is already preserved as `Level::surfaceFlags`; lighting
 shares its byte with the low-five-bit surface selector used by height queries.
-The modern renderer currently uses `rawDataWalls >> 4` and a 0..15 brightness
-mapping in [Level.cpp](../NewRenderer/SharedSource/base/Asset/Level.cpp).
-That is a **confirmed extraction difference** from the original's `>> 5`,
-not a reason to silently change the renderer during this investigation.
-The exact palette/luminance meaning of each original 0..7 value still needs
-tracing; do not assume a modern linear brightness scale.
+The modern renderer now extracts `rawDataWalls >> 5` and maps the eight values
+to its existing approximate 100..255 RGB range in
+[Level.cpp](../NewRenderer/SharedSource/base/Asset/Level.cpp). Its former `>> 4`
+extraction incorrectly included bit 4 of the surface selector. GPU readback tests
+cover all 256 flag bytes and verify tile-center lightmap coordinates.
+The RGB mapping remains an approximation, not the native palette/distance
+lighting equation.
 
 **Dynamic storage is a visible-window cache.** The record address used by
 `10AC:0000(x,z,amount)` is:
