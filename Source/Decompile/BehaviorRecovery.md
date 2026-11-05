@@ -138,6 +138,84 @@ frames without missing handlers, with level-22 machinery activated during
 the run. Existing enemy batching tests also include scorpions and continue
 to cover unchanged spider behavior and projectile-allocation aliasing.
 
+### Sewer tentacle contact damage
+
+The native player-contact cascade at `0000:DB36..DB42` routes collision
+88 (`AttachableDamageObject`) to the same direct-damage branch as
+rats/snakes (13) and flies (16). `PlayerInteraction.cpp` now includes
+that selector, retaining `HandleDamageObjectContact`'s authored byte-52
+damage, player-life suppression/clamping and hit-effect behavior.
+No interaction key is required; continued overlap can hurt again on
+the next update. Head proximity damage and machinery collision 9 remain
+separate.
+
+The original assets make an important distinction: all **56 level-21
+tentacles have damage byte 0**, whereas all **35 level-22 tentacles have
+damage byte 1**. Thus this fix makes the second sewer's tentacles hurt;
+it deliberately does not make the first sewer's harmless tentacles hurt.
+[RatSnakeTests.cpp](Scaffold/RatSnakeTests.cpp) covers all 256 damage-byte
+values, suppression/depletion and collision gates, plus all 91 original
+tentacles, 34 rats/snakes and two flies across the audited levels.
+
+### Level 23 implementation audit
+
+The positive-health original `OBJPOS23.DAT` records contain nine behavior
+types whose core handlers still return `UnimplementedHandler`:
+
+| Selector | Behavior | Original slots |
+|---|---|---|
+| 27 | VerticalConcreteSlab | 29 |
+| 52 | RopeSwitch | 40 |
+| 78 | Lorry | 50 |
+| 119 | BurriedVerticalDoor | 10 |
+| 122 | DirtFromAbove | 16 |
+| 123 | DirtFromAboveShutter | 18 |
+| 124 | CeilingConcreteSlab | 21, 25 |
+| 126 | CeilingConcreteSlabStake | 22, 24 |
+| 164 | RotatingBlades | 102, 103 |
+
+These are twelve objects, not twelve distinct behaviors. Lorry collision
+78 and blade collision 103 also need player-interaction/contact recovery.
+The rope already uses generic switch collision 4, but its behavior is
+missing. Dirt source/shutter begin at health 1001, so their native
+health-1000 update gate matters.
+
+The bounded [dispatch evidence](level-twenty-three-animation-evidence.txt)
+confirms that the buried door becomes Teleporter (120), collision mask 3
+and word 40 = 100 when its linked object's behavior becomes zero. The
+ceiling slab changes behavior to its itemValue (authored 122) when its
+support collision disappears; its stake similarly checks support before
+switching. RopeSwitch updates its sine-derived word-42 presentation
+parameter, with a special currently-interacted-object override. Lorry's
+wrapper registers the object in DS:05CC while word 46 is positive; that
+wrapper alone is not the full vehicle interaction.
+
+**Fireplace texture tracking is restored.** There is no additional
+live unknown behavior selector corresponding to it in this table. The
+two authored TrackFireAnimation (202) markers, slots 4 and 101, both
+select FACKEL1 and bank-6 destinations 1 and 2 (renderer slots 13 and 14),
+with periods 2 and 3. The native
+[source loader](fire-animation-source-loader-evidence.txt) confirms that
+the FACKEL metadata array is indexed by the one-based filename number;
+these are not secretly FACKEL2 markers.
+
+Level 23 additionally loads ANIM8 into sprite bank 3 and static TUR23/24
+into texture slots 13/14. These assignments alone do not prove which is
+the fireplace source or destination. The renderer previously only bound
+tracked animations to materials with a null texture. At the author's
+request it now also replaces already-bound static textures when their
+slot has a registered animation. Registering a marker rechecks existing
+scene instances, so geometry-before-marker and marker-before-geometry
+loading both work. Unregistered static slots and shared asset materials
+remain unchanged; the marker retains its existing additive/non-additive
+policy. Regression tests use level 23's original markers and static
+textures, selected frames, material refreshes and removal.
+
+The author confirmed in-game that this restores the missing fireplace
+animation. The cause was the renderer binding gap, not a missing behavior
+or source asset. Native sprite bank 6 and ordinary texture slots must
+still not be assumed equivalent solely from their numeric indices.
+
 ### Level 19 church bell: PeriodicGlobalSound (158)
 
 The author identified behavior 158 as the church bell. It is now named
@@ -2831,10 +2909,11 @@ can change the field. Rechecking the original level-19 shovel (slot 75)
 also finds placement mode 0. The native pickup conversion at
 `0EF0:10C6..10E4` replaces word 46 with byte 53 only for placement mode 20,
 so that conversion does not change this shovel's value 10 to its scale 64.
-See [pickup-copy evidence](player-collision-evidence.txt). The native test
-therefore does **not** establish removal of the shovel; a separate removal
-path, if any, remains unverified. Keys have collision type 6, so this
-weapon-only loop does not remove them.
+See [pickup-copy evidence](player-collision-evidence.txt). The author has now
+confirmed by testing the original game that the shovel **is kept in inventory
+across the level transition**, correcting the earlier recollection of removal.
+This agrees with the recovered cleanup condition and the port's current
+behavior. Keys have collision type 6, so this weapon-only loop does not remove them.
 The author's subsequent original-game test confirms that an unused level-10
 key survives into the next level, where doors report "wrong key". Thus at least
 this transition does not discard all keys; do not introduce a blanket key purge
@@ -2849,8 +2928,8 @@ identities: `OBJPOS10.DAT` slot 63 is a key with ID **99**, whereas that level's
 positively locked door (slot 85) requires **1**; the level-11 key (slot 29) and
 locked door (slot 5) both use **1**. The door helper compares exact IDs, with no
 99-as-master-key exception. This is consistent with the author's observed
-cross-level "wrong key" behavior. Other transition paths and the recollected
-shovel removal remain separate recovery questions.
+cross-level "wrong key" behavior. Other transition paths remain separate
+recovery questions; the reported shovel carry-over is now original-game confirmed.
 
 The level-loading routine at `0000:0427` separately clears `hasMap` and removes
 inventory records with collision type 45 (`PickableMap`) at `04AA..04E2`, only

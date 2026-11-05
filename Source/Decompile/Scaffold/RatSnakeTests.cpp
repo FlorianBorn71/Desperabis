@@ -325,7 +325,8 @@ namespace
 
     void TestContactDamage()
     {
-        for (const auto type : {CollisionType::RatAndSnake, CollisionType::Flies})
+        for (const auto type : {CollisionType::RatAndSnake, CollisionType::Flies,
+            CollisionType::AttachableDamageObject})
         {
             RawGameObject object{};
             object.health = 1000;
@@ -347,7 +348,7 @@ namespace
                     Check(f.context.playerLife == expected &&
                         result.status == (damage == 0 ? InteractionStatus::NoEffect : InteractionStatus::Applied) &&
                         f.context.playerHitEffectTicks == (damage == 0 ? 3 : 8),
-                        "Rat/snake and fly contacts must apply byte-52 damage once per update through shared suppression/clamping.");
+                        "Rat/snake, fly and attached-part contacts must apply byte-52 damage once per update through shared suppression/clamping.");
                     Check(f.input.calls == 0 && f.context.playerCollisionSlot == 2 &&
                         Equal(f.context.worldObjects[2], object) && f.context.worldObjects[1].health == 1000,
                         "Contact damage must require no Enter press and must not mutate enemy state or player object health.");
@@ -376,8 +377,8 @@ namespace
 
     void TestOriginalContacts(const std::filesystem::path& directory)
     {
-        int rats = 0, flies = 0;
-        for (const auto level : {12, 13, 14, 16, 19})
+        int rats = 0, flies = 0, tentacles = 0;
+        for (const auto level : {12, 13, 14, 16, 19, 21, 22})
         {
             std::ifstream input(directory / ("OBJPOS" + std::to_string(level) + ".DAT"), std::ios::binary);
             Check(static_cast<bool>(input), "Cannot open original contact-damage fixture.");
@@ -385,24 +386,28 @@ namespace
             while (input.read(reinterpret_cast<char*>(&object), sizeof(object)))
             {
                 if (object.health <= 999 ||
-                    (object.collisionType != CollisionType::RatAndSnake && object.collisionType != CollisionType::Flies))
+                    (object.collisionType != CollisionType::RatAndSnake && object.collisionType != CollisionType::Flies &&
+                        object.collisionType != CollisionType::AttachableDamageObject))
                 {
                     continue;
                 }
                 if (object.collisionType == CollisionType::RatAndSnake) { ++rats; }
-                else { ++flies; }
+                else if (object.collisionType == CollisionType::Flies) { ++flies; }
+                else { ++tentacles; }
                 ContactFixture f(object);
                 const auto life = f.context.playerLife;
-                Check(object.behaviorParameter == 1 && f.Contact().status == InteractionStatus::Applied &&
-                    f.context.playerLife == life - 29491 && f.context.playerHitEffectTicks == 8,
-                    "Every original rat/snake/fly in the audited levels must inflict its authored contact damage without Enter.");
+                const auto damage = 29491 * object.behaviorParameter;
+                Check(f.Contact().status == (damage == 0 ? InteractionStatus::NoEffect : InteractionStatus::Applied) &&
+                    f.context.playerLife == life - damage && f.context.playerHitEffectTicks == (damage == 0 ? 3 : 8),
+                    "Original contacts must preserve authored damage, including harmless first-sewer tentacles.");
                 f.Contact();
-                Check(f.context.playerLife == life - 2 * 29491,
+                Check(f.context.playerLife == life - 2 * damage,
                     "Continued overlap must apply damage again on the next interaction update.");
             }
             Check(input.eof() && input.gcount() == 0, "Partial original contact-damage object record.");
         }
-        Check(rats == 19 && flies == 2, "Expected 19 original rats/snakes and both level-16 fly objects.");
+        Check(rats == 34 && flies == 2 && tentacles == 91,
+            "Expected 34 rats/snakes, two flies and all 91 original tentacles in the audited levels.");
     }
 
     void TestSoundAndAssets(const std::filesystem::path& directory)
@@ -472,7 +477,7 @@ int main(int argc, char** argv)
         TestContactDamage();
         TestOriginalContacts(argv[1]);
         TestSoundAndAssets(argv[1]);
-        std::cout << "PASS: rat/snake gates, RNG, movement, sound, health transition and shared rat/snake/fly contact damage.\n";
+        std::cout << "PASS: rat/snake gates, RNG, movement, sound, health transition and shared rat/snake/fly/tentacle contact damage.\n";
         return 0;
     }
     catch (const std::exception& error)

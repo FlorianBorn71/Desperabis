@@ -3544,6 +3544,69 @@ namespace
             "Scene reset must release both flame slots and animation bindings.");
     }
 
+    void CheckStaticFireTracking()
+    {
+        auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(23));
+        const auto bytes = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS23.DAT")));
+        const auto animation = FORCE_GET(AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\FACKEL1.AN2"));
+        for (const bool markersFirst : { false, true })
+        {
+            FlameScene scene;
+            Model model;
+            model.m_drawCalls.resize(3);
+            for (int index = 0; index < 3; ++index)
+            {
+                auto& material = model.m_drawCalls[index].m_material;
+                material.m_textureSlot = 13 + index;
+                material.m_texture = level->GetLevelInfo().GetLevelTexture(13 + index).get();
+                Check(material.m_texture != nullptr, "Level 23 must supply static textures in slots 13..15.");
+            }
+            auto instance = std::make_shared<RenderableInstance>(&model);
+            auto loadMarkers = [&]()
+            {
+                for (const int slot : { 4, 101 })
+                {
+                    ::RawGameObject marker{};
+                    Desperabis::EncodeGameObject(Desperabis::DecodeGameObject(bytes.data() + (slot - 2) * 54, 54),
+                        marker.m_rawBytes, 54);
+                    marker.m_level = level;
+                    LevelGameObject controller(&scene, marker);
+                    FORCE_WAIT(GamePlay::CreateObjectBehavior(scene, controller, marker));
+                }
+            };
+            if (markersFirst) { loadMarkers(); }
+            scene.AddRenderableInstance(instance);
+            if (!markersFirst)
+            {
+                Check(scene.BindingCount() == 0, "Static materials must remain untracked until a marker claims their slot.");
+                loadMarkers();
+            }
+            Check(scene.BindingCount() == 2, "Markers must bind static textures regardless of marker/geometry load order.");
+            scene.SetFireAnimationFrame(13, 0);
+            scene.SetFireAnimationFrame(14, 1);
+            scene.HandleFireAnimations(0);
+            Check(instance->m_materialOverride[0].m_texture == &animation->m_frames[0] &&
+                instance->m_materialOverride[1].m_texture == &animation->m_frames[1] &&
+                instance->m_materialOverride[0].m_transparencyType == TransparencyMode::Additive &&
+                instance->m_materialOverride[1].m_transparencyType == TransparencyMode::Additive,
+                "Registered fire slots must replace static textures with their selected additive frames.");
+            Check(instance->m_materialOverride[2].m_texture == model.m_drawCalls[2].m_material.m_texture &&
+                instance->m_materialOverride[2].m_transparencyType == model.m_drawCalls[2].m_material.m_transparencyType &&
+                model.m_drawCalls[0].m_material.m_texture == level->GetLevelInfo().GetLevelTexture(13).get(),
+                "Untracked static slots and shared source materials must remain unchanged.");
+            instance->m_materialOverride.clear();
+            scene.AssignFireAnimations(*instance);
+            scene.AssignFireAnimations(*instance);
+            scene.SetFireAnimationFrame(13, 2);
+            scene.HandleFireAnimations(0);
+            Check(scene.BindingCount() == 2 && instance->m_materialOverride[0].m_texture == &animation->m_frames[2],
+                "Static material refreshes must rebind the current frame without duplicating animation bindings.");
+            scene.RemoveRenderableInstance(instance);
+            Check(scene.BindingCount() == 0, "Removing static animated geometry must discard its bindings.");
+        }
+    }
+
     void CheckWitchMouth(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
         auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(90));
@@ -3844,6 +3907,7 @@ int main(int argc, char* argv[])
         CheckTextControls(font);
         CheckSmoothPolygonNormals(renderer, device.Get(), context.Get());
         CheckTutorialFlames();
+        CheckStaticFireTracking();
         CheckWitchMouth(renderer, device.Get(), context.Get());
         CheckMutableWalls(renderer, device.Get(), context.Get());
         CheckWaterSurfaceDefinitions();

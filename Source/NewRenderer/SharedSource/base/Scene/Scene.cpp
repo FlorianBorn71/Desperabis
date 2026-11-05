@@ -160,6 +160,10 @@ void Scene::AddFireAnimation(std::shared_ptr<TextureAnim> torchAnim, int targetS
     m_fireAnimations[targetSlot].m_speed = speed;
     m_fireAnimations[targetSlot].m_additive = additive;
     m_fireAnimations[targetSlot].m_frame = additive ? -1 : 0;
+    for (const auto& instance : m_renderInstances)
+    {
+        AssignFireAnimations(*instance);
+    }
 }
 
 void Scene::SetFireAnimationFrame(int targetSlot, int frame)
@@ -201,12 +205,18 @@ void Scene::AssignFireAnimations(RenderableInstance& inst)
         return;
     }
     const int numDC = (int)inst.GetRenderable()->m_drawCalls.size();
+    const auto needsAnimation = [&](const DrawCallMaterial& material)
+    {
+        const int slot = material.m_textureSlot;
+        return slot >= 0 && (material.m_texture == nullptr ||
+            (slot < 16 && m_fireAnimations[slot].m_torchAnim != nullptr));
+    };
 
     bool needsOverride = false;
     for (int i = 0; i < numDC; i++)
     {
         const DrawCallMaterial& mat = (i < (int)inst.m_materialOverride.size()) ? inst.m_materialOverride[i] : inst.GetRenderable()->m_drawCalls[i].m_material;
-        if (mat.m_texture == nullptr && mat.m_textureSlot >= 0)
+        if (needsAnimation(mat))
         {
             needsOverride = true;
             break;
@@ -231,7 +241,7 @@ void Scene::AssignFireAnimations(RenderableInstance& inst)
     for (int i = 0; i < numDC; i++)
     {
         DrawCallMaterial& mat = inst.m_materialOverride[i];
-        if (mat.m_texture != nullptr || mat.m_textureSlot < 0)
+        if (!needsAnimation(mat))
             continue;
 
         AddFireAnimationInstance(inst, static_cast<std::size_t>(i));
