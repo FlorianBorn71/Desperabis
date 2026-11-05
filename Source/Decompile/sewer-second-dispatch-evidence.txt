@@ -1,0 +1,44 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 0000:1E66:0013
+0000:1E66  8B 46 04                 MOV AX,word ptr [BP + 0x4]
+0000:1E69  89 46 C4                 MOV word ptr [BP + -0x3c],AX
+0000:1E6C  B8 01 00                 MOV AX,0x1
+0000:1E6F  3B 46 C4                 CMP AX,word ptr [BP + -0x3c]
+0000:1E72  7F 1C                    JG 0x1000:1e90 ; logical module target 0000:1E90
+0000:1E74  89 46 FE                 MOV word ptr [BP + -0x2],AX
+0000:1E77  EB 03                    JMP 0x1000:1e7c ; logical module target 0000:1E7C
+
+Range 0000:3FE0:0061
+0000:3FE0  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:3FE3  26 81 7D 0A E8 03        CMP word ptr ES:[DI + 0xa],0x3e8
+0000:3FE9  75 4E                    JNZ 0x1000:4039 ; logical module target 0000:4039
+0000:3FEB  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:3FEE  26 8A 45 05              MOV AL,byte ptr ES:[DI + 0x5]
+0000:3FF2  30 E4                    XOR AH,AH
+0000:3FF4  50                       PUSH AX
+0000:3FF5  FF 36 D0 05              PUSH word ptr [0x5d0]
+0000:3FF9  FF 76 FC                 PUSH word ptr [BP + -0x4]
+0000:3FFC  6A 01                    PUSH 0x1
+0000:3FFE  9A 5C D1 48 2E           CALLF 0x3000:b5dc ; encoded analysis target 2E48:D15C, module 1E48:D15C
+0000:4003  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:4006  26 8B 45 14              MOV AX,word ptr ES:[DI + 0x14]
+0000:400A  F7 66 04                 MUL word ptr [BP + 0x4]
+0000:400D  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:4010  26 03 45 1E              ADD AX,word ptr ES:[DI + 0x1e]
+0000:4014  25 FF 01                 AND AX,0x1ff
+0000:4017  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:401A  26 89 45 1E              MOV word ptr ES:[DI + 0x1e],AX
+0000:401E  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:4021  26 8B 45 12              MOV AX,word ptr ES:[DI + 0x12]
+0000:4025  F7 66 04                 MUL word ptr [BP + 0x4]
+0000:4028  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:402B  26 03 45 1C              ADD AX,word ptr ES:[DI + 0x1c]
+0000:402F  25 FF 01                 AND AX,0x1ff
+0000:4032  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:4035  26 89 45 1C              MOV word ptr ES:[DI + 0x1c],AX
+0000:4039  E9 D4 10                 JMP 0x1000:5110 ; logical module target 0000:5110
+0000:403C  3D 8D 00                 CMP AX,0x8d
+0000:403F  75 13                    JNZ 0x1000:4054 ; logical module target 0000:4054

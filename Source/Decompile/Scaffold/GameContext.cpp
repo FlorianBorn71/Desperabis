@@ -343,6 +343,7 @@ namespace Desperabis
         playerTargetLookHeight = 110;
         playerBodyHeight = 45;
         playerPostureDelta = 0;
+        playerDeathDirection.reset();
         playerGrounded = false;
         playerUnderwater = false;
         // Host policy: seed normal heading from its supplied view vector; zero means face +Z.
@@ -409,8 +410,26 @@ namespace Desperabis
         // E1F4..E210: object-center Y = working/view Y - vertical radius - 2.
         const auto eyeY = loadedLevelNumber ?
             WrapSignedWord(player.posY + player.collisionRadiusY + 2) : player.posY;
+        const std::array<std::int16_t, 3> direction{player.velocityX, player.velocityY, player.velocityZ};
         return { { player.posX, eyeY, player.posZ },
-            { player.velocityX, player.velocityY, player.velocityZ }, playerLookHeight };
+            playerLife <= 0 && playerDeathDirection ? *playerDeathDirection : direction, playerLookHeight };
+    }
+
+    void GameContext::UpdatePlayerDeathCamera()
+    {
+        if (!playerDeathDirection) { return; }
+        auto& player = worldObjects[1];
+        // E3BF..E424, stepped at the controller clock; saturate the acceleration to avoid long-death word wrap.
+        playerPostureDelta = static_cast<std::int16_t>(
+            std::max(-32768, std::min(-1, static_cast<int>(playerPostureDelta)) - 1));
+        playerBodyHeight = static_cast<std::int16_t>(
+            std::max(15, static_cast<int>(playerBodyHeight) + playerPostureDelta));
+        std::int16_t slopeX = 0, slopeZ = 0;
+        const auto floor = QueryTerrainSupport(player.posX, GetPlayerCamera().position[1],
+            player.posZ, slopeX, slopeZ);
+        player.posY = WrapSignedWord(floor + playerBodyHeight - player.collisionRadiusY - 2);
+        playerLookHeight = WrapSignedWord(playerLookHeight + GetStepToward(playerLookHeight, 10, 5));
+        playerHitEffectTicks = 100;
     }
 
     void GameContext::RequestPlayerJump()
@@ -430,7 +449,12 @@ namespace Desperabis
     {
         BasicPlayerMovementResult result;
         auto& player = worldObjects[1];
-        if (frameTickCount == 0 || player.health <= 0 || playerLife <= 0) { return result; }
+        if (frameTickCount == 0 || player.health <= 0) { return result; }
+        if (playerLife <= 0)
+        {
+            for (int tick = 0; tick < frameTickCount; ++tick) { UpdatePlayerDeathCamera(); }
+            return result;
+        }
 
         // Normal keyboard mode, C603..C679 and C74E..C774; sample once per host tick, not per substep.
         if (input.IsKeyPressed(InputKey::TurnLeftKey)) { playerTurnSpeed = WrapSignedWord(playerTurnSpeed - 7); }
@@ -457,6 +481,11 @@ namespace Desperabis
         // TODO: Recover mouse controls and vehicle/attached-object movement.
         for (int tick = 0; tick < frameTickCount; ++tick)
         {
+            if (playerLife <= 0)
+            {
+                UpdatePlayerDeathCamera();
+                continue;
+            }
             int limit = playerBodyHeight < 45 && behaviorDispatchEnabled ? 2 : playerSurfaceSpeedLimit;
             if (playerUnderwater) { limit = 3; }
             if (playerForwardSpeed != 0 && playerSidewaysSpeed != 0) { limit = 2 * limit / 3; }
@@ -726,8 +755,11 @@ namespace Desperabis
                 -((-static_cast<int>(playerBodyHeight) + 1) / 2) : playerBodyHeight / 2;
             player.collisionRadiusY = WrapSignedWord(halfHeight + 1);
             player.posY = WrapSignedWord(eyeY - player.collisionRadiusY - 2);
-            player.velocityX = directionX;
-            player.velocityZ = directionZ;
+            if (playerLife > 0)
+            {
+                player.velocityX = directionX;
+                player.velocityZ = directionZ;
+            }
             UpdatePlayerUnderwater();
             ++result.simulatedTicks;
         }
@@ -1397,6 +1429,8 @@ namespace Desperabis
             playerLife = 0;
             if (!positionalSoundsSuppressed)
             {
+                playerDeathDirection = std::array<std::int16_t, 3>{
+                    worldObjects[1].velocityX, worldObjects[1].velocityY, worldObjects[1].velocityZ};
                 playerHitEffectTicks = 1000;
                 playerPostureDelta = -1;
                 positionalSoundsSuppressed = true;

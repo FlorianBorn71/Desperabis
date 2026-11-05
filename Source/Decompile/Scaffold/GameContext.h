@@ -627,6 +627,7 @@ namespace Desperabis
         void PrepareLevelProgression(bool changingLevel);
         void FinishGamePart();
         BasicPlayerMovementResult UpdateBasicPlayerMovement(InputHandler& input);
+        void UpdatePlayerDeathCamera();
         void UpdatePlayerUnderwater();
         void RefreshUnderwaterPresentation();
         void ResetUnderwater();
@@ -637,6 +638,7 @@ namespace Desperabis
         std::int16_t playerSurfaceSpeedLimit = 5; // DS:DC6A; applied on the following substep.
         std::int16_t playerHeading = 0;
         std::int16_t playerTargetHeading = 0;
+        std::optional<std::array<std::int16_t, 3>> playerDeathDirection;
         MenuPage menuPage = MenuPage::MainMenu;
         GameRuntimeState runtimeState = GameRuntimeState::NoLevel;
         std::uint64_t nextLoadRequestId = 0;

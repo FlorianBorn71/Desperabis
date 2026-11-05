@@ -88,7 +88,7 @@ namespace
 
     void TestTickBoundariesAndContexts()
     {
-        for (auto type : { BehaviorType::SpiderLarge, BehaviorType::Harvestman,
+        for (auto type : { BehaviorType::SpiderLarge, BehaviorType::Scorpion, BehaviorType::Harvestman,
             BehaviorType::Devil, BehaviorType::Gorilla })
         {
             for (std::uint32_t seed : { 1u, 19u, 2187u, 0xffffffffu })

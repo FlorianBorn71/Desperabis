@@ -277,8 +277,96 @@ namespace
         host.ApplyPlayerLifeDelta(-host.playerLife);
         Check(host.playerPostureDelta == -1, "Life depletion must still install the native lowering request.");
         host.playerPostureDelta = 6;
+        const auto calls = input.postureCalls;
         Step(host, input);
-        Check(host.playerBodyHeight == 45, "Changing posture state must not revive a depleted player controller.");
+        Check(host.playerBodyHeight == 43 && input.postureCalls == calls,
+            "Changing posture state must not revive a depleted player or resume posture input.");
+    }
+
+    void TestDeathCamera()
+    {
+        Host host;
+        Input input;
+        host.Load();
+        host.worldObjects[1].velocityX = 100;
+        host.worldObjects[1].velocityZ = 0;
+        const auto initial = host.GetPlayerCamera();
+        host.ApplyPlayerLifeDelta(-host.playerLife);
+        Check(host.GetPlayerCamera().direction == initial.direction && host.worldObjects[1].velocityZ == 400,
+            "The native death marker must not rotate the presented camera.");
+        input.jump = input.crouch = input.forward = input.strafe = true;
+        constexpr int collapse[]{43,40,36,31,25,18,15};
+        for (std::size_t tick = 0; tick < std::size(collapse); ++tick)
+        {
+            Step(host, input);
+            const auto camera = host.GetPlayerCamera();
+            Check(host.playerBodyHeight == collapse[tick] && camera.position[1] == collapse[tick] &&
+                camera.position[0] == initial.position[0] && camera.position[2] == initial.position[2] &&
+                camera.direction == initial.direction && camera.lookHeight == 110 - 5 * (tick + 1) &&
+                host.worldObjects[1].collisionRadiusY == 23 && host.worldObjects[1].velocityZ == 400 &&
+                host.playerHitEffectTicks == 100 && input.postureCalls == 0,
+                "Death must accelerate to height 15, lower the horizon without changing yaw and ignore movement input.");
+        }
+        Step(host, input, 13);
+        Check(Eye(host) == 15 && host.playerLookHeight == 10,
+            "Death must settle below crouch height at the original downward horizon.");
+        Host batched;
+        batched.Load();
+        batched.ApplyPlayerLifeDelta(-batched.playerLife);
+        Step(batched, input, 20);
+        Check(Eye(batched) == Eye(host) && batched.playerLookHeight == host.playerLookHeight &&
+            batched.playerPostureDelta == host.playerPostureDelta,
+            "Batched and individual death ticks must follow the same collapse.");
+        Step(batched, input, 32767);
+        Step(batched, input, 20);
+        Check(Eye(batched) == 15 && batched.playerLookHeight == 10,
+            "Remaining dead must never wrap the lowering speed and raise the camera.");
+
+        for (const std::int16_t height : std::array<std::int16_t,3>{28,45,100})
+        {
+            Host terrain;
+            terrain.Load(height);
+            terrain.playerBodyHeight = height;
+            for (auto& row : terrain.level->floorHeights)
+            {
+                std::fill(std::begin(row), std::end(row), std::uint8_t{20});
+            }
+            const auto floor = terrain.GetTerrainFloorHeight(1500, height, 2500);
+            terrain.playerLookHeight = 0;
+            terrain.ApplyPlayerLifeDelta(-terrain.playerLife);
+            Step(terrain, input, 30);
+            Check(Eye(terrain) == floor + 15 && terrain.playerLookHeight == 10,
+                "Crouched, standing and airborne deaths must settle relative to terrain and approach look from either side.");
+        }
+
+        for (int gate = 0; gate < 5; ++gate)
+        {
+            Host gated;
+            gated.Load();
+            gated.ApplyPlayerLifeDelta(-gated.playerLife);
+            if (gate == 0) { gated.SetPaused(true); }
+            if (gate == 1) { gated.SetMenuPage(MenuPage::MainMenu); }
+            if (gate == 2) { gated.basicPlayerMovementEnabled = false; }
+            if (gate == 3) { gated.StartLevel(12); }
+            gated.Tick({20, static_cast<std::int16_t>(gate == 4 ? 0 : 20)}, input);
+            Check(Eye(gated) == 45 && gated.playerLookHeight == 110 && gated.playerPostureDelta == -1,
+                "Death camera must honor pause, menu, loading, disabled-controller and zero-frame gates.");
+        }
+
+        Host contact;
+        contact.Load();
+        std::fill(std::begin(contact.collisionMap->data), std::end(contact.collisionMap->data), std::uint8_t{192});
+        Input neutral;
+        Step(contact, neutral, 8);
+        Check(contact.playerLife == 0 && Eye(contact) == 15 && contact.worldObjects[1].velocityZ == 400 &&
+            contact.GetPlayerCamera().direction == std::array<std::int16_t,3>{0,0,100},
+            "Lethal terrain mid-batch must switch remaining ticks to death, retaining the native marker and view direction.");
+
+        host.playerLife = 360 * 65536;
+        host.Load();
+        Check(Eye(host) == 45 && host.playerLookHeight == 110 && host.playerPostureDelta == 0 &&
+            host.GetPlayerCamera().direction == std::array<std::int16_t,3>{0,0,100},
+            "A fresh installed level must clear the old death view.");
     }
 }
 
@@ -291,6 +379,7 @@ int main()
         TestClearanceAndSpeed();
         TestWater();
         TestLifecycleGates();
+        TestDeathCamera();
         std::cout << "Player jump/crouch tests passed.\n";
         return 0;
     }

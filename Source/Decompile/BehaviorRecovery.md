@@ -6,6 +6,108 @@ each recovered case an editable, named home without hiding missing behavior.
 
 ## Game context and application flow
 
+### First-sewer dogs and krakens
+
+The original first sewer is level 21: four dogs, eight kraken heads and
+56 independently damageable tentacles. Six heads have seven tentacles;
+the last two have six and eight. Each head's word 40 starts at its actual
+surviving-arm count. These are reusable behaviors in
+[EnemyBehaviors.cpp](Scaffold/EnemyBehaviors.cpp), not level-specific logic.
+
+- `Dog` (68), dispatch `0000:25CA`, runs `10AC:93E9` once per tick.
+  It recovers idle barking, alert/chase, collision-map-constrained 25-unit
+  route planning, turning, leap/contact damage and the persistent death pose.
+  `BonesToGrab` (83), `0000:299A`, pacifies the colliding dog using the
+  existing idle-animation behavior. The separate `DogLeash` (69) behavior
+  used in level 19 remains unrecovered; level 21 does not contain it.
+- `KrakenHead` (89), dispatch `0000:2B76`, calls `10AC:84AA` once per
+  behavior update, using the native sine-modulated speed. Words 18/22
+  store one-based destination tile indices, not X/Z velocities. The head
+  follows clear neighboring surface selectors 0/1, prefers the dominant
+  player-facing axis, bobs above terrain and inflicts close-range damage.
+- `AttachableDamageObject` (88), dispatch `0000:2B63`, calls `10AC:8799`.
+  Word 46 identifies the parent slot. Each live tentacle follows its
+  parent's world position/yaw with its own orbital offset and animation.
+  This is not placement-20 polygon anchoring or a combined monster mesh.
+  The shared handler also preserves its other modes: colliding rotating
+  blades, variable-speed animation and advancing orbital phase.
+- The existing damage dispatcher gives every arm its own strength
+  (10 in level 21). A lethal hit changes only that arm to health 2000,
+  removes its collision, chooses corpse frame 5 and subtracts its word-40
+  contribution from its own parent's surviving-arm count exactly once.
+  Other arms retain their own damage state; there is no shared health pool.
+  Below three surviving arms, an updating head takes 100 damage per
+  update. Its original strength 150 therefore depletes in two updates.
+  The head uses corpse frame 2; surviving arms then detect its depleted
+  strength and enter their own death transitions. Dead parts settle
+  toward the terrain and retain separate corpse objects.
+
+The native head search loops forever if every neighboring tile is blocked.
+The host instead reports this malformed/enclosed state explicitly after
+checking all four directions. Navigation outside the native 50x40 surface
+grid is likewise reported, rather than reading arbitrary DOS memory.
+
+Evidence: [dispatch and bones](sewer-enemy-dispatch-evidence.txt),
+[head/attachment/dog routines](sewer-enemy-routines-evidence.txt),
+[dog route/gait/steering helpers](sewer-enemy-helpers-evidence.txt), and
+[signed absolute-value helper](sewer-enemy-arithmetic-evidence.txt).
+These are bounded linear disassemblies; trailing bytes and the leash's
+Pascal floating-point emulator sequences are not claimed as recovered code.
+
+`sewer-enemies` tests dog states, tick batching, bones, all four attachment
+modes, head navigation and explicit enclosed-tile failure. Original level-21
+fixtures verify every parent/count link, independently damaged/killed arms,
+head depletion and remaining-arm death. Each of the eight original heads
+also runs 600 active motion updates with its own tentacles, followed by a
+separate 300-frame full-gameplay fixture with no missing behavior handlers.
+
+### Second-sewer scorpions and rotating machinery
+
+Level 22's remaining authored behavior stubs are recovered:
+
+- `Scorpion` (43), `0000:1E66..1E90`, calls the **same**
+  `10AC:6567..6BB2` state machine as `SpiderLarge` (36). The scorpion
+  wrapper supplies fixed displacement speed 2 and floor offset 0; the
+  spider wrapper supplies `abs(velocityY)` and offset 10. Both now share
+  one private implementation in
+  [EnemyBehaviors.cpp](Scaffold/EnemyBehaviors.cpp), preserving the
+  native random-call order, wall steering, body-mode movement gate,
+  gait, contact retreat, release/fall states and corpse progression.
+  The shared routine's projectile path also remains intact; all four
+  authored level-22 scorpions have word 46 = -1, disabling that path.
+  Their collision type is 36, so existing spider contact damage and
+  weapon-hit/death setup apply. The death pose finishes after blend
+  advances from -100 through 0 to 1, settling at terrain height rather
+  than the spider's ten-unit offset.
+- `RotatingMachineCenter` (140), `0000:3FE0..403B`, is implemented in
+  [BehaviorHandlers.cpp](Scaffold/BehaviorHandlers.cpp). Only health
+  1000 plays its configured positional sound (instance limit 1) and
+  advances yaw by `velocityY*ticks` and pitch by `velocityX*ticks`,
+  each masked to 0..511. This is one call per update, not a tick loop:
+  even zero ticks request sound, without changing angles.
+- Original center 10 and parts 11/12 begin in activation group 11
+  (health 1011); center 13 and parts 14/15 begin in group 16 (health
+  1016). The existing group activation path wakes each center together
+  with its two parts. Both centers have yaw rate 2. Their attached
+  mode-1 parts use radius 80, opposite phases and independent pitch
+  rate 4, retaining their lethal collision-9 player contact. No renderer
+  or special-case level logic is required.
+
+Evidence: [wrapper and rotating center](sewer-second-dispatch-evidence.txt),
+[scorpion call and loop](sewer-second-scorpion-call-evidence.txt),
+[shared state machine](spider-large-evidence.txt), and
+[spider wrapper for comparison](four-enemy-dispatch-evidence.txt).
+
+`sewer-enemies` now verifies scorpion fixed speed/height, dormant gates,
+material masking, blocked-object handling, contact damage and exact corpse
+timing. Machinery tests cover signed rates/wrapping, dormant/dead gates,
+zero-tick sound and per-source sound admission. Original level-22 fixtures
+activate both machine groups and verify all four orbiting parts, lethal
+contact and all four scorpion deaths. Both sewers run 300 full gameplay
+frames without missing handlers, with level-22 machinery activated during
+the run. Existing enemy batching tests also include scorpions and continue
+to cover unchanged spider behavior and projectile-allocation aliasing.
+
 ### Cave levels 17 and 18
 
 The original live `OBJPOS17.DAT` and `OBJPOS18.DAT` selectors, including the
@@ -2228,8 +2330,7 @@ identified and implemented as ladder control, not underwater buoyancy.
 Oxygen, underwater sound/bubbles and the global underwater view are now implemented
 (see [underwater recovery](#underwater-oxygen-audio-and-bubbles)).
 Some other environmental damage modes remain unported.
-The native death animation
-also remains separate. `player-posture` tests cover the jump arc, input
+The death camera is a separate branch, described below. `player-posture` tests cover the jump arc, input
 ordering/batching, posture boundaries, camera/radius coherence, clearance and
 speed thresholds, water forcing/exit/submersion, and lifecycle gates.
 
@@ -3307,6 +3408,27 @@ Evidence is split into the bounded exports
   hit-effect ticks to 1000, DS:`D4B4` to -1, DS:`D4FA` true, and slot-1
   `velocityZ` to 400. The partial keyboard controller stops accepting movement
   in this state rather than overwriting the native death view marker.
+- The death-camera branch `0000:E3BF..E424`, preserved in
+  [frame-loop evidence](weapon-trigger-evidence.txt), now runs instead of normal
+  movement after life depletion. It accelerates the lowering request from -1,
+  adds it to body height, and clamps height at **15** (standing 45, crouching 28).
+  Eye Y becomes terrain support plus that height, without walking bob or bridge
+  support. The existing collision radius is retained, matching the native
+  `E1F4` eye-to-center conversion. Hit-effect ticks become 100.
+  The native horizon approaches viewport-top + 10 at five units per tick;
+  GameCore uses 10 with its viewport-independent horizon convention. The DX11
+  perspective mapping presents this as approximately 45 degrees downward.
+  The author selected this original look rather than a subtler modern tilt.
+  The camera retains its pre-depletion direction independently of slot-1's
+  `velocityZ = 400` marker, avoiding a spurious turn on death.
+  Host frame batches use repeated single-tick death steps, like normal movement,
+  rather than the DOS loop's batch-sized acceleration followed by one height
+  addition. Acceleration saturates at the signed-word minimum to prevent a
+  long-dead player rising after word wrap. Pauses, menus, loading, zero frame
+  ticks and disabled basic movement do not animate it; level installation resets
+  the retained death direction. Tests cover exact collapse/horizon steps,
+  batching, long waits, terrain-relative height, lifecycle gates and a lethal
+  terrain transition within a frame batch.
 - Its final changed value immediately invokes the default-empty host hook
   `OnPlayerHealthChanged(previousLife, currentLife)`. Both values retain signed
   16.16 precision; notification follows clamping and the complete depletion state.
@@ -3378,7 +3500,7 @@ that creates these temporary contacts is now implemented below.
 routine. Dagger/sword input, attack timing and automatic contact creation are
 implemented in [the melee sequence](#player-melee-attack-sequence).
 Remaining dormant-object activation drivers, the complete DOS meter HUD, damage-screen
-effect, death camera animation and menu/restart flow are not implemented here.
+effect and menu/restart flow are not implemented here.
 The new weapon/parry fields and `DamageObject` expose their native contracts
 for that separate work. Merely pressing Enter is still interaction, not attack.
 The DOS death-path recording/string update is presentation-specific and is not

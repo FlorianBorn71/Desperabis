@@ -1646,11 +1646,6 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::MercuryLamp, 0x1E53 };
     }
 
-    DispatchResult Function_Scorpion(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Scorpion, 0x1E66 };
-    }
-
     DispatchResult Function_SpearOnGroundTrap(RawGameObject& object, GameContext& context)
     {
         const auto magnitude = WrapSignedWord(std::abs(static_cast<int>(
@@ -1994,11 +1989,6 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::DecoFish, 0x259C };
     }
 
-    DispatchResult Function_Dog(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Dog, 0x25CA };
-    }
-
     DispatchResult Function_DogLeash(RawGameObject&, GameContext&)
     {
         return { DispatchStatus::UnimplementedHandler, BehaviorType::DogLeash, 0x25FE };
@@ -2173,11 +2163,6 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_82, 0x2947 };
     }
 
-    DispatchResult Function_BonesToGrab(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::BonesToGrab, 0x299A };
-    }
-
     DispatchResult Function_ItemHiddenInBox(RawGameObject&, GameContext&)
     {
         return { DispatchStatus::UnimplementedHandler, BehaviorType::ItemHiddenInBox, 0x2A65 };
@@ -2332,16 +2317,6 @@ namespace Desperabis
         const auto floor = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
         object.posY = WrapSignedWord(object.posY + GetStepToward(object.posY, floor, context.tickCount));
         return { DispatchStatus::ExecutedCase, BehaviorType::AnacondaHeadDying, 0x2AE9 };
-    }
-
-    DispatchResult Function_AttachableDamageObject(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::AttachableDamageObject, 0x2B63 };
-    }
-
-    DispatchResult Function_KrakenHead(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::KrakenHead, 0x2B76 };
     }
 
     DispatchResult Function_EndBossHead(RawGameObject&, GameContext&)
@@ -2780,9 +2755,18 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::SpawnInCrater, 0x3F8A };
     }
 
-    DispatchResult Function_RotatingMachineCenter(RawGameObject&, GameContext&)
+    DispatchResult Function_RotatingMachineCenter(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::RotatingMachineCenter, 0x3FE0 };
+        if (object.health == 1000)
+        {
+            context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+                context.GetSoundVolumeAt(object.posX, object.posZ), object, 1);
+            object.winY = static_cast<std::int16_t>(
+                (object.winY + object.velocityY * context.tickCount) & 511);
+            object.winX = static_cast<std::int16_t>(
+                (object.winX + object.velocityX * context.tickCount) & 511);
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::RotatingMachineCenter, 0x3FE0 };
     }
 
     DispatchResult Function_Submarine(RawGameObject&, GameContext&)
