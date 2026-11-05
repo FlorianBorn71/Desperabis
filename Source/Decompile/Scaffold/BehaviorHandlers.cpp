@@ -1869,14 +1869,51 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::KeyInBucket, 0x2484 };
     }
 
-    DispatchResult Function_DiggableGround(RawGameObject&, GameContext&)
+    DispatchResult Function_DiggableGround(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::DiggableGround, 0x2516 };
+        object.collisionType = CollisionType::DiggableGround;
+        object.collisionMask = 131;
+        if (object.behaviorParameter == 0) { object.behaviorParameter = 21; }
+        object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity +
+            GetStepToward(object.blendWeightOrSpriteOpacity, object.itemValue, WrapSignedWord(4 * context.tickCount)));
+        if (object.blendWeightOrSpriteOpacity >= 100)
+        {
+            object.blendWeightOrSpriteOpacity = 100;
+            object.behavior = BehaviorType::None;
+            object.collisionMask = 0;
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::DiggableGround, 0x2516 };
     }
 
-    DispatchResult Function_Buried(RawGameObject&, GameContext&)
+    DispatchResult Function_Buried(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Buried, 0x2529 };
+        if (context.field_D500)
+        {
+            if (object.velocityY == 0) { object.velocityY = 100; }
+            const auto slot = context.FindCollidingObject(object);
+            if (slot > 1)
+            {
+                const auto& ground = context.worldObjects[slot];
+                if (ground.collisionType == CollisionType::DiggableGround)
+                {
+                    if (ground.blendWeightOrSpriteOpacity >= object.velocityY) { object.collisionMask = 0; }
+                    if (object.displayType != DisplayType::Hidden)
+                    {
+                        object.collisionMask = 128;
+                        object.doorLockOrGroupBitmask = static_cast<std::uint8_t>(object.displayType);
+                        object.displayType = DisplayType::Hidden;
+                    }
+                }
+            }
+            else
+            {
+                object.displayType = static_cast<DisplayType>(object.doorLockOrGroupBitmask & 255);
+                object.collisionMask = 1;
+                object.doorLockOrGroupBitmask = 0;
+                object.behavior = BehaviorType::None;
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::Buried, 0x2529 };
     }
 
     DispatchResult Function_Shark(RawGameObject& object, GameContext& context)
@@ -1989,11 +2026,6 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::DecoFish, 0x259C };
     }
 
-    DispatchResult Function_DogLeash(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::DogLeash, 0x25FE };
-    }
-
     DispatchResult Function_TriggerDebris(RawGameObject&, GameContext&)
     {
         return { DispatchStatus::UnimplementedHandler, BehaviorType::TriggerDebris, 0x2618 };
@@ -2004,14 +2036,10 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::FlipTRexHead, 0x2651 };
     }
 
-    DispatchResult Function_Ghost(RawGameObject&, GameContext&)
+    DispatchResult Function_LightRayKillsGhost(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Ghost, 0x2669 };
-    }
-
-    DispatchResult Function_LightRayKillsGhost(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::LightRayKillsGhost, 0x2697 };
+        context.lightingCache.AddAtWorldXZ(object.posX, object.posZ, 250);
+        return { DispatchStatus::ExecutedCase, BehaviorType::LightRayKillsGhost, 0x2697 };
     }
 
     DispatchResult Function_ActivatableLadder(RawGameObject& object, GameContext& context)
@@ -2854,9 +2882,20 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::GrandfatherClockPendulum, 0x46EB };
     }
 
-    DispatchResult Function_Behavior_158(RawGameObject&, GameContext&)
+    DispatchResult Function_PeriodicGlobalSound(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_158, 0x4738 };
+        object.itemValue = WrapSignedWord(object.itemValue + context.tickCount);
+        if (object.itemValue > WrapSignedWord(object.generalPurpose1))
+        {
+            object.itemValue = 0;
+            // The native resolver maps effect zero to no sample.
+            if (object.soundEffectId != 0)
+            {
+                context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+                    GameContext::GetSoundVolume(0), object, 1);
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::PeriodicGlobalSound, 0x4738 };
     }
 
     DispatchResult Function_RotateKnightsInClock(RawGameObject&, GameContext&)
@@ -3019,9 +3058,22 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::FireballImpact, 0x4F47 };
     }
 
-    DispatchResult Function_TriggerObject(RawGameObject&, GameContext&)
+    DispatchResult Function_TriggerObject(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::TriggerObject, 0x4F84 };
+        if (object.collisionType == CollisionType::Ammo || object.collisionType == CollisionType::Weapon)
+        {
+            if (object.itemValue < 0 || static_cast<std::size_t>(object.itemValue) >= context.weaponAmounts.size())
+            {
+                throw std::out_of_range("Triggered pickup requires a weapon/resource index in 0..31.");
+            }
+            const auto index = static_cast<std::size_t>(object.itemValue);
+            const bool remove = object.collisionType == CollisionType::Ammo ?
+                context.weaponAmounts[index] >= WrapSignedWord(object.generalPurpose3) :
+                WrapSignedWord(context.weaponInventorySlots[index]) > 0;
+            if (remove) { context.SetObjectHealth(object, 0); }
+            else { object.behavior = BehaviorType::None; }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::TriggerObject, 0x4F84 };
     }
 
     DispatchResult Function_ForceWeaponSelection(RawGameObject& object, GameContext& context)

@@ -2,6 +2,7 @@
 #include "GameMath.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <stdexcept>
 
@@ -197,6 +198,169 @@ namespace Desperabis
                 16 + WrapSignedWord(object.generalPurpose1));
         }
         return { DispatchStatus::ExecutedCase, BehaviorType::Dog, 0x25CA };
+    }
+
+    DispatchResult Function_DogLeash(RawGameObject& object, GameContext& context)
+    {
+        if (object.itemValue > 0)
+        {
+            if (static_cast<std::size_t>(object.itemValue) >= context.worldObjects.size())
+            {
+                throw std::out_of_range("Dog leash requires a linked world slot in 1..165.");
+            }
+            auto& dog = context.worldObjects[object.itemValue];
+            if (dog.health == 1000)
+            {
+                if (dog.behavior == BehaviorType::None) { object.behavior = BehaviorType::None; }
+                if (dog.collisionType != CollisionType::Dog) { object.modelFrame2 = 3; }
+                const auto dx = WrapSignedWord(dog.posX - object.posX);
+                const auto dz = WrapSignedWord(dog.posZ - object.posZ);
+                const auto distance = RoundReal48(std::sqrt(static_cast<double>(dx) * dx +
+                    static_cast<double>(dz) * dz));
+                object.winY = GetVectorAngle(dx, dz);
+                if (distance > 85)
+                {
+                    dog.velocityX = WrapSignedWord(dog.velocityX + GetStepToward(dog.velocityX, object.posX, 20));
+                    dog.velocityZ = WrapSignedWord(dog.velocityZ + GetStepToward(dog.velocityZ, object.posZ, 20));
+                    dog.generalPurpose3 = 12;
+                }
+                object.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(std::nearbyint(std::min(distance, 100.0)));
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::DogLeash, 0x25FE };
+    }
+
+    DispatchResult Function_Ghost(RawGameObject& object, GameContext& context)
+    {
+        for (int tick = 0; tick < context.tickCount; ++tick)
+        {
+            if (object.health != 1000) { continue; }
+            const auto distance = context.GetSoundDistanceAt(object.posX, object.posZ);
+            object.winZ = static_cast<std::int16_t>((object.winZ + 7) & 511);
+            if (object.generalPurpose1 != 4)
+            {
+                object.posY = WrapSignedWord(context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ) +
+                    32 + SineDisplacement(static_cast<std::uint16_t>(object.winZ), 4));
+            }
+            const auto& player = context.worldObjects[1];
+            const auto speed = WrapSignedWord(object.generalPurpose3);
+            object.velocityX = GetStepToward(object.posX,
+                WrapSignedWord(context.soundListenerX + ArithmeticShiftRight(player.velocityX, 1)), speed);
+            object.velocityZ = GetStepToward(object.posZ,
+                WrapSignedWord(context.soundListenerZ + ArithmeticShiftRight(player.velocityZ, 1)), speed);
+            switch (object.generalPurpose1)
+            {
+            case 1:
+            {
+                object.velocityY = object.velocityX;
+                object.velocityX = object.velocityZ;
+                object.velocityZ = WrapSignedWord(-object.velocityY);
+                if (context.Random(80) == 0) { object.generalPurpose1 = 0; }
+                break;
+            }
+            case 2:
+                object.velocityY = object.velocityX;
+                object.velocityX = WrapSignedWord(-object.velocityZ);
+                object.velocityZ = object.velocityY;
+                if (context.Random(80) == 0) { object.generalPurpose1 = 0; }
+                break;
+            case 3:
+                object.velocityX = object.velocityZ = 0;
+                if (context.Random(50) == 0) { object.generalPurpose1 = context.Random(3); }
+                break;
+            case 4:
+                object.velocityX = object.velocityZ = 0;
+                break;
+            default:
+                if (context.Random(80) == 0) { object.generalPurpose1 = static_cast<std::uint16_t>(context.Random(3) + 1); }
+                break;
+            }
+            object.generalPurpose3 = distance >= 0 && distance <= 60 ? 4 :
+                distance >= 0 && distance <= 100 ? 2 : 1;
+            const auto targetOpacity = static_cast<std::int16_t>(distance > 70 && distance < 180 ? 100 : 0);
+            object.doorLockOrGroupBitmask = WrapSignedWord(object.doorLockOrGroupBitmask +
+                GetStepToward(object.doorLockOrGroupBitmask, targetOpacity, 1));
+            switch (object.itemValue)
+            {
+            case 0:
+            {
+                object.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(
+                    static_cast<std::uint16_t>(object.doorLockOrGroupBitmask) >> 3);
+                if (distance < 90 && object.blendWeightOrSpriteOpacity > 0) { context.ApplyPlayerLifeDelta(-4 * 29491); }
+                object.collisionMask = 64;
+                const auto slot = context.FindCollidingObject(object);
+                object.collisionMask = 0;
+                if (slot > 1 && context.worldObjects[slot].collisionType == CollisionType::LightRayKillsGhost)
+                {
+                    object.itemValue = 20;
+                }
+                break;
+            }
+            case 20:
+                context.PlaySoundEffect(static_cast<SoundEffect>(59), GameContext::GetSoundVolume(distance), object, 1);
+                object.displayType = DisplayType::Type3;
+                object.generalPurpose1 = 4;
+                object.collisionMask = 0;
+                object.generalPurpose2 = 28;
+                object.itemValue = 21;
+                object.blendWeightOrSpriteOpacity = 100;
+                break;
+            case 21:
+                object.blendWeightOrSpriteOpacity = ArithmeticShiftRight(WrapSignedWord(object.generalPurpose2), 2);
+                --object.generalPurpose2;
+                if (object.blendWeightOrSpriteOpacity < -2) { object.itemValue = 22; }
+                break;
+            case 22:
+                object.generalPurpose2 = 28;
+                object.displayType = DisplayType::SpriteTransparent;
+                object.itemValue = 23;
+                object.animFrame = object.modelFrame2;
+                object.blendWeightOrSpriteOpacity = 100;
+                for (int part = -2; part <= 2; ++part)
+                {
+                    const auto slot = context.FindFreeObjectIndex();
+                    // Allocation may clear this source when the fallback slot is the ghost itself.
+                    auto fragment = object;
+                    fragment.animFrame = 3;
+                    fragment.velocityZ = 0;
+                    fragment.behavior = BehaviorType::SmokeFading;
+                    fragment.velocityY = static_cast<std::int16_t>(part * 50 - 90);
+                    fragment.health = static_cast<std::int16_t>(context.Random(10) + 50);
+                    if (part == 2)
+                    {
+                        fragment.animFrame = 4;
+                        fragment.health = 62;
+                        fragment.velocityZ = fragment.velocityY = 0;
+                    }
+                    else
+                    {
+                        fragment.spriteScale = static_cast<std::uint8_t>(30 - part * 6);
+                        fragment.winY = static_cast<std::int16_t>(context.Random(2));
+                        fragment.posY = WrapSignedWord(fragment.posY + part * 5 + 11);
+                    }
+                    context.ReplaceWorldObject(slot, fragment);
+                }
+                break;
+            case 23:
+                object.blendWeightOrSpriteOpacity = ArithmeticShiftRight(WrapSignedWord(object.generalPurpose2), 2);
+                --object.generalPurpose2;
+                if (object.blendWeightOrSpriteOpacity < 1) { context.SetObjectHealth(object, 0); }
+                break;
+            default:
+                object.itemValue = 0;
+                break;
+            }
+            const auto clear = [&](std::int16_t x, std::int16_t z)
+            {
+                return (context.GetCollisionMapPixelAtWorldXZ(x, z) & 0x38) == 0;
+            };
+            const auto nextX = WrapSignedWord(object.posX + object.velocityX);
+            if (clear(nextX, object.posZ)) { object.posX = nextX; }
+            const auto nextZ = WrapSignedWord(object.posZ + object.velocityZ);
+            if (clear(object.posX, nextZ)) { object.posZ = nextZ; }
+            if (!clear(object.posX, object.posZ)) { context.SetObjectHealth(object, 0); }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::Ghost, 0x2669 };
     }
 
     DispatchResult Function_BonesToGrab(RawGameObject& object, GameContext& context)

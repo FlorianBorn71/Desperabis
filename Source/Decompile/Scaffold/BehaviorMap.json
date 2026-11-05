@@ -1986,7 +1986,7 @@
     },
     {
       "value": 158,
-      "name": "Behavior_158",
+      "name": "PeriodicGlobalSound",
       "namedInRenderer": true,
       "hasSpecificCase": true,
       "entry": "0000:4738",

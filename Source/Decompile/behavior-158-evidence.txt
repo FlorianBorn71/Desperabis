@@ -1,0 +1,30 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 0000:4738:004A
+0000:4738  8B 46 04                 MOV AX,word ptr [BP + 0x4]
+0000:473B  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:473E  26 01 45 22              ADD word ptr ES:[DI + 0x22],AX
+0000:4742  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:4745  26 8B 45 22              MOV AX,word ptr ES:[DI + 0x22]
+0000:4749  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:474C  26 3B 45 24              CMP AX,word ptr ES:[DI + 0x24]
+0000:4750  7E 25                    JLE 0x1000:4777 ; logical module target 0000:4777
+0000:4752  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:4755  31 C0                    XOR AX,AX
+0000:4757  26 89 45 22              MOV word ptr ES:[DI + 0x22],AX
+0000:475B  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:475E  26 8A 45 05              MOV AL,byte ptr ES:[DI + 0x5]
+0000:4762  30 E4                    XOR AH,AH
+0000:4764  50                       PUSH AX
+0000:4765  6A 00                    PUSH 0x0
+0000:4767  9A 01 D0 48 2E           CALLF 0x3000:b481 ; encoded analysis target 2E48:D001, module 1E48:D001
+0000:476C  50                       PUSH AX
+0000:476D  FF 76 FC                 PUSH word ptr [BP + -0x4]
+0000:4770  6A 01                    PUSH 0x1
+0000:4772  9A 5C D1 48 2E           CALLF 0x3000:b5dc ; encoded analysis target 2E48:D15C, module 1E48:D15C
+0000:4777  E9 96 09                 JMP 0x1000:5110 ; logical module target 0000:5110
+0000:477A  3D 9F 00                 CMP AX,0x9f
+0000:477D  74 03                    JZ 0x1000:4782 ; logical module target 0000:4782
+0000:477F  E9 8F 00                 JMP 0x1000:4811 ; logical module target 0000:4811

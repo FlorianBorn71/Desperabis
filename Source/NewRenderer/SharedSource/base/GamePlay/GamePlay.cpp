@@ -219,7 +219,7 @@ namespace GamePlay
         BT_ENUM2STRING(RechargeElectricity);
         BT_ENUM2STRING(Dog);
         BT_ENUM2STRING(DogLeash);
-        BT_ENUM2STRING(Behavior_158);
+        BT_ENUM2STRING(PeriodicGlobalSound);
         BT_ENUM2STRING(DiggableGround);
         BT_ENUM2STRING(TriggerObject);
         BT_ENUM2STRING(Ghost);

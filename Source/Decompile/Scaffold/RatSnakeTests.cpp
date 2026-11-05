@@ -292,6 +292,7 @@ namespace
         std::uint8_t volume = 0;
         std::uint16_t GetSampleCount() const override { return 10; }
         bool IsChannelPlaying(std::size_t) const override { return false; }
+        void StopAllSamples() override {}
         void PlaySample(std::size_t, std::uint8_t sample, std::uint8_t value) override
         {
             Check(sample == 4, "Wrong rat/snake sound sample.");
@@ -299,6 +300,110 @@ namespace
             volume = value;
         }
     };
+
+    struct ContactFixture
+    {
+        struct Input final : InputHandler
+        {
+            int calls = 0;
+            bool IsKeyPressed(InputKey) override { ++calls; return false; }
+        } input;
+        GameContext context;
+        explicit ContactFixture(const RawGameObject& object)
+        {
+            context.worldObjects[2] = object;
+            auto& player = context.worldObjects[1];
+            player = object;
+            player.health = 1000;
+            player.collisionMask = 1;
+            player.pickupType = PickupType::None;
+            context.playerLife = 100 * 65536;
+            context.playerHitEffectTicks = 3;
+        }
+        InteractionResult Contact() { return UpdatePlayerInteraction(context, input); }
+    };
+
+    void TestContactDamage()
+    {
+        for (const auto type : {CollisionType::RatAndSnake, CollisionType::Flies})
+        {
+            RawGameObject object{};
+            object.health = 1000;
+            object.collisionType = type;
+            object.collisionMask = 3;
+            object.collisionRadiusXZ = object.collisionRadiusY = 10;
+            for (int damage = 0; damage <= 255; ++damage)
+            {
+                object.behaviorParameter = static_cast<std::uint8_t>(damage);
+                for (int suppression = 0; suppression < 3; ++suppression)
+                {
+                    ContactFixture f(object);
+                    f.context.playerLifeDeltaSuppressed = suppression == 1 ? 1 : 0;
+                    f.context.DEBUG_noPlayerCollision = suppression == 2;
+                    f.context.tickCount = 17;
+                    const auto life = f.context.playerLife;
+                    const auto result = f.Contact();
+                    const auto expected = suppression == 0 ? std::max(0, life - 29491 * damage) : life;
+                    Check(f.context.playerLife == expected &&
+                        result.status == (damage == 0 ? InteractionStatus::NoEffect : InteractionStatus::Applied) &&
+                        f.context.playerHitEffectTicks == (damage == 0 ? 3 : 8),
+                        "Rat/snake and fly contacts must apply byte-52 damage once per update through shared suppression/clamping.");
+                    Check(f.input.calls == 0 && f.context.playerCollisionSlot == 2 &&
+                        Equal(f.context.worldObjects[2], object) && f.context.worldObjects[1].health == 1000,
+                        "Contact damage must require no Enter press and must not mutate enemy state or player object health.");
+                    if (expected == 0)
+                    {
+                        Check(f.context.positionalSoundsSuppressed && f.context.worldObjects[1].velocityZ == 400,
+                            "Lethal contact must enter the shared player-death state.");
+                    }
+                }
+            }
+            object.behaviorParameter = 1;
+            for (int gate = 0; gate < 4; ++gate)
+            {
+                ContactFixture f(object);
+                auto& source = f.context.worldObjects[2];
+                if (gate == 0) { source.health = 0; }
+                else if (gate == 1) { f.context.objectCollisionsEnabled = false; }
+                else if (gate == 2) { source.collisionMask = 0; }
+                else { source.posX = 1000; }
+                const auto life = f.context.playerLife;
+                Check(f.Contact().status == InteractionStatus::NoEffect && f.context.playerLife == life &&
+                    f.context.playerHitEffectTicks == 3, "Removed, collision-disabled, masked or distant objects must not damage the player.");
+            }
+        }
+    }
+
+    void TestOriginalContacts(const std::filesystem::path& directory)
+    {
+        int rats = 0, flies = 0;
+        for (const auto level : {12, 13, 14, 16, 19})
+        {
+            std::ifstream input(directory / ("OBJPOS" + std::to_string(level) + ".DAT"), std::ios::binary);
+            Check(static_cast<bool>(input), "Cannot open original contact-damage fixture.");
+            RawGameObject object{};
+            while (input.read(reinterpret_cast<char*>(&object), sizeof(object)))
+            {
+                if (object.health <= 999 ||
+                    (object.collisionType != CollisionType::RatAndSnake && object.collisionType != CollisionType::Flies))
+                {
+                    continue;
+                }
+                if (object.collisionType == CollisionType::RatAndSnake) { ++rats; }
+                else { ++flies; }
+                ContactFixture f(object);
+                const auto life = f.context.playerLife;
+                Check(object.behaviorParameter == 1 && f.Contact().status == InteractionStatus::Applied &&
+                    f.context.playerLife == life - 29491 && f.context.playerHitEffectTicks == 8,
+                    "Every original rat/snake/fly in the audited levels must inflict its authored contact damage without Enter.");
+                f.Contact();
+                Check(f.context.playerLife == life - 2 * 29491,
+                    "Continued overlap must apply damage again on the next interaction update.");
+            }
+            Check(input.eof() && input.gcount() == 0, "Partial original contact-damage object record.");
+        }
+        Check(rats == 19 && flies == 2, "Expected 19 original rats/snakes and both level-16 fly objects.");
+    }
 
     void TestSoundAndAssets(const std::filesystem::path& directory)
     {
@@ -364,8 +469,10 @@ int main(int argc, char** argv)
         TestMath();
         TestMovement();
         TestNeighborhoodAndFallback();
+        TestContactDamage();
+        TestOriginalContacts(argv[1]);
         TestSoundAndAssets(argv[1]);
-        std::cout << "PASS: rat/snake gates, RNG, heading, movement, obstacle retries, sound and health transition.\n";
+        std::cout << "PASS: rat/snake gates, RNG, movement, sound, health transition and shared rat/snake/fly contact damage.\n";
         return 0;
     }
     catch (const std::exception& error)

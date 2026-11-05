@@ -76,6 +76,8 @@ namespace Desperabis
             return { InteractionStatus::Applied };
         }
         if (object.collisionType == CollisionType::Devil ||
+            object.collisionType == CollisionType::RatAndSnake ||
+            object.collisionType == CollisionType::Flies ||
             object.collisionType == CollisionType::BatIndoor ||
             object.collisionType == CollisionType::Shark ||
             object.collisionType == CollisionType::AnacondaTail ||

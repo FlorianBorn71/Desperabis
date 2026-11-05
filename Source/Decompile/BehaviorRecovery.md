@@ -6,6 +6,35 @@ each recovered case an editable, named home without hiding missing behavior.
 
 ## Game context and application flow
 
+### Native DS:D500 simulation gate: initialization and cutscene hypothesis
+
+`field_D500` is an unresolved physical-simulation gate, not a confirmed
+cutscene flag. A whole-file scan of the original executable for the literal
+operand `D500` found 26 occurrences: the byte store at `0000:03B4` sets it
+to **1**, and the other 25 are byte comparisons against zero. No direct
+clear, toggle, or literal address-taking reference was found. Examining
+neighboring flag operands also found no word store at `D4FF` overlapping
+this byte. The nearby save-file read into `D4FB` is only one byte.
+
+The alternate presentation/demo loop `0000:E589` does not assign D500;
+it explicitly enables the separate `DS:04CD` gate at `E598` and continues
+calling the player updater and object behaviors. Its application dispatcher
+at `0000:E8C4` likewise has no direct D500 assignment. These observations do
+not support a normal enter-cutscene/leave-cutscene toggle of D500 in this
+executable.
+
+Known consumers cover selected physical movement/collision paths,
+temporary-object lifetime countdowns, buried-item handling and the unarmed
+weapon updater. A retained development/debug switch is a plausible
+interpretation, but its original purpose is not established. The static
+literal-reference scan cannot exclude a computed-pointer/bulk write or
+external runtime modification; no such disabling path has been recovered.
+Do not rename it to a cutscene flag or infer cutscene policy from it.
+
+Evidence: [initialization and alternate loop](physical-world-gate-evidence.txt),
+[application dispatcher](ui-evidence.txt), and
+[native save reads](savegame-format-evidence.txt).
+
 ### First-sewer dogs and krakens
 
 The original first sewer is level 21: four dogs, eight kraken heads and
@@ -19,7 +48,7 @@ surviving-arm count. These are reusable behaviors in
   route planning, turning, leap/contact damage and the persistent death pose.
   `BonesToGrab` (83), `0000:299A`, pacifies the colliding dog using the
   existing idle-animation behavior. The separate `DogLeash` (69) behavior
-  used in level 19 remains unrecovered; level 21 does not contain it.
+  used in level 19 is documented below; level 21 does not contain it.
 - `KrakenHead` (89), dispatch `0000:2B76`, calls `10AC:84AA` once per
   behavior update, using the native sine-modulated speed. Words 18/22
   store one-based destination tile indices, not X/Z velocities. The head
@@ -51,8 +80,9 @@ Evidence: [dispatch and bones](sewer-enemy-dispatch-evidence.txt),
 [head/attachment/dog routines](sewer-enemy-routines-evidence.txt),
 [dog route/gait/steering helpers](sewer-enemy-helpers-evidence.txt), and
 [signed absolute-value helper](sewer-enemy-arithmetic-evidence.txt).
-These are bounded linear disassemblies; trailing bytes and the leash's
-Pascal floating-point emulator sequences are not claimed as recovered code.
+These are bounded linear disassemblies; unrelated trailing bytes are not
+claimed as recovered code. The leash's Pascal floating-point sequences
+were subsequently decoded with the level-19 recovery.
 
 `sewer-enemies` tests dog states, tick batching, bones, all four attachment
 modes, head navigation and explicit enclosed-tile failure. Original level-21
@@ -107,6 +137,108 @@ contact and all four scorpion deaths. Both sewers run 300 full gameplay
 frames without missing handlers, with level-22 machinery activated during
 the run. Existing enemy batching tests also include scorpions and continue
 to cover unchanged spider behavior and projectile-allocation aliasing.
+
+### Level 19 church bell: PeriodicGlobalSound (158)
+
+The author identified behavior 158 as the church bell. It is now named
+`PeriodicGlobalSound` in both core and renderer enums, retaining numeric
+value 158. It is not tree animation or a gameplay trigger. Its complete
+`0000:4738..4779` case adds the behavior tick count to word 34, compares
+that signed counter against signed word 36, and, strictly above the limit,
+resets the counter to zero and requests the effect in byte 5. The call
+uses `GetSoundVolume(0)` (255), the object slot as source and instance
+limit 1. It does not use position-based attenuation, move the object,
+change collision state or activate anything. Overshoot is discarded;
+there is at most one request per update.
+
+The only authored instance is level 19 slot 42: counter 1921, limit
+2000, sound effect **0**. At single-tick updates its first request is
+after 80 ticks, then every 2001 ticks. Native effect resolution
+`1E48:D086` maps out-of-range effect 0 to sample 0, and playback
+`1E48:D15C` rejects that sample, so this serialized zero-effect configuration
+would not produce sound. A separate initialization override has not been traced.
+Its assignment to scenery does not imply an animation responsibility.
+
+Evidence: [complete case](behavior-158-evidence.txt) and
+[effect resolution/playback guards](sound-evidence.txt).
+The C++ handler now implements the timer, preserving the authored zero-effect
+no-op rather than passing zero to the host sound API, which deliberately
+requires effect IDs 1..129. Nonzero effects retain normal API validation.
+
+### Levels 19 and 20: digging, leash, ghosts and conditional pickups
+
+The remaining gameplay selectors in these levels are implemented in the
+general behavior handlers and [EnemyBehaviors.cpp](Scaffold/EnemyBehaviors.cpp).
+`Moon` (100) and `UnderwaterColorAnim` (104) intentionally remain outside this
+recovery: their presentation is already provided by the level loader.
+
+- `DiggableGround` (63), `0000:2516` / `10AC:9117`, sets collision type 63
+  and mask 131, initializes a zero byte-52 increment to 21, and moves blend
+  toward accumulated word-34 progress by `4*ticks`. At blend >= 100 it
+  clamps to 100 and clears behavior and collision mask, retaining the object.
+  The existing damage dispatcher accepts precisely damage amount 5, adds
+  byte 52 to progress, plays effect 54 and applies shovel recoil when the
+  shovel is selected. The four original sites use increment 23, requiring
+  five hits. There is no invented shovel-only gate on the native damage
+  response.
+- `Buried` (64), `0000:2529` / `10AC:AEE0`, runs only in native body mode
+  (`field_D500`). It queries collision before changing presentation, using
+  velocity Y as its reveal threshold (default 100). A selected dig site
+  hides the item, preserving its display byte in word 46 and using mask
+  128. On later updates, a site at/above the threshold clears that mask.
+  No selected object restores the saved display, mask 1 and ordinary
+  behavior. A selected non-dig object does not reveal the item. These
+  rules cover all ten authored buried objects, not just the two keys.
+- `DogLeash` (69), `0000:25FE` / `10AC:984B`, links the dog through word 34
+  (original leash 96 links dog 90). For an active dog it computes wrapped
+  X/Z displacement, heading and Euclidean distance using Pascal Real48
+  rounding. The embedded float32 constants at `10AC:9843` and `9847` are
+  85 (`00 00 AA 42`) and 100 (`00 00 C8 42`). Above distance 85 the dog's
+  destination coordinates move toward the anchor by 20 and its temporary
+  route override becomes 12. Leash blend stores nearest-even rounded
+  distance capped at 100. This runs once per update, including zero ticks.
+  The dog corpse switches the leash's second frame to 3; once the dog's
+  behavior finishes, the leash finishes too. Invalid linked slots are
+  reported instead of reading arbitrary memory.
+- `Ghost` (72), `0000:2669` / `10AC:9F31`, runs once per tick at health
+  1000. It bobs above terrain, leads player movement by half of the player
+  X/Z step, and switches between chase, clockwise/counterclockwise orbit,
+  waiting and frozen modes. Cached distance selects next-tick speeds
+  4/2/1 at inclusive thresholds 60/100. Word 46 approaches 100 strictly
+  inside distance 70..180, otherwise zero; normal blend is its unsigned
+  value divided by eight. Visible ghosts inside distance 90 drain
+  `4*29491` signed 16.16 player life through the shared life-delta API.
+  Collision-map movement preserves the native sequential X/Z probes and
+  mask 0x38; ending inside a wall removes the ghost.
+- `LightRayKillsGhost` (73), `0000:2697`, contributes 250 through the shared
+  lighting cache. Its authored collision type 73/mask 64 is independently
+  selected by the ghost's temporary mask-64 query. It does not kill nearby
+  ghosts by distance or by scanning the world. The ghost then plays effect
+  59, freezes and dissolves, spawns five separately allocated `SmokeFading`
+  fragments, and completes its own fade. Signed shifts, random-call order,
+  fragment lifetimes/frames and fallback-slot source aliasing are retained.
+  All deletion/replacement uses the existing object lifecycle APIs.
+- `TriggerObject` (205), `0000:4F84..4FE5`, is a one-time pickup filter.
+  A weapon is removed if its indexed inventory-slot word is positive;
+  ammo is removed when its indexed signed amount reaches word 40.
+  Otherwise it clears its own behavior and leaves an ordinary pickup.
+  Original level-20 crossbow slot 26 uses weapon index 3; ammo slot 45
+  uses the same index with threshold 6. Invalid indices are reported.
+
+Evidence: [dispatch wrappers and pickup filter](level-nineteen-twenty-dispatch-evidence.txt),
+[dig/buried/leash/ghost routines](level-nineteen-twenty-routines-evidence.txt),
+and [floating-point square root and map predicate](level-nineteen-twenty-support-evidence.txt).
+Pascal floating-point emulator interrupts must not be interpreted as the
+linear disassembler's apparent unrelated integer instructions.
+
+`level-nineteen-twenty` tests digging/reveal/pickup, the body-mode gate and
+burial query order, leash boundaries, bell timing/zero effects, both pickup
+filters, ghost motion/damage/dormancy, complete light death and five
+fragments, tick batching and full-world fallback aliasing. Original assets
+verify digging up and collecting the level-19 key and 300 full gameplay
+frames in each level, activating level-20 ghost group 40 during the run.
+Only the two explicitly loader-owned presentation selectors are excluded
+from the missing-handler assertion.
 
 ### Cave levels 17 and 18
 
@@ -2695,8 +2827,14 @@ on the weapon ID at offset 34. Original assets confirm the distinction:
 | 24 (scythe) | `OBJPOS30.DAT`, slot 94 | 18 | Yes |
 
 These are original object-table values; later item mutation or pickup conversion
-can change the field. The native test does **not** establish removal of the
-shovel. Keys have collision type 6, so this weapon-only loop does not remove them.
+can change the field. Rechecking the original level-19 shovel (slot 75)
+also finds placement mode 0. The native pickup conversion at
+`0EF0:10C6..10E4` replaces word 46 with byte 53 only for placement mode 20,
+so that conversion does not change this shovel's value 10 to its scale 64.
+See [pickup-copy evidence](player-collision-evidence.txt). The native test
+therefore does **not** establish removal of the shovel; a separate removal
+path, if any, remains unverified. Keys have collision type 6, so this
+weapon-only loop does not remove them.
 The author's subsequent original-game test confirms that an unused level-10
 key survives into the next level, where doors report "wrong key". Thus at least
 this transition does not discard all keys; do not introduce a blanket key purge
@@ -3277,17 +3415,24 @@ the incoming delta when DS:`2DDD` is nonzero, clamps the meter and can invoke
 the shared player-death path on depletion. Subsequent skeleton recovery identified
 DS:`0300` as the immutable signed dword **-29491** and implemented the player
 meter update/depletion state; see [skeleton recovery](#skeleton-movement-combat-and-death).
-The automatic rat/snake contact cascade and the DS:`D514` presentation consumer
-remain separate player systems; **rat/snake contact damage is not implemented**.
-`UpdatePlayerInteraction` still handles interaction-key/door contact only.
-Do not subtract guessed damage from the player's object `health` or add
-damage in the rat movement handler: that would use the wrong storage or
-duplicate the original shared contact path.
+`UpdatePlayerInteraction` now routes rat/snake collision type 13 through
+`HandleDamageObjectContact`, alongside the existing damaging enemy contacts.
+Fly collision type 16 joins the same native branch at `0000:DB3E` and uses
+the same helper. Each selected overlapping object applies byte 52 times
+-29491 once per interaction update, without Enter, and sets hit-effect ticks
+to 8. Zero byte 52 remains harmless. The shared player-life API preserves
+damage suppression, the collision cheat, clamping and depletion state.
+Damage is not added to movement handlers or subtracted from the player's
+object `health`, avoiding duplicate damage and the wrong storage.
 
 [RatSnakeTests.cpp](Scaffold/RatSnakeTests.cpp) covers 65,536 seeded movement
 fixtures, exact health gates, tick/RNG order, steering, zero bounds, both
 direction tables, angle normalization, all 512 binary neighborhood patterns,
 16-attempt diagnostics/discard, sound admission and **all 40 original records**.
+Contact regressions cover both collision types for all 256 damage-byte values,
+normal/suppressed/cheat states, lethal damage, collision/lifetime gates and
+repeated overlap. Original records verify the 19 rats/snakes in levels
+12/13/14/19 and both level-16 fly objects.
 Asset checks use explicit dummy terrain/map, not native level reconstruction.
 This is statically recovered and host-tested, not DOS-runtime validated.
 

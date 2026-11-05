@@ -187,6 +187,7 @@ namespace GamePlay
         DestroyableRoof = 182, // roof part that is destroyed by lightning in level 36
         RoofTopThunderHandler2 = 183, // not sure what this does
         RoofTopThunderHandler3 = 184, // not sure what this does
+        PeriodicGlobalSound = 158, // Church bell in level 19; periodic sound without distance attenuation.
         AmbientSoundPosition = 190, // Used in various places for occasional 3d sound
         LavaSmoke = 200, // Probably turns off itself when flooded
         TrackFireAnimation = 202,
@@ -202,7 +203,6 @@ namespace GamePlay
         Behavior_111 = 111, // Something in the ending village cutscene. One instance assigned to the shovel
         WindController = 108,
         Behavior_148 = 148, // something I could not locate in level 35
-        Behavior_158 = 158, // Something in the cathedral outdoor (level 19), assigned to tree model
         Behavior_161 = 161, // Something in the ending merlin cutscene
         Behavior_170 = 170, // Something in the ending village cutscene. 2 instances assigned to grates
         Behavior_178 = 178, // the barrel in the staircase, probably manages the staircase up/down teleport

@@ -233,6 +233,10 @@ namespace
                 entry.type == BehaviorType::BatIndoor || entry.type == BehaviorType::Mummie ||
                 entry.type == BehaviorType::SpiderLarge || entry.type == BehaviorType::Harvestman ||
                 entry.type == BehaviorType::Scorpion || entry.type == BehaviorType::RotatingMachineCenter ||
+                entry.type == BehaviorType::DiggableGround || entry.type == BehaviorType::Buried ||
+                entry.type == BehaviorType::DogLeash || entry.type == BehaviorType::PeriodicGlobalSound ||
+                entry.type == BehaviorType::Ghost || entry.type == BehaviorType::LightRayKillsGhost ||
+                entry.type == BehaviorType::TriggerObject ||
                 entry.type == BehaviorType::Dog || entry.type == BehaviorType::BonesToGrab ||
                 entry.type == BehaviorType::AttachableDamageObject || entry.type == BehaviorType::KrakenHead ||
                 entry.type == BehaviorType::Devil || entry.type == BehaviorType::Gorilla ||

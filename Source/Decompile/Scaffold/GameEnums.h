@@ -156,7 +156,7 @@ namespace Desperabis
         GrandfatherClock = 155, // level 35
         GrandfatherClockHand = 156, // level 35, hours and minutes
         GrandfatherClockPendulum = 157, // level 35, hours and minutes
-        Behavior_158 = 158, // Something in the cathedral outdoor (level 19), assigned to tree model
+        PeriodicGlobalSound = 158, // Church bell in level 19; periodic sound without distance attenuation.
         RotateKnightsInClock = 159,
         Behavior_161 = 161, // Something in the ending merlin cutscene
         KnightsCrossbow = 162, // level 31
