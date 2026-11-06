@@ -1033,9 +1033,28 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::DestroyableBarrier, 0x1B64 };
     }
 
-    DispatchResult Function_VerticalConcreteSlab(RawGameObject&, GameContext&)
+    DispatchResult Function_VerticalConcreteSlab(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::VerticalConcreteSlab, 0x1B77 };
+        object.generalPurpose2 = static_cast<std::uint16_t>(object.generalPurpose2 + 100 * context.tickCount);
+        if (object.itemValue >= WrapSignedWord(object.generalPurpose1))
+        {
+            object.itemValue = WrapSignedWord(object.generalPurpose1);
+            object.generalPurpose2 = 0;
+        }
+        object.itemValue = WrapSignedWord(object.itemValue + WrapSignedWord(object.generalPurpose2) * context.tickCount);
+        object.winZ = WrapSignedWord(128 - object.itemValue / 200);
+        std::uint8_t mapValue = 16;
+        if (object.winZ < 0)
+        {
+            object.winZ = 0;
+            object.behavior = BehaviorType::None;
+            mapValue = 2;
+            context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+                GameContext::GetSoundVolume(0), object, 1);
+        }
+        context.SetBarrierCollisionMapAtWorldXZ(object.posX, object.posZ,
+            WrapSignedWord(object.winY + 128), mapValue);
+        return { DispatchStatus::ExecutedCase, BehaviorType::VerticalConcreteSlab, 0x1B77 };
     }
 
     DispatchResult Function_Behavior_28(RawGameObject&, GameContext&)
@@ -1785,9 +1804,15 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::SwitchGrouped, 0x2065 };
     }
 
-    DispatchResult Function_RopeSwitch(RawGameObject&, GameContext&)
+    DispatchResult Function_RopeSwitch(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::RopeSwitch, 0x2078 };
+        object.velocityZ = static_cast<std::int16_t>((object.velocityZ + object.velocityX * context.tickCount) & 511);
+        object.blendWeightOrSpriteOpacity = WrapSignedWord(SineOffset(object.velocityZ, 50) + 50);
+        if (context.FindWorldObjectSlot(object) == context.playerCollisionSlot)
+        {
+            object.blendWeightOrSpriteOpacity = 0;
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::RopeSwitch, 0x2078 };
     }
 
     DispatchResult Function_Switch3(RawGameObject&, GameContext&)
@@ -2101,9 +2126,15 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::RechargeElectricity, 0x277C };
     }
 
-    DispatchResult Function_Lorry(RawGameObject&, GameContext&)
+    DispatchResult Function_Lorry(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Lorry, 0x27B1 };
+        if (object.doorLockOrGroupBitmask > 0)
+        {
+            const auto slot = context.FindWorldObjectSlot(object);
+            if (slot < 1) { throw std::invalid_argument("Controlled lorry requires a world-object slot."); }
+            context.controlledVehicleSlot = static_cast<std::uint16_t>(slot);
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::Lorry, 0x27B1 };
     }
 
     DispatchResult Function_MummieGuard(RawGameObject& object, GameContext& context)
@@ -2590,9 +2621,19 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::SinkingObject, 0x3746 };
     }
 
-    DispatchResult Function_BurriedVerticalDoor(RawGameObject&, GameContext&)
+    DispatchResult Function_BurriedVerticalDoor(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::BurriedVerticalDoor, 0x377F };
+        if (object.generalPurpose3 >= context.worldObjects.size())
+        {
+            throw std::out_of_range("Buried door link is outside native world-object slots.");
+        }
+        if (context.worldObjects[object.generalPurpose3].behavior == BehaviorType::None)
+        {
+            object.behavior = BehaviorType::Teleporter;
+            object.collisionMask = 3;
+            object.generalPurpose3 = 100;
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::BurriedVerticalDoor, 0x377F };
     }
 
     DispatchResult Function_Teleporter(RawGameObject& object, GameContext& context)
@@ -2618,19 +2659,74 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::LevelStartOverride, 0x37DD };
     }
 
-    DispatchResult Function_DirtFromAbove(RawGameObject&, GameContext&)
+    DispatchResult Function_DirtFromAbove(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::DirtFromAbove, 0x381A };
+        if (object.health == 1000)
+        {
+            const auto volume = context.GetSoundVolumeAt(object.posX, object.posZ);
+            for (int tick = 0; tick < context.tickCount; ++tick)
+            {
+                const auto floor = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
+                object.velocityY = WrapSignedWord(object.velocityY + 1);
+                object.posY = WrapSignedWord(object.posY - ArithmeticShiftRight(object.velocityY, 1));
+                if (WrapSignedWord(object.posY - context.GetPlayerCamera().position[1]) < 10 &&
+                    object.renderPlacementMode > 0)
+                {
+                    object.renderPlacementMode = 7;
+                }
+                object.blendWeightOrSpriteOpacity = WrapSignedWord(
+                    object.blendWeightOrSpriteOpacity + ArithmeticShiftRight(object.velocityY, 2));
+                if (object.posY < floor)
+                {
+                    context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId), volume, object, 1);
+                    object.collisionMask = 0;
+                    object.collisionType = CollisionType::None;
+                    object.soundEffectId = 0;
+                    if (object.blendWeightOrSpriteOpacity > 100)
+                    {
+                        object.blendWeightOrSpriteOpacity = 100;
+                        object.behavior = BehaviorType::None;
+                    }
+                    object.posY = floor;
+                }
+                for (const auto slot : context.FindCollidingObjects(object))
+                {
+                    context.DamageObject(context.worldObjects[slot], object.groupIndexOrLock);
+                }
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::DirtFromAbove, 0x381A };
     }
 
-    DispatchResult Function_DirtFromAboveShutter(RawGameObject&, GameContext&)
+    DispatchResult Function_DirtFromAboveShutter(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::DirtFromAboveShutter, 0x3853 };
+        if (object.health == 1000)
+        {
+            const auto volume = context.GetSoundVolumeAt(object.posX, object.posZ);
+            for (int tick = 0; tick < context.tickCount; ++tick)
+            {
+                const auto direction = SignWord(WrapSignedWord(object.itemValue - object.winZ));
+                object.generalPurpose2 = static_cast<std::uint16_t>(direction);
+                object.velocityZ = WrapSignedWord(object.velocityZ + direction);
+                object.winZ = WrapSignedWord(object.winZ + ArithmeticShiftRight(object.velocityZ, 1));
+                if (SignWord(WrapSignedWord(object.itemValue - object.winZ)) != direction)
+                {
+                    object.velocityZ = ArithmeticShiftRight(object.velocityZ, 1);
+                    if (object.velocityZ == 0) { object.behavior = BehaviorType::None; }
+                    context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId), volume, object, 1);
+                }
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::DirtFromAboveShutter, 0x3853 };
     }
 
-    DispatchResult Function_CeilingConcreteSlab(RawGameObject&, GameContext&)
+    DispatchResult Function_CeilingConcreteSlab(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::CeilingConcreteSlab, 0x388C };
+        if (context.field_D500 && context.FindCollidingObject(object) == 0)
+        {
+            object.behavior = static_cast<BehaviorType>(object.itemValue);
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::CeilingConcreteSlab, 0x388C };
     }
 
     DispatchResult Function_BurnableOilPuddle(RawGameObject& object, GameContext& context)
@@ -2683,9 +2779,13 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::BurnableOilPuddle, 0x38B5 };
     }
 
-    DispatchResult Function_CeilingConcreteSlabStake(RawGameObject&, GameContext&)
+    DispatchResult Function_CeilingConcreteSlabStake(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::CeilingConcreteSlabStake, 0x390C };
+        if (context.field_D500 && (object.groupIndexOrLock < 0 || context.OverlapsPlayer(object)))
+        {
+            object.behavior = static_cast<BehaviorType>(object.itemValue);
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::CeilingConcreteSlabStake, 0x390C };
     }
 
     DispatchResult Function_UnreachableKey(RawGameObject&, GameContext&)
@@ -2926,9 +3026,20 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_163, 0x48AE };
     }
 
-    DispatchResult Function_RotatingBlades(RawGameObject&, GameContext&)
+    DispatchResult Function_RotatingBlades(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::RotatingBlades, 0x4997 };
+        object.winZ = static_cast<std::int16_t>((object.winZ + object.velocityZ * context.tickCount) & 511);
+        const auto distance = context.GetSoundDistanceAt(object.posX, object.posZ);
+        const auto delta = WrapSignedWord(distance - WrapSignedWord(object.generalPurpose1));
+        const auto speed = std::clamp<int>(WrapSignedWord(std::abs(static_cast<int>(delta))), 1, 100);
+        object.behaviorParameter = static_cast<std::uint8_t>(speed * object.doorLockOrGroupBitmask);
+        if (context.OverlapsPlayer(object))
+        {
+            context.ApplyPlayerLifeDelta(-29491 * speed * speed);
+            context.playerHitEffectTicks = 8;
+        }
+        object.generalPurpose1 = static_cast<std::uint16_t>(distance);
+        return { DispatchStatus::ExecutedCase, BehaviorType::RotatingBlades, 0x4997 };
     }
 
     DispatchResult Function_ActionObjectToGrab(RawGameObject&, GameContext&)

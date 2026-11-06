@@ -246,6 +246,11 @@ namespace
                 entry.type == BehaviorType::SinkingObject ||
                 entry.type == BehaviorType::FireParticle || entry.type == BehaviorType::BurningFireplace ||
                 entry.type == BehaviorType::PulsatingLight ||
+                entry.type == BehaviorType::VerticalConcreteSlab || entry.type == BehaviorType::RopeSwitch ||
+                entry.type == BehaviorType::Lorry || entry.type == BehaviorType::BurriedVerticalDoor ||
+                entry.type == BehaviorType::DirtFromAbove || entry.type == BehaviorType::DirtFromAboveShutter ||
+                entry.type == BehaviorType::CeilingConcreteSlab || entry.type == BehaviorType::CeilingConcreteSlabStake ||
+                entry.type == BehaviorType::RotatingBlades ||
                 entry.type == BehaviorType::IdleAnimation ||
                 entry.type == BehaviorType::SmokeFading || entry.type == BehaviorType::Switch1 ||
                 entry.type == BehaviorType::WalkablePlanks || entry.type == BehaviorType::WalkableDrawBridge ||
@@ -2070,8 +2075,7 @@ namespace
             "Host interaction requests must reject inactive selected objects.");
         for (const auto type : { CollisionType::BookWithCode,
             CollisionType::WheelToLiftRope, CollisionType::VaseToGrab, CollisionType::MirrorToGrab,
-            CollisionType::SarcophagusWithBones,
-            CollisionType::Lorry })
+            CollisionType::SarcophagusWithBones })
         {
             auto unsupported = pickup(type);
             const auto before = unsupported;

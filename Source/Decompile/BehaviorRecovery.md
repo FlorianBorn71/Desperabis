@@ -157,10 +157,10 @@ it deliberately does not make the first sewer's harmless tentacles hurt.
 values, suppression/depletion and collision gates, plus all 91 original
 tentacles, 34 rats/snakes and two flies across the audited levels.
 
-### Level 23 implementation audit
+### Level 23 mine behaviors
 
 The positive-health original `OBJPOS23.DAT` records contain nine behavior
-types whose core handlers still return `UnimplementedHandler`:
+types recovered in the mine implementation (all now execute):
 
 | Selector | Behavior | Original slots |
 |---|---|---|
@@ -174,21 +174,66 @@ types whose core handlers still return `UnimplementedHandler`:
 | 126 | CeilingConcreteSlabStake | 22, 24 |
 | 164 | RotatingBlades | 102, 103 |
 
-These are twelve objects, not twelve distinct behaviors. Lorry collision
-78 and blade collision 103 also need player-interaction/contact recovery.
-The rope already uses generic switch collision 4, but its behavior is
-missing. Dirt source/shutter begin at health 1001, so their native
-health-1000 update gate matters.
+These are twelve objects, not twelve distinct behaviors.
+[Dispatch evidence](mine-dispatch-evidence.txt),
+[support/cart/blade evidence](mine-support-evidence.txt) and
+[fixed-point movement evidence](mine-cart-movement-evidence.txt) provide
+the native routines behind the implementation:
 
-The bounded [dispatch evidence](level-twenty-three-animation-evidence.txt)
-confirms that the buried door becomes Teleporter (120), collision mask 3
-and word 40 = 100 when its linked object's behavior becomes zero. The
-ceiling slab changes behavior to its itemValue (authored 122) when its
-support collision disappears; its stake similarly checks support before
-switching. RopeSwitch updates its sine-derived word-42 presentation
-parameter, with a special currently-interacted-object override. Lorry's
-wrapper registers the object in DS:05CC while word 46 is positive; that
-wrapper alone is not the full vehicle interaction.
+- **Vertical slab (27):** word 38 accelerates its signed word-34 accumulator;
+  roll is `128 - word34/200`. It writes a three-pixel barrier value 16,
+  then value 2 and its landing sound when roll becomes negative. Existing
+  collision-26 damage releases its word-36 limit. Map writes use the
+  upload-dirty helpers.
+- **Rope (52):** advances its sine phase by velocityX times behavior ticks,
+  maps it to word 42 around 50, and overrides that value to zero while
+  contacted. Its existing generic collision-4 switch remains in use.
+- **Buried exit (119):** waits for the linked object's *behavior*, not
+  health, to become zero; then installs Teleporter (120), mask 3 and
+  word 40 = 100. Digging the original linked earth therefore exposes
+  the existing teleporter path.
+- **Dirt (122):** only starts at health exactly 1000, falls with signed
+  half-velocity steps, changes placement near the camera and applies
+  authored word-44 damage to overlapping objects. Landing disables
+  collision before collecting contacts, clears its sound and eventually
+  caps morph at 100 and retires the behavior.
+- **Shutter (123):** the same health gate precedes its damped target-roll
+  oscillator. Its signed half-steps are preserved: the original -128
+  target settles with velocity one, so its harmless active behavior is
+  not forcibly retired.
+- **Ceiling slab (124):** changes to its authored itemValue behavior
+  (122) once support collision disappears. **Stake (126)** instead
+  releases when word 44 becomes negative or the player overlaps it;
+  it does *not* perform the slab's support check. Both honor DS:D500.
+- **Blades (164):** rotate by velocityZ times behavior ticks and derive
+  speed from the change in native Manhattan player distance, clamped
+  to 1..100. Contact applies `-29491 * speed * speed` to player life.
+  Collision 103 also uses the shared direct-contact damage-byte route,
+  with suppression, clamping and death handled centrally.
+
+**Lorry (78) includes the complete separate movement path**, not just
+registration. Enter boards state 0; Enter while rolling sets brake morph
+100 and plays the authored sound. The registered cart advances on
+**player-frame ticks**, independently of object behavior ticks:
+speed approaches 4000 (or 1500 while braking) by 60, preserving native
+8-bit X/Z movement fractions. The camera follows cart position plus
+player body height. Track fires receive `DamageObject(-1)`; collision-9
+obstacles are removed through lifecycle hooks and start the crash.
+Crash states 2/3 apply gravity, halve speed on landing, select frame 3,
+roll to 256 and finally clear behavior/collision and release the player.
+Rolling and landing sounds preserve their native source/instance limits.
+
+Modern integration validates linked/vehicle slots rather than indexing
+outside the object array. The transient DS:05CC vehicle registration is
+rebuilt from positive-health Lorry records with positive word 46 after
+fresh/save loading; this does not rewrite saved object records or add
+fields to the original save format.
+
+[MineTests.cpp](Scaffold/MineTests.cpp) audits all live original mine
+selectors and tests all twelve recovered objects, native arithmetic and
+gates, original support collapse/dirt/shutter/digging chains, both blade
+damage paths, boarding/braking, frame-clock batching, fire extinguishing,
+crash/lifecycle completion and exact saved-cart continuation.
 
 **Fireplace texture tracking is restored.** There is no additional
 live unknown behavior selector corresponding to it in this table. The

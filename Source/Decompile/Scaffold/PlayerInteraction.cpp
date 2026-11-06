@@ -79,6 +79,7 @@ namespace Desperabis
             object.collisionType == CollisionType::RatAndSnake ||
             object.collisionType == CollisionType::Flies ||
             object.collisionType == CollisionType::AttachableDamageObject ||
+            object.collisionType == CollisionType::RotatingBlades ||
             object.collisionType == CollisionType::BatIndoor ||
             object.collisionType == CollisionType::Shark ||
             object.collisionType == CollisionType::AnacondaTail ||

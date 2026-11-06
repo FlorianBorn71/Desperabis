@@ -169,6 +169,24 @@ namespace Desperabis
         case CollisionType::Switch:
             return HandleSwitchInteraction(object, state);
 
+        case CollisionType::Lorry:
+            if (object.doorLockOrGroupBitmask == 0)
+            {
+                const auto slot = state.FindWorldObjectSlot(object);
+                if (slot < 1) { throw std::invalid_argument("Boarding a lorry requires a world-object slot."); }
+                object.doorLockOrGroupBitmask = 1;
+                state.controlledVehicleSlot = static_cast<std::uint16_t>(slot);
+                return { InteractionStatus::Applied };
+            }
+            if (object.doorLockOrGroupBitmask == 1)
+            {
+                object.blendWeightOrSpriteOpacity = 100;
+                state.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+                    GameContext::GetSoundVolume(static_cast<std::int16_t>(state.Random(500))), object, 1);
+                return { InteractionStatus::Applied };
+            }
+            return { InteractionStatus::NoEffect };
+
         case CollisionType::GroupedSwitch:
             if (object.generalPurpose2 == 0)
             {
@@ -234,7 +252,6 @@ namespace Desperabis
         case CollisionType::VaseToGrab:
         case CollisionType::MirrorToGrab:
         case CollisionType::SarcophagusWithBones:
-        case CollisionType::Lorry:
             return { InteractionStatus::UnimplementedHandler };
 
         default:

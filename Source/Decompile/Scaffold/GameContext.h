@@ -399,6 +399,7 @@ namespace Desperabis
         bool DEBUG_noPlayerCollision = false; // Host cheat: bypass player walls and suppress negative life deltas.
         bool discardBlockedObjects = false; // DS:D501; false exposes the native WC-Error diagnostic path.
         std::uint16_t playerCollisionSlot = 0;
+        std::uint16_t controlledVehicleSlot = 0; // DS:05CC; rebuilt from active lorry records on load.
         Level* level = nullptr;
         std::int16_t floorSurfaceValue = -1; // DS:D4CC, meaning not fully established.
         std::int16_t floorRepeatHeight = 0; // DS:D4CE, in raw heightfield units.
@@ -644,6 +645,7 @@ namespace Desperabis
         void PrepareLevelProgression(bool changingLevel);
         void FinishGamePart();
         BasicPlayerMovementResult UpdateBasicPlayerMovement(InputHandler& input);
+        bool UpdateControlledLorry();
         void UpdatePlayerDeathCamera();
         void UpdatePlayerUnderwater();
         void RefreshUnderwaterPresentation();

@@ -375,6 +375,15 @@ namespace Desperabis
         lightingCache = newLighting;
         field_DC34 = 0;
         if (pendingSaveGame) { RestoreSaveGame(); }
+        controlledVehicleSlot = 0;
+        for (std::size_t slot = 2; slot <= 164; ++slot)
+        {
+            const auto& object = worldObjects[slot];
+            if (object.health > 0 && object.behavior == BehaviorType::Lorry && object.doorLockOrGroupBitmask > 0)
+            {
+                controlledVehicleSlot = static_cast<std::uint16_t>(slot);
+            }
+        }
         if (DEBUG_noPlayerCollision) { ApplyPlayerLifeDelta(0); }
         loadedLevelNumber = pendingLevelLoad->levelNumber;
         if (!restoringSave)
@@ -464,6 +473,105 @@ namespace Desperabis
         if (playerVerticalSpeed > 0) { playerVerticalSpeed = 0; }
     }
 
+    bool GameContext::UpdateControlledLorry()
+    {
+        if (controlledVehicleSlot == 0) { return false; }
+        if (controlledVehicleSlot >= worldObjects.size())
+        {
+            throw std::out_of_range("Controlled vehicle is outside native world-object slots.");
+        }
+        auto& cart = worldObjects[controlledVehicleSlot];
+        if (cart.health <= 0 || cart.behavior != BehaviorType::Lorry || cart.doorLockOrGroupBitmask <= 0)
+        {
+            controlledVehicleSlot = 0;
+            return false;
+        }
+        if (cart.health == 1000)
+        {
+            const auto state = cart.doorLockOrGroupBitmask;
+            if (state >= 1 && state <= 3)
+            {
+                const auto oldPosition = WrapSignedWord(cart.posX + cart.posZ);
+                if (state == 1)
+                {
+                    cart.itemValue = cart.blendWeightOrSpriteOpacity == 0 ? 4000 : 1500;
+                    cart.collisionType = CollisionType::Lorry;
+                    cart.collisionMask = 4;
+                }
+                cart.generalPurpose1 = static_cast<std::uint16_t>(WrapSignedWord(cart.generalPurpose1) +
+                    GetStepToward(WrapSignedWord(cart.generalPurpose1), cart.itemValue, 60));
+                std::int16_t dx, dz, unused;
+                GetClampedDirectionDisplacement(dx, unused, cart.winY,
+                    WrapSignedWord(-WrapSignedWord(cart.generalPurpose1)));
+                GetClampedDirectionDisplacement(unused, dz, cart.winY, WrapSignedWord(cart.generalPurpose1));
+                // 37E4 adds both fixed-point fractions before consuming their signed high bytes.
+                AddFixedPoint8(cart.posX, cart.velocityX, dx);
+                AddFixedPoint8(cart.posZ, cart.velocityZ, dz);
+                auto floor = GetTerrainFloorHeight(cart.posX, cart.posY, cart.posZ);
+                if (cart.winZ != 0) { floor = WrapSignedWord(floor + 30); }
+                cart.collisionMask = 32;
+                const auto hit = FindCollidingObject(cart);
+                cart.collisionMask = 3;
+                if (hit > 2)
+                {
+                    auto& target = worldObjects[hit];
+                    if (target.collisionType == CollisionType::PushPlayer)
+                    {
+                        cart.doorLockOrGroupBitmask = 2;
+                        SetObjectHealth(target, 0);
+                    }
+                    else if (target.collisionType == CollisionType::DamageObj) { DamageObject(target, -1); }
+                }
+                if (state == 1)
+                {
+                    if (cart.posY <= floor) { cart.velocityY = 0; cart.posY = floor; }
+                    else
+                    {
+                        cart.velocityY = WrapSignedWord(cart.velocityY - 1);
+                        cart.posY = WrapSignedWord(cart.posY + ArithmeticShiftRight(cart.velocityY, 1));
+                    }
+                    cart.blendWeightOrSpriteOpacity = WrapSignedWord(cart.blendWeightOrSpriteOpacity +
+                        GetStepToward(cart.blendWeightOrSpriteOpacity, 0, 10));
+                    if (ArithmeticShiftRight(oldPosition, 7) != ArithmeticShiftRight(WrapSignedWord(cart.posX + cart.posZ), 7))
+                    {
+                        PlaySoundEffect(static_cast<SoundEffect>(68), GetSoundVolumeAt(cart.posX, cart.posZ), cart, 2);
+                    }
+                }
+                else
+                {
+                    cart.velocityY = WrapSignedWord(cart.velocityY - 1);
+                    cart.posY = WrapSignedWord(cart.posY + ArithmeticShiftRight(cart.velocityY, 1));
+                    if (cart.posY < floor)
+                    {
+                        cart.generalPurpose1 = static_cast<std::uint16_t>(cart.itemValue);
+                        cart.itemValue = ArithmeticShiftRight(cart.itemValue, 1);
+                        cart.posY = floor;
+                        cart.velocityY = 0;
+                        cart.animFrame = 3;
+                        if (cart.doorLockOrGroupBitmask == 2)
+                        {
+                            PlaySoundEffect(static_cast<SoundEffect>(37), GetSoundVolume(0), cart, 1);
+                        }
+                        cart.doorLockOrGroupBitmask = 3;
+                        if (cart.generalPurpose1 == 0 && cart.winZ == 256)
+                        {
+                            cart.behavior = BehaviorType::None;
+                            cart.collisionType = CollisionType::None;
+                            cart.collisionMask = 0;
+                        }
+                    }
+                    cart.winZ = WrapSignedWord(cart.winZ + GetStepToward(cart.winZ, 256, 9));
+                }
+            }
+        }
+        auto& player = worldObjects[1];
+        player.posX = cart.posX;
+        player.posZ = cart.posZ;
+        player.posY = WrapSignedWord(cart.posY + playerBodyHeight - player.collisionRadiusY - 2);
+        playerLookHeight = WrapSignedWord(playerLookHeight + GetStepToward(playerLookHeight, playerTargetLookHeight, 5));
+        return true;
+    }
+
     BasicPlayerMovementResult GameContext::UpdateBasicPlayerMovement(InputHandler& input)
     {
         BasicPlayerMovementResult result;
@@ -497,7 +605,7 @@ namespace Desperabis
         playerSidewaysSpeed = WrapSignedWord(playerSidewaysSpeed - SignWord(playerSidewaysSpeed));
         playerTurnSpeed = WrapSignedWord(playerTurnSpeed - SignWord(playerTurnSpeed));
 
-        // TODO: Recover mouse controls and vehicle/attached-object movement.
+        // TODO: Recover mouse controls and other vehicle/attached-object movement.
         for (int tick = 0; tick < frameTickCount; ++tick)
         {
             if (playerLife <= 0)
@@ -521,6 +629,14 @@ namespace Desperabis
             std::int16_t negativeDirectionZ;
             GetDirectionDisplacement(directionX, negativeDirectionZ, playerHeading, 100);
             const auto directionZ = WrapSignedWord(-static_cast<int>(negativeDirectionZ));
+            if (UpdateControlledLorry())
+            {
+                player.velocityX = directionX;
+                player.velocityZ = directionZ;
+                UpdatePlayerUnderwater();
+                ++result.simulatedTicks;
+                continue;
+            }
             const auto signedBob = WrapSignedWord(static_cast<std::int32_t>(
                 static_cast<std::uint32_t>(6 * Sine(playerWalkPhase)) >> 16));
             const auto bob = std::abs(static_cast<int>(signedBob));
