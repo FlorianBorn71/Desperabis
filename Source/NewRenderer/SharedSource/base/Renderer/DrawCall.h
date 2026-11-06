@@ -72,6 +72,13 @@ enum class TransparencyModeMask : uint16_t
 DECLARE_ENUM_FLAGS(TransparencyModeMask);
 
 
+// Model/sprite slots and flat level texture slots are separate namespaces.
+enum class TextureSlotSource : uint8_t
+{
+    Model,
+    Level
+};
+
 struct DrawCallMaterial
 {
     void ComputeHash();
@@ -84,6 +91,7 @@ struct DrawCallMaterial
     bool m_applyLighting = true;
     //bool m_textureRepeat = true;
     char m_textureSlot = -1;
+    TextureSlotSource m_textureSlotSource = TextureSlotSource::Model;
     float m_opacity = 1.0f;
     float m_depthOffset = 0.f;
     float m_mirrorHeight = 0.f; // for mirror objects

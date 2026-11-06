@@ -174,6 +174,7 @@ namespace Desperabis
                 if (!mouth) { throw std::runtime_error("Living dragon model has no muzzle marker."); }
                 if (distance < 200)
                 {
+                    context.OnFireEmitted(context.FindWorldObjectSlot(object), *mouth);
                     context.PlaySoundEffect(static_cast<SoundEffect>(22),
                         context.GetSoundVolumeAt(object.posX, object.posZ), object, 2);
                     if (SpawnDragonShot(object, context, true, *mouth, object.winY)) { break; }
@@ -228,6 +229,7 @@ namespace Desperabis
         if (WrapSignedWord(object.generalPurpose1) < 1 && object.collisionType == CollisionType::Dragon)
         {
             const auto dragon = object;
+            context.FlashLight({dragon.posX, dragon.posY, dragon.posZ}, {255,160,50}, 0.04f, 0.8f, 650.f);
             context.PlaySoundEffect(static_cast<SoundEffect>(32), 255, -1, 1);
             context.PlaySoundEffect(static_cast<SoundEffect>(25), 255, -2, 1);
             for (int part = 0; part < 22; ++part) { SpawnDragonFragment(dragon, context, std::min(part, 2)); }

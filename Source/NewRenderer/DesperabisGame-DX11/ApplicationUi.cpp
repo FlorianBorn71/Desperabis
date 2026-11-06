@@ -340,6 +340,33 @@ FUTURE(void) ApplicationUi::Initialize()
     CO_RETURN;
 }
 
+Vector ApplicationUi::ElectricityTipWorld(const Desperabis::WeaponView& view,
+    const Desperabis::ModelAnchorGeometry& geometry, const Camera& camera, const D3D11_VIEWPORT& viewport)
+{
+    const auto& object = view.object;
+    // Native electricity bolts branch from vertex 3, unchanged in both animated firing frames.
+    const auto& vertex = geometry.animations.at(object.modelAnim - 1).at(object.animFrame - 1).vertices.at(2);
+    ::RawGameObject raw{};
+    Desperabis::EncodeGameObject(object, raw.m_rawBytes, sizeof(raw.m_rawBytes));
+    auto transform = GamePlay::PropertyAccessorBase(raw).GetTransform();
+    transform.SetTranslation(Vector(object.posX * DespToFloat, -object.posY * DespToFloat, -object.posZ * DespToFloat));
+    const auto tip = transform.TransformPosition(Vector(-vertex[0] * DespVertToFloat,
+        -vertex[1] * DespVertToFloat, vertex[2] * DespVertToFloat));
+    if (tip.GetZ() >= 0.f || viewport.Width <= 0.f || viewport.Height <= 0.f)
+    {
+        throw std::invalid_argument("Electricity tip requires a visible weapon and positive viewport.");
+    }
+    const float scale = (std::min)(viewport.Width / Desperabis::WeaponView::Width,
+        viewport.Height / Desperabis::WeaponView::Height);
+    const float px = viewport.Width * 0.5f + 128.f * tip.GetX() / -tip.GetZ() * scale;
+    const float py = viewport.Height - Desperabis::WeaponView::Height * scale +
+        (view.projectionCenterY - 128.f * tip.GetY() / -tip.GetZ()) * scale;
+    auto ray = camera.GetProjectionMatrix(0).GetInverse().TransformPosition(
+        Vector(px / viewport.Width * 2.f - 1.f, 1.f - py / viewport.Height * 2.f, 0.5f));
+    ray *= -tip.GetZ() / std::fabs(ray.GetZ());
+    return camera.GetCameraTransformMatrix(0).TransformPosition(ray);
+}
+
 void ApplicationUi::DrawWeapon(const Desperabis::WeaponView& view, RendererDX11& renderer, const Level& level,
     const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
     ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView)

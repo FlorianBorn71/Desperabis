@@ -6,12 +6,91 @@
 #include <Renderer/RenderableInstance.h>
 #include <Scene/GameObject.h>
 #include <GamePlay/GamePlay.h>
+#include <stdexcept>
+#include <Renderer/LightSource.h>
+#include <cmath>
 
 LevelScene::LevelScene(int levelIndex, std::shared_ptr<Level> loadedLevel)
     : m_levelIndex(levelIndex), m_loadedLevel(std::move(loadedLevel))
 {
     m_renderInstances.reserve(512);
     m_gameObjects.reserve(512);
+}
+
+LevelScene::~LevelScene()
+{
+    ClearObjectPresentations();
+}
+
+void LevelScene::FlashLight(const Vector& position, const Color4& color, float fadeInSeconds, float fadeOutSeconds, float radius)
+{
+    if (!std::isfinite(radius) || radius <= 0.f) { throw std::invalid_argument("Flash radius must be finite and positive."); }
+    auto light = std::make_shared<LightFlashSource>(this, fadeInSeconds, fadeOutSeconds);
+    light->SetPosition(position);
+    light->SetColor(color, 4.f);
+    light->SetRadius(radius);
+    m_lightFlashes.push_back(light);
+    AddLightSource(light);
+}
+
+void LevelScene::FireEmitted(int slot, const RawGameObject& object, const Vector& position)
+{
+    UpdateObjectPresentation(slot, object);
+    if (auto& context = m_objectPresentations.at(slot)) { context->FireEmitted(position); }
+}
+
+void LevelScene::SetElectricityLight(bool firing, const Vector& tip)
+{
+    if (!firing)
+    {
+        if (m_electricityLight) { RemoveLightSource(m_electricityLight); m_electricityLight.reset(); }
+        return;
+    }
+    if (!m_electricityLight)
+    {
+        m_electricityLight = std::make_shared<LightSource>(this);
+        m_electricityLight->SetColor({70,210,255}, 2.f);
+        m_electricityLight->SetCoronaColorMod({255,255,255});
+        m_electricityLight->SetRadius(160.f * DespToFloat);
+        m_electricityLight->SetCoronaSize(4.f * DespToFloat);
+        AddLightSource(m_electricityLight);
+    }
+    m_electricityLight->SetPosition(tip);
+}
+
+const std::shared_ptr<ObjectPresentationContext>& LevelScene::GetObjectPresentation(int slot) const
+{
+    if (slot < 1 || slot >= static_cast<int>(ObjectSlotCount))
+    {
+        throw std::out_of_range("Object presentation slots must be in 1..165.");
+    }
+    return m_objectPresentations.at(slot);
+}
+
+void LevelScene::RemoveObjectPresentation(int slot)
+{
+    GetObjectPresentation(slot);
+    auto& context = m_objectPresentations.at(slot);
+    if (context) { context->Remove(*this); context.reset(); }
+}
+
+void LevelScene::ClearObjectPresentations()
+{
+    for (int slot = 1; slot < static_cast<int>(ObjectSlotCount); ++slot) { RemoveObjectPresentation(slot); }
+}
+
+void LevelScene::UpdateObjectPresentation(int slot, const RawGameObject& object, RenderableInstance* instance)
+{
+    GetObjectPresentation(slot);
+    auto& context = m_objectPresentations.at(slot);
+    if (GamePlay::PropertyAccessorBase(object).GetHealth() <= 0)
+    {
+        RemoveObjectPresentation(slot);
+        return;
+    }
+    if (context && !context->Matches(object)) { RemoveObjectPresentation(slot); }
+    if (!context) { context = GamePlay::CreateObjectPresentation(*this, slot, object, instance); }
+    else { context->Update(object, instance); }
 }
 
 //#define SINGLE_OBJECT
@@ -39,25 +118,44 @@ FUTURE(void) LevelScene::CreateScene()
     {
         m_level = CO_AWAIT assets.LoadLevel(m_levelIndex);
     }
-    m_playerLight = CO_AWAIT m_level->PopulateScene(*this, m_createGameObjects, m_createMapIcons);
+    m_playerLight = CO_AWAIT m_level->PopulateScene(*this, m_createGameObjects, m_createMapIcons,
+        [this](int slot, const RawGameObject& object, RenderableInstance* instance)
+        {
+            UpdateObjectPresentation(slot, object, instance);
+        });
 #endif
     m_sceneReady = true;
 }
 
 void LevelScene::ClearScene()
 {
+    ClearObjectPresentations();
     Scene::ClearScene();
     m_playerLight.reset();
+    m_lightFlashes.clear();
+    m_electricityLight.reset();
 }
 
 void LevelScene::Update(double elapsedTime)
 {
+    if (!std::isfinite(elapsedTime) || elapsedTime < 0.0)
+    {
+        throw std::invalid_argument("Scene time must be finite and nonnegative.");
+    }
     if (!m_sceneReady)
     {
         return;
     }
 
+    for (const auto& context : m_objectPresentations) { if (context) { context->Advance(elapsedTime); } }
     Scene::Update(elapsedTime);
+    m_lightFlashes.erase(std::remove_if(m_lightFlashes.begin(), m_lightFlashes.end(),
+        [this](const auto& light)
+        {
+            if (!light->IsFinished()) { return false; }
+            RemoveLightSource(light);
+            return true;
+        }), m_lightFlashes.end());
 }
 
 const GridCellArray* LevelScene::GetGrid() const

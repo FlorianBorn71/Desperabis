@@ -208,7 +208,8 @@ void Scene::AssignFireAnimations(RenderableInstance& inst)
     const auto needsAnimation = [&](const DrawCallMaterial& material)
     {
         const int slot = material.m_textureSlot;
-        return slot >= 0 && (material.m_texture == nullptr ||
+        return material.m_textureSlotSource == TextureSlotSource::Model &&
+            slot >= 0 && (material.m_texture == nullptr ||
             (slot < 16 && m_fireAnimations[slot].m_torchAnim != nullptr));
     };
 
@@ -257,7 +258,8 @@ void Scene::HandleFireAnimations(double elapsedTime)
     {
         if (anim.m_materialIndex >= anim.m_targetInstance->m_materialOverride.size()) { continue; }
         DrawCallMaterial& mat = anim.m_targetInstance->m_materialOverride[anim.m_materialIndex];
-        if (mat.m_textureSlot != anim.m_textureSlot) { continue; }
+        if (mat.m_textureSlotSource != TextureSlotSource::Model ||
+            mat.m_textureSlot != anim.m_textureSlot) { continue; }
         if (mat.m_textureSlot < 0 || mat.m_textureSlot >= 16)
         {
             throw std::out_of_range("Fire animation material references an invalid texture slot.");

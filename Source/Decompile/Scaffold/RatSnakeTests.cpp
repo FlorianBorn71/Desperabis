@@ -344,7 +344,8 @@ namespace
                     f.context.tickCount = 17;
                     const auto life = f.context.playerLife;
                     const auto result = f.Contact();
-                    const auto expected = suppression == 0 ? std::max(0, life - 29491 * damage) : life;
+                    const auto expected = suppression == 2 && damage > 0 ? f.context.playerLifeMaximum * 65536 :
+                        suppression == 0 ? std::max(0, life - 29491 * damage) : life;
                     Check(f.context.playerLife == expected &&
                         result.status == (damage == 0 ? InteractionStatus::NoEffect : InteractionStatus::Applied) &&
                         f.context.playerHitEffectTicks == (damage == 0 ? 3 : 8),

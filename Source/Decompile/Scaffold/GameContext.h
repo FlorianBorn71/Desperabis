@@ -195,6 +195,15 @@ namespace Desperabis
             std::uint16_t linkedPolygon = 0) const;
     };
 
+    struct LightFlash
+    {
+        std::array<std::int16_t, 3> position{};
+        std::array<std::uint8_t, 3> color{};
+        float fadeInSeconds = 0.f;
+        float fadeOutSeconds = 0.f;
+        float radius = 200.f; // Native world units.
+    };
+
     struct LightningLine
     {
         std::int16_t x1, y1, x2, y2;
@@ -320,6 +329,10 @@ namespace Desperabis
         // Destruction sees the old record; creation sees the initialized replacement.
         // Hooks must not throw or mutate the world/reenter gameplay.
         virtual void OnObjectCreated(int slot);
+        virtual void OnLightFlash(const LightFlash& flash);
+        virtual void OnFireEmitted(int slot, const std::array<std::int16_t, 3>& position);
+        void FlashLight(const std::array<std::int16_t, 3>& position,
+            const std::array<std::uint8_t, 3>& color, float fadeInSeconds, float fadeOutSeconds, float radius = 200.f);
         // The flash reference is borrowed for this callback; copy it if retaining geometry.
         virtual void OnLightningShown(const LightningFlash& flash);
         virtual void OnLightningHidden();

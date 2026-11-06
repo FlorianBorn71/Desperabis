@@ -110,7 +110,6 @@ namespace
         host.Load();
         Check(!host.DEBUG_noPlayerCollision, "The player collision cheat must default to off.");
         host.ApplyPlayerLifeDelta(-10 * 65536);
-        const auto life = host.playerLife;
         const auto events = host.events.size();
         host.DEBUG_noPlayerCollision = true;
         host.ApplyPlayerLifeDelta(-1);
@@ -119,19 +118,34 @@ namespace
         creature.behaviorParameter = 255;
         creature.doorLockOrGroupBitmask = 1;
         host.HandleCockroachContact(creature);
-        Check(host.playerLife == life && host.events.size() == events && !host.positionalSoundsSuppressed &&
+        constexpr auto full = 360 * 65536;
+        Check(host.playerLife == full && host.events.size() == events + 1 && !host.positionalSoundsSuppressed &&
             host.playerPostureDelta == 0,
-            "The cheat must suppress fractional, lethal and gameplay damage without depletion or health callbacks.");
+            "The cheat must restore full health once and suppress fractional, lethal and gameplay damage.");
         host.ApplyPlayerLifeDelta(65536);
-        Check(host.playerLife == life + 65536 && host.events.size() == events + 1,
-            "The collision cheat must still permit healing and its notification.");
+        Check(host.playerLife == full && host.events.size() == events + 1,
+            "Cheat healing must remain clamped to full health without duplicate notifications.");
         host.Load();
-        Check(host.DEBUG_noPlayerCollision && host.playerLife == life + 65536,
-            "The host cheat must remain enabled across level loads without altering life.");
+        Check(host.DEBUG_noPlayerCollision && host.playerLife == full,
+            "The host cheat must remain enabled and full-health across level loads.");
+        host.playerLife = 123 * 65536;
+        host.playerLifeDeltaSuppressed = 1;
+        host.ApplyPlayerLifeDelta(0);
+        Check(host.playerLife == full && host.events.size() == events + 2,
+            "Collision-off health restoration must override native delta suppression.");
+        host.playerLifeDeltaSuppressed = 0;
         host.DEBUG_noPlayerCollision = false;
         host.ApplyPlayerLifeDelta(-1);
-        Check(host.playerLife == life + 65535 && host.events.size() == events + 2,
+        Check(host.playerLife == full - 1 && host.events.size() == events + 3,
             "Disabling the cheat must restore ordinary player damage immediately.");
+        host.ApplyPlayerLifeDelta(-full);
+        Check(host.worldObjects[1].velocityZ == 400 && host.positionalSoundsSuppressed,
+            "Revival fixture must enter normal depletion.");
+        host.DEBUG_noPlayerCollision = true;
+        host.ApplyPlayerLifeDelta(0);
+        Check(host.playerLife == full && host.worldObjects[1].velocityZ != 400 && !host.positionalSoundsSuppressed &&
+            host.playerPostureDelta == 0 && host.playerBodyHeight == 45 && host.playerHitEffectTicks == 0,
+            "Enabling collision-off after death must clear the death camera, posture and damage effects.");
     }
 
     void TestGameplayAndLoading()

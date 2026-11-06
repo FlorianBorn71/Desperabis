@@ -20,7 +20,9 @@ public:
     FUTURE(void) LoadFromSaveGame(std::wstring_view filename, const std::vector<LevelInfo>& infos);
     FUTURE(void) LoadSaveGameData(const byte* rawData, int dataSize);
 
-    FUTURE(std::shared_ptr<PlayerLight>) PopulateScene(Scene& scene, bool createGameObjects, bool addMapIcons);
+    using ObjectPresentationCallback = std::function<void(int, const RawGameObject&, RenderableInstance*)>;
+    FUTURE(std::shared_ptr<PlayerLight>) PopulateScene(Scene& scene, bool createGameObjects, bool addMapIcons,
+        ObjectPresentationCallback objectPresentation = {});
 	void ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& rawGO, Texture* spriteOverride = nullptr) const;
     RenderableInstancePtr CreatePlayerObject();
     std::size_t SynchronizeWallTiles(const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride);

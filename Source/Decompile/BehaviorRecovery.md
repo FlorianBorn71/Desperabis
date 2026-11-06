@@ -203,13 +203,18 @@ Level 23 additionally loads ANIM8 into sprite bank 3 and static TUR23/24
 into texture slots 13/14. These assignments alone do not prove which is
 the fireplace source or destination. The renderer previously only bound
 tracked animations to materials with a null texture. At the author's
-request it now also replaces already-bound static textures when their
-slot has a registered animation. Registering a marker rechecks existing
+request it now also replaces already-resolved model textures when their
+slot has a registered animation. `DrawCallMaterial::m_textureSlotSource`
+keeps model/sprite slots separate from flat level-texture slots: walls,
+floors (including mutable variants) and ceilings retain their static TUR
+textures even when their numeric slots match a tracker. Registering a marker rechecks existing
 scene instances, so geometry-before-marker and marker-before-geometry
 loading both work. Unregistered static slots and shared asset materials
 remain unchanged; the marker retains its existing additive/non-additive
 policy. Regression tests use level 23's original markers and static
-textures, selected frames, material refreshes and removal.
+textures, selected frames, material refreshes, removal and converted
+terrain. Batching preserves the source namespace, and stale animation
+bindings cannot overwrite a refreshed level-texture material.
 
 The author confirmed in-game that this restores the missing fireplace
 animation. The cause was the renderer binding gap, not a missing behavior

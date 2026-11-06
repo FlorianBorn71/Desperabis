@@ -907,6 +907,7 @@ void Level::CreateWallGeometry()
                 dc.m_material.m_transparencyType = TransparencyMode::Opaque;
                 dc.m_material.m_opacity = 1.f;
                 dc.m_material.m_textureSlot = (char)texIndex;
+                dc.m_material.m_textureSlotSource = TextureSlotSource::Level;
                 //dc.m_material.m_textureRepeat = true;
                 dc.m_firstIndex = firstIndex;
                 dc.m_primitiveCount = ((int)indices.size() - firstIndex) / 3;
@@ -939,6 +940,7 @@ void Level::CreateWallGeometry()
                         dc.m_material.m_transparencyType = TransparencyMode::Opaque;
                         dc.m_material.m_opacity = 1.f;
                         dc.m_material.m_textureSlot = static_cast<char>(texIndex);
+                        dc.m_material.m_textureSlotSource = TextureSlotSource::Level;
                         dc.m_firstIndex = firstIndex;
                         dc.m_primitiveCount = (static_cast<int>(indices.size()) - firstIndex) / 3;
                         dc.m_material.m_useAlphaTest = false;
@@ -989,6 +991,7 @@ void Level::CreateWallGeometry()
                     dc.m_material.m_transparencyType = TransparencyMode::Opaque;
                     dc.m_material.m_opacity = 1.f;
                     dc.m_material.m_textureSlot = (char)(texIndex);
+                    dc.m_material.m_textureSlotSource = TextureSlotSource::Level;
                     //dc.m_material.m_textureRepeat = true;
                     dc.m_firstIndex = firstIndex;
                     dc.m_primitiveCount = ((int)indices.size() - firstIndex) / 3;
@@ -1297,6 +1300,10 @@ bool Level::CreateObjectRenderInstance(Scene& scene, std::shared_ptr<LevelGameOb
         go->m_renderInst = inst;
         inst->SetTransform(prop.GetScaledTransform());
 		inst->m_materialOverride[0].SetOpacity(prop.GetSpriteTransparency());
+        if (behavior == GamePlay::BehaviorType::Ghost && prop.GetSpriteTransparency() == 0.f)
+        {
+            inst->SetVisible(false);
+        }
 
         // register renderable
         scene.AddRenderableInstance(go->m_renderInst);
@@ -1414,6 +1421,10 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
 		inst->m_tintColor = inst2->m_tintColor;
 		inst->m_fireIntensity = inst2->m_fireIntensity;
         inst->m_materialOverride[0].SetOpacity(prop.GetSpriteTransparency());
+        if (prop.GetBehaviorType() == GamePlay::BehaviorType::Ghost && prop.GetSpriteTransparency() == 0.f)
+        {
+            inst->SetVisible(false);
+        }
 
         // TODO: Sprites are still not visible!
     }
@@ -1449,8 +1460,13 @@ RenderableInstancePtr Level::CreatePlayerObject()
 }
 
 
-FUTURE(std::shared_ptr<PlayerLight>) Level::PopulateScene(Scene& scene, bool createGameObjects, bool addMapIcons)
+FUTURE(std::shared_ptr<PlayerLight>) Level::PopulateScene(Scene& scene, bool createGameObjects, bool addMapIcons,
+    ObjectPresentationCallback objectPresentation)
 {
+    if (createGameObjects && !objectPresentation)
+    {
+        throw std::invalid_argument("Level object conversion requires a slot-owned presentation callback.");
+    }
     AssetManager& assets = AssetManager::Instance();
 
     const bool addStaticGeometry = true;
@@ -1647,6 +1663,7 @@ FUTURE(std::shared_ptr<PlayerLight>) Level::PopulateScene(Scene& scene, bool cre
                 }
             }
             CO_AWAIT GamePlay::CreateObjectBehavior(scene, *go, rawGO);
+            if (objectPresentation) { objectPresentation(rawGO.m_objectNumber + 2, rawGO, go->m_renderInst.get()); }
             scene.AddGameObject(go);
         }
 

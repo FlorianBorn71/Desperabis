@@ -215,7 +215,8 @@ namespace
             host.playerLifeDeltaSuppressed = 0;
             host.DEBUG_noPlayerCollision = true;
             UpdatePlayerInteraction(host, input);
-            Check(host.playerLife == suppressedLife, "No-collision cheat must suppress fire damage.");
+            Check(host.playerLife == host.playerLifeMaximum * 65536,
+                "No-collision cheat must restore full health and suppress fire damage.");
             host.DEBUG_noPlayerCollision = false;
             fire.behaviorParameter = 0;
             Check(UpdatePlayerInteraction(host, input).status == InteractionStatus::NoEffect,
@@ -223,7 +224,7 @@ namespace
             host.objectCollisionsEnabled = false;
             fire.behaviorParameter = 18;
             Check(UpdatePlayerInteraction(host, input).status == InteractionStatus::NoEffect &&
-                host.playerLife == suppressedLife, "Disabled object collisions must prevent fire contact.");
+                host.playerLife == host.playerLifeMaximum * 65536, "Disabled object collisions must prevent fire contact.");
             host.objectCollisionsEnabled = true;
         }
     }

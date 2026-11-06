@@ -2175,6 +2175,7 @@ namespace Desperabis
             }
             if ((phase & 1) != 0 && phase <= object.groupIndexOrLock)
             {
+                context.OnFireEmitted(context.FindWorldObjectSlot(object), {object.posX, object.posY, object.posZ});
                 auto source = object;
                 source.generalPurpose1 = 7;
                 const auto slot = context.SpawnEmitterProjectile(source);

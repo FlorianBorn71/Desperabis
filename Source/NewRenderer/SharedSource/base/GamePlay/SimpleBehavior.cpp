@@ -94,33 +94,3 @@ void FliesSwarmObject::NextFrame()
     m_blendSpeed = 0.5f + Math::GetRandF(0.5f);
     m_rotSpeed = 0.5f + Math::GetRandF(0.5f);
 }
-
-
-/// <summary>
-/// BurningFirePlaceObject
-/// </summary>
-
-BurningFireplaceObject::BurningFireplaceObject(Scene* scene, RawGameObject& rawGO)
-    : LevelGameObject(scene, rawGO)
-{
-
-}
-
-void BurningFireplaceObject::OnAddedToScene(Scene* scene)
-{
-    // TODO: particles
-
-    // add a dyn. flickering light
-    GamePlay::PropertyAccessorBase props(m_rawGO);
-    std::shared_ptr<LightSource> light = std::make_shared<FlickeringLight>(scene);
-    Vector pos = GetPosition();
-    // TODO: brightness and heightOverModel should depend on bounding volume
-    float heightOverModel = 25.f * DespToFloat;
-    pos += Vector(0, heightOverModel * 0.5f, 0);
-    light->SetLightHeightOffset(heightOverModel * 0.5f);
-    light->SetPosition(pos);
-    light->SetColor(Color4{ 255,230,170 }, 3.0f);
-    light->SetCoronaColorMod(Color4{ 255,220,140 });
-    light->SetRadius(450.f * DespToFloat);
-    scene->AddLightSource(light);
-}

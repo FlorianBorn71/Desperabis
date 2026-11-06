@@ -39,16 +39,3 @@ private:
     ModelAnim* m_anim3d = nullptr;
 };
 
-
-class BurningFireplaceObject : public LevelGameObject
-{
-public:
-    BurningFireplaceObject(Scene* scene, RawGameObject& rawGO);
-    virtual ~BurningFireplaceObject() = default;
-
-    virtual void OnAddedToScene(Scene* scene) override final;
-
-private:
-};
-
-

@@ -1,0 +1,275 @@
+#include "pch.h"
+#include <GamePlay/ObjectPresentation.h>
+#include <GamePlay/GamePlay.h>
+#include <Renderer/LightSource.h>
+#include <Renderer/Renderable.h>
+#include <Renderer/RenderableInstance.h>
+#include <Renderer/Renderer.h>
+#include <Renderer/Camera.h>
+#include <stdexcept>
+
+namespace
+{
+    void ApplyAdditiveMaterials(RenderableInstance* instance)
+    {
+        if (!instance || !instance->GetRenderable()) { return; }
+        for (auto& material : instance->GetOrCreateMaterialOverrides())
+        {
+            material.m_transparencyType = TransparencyMode::Additive;
+            material.ComputeHash();
+        }
+        instance->ComputeTransparencyMask();
+    }
+
+    bool IsFireballSpark(const RawGameObject& object)
+    {
+        const auto behavior = GamePlay::PropertyAccessorBase(object).GetBehaviorType();
+        // Native breakup flames retain their sprite and selector when bouncing ends.
+        return (behavior == GamePlay::BehaviorType::BouncingObject || behavior == GamePlay::BehaviorType::FadingParticle) &&
+            object.m_rawBytes[0] == 1 && object.m_rawBytes[1] == 5 &&
+            object.m_rawBytes[3] >= 1 && object.m_rawBytes[3] <= 2 && object.m_rawUShorts[18] == 1;
+    }
+
+    bool IsDragonFireball(const RawGameObject& object)
+    {
+        return GamePlay::PropertyAccessorBase(object).GetBehaviorType() == GamePlay::BehaviorType::FlyingArrow &&
+            object.m_rawBytes[0] == 5 && object.m_rawShorts[17] == 5;
+    }
+
+    bool IsFireParticle(const RawGameObject& object)
+    {
+        const auto behavior = GamePlay::PropertyAccessorBase(object).GetBehaviorType();
+        return behavior == GamePlay::BehaviorType::FireParticle || IsFireballSpark(object) ||
+            (behavior == GamePlay::BehaviorType::FlyingArrow &&
+                ((object.m_rawBytes[0] == 5 && object.m_rawShorts[17] == 4) ||
+                    (object.m_rawBytes[0] == 1 && object.m_rawShorts[17] == 7)));
+    }
+
+    class SparkCorona final : public LightSource
+    {
+    public:
+        explicit SparkCorona(Scene* scene) : LightSource(scene) { SetRadius(0.f); }
+        bool FillLightParams(PackedLightSourceParams&) const override { return false; }
+        bool FillCoronaParams(PackedLightSourceParams& dst) const override
+        {
+            dst.SetCorona(m_pos.GetX(), m_pos.GetY(), m_pos.GetZ(), GetEffectiveCoronaSize(), m_color, m_multiplier);
+            return m_multiplier > 0.f && GetEffectiveCoronaSize() > 0.f;
+        }
+    };
+
+    class FireSparkContext final : public ObjectPresentationContext
+    {
+    public:
+        explicit FireSparkContext(std::shared_ptr<LightSource> corona) : m_corona(std::move(corona)) {}
+        bool Matches(const RawGameObject& object) const override
+        {
+            return IsFireParticle(object) && static_cast<bool>(m_corona) == IsFireballSpark(object);
+        }
+        void Update(const RawGameObject& object, RenderableInstance* instance) override
+        {
+            ApplyAdditiveMaterials(instance);
+            if (m_corona)
+            {
+                m_corona->SetPosition(GamePlay::PropertyAccessorBase(object).GetPosition());
+                const float opacity = (std::min)(1.f, (std::max)(0.f, (object.m_rawShorts[21] + 1.f) / 6.f));
+                m_corona->SetColor({255,160,50}, opacity);
+                m_corona->SetCoronaSize(object.m_rawBytes[53] * 2.f * DespToFloat);
+                m_corona->UpdateGlobalBounds();
+            }
+        }
+        void Remove(Scene& scene) override { if (m_corona) { scene.RemoveLightSource(m_corona); } }
+    private:
+        std::shared_ptr<LightSource> m_corona;
+    };
+
+    class EmitterLightContext final : public ObjectPresentationContext
+    {
+    public:
+        EmitterLightContext(GamePlay::BehaviorType behavior, std::shared_ptr<LightSource> light)
+            : m_behavior(behavior), m_light(std::move(light)) {}
+        bool Matches(const RawGameObject& object) const override
+        {
+            return GamePlay::PropertyAccessorBase(object).GetBehaviorType() == m_behavior;
+        }
+        void Update(const RawGameObject&, RenderableInstance*) override {}
+        void FireEmitted(const Vector& position) override
+        {
+            m_remaining = 0.2;
+            m_light->SetPosition(position);
+            m_light->SetRadius(200.f * DespToFloat);
+            m_light->SetColor({255,140,30}, 3.f);
+        }
+        void Advance(double elapsedTime) override
+        {
+            m_remaining = (std::max)(0.0, m_remaining - elapsedTime);
+            m_light->SetRadius(m_remaining > 0 ? 200.f * DespToFloat : 0.f);
+            m_light->SetColor({255,140,30}, static_cast<float>(3.0 * m_remaining / 0.2));
+        }
+        void Remove(Scene& scene) override { scene.RemoveLightSource(m_light); }
+    private:
+        GamePlay::BehaviorType m_behavior;
+        std::shared_ptr<LightSource> m_light;
+        double m_remaining = 0.0;
+    };
+
+    class GhostLightContext final : public ObjectPresentationContext
+    {
+    public:
+        explicit GhostLightContext(std::shared_ptr<LightSource> light) : m_light(std::move(light)) {}
+        bool Matches(const RawGameObject& object) const override
+        {
+            return GamePlay::PropertyAccessorBase(object).GetBehaviorType() == GamePlay::BehaviorType::Ghost;
+        }
+        void Update(const RawGameObject& object, RenderableInstance*) override
+        {
+            const GamePlay::PropertyAccessorBase properties(object);
+            m_active = properties.GetHealth() == 1000;
+            m_light->SetPosition(properties.GetPosition());
+            const auto phase = object.m_rawShorts[17];
+            m_dying = phase >= 20 && phase <= 23;
+            const float remaining = object.m_rawShorts[19];
+            m_intensity = phase == 21 ? 3.f + 6.f * std::clamp((28.f - remaining) / 40.f, 0.f, 1.f) :
+                phase == 22 ? 9.f : phase == 23 ? 9.f * std::clamp(remaining / 28.f, 0.f, 1.f) :
+                3.f;
+            Advance(0);
+        }
+        void Advance(double) override
+        {
+            constexpr float lightScale = 0.75f;
+            const auto cameraPosition = Renderer::Instance().GetOrCreateCamera()->GetCameraPosition();
+            const auto delta = m_light->GetPosition() - cameraPosition;
+            const float distance = std::sqrt(delta.GetX() * delta.GetX() + delta.GetZ() * delta.GetZ()) / DespToFloat;
+            const float proximity = m_active ? std::clamp((220.f - distance) / 120.f, 0.f, 1.f) : 0.f;
+            m_light->SetColor(m_dying ? Color4{45,80,255} : Color4{15,30,220}, m_intensity * proximity * lightScale);
+            m_light->SetRadius(proximity > 0.f && m_intensity > 0.f ?
+                (m_dying ? 260.f : 240.f) * DespToFloat * lightScale : 0.f);
+            m_light->UpdateGlobalBounds();
+        }
+        void Remove(Scene& scene) override { scene.RemoveLightSource(m_light); }
+    private:
+        std::shared_ptr<LightSource> m_light;
+        bool m_active = false, m_dying = false;
+        float m_intensity = 0.f;
+    };
+
+    class ObjectLightContext final : public ObjectPresentationContext
+    {
+    public:
+        ObjectLightContext(GamePlay::BehaviorType behavior, std::shared_ptr<LightSource> light)
+            : m_behavior(behavior), m_light(std::move(light)) {}
+
+        bool Matches(const RawGameObject& object) const override
+        {
+            return GamePlay::PropertyAccessorBase(object).GetBehaviorType() == m_behavior &&
+                (m_behavior != GamePlay::BehaviorType::FlyingArrow || IsDragonFireball(object));
+        }
+
+        void Update(const RawGameObject& object, RenderableInstance* instance) override
+        {
+            Vector position = GamePlay::PropertyAccessorBase(object).GetPosition();
+            float height = 0.f;
+            switch (m_behavior)
+            {
+            case GamePlay::BehaviorType::LightSource:
+                height = instance && instance->GetRenderable() ?
+                    instance->GetRenderable()->m_localBounds.GetSphereRadius() * 0.20f : 5.f * DespToFloat;
+                position += Vector(0, height * 0.5f, 0);
+                m_light->SetLightHeightOffset(height * 0.5f);
+                break;
+            case GamePlay::BehaviorType::BurningFireplace:
+                height = 25.f * DespToFloat;
+                position += Vector(0, height * 0.5f, 0);
+                m_light->SetLightHeightOffset(height * 0.5f);
+                break;
+            case GamePlay::BehaviorType::PulsatingLight:
+                position += Vector(0, 5.f * DespToFloat, 0);
+                break;
+            case GamePlay::BehaviorType::FireballProjectile:
+            case GamePlay::BehaviorType::FireballImpact:
+            case GamePlay::BehaviorType::FlyingArrow:
+                ApplyAdditiveMaterials(instance);
+                break;
+            default:
+                break;
+            }
+            m_light->SetPosition(position);
+            m_light->UpdateGlobalBounds();
+        }
+
+        void Remove(Scene& scene) override { scene.RemoveLightSource(m_light); }
+
+    private:
+        GamePlay::BehaviorType m_behavior;
+        std::shared_ptr<LightSource> m_light;
+    };
+}
+
+std::shared_ptr<ObjectPresentationContext> GamePlay::CreateObjectPresentation(
+    Scene& scene, int slot, const RawGameObject& object, RenderableInstance* instance)
+{
+    if (slot < 1 || slot > 165) { throw std::out_of_range("Object presentation slots must be in 1..165."); }
+    const PropertyAccessorBase properties(object);
+    if (properties.GetHealth() <= 0) { return {}; }
+    if (IsFireParticle(object))
+    {
+        std::shared_ptr<LightSource> corona;
+        if (IsFireballSpark(object)) { corona = std::make_shared<SparkCorona>(&scene); }
+        auto context = std::make_shared<FireSparkContext>(corona);
+        context->Update(object, instance);
+        if (corona) { scene.AddLightSource(corona); }
+        return context;
+    }
+    const auto behavior = properties.GetBehaviorType();
+    if (behavior == BehaviorType::Ghost)
+    {
+        auto light = std::make_shared<LightSource>(&scene);
+        light->SetCoronaSize(0.f);
+        auto context = std::make_shared<GhostLightContext>(light);
+        context->Update(object, instance);
+        scene.AddLightSource(light);
+        return context;
+    }
+    if (behavior == BehaviorType::FireExhauster || behavior == BehaviorType::Dragon)
+    {
+        auto light = std::make_shared<LightSource>(&scene);
+        light->SetRadius(0.f);
+        light->SetCoronaSize(0.f);
+        auto context = std::make_shared<EmitterLightContext>(behavior, light);
+        scene.AddLightSource(light);
+        return context;
+    }
+    std::shared_ptr<LightSource> light;
+    switch (behavior)
+    {
+    case BehaviorType::LightSource:
+        light = std::make_shared<FlickeringLight>(&scene);
+        light->SetColor(Color4{255,240,180}, 2.f);
+        light->SetCoronaColorMod(Color4{255,220,140});
+        light->SetRadius(140.f * DespToFloat);
+        break;
+    case BehaviorType::PulsatingLight:
+        light = std::make_shared<PulsatingLight>(&scene);
+        break;
+    case BehaviorType::BurningFireplace:
+        light = std::make_shared<FlickeringLight>(&scene);
+        light->SetColor(Color4{255,230,170}, 3.f);
+        light->SetCoronaColorMod(Color4{255,220,140});
+        light->SetRadius(450.f * DespToFloat);
+        break;
+    case BehaviorType::FireballProjectile:
+    case BehaviorType::FireballImpact:
+    case BehaviorType::FlyingArrow:
+        if (behavior == BehaviorType::FlyingArrow && !IsDragonFireball(object)) { return {}; }
+        light = std::make_shared<FlickeringLight>(&scene);
+        light->SetColor(Color4{255,140,30}, 2.f);
+        light->SetRadius(120.f * DespToFloat);
+        light->SetCoronaSize(0.f);
+        break;
+    default:
+        return {};
+    }
+    auto context = std::make_shared<ObjectLightContext>(behavior, light);
+    context->Update(object, instance);
+    scene.AddLightSource(light);
+    return context;
+}

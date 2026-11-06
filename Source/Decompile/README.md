@@ -450,6 +450,84 @@ do not emit hooks; hosts must clean up their own resources when retiring a conte
 There is no end-of-tick lifecycle scan. Continue using `GetWorldObjects()` for
 ordinary per-frame changes such as position and animation.
 
+The DX11 host wires these hooks to renderer-only extras owned by `LevelScene`,
+not by generic `Scene` or GameCore. Its 166-entry shared-pointer array uses
+native slots 1..165 (slot 0 remains reserved). The polymorphic
+`ObjectPresentationContext` factory currently owns torch, pulsating-item,
+fireplace, fireball-projectile/impact, dragon-fireball and fire-emitter lights,
+plus breakup-spark coronas. Creation attaches
+the light; destruction, live-slot replacement, scene clearing and scene
+destruction detach it. Presentation synchronization follows current resolved
+object positions, updates light bounds, and replaces contexts on in-place
+behavior changes without allocating a new light on every movement update.
+The normal rendered-object range remains native slots 2..164.
+
+Fireball projectile/impact contexts also apply additive material overrides.
+Their presentation update reapplies the override after sprite/frame material
+refreshes and recomputes material hashes and transparency classification,
+without changing native display flags, textures or opacity. The nine breakup
+sparks use additive materials and small corona-only sources (no dynamic lights), identified by their
+native flame sprite (bank 1, animation 5, frames 1..2), selector word 36 = 1
+and BouncingObject/FadingParticle behavior. Additive blending persists through
+their bounce-to-fade transition; unrelated debris and smoke retain their
+existing blending. Fireplace fire particles, pipe flames and dragon breath
+also use additive overrides, without allocating per-particle dynamic lights.
+
+`GameContext::FlashLight(position, rgb, fadeInSeconds, fadeOutSeconds, radius)`
+forwards a renderer-independent `LightFlash` request to the default-empty
+`OnLightFlash` hook. Position/radius use native world units; RGB uses byte
+channels and durations use seconds. Fade times must be finite and nonnegative
+with a positive total duration; radius must be finite and positive (default
+200). Invalid requests throw. The DX11 host converts units and lets `LevelScene`
+own a linearly fading light, automatically removing it after fade-out.
+Weapon-fireball breakup and the dragon's final explosion trigger warm flashes
+without changing native damage, fragment counts or RNG.
+
+`OnFireEmitted(slot, position)` reports actual pipe/dragon-breath emission at
+the source position or resolved muzzle. Detached recovery records report slot
+-1; the DX11 host ignores those. Each emitter owns one retriggerable orange
+light fading over 0.2 seconds after its last emission, rather than a light
+per flame. The dragon's three volley fireballs each retain a moving light.
+Spark coronas use eight times their initial radius for better visibility,
+follow native size/opacity through bouncing and fading, and
+their `FillLightParams` never contributes to the dynamic-light budget.
+
+Dormant ghosts (health other than 1000) and active ghosts at native opacity
+zero are completely invisible, rather than inheriting the generic sprite
+mapping's one-sixth alpha. Other sprites retain that mapping. Each ghost owns
+one dark-blue light, enabled only while active and within 220 native X/Z units
+of the camera, fading in over the outer 120 units. The existing death phases
+brighten this light toward vivid blue, then fade it during the final dissolve.
+No dormant ghost contributes a light, and removal clears its context.
+The live light uses RGB (15,30,220), intensity 2.25 and radius 180 native units
+so its blue tint remains visible against the normal white player light; death
+increases intensity toward 6.75 with radius 195. Both intensity and radius
+are 75% of the previous tuning. This illuminates nearby surfaces,
+not a corona/halo around the sprite. Pixel regressions check visible blue
+illumination at 100/150 native units with the normal player light enabled.
+
+While a charged electricity weapon is firing in gameplay, the DX11 host
+maintains one cyan light and small corona at its bolt origin. Native weapon
+model vertex 3 is unchanged between the two firing frames. The application
+projects it using the first-person weapon viewport, then unprojects through
+the world camera so both hands, animated poses and aspect ratios stay aligned.
+Stopping, weapon/menu changes, free-camera mode and scene clearing remove the
+electricity light. Transient/emission hooks apply to the GameCore-driven host;
+the remote DOS scene shares particle materials/projectile contexts but does not
+synthesize these new events from snapshots.
+
+`Level::PopulateScene` requires a presentation callback when creating objects;
+`LevelScene` supplies it and translates the loader's zero-based object ordinal
+to native slot `ordinal + 2`. The remote DOS scene uses the same slot-owned
+factory. Existing texture-animation markers remain scene-wide, independent
+of these per-object light contexts. Regression coverage in
+[ApplicationUiTests.cpp](../NewRenderer/DesperabisGame-DX11/ApplicationUiTests.cpp)
+checks original level-23 lights and firing/expiry of an actual GameCore fireball,
+along with slot reuse, behavior changes, reactivation and scene cleanup.
+It also checks flash timing/validation, emitter reuse, dragon-volley light
+counts, corona-only fading/bounds, and electricity alignment against actual GPU
+weapon matrices within 0.25 pixels in both chapter banks and three aspect ratios.
+
 `OnPlayerHealthChanged(previousLife, currentLife)` is a separate default-empty
 virtual hook for the authoritative signed 16.16 `playerLife` meter, not slot 1's
 object-health word. `ApplyPlayerLifeDelta` calls it immediately after suppression,
@@ -475,8 +553,13 @@ and interpolated terrain support, jumping, crouching and low-room clearance. It 
 and object behaviors. Set `basicPlayerMovementEnabled = false` if the host owns
 movement. `result.playerMovement` reports simulated and blocked substeps.
 The host cheat flag `DEBUG_noPlayerCollision` defaults to false and persists
-across level changes. It bypasses player wall correction and suppresses negative
-`ApplyPlayerLifeDelta` updates, without disabling object interactions or healing.
+across level changes. It bypasses player wall correction and steep-slope
+sliding/look adjustment, keeps `playerLife` at 100% of its current maximum,
+and blocks all damage, including fire, lava, contact and drowning. Restoration
+uses `ApplyPlayerLifeDelta`, including health notification, on enable, ticks
+and level/save installation; it also clears death-camera and hit state.
+Disabling the cheat immediately restores ordinary damage and slope behavior,
+without disabling object interactions.
 The normal standing eye height is 45 native units above terrain; crouched height
 is 28, with the original gradual transitions and changing collision radius.
 `JumpKey` raises a crouched player before jumping; releasing `CrouchKey` does not

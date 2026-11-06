@@ -30,8 +30,9 @@ void LightSource::UpdateGlobalBounds()
 {
     if (m_globalBoundsDirty)
     {
-        m_globalBounds.m_sphere.Set(m_pos.GetX(), m_pos.GetY(), m_pos.GetZ(), GetRadius());
-        Vector rad(GetRadius(), GetRadius(), GetRadius());
+        const float boundsRadius = (std::max)(GetRadius(), GetEffectiveCoronaSize());
+        m_globalBounds.m_sphere.Set(m_pos.GetX(), m_pos.GetY(), m_pos.GetZ(), boundsRadius);
+        Vector rad(boundsRadius, boundsRadius, boundsRadius);
         m_globalBounds.m_box.m_min = m_pos - rad;
         m_globalBounds.m_box.m_max = m_pos + rad;
 
@@ -47,11 +48,37 @@ void LightSource::UpdateGlobalBounds()
     }
 }
 
-/// <summary>
-/// Flickering light
-/// </summary>
-/// <param name="scene"></param>
+LightFlashSource::LightFlashSource(Scene* scene, float fadeInSeconds, float fadeOutSeconds)
+    : LightSource(scene), m_fadeIn(fadeInSeconds), m_fadeOut(fadeOutSeconds)
+{
+    if (!std::isfinite(fadeInSeconds) || !std::isfinite(fadeOutSeconds) ||
+        fadeInSeconds < 0.f || fadeOutSeconds < 0.f ||
+        !std::isfinite(fadeInSeconds + fadeOutSeconds) || fadeInSeconds + fadeOutSeconds <= 0.f)
+    {
+        throw std::invalid_argument("Light flash fade times must be finite, nonnegative and have positive total duration.");
+    }
+    SetCoronaSize(0.f);
+}
 
+void LightFlashSource::Update(double elapsedTime)
+{
+    if (!std::isfinite(elapsedTime) || elapsedTime < 0.0)
+    {
+        throw std::invalid_argument("Light flash time must be finite and nonnegative.");
+    }
+    m_age += elapsedTime;
+}
+
+bool LightFlashSource::IsFinished() const { return m_age >= m_fadeIn + m_fadeOut; }
+
+bool LightFlashSource::FillLightParams(PackedLightSourceParams& dst) const
+{
+    const float weight = IsFinished() ? 0.f : m_age < m_fadeIn ?
+        static_cast<float>(m_age / m_fadeIn) :
+        m_fadeOut > 0.f ? static_cast<float>(1.0 - (m_age - m_fadeIn) / m_fadeOut) : 0.f;
+    dst.SetLight(m_pos.GetX(), m_pos.GetY(), m_pos.GetZ(), m_radius, m_color, m_multiplier * weight);
+    return weight > 0.f && m_radius > 0.f;
+}
 
 FlickeringLight::FlickeringLight(Scene* scene)
     : LightSource(scene)

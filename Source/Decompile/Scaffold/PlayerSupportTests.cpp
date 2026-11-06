@@ -138,6 +138,14 @@ namespace
         Step(host, input);
         Check(host.worldObjects[1].posX == 1503, "The controller must apply terrain correction even without input.");
         host.Load();
+        SetSlope(*host.level, 128);
+        host.DEBUG_noPlayerCollision = true;
+        Step(host, input);
+        Check(host.worldObjects[1].posX == 1500, "Collision-off must disable steep-slope sliding even with no input.");
+        host.DEBUG_noPlayerCollision = false;
+        Step(host, input);
+        Check(host.worldObjects[1].posX == 1503, "Reenabling collision must immediately restore slope correction.");
+        host.Load();
         for (std::size_t row = 0; row < Level::Height; ++row)
         {
             for (std::size_t column = 0; column < Level::Width; ++column)
@@ -772,6 +780,14 @@ namespace
             Check(host.GetCollisionMapPixelAtWorldXZ(player.posX, player.posZ) == fixture.second &&
                 host.playerLife == (mode == 3 ? 0 : 360 * 65536 - (mode == 2 ? 4 * 29491 : 0)),
                 "Original level 16 lava and level 25 forest must damage/deplete life while the original path stays safe.");
+            host.DEBUG_noPlayerCollision = true;
+            Step(host, input, 3);
+            Check(host.playerLife == host.playerLifeMaximum * 65536 && !host.positionalSoundsSuppressed,
+                "Collision-off must restore full life and survive repeated original lava and forest-fire damage.");
+            host.DEBUG_noPlayerCollision = false;
+            Step(host, input);
+            Check(host.playerLife == (mode == 3 ? 0 : 360 * 65536 - (mode == 2 ? 4 * 29491 : 0)),
+                "Restoring collision must restore the original hazardous-terrain damage.");
         }
     }
 }

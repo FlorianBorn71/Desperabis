@@ -37,6 +37,7 @@ namespace
 	bool g_cheatMode = true;
 
 	constexpr int g_numObjectSlots = static_cast<int>(std::tuple_size_v<decltype(Desperabis::GameContext::worldObjects)>);
+	static_assert(g_numObjectSlots == LevelScene::ObjectSlotCount);
 	// OBJPOS has no player record, so the initial view vector is a host choice.
 	// GameContext seeds the player heading from it at load and rewrites velocityX/Z from the heading every tick.
 	constexpr std::array<int16_t, 3> g_initialPlayerDirection = { -256, 0, 0 };
@@ -103,6 +104,43 @@ namespace
 	class GameAppContext final : public Desperabis::GameContext
 	{
 	public:
+		void OnLightFlash(const Desperabis::LightFlash& flash) override
+		{
+			if (!g_scene) { throw std::logic_error("Light flash requires a scene."); }
+			g_scene->FlashLight(Level::DespToPos(flash.position[0], flash.position[1], flash.position[2]),
+				{flash.color[0], flash.color[1], flash.color[2]}, flash.fadeInSeconds, flash.fadeOutSeconds,
+				flash.radius * DespToFloat);
+		}
+
+		void OnFireEmitted(int slot, const std::array<std::int16_t, 3>& position) override
+		{
+			if (!g_scene) { throw std::logic_error("Fire emission requires a scene."); }
+			if (slot == -1) { return; } // Standalone recovery fixtures have no renderer slot.
+			RawGameObject state{};
+			Desperabis::EncodeGameObject(GetObjectRenderState(slot), state.m_rawBytes, sizeof(state.m_rawBytes));
+			g_scene->FireEmitted(slot, state, Level::DespToPos(position[0], position[1], position[2]));
+		}
+
+		void OnObjectCreated(int slot) override
+		{
+			if (!g_scene || !g_scene->m_level) { throw std::logic_error("Object creation requires a loaded scene."); }
+			RawGameObject state{};
+			state.m_level = g_scene->m_level;
+			state.m_objectNumber = slot;
+			Desperabis::EncodeGameObject(GetObjectRenderState(slot), state.m_rawBytes, sizeof(state.m_rawBytes));
+			g_scene->UpdateObjectPresentation(slot, state, g_objectInst[slot].get());
+		}
+
+		void OnObjectDestroyed(int slot) override
+		{
+			if (!g_scene) { throw std::logic_error("Object destruction requires a scene."); }
+			g_scene->RemoveObjectPresentation(slot);
+			if (g_objectInst[slot]) { g_scene->RemoveRenderableInstance(g_objectInst[slot]); }
+			g_objectInst[slot].reset();
+			g_presentedState[slot] = {};
+			g_objectBehaviorCreated[slot] = false;
+		}
+
 		void OnLightningShown(const Desperabis::LightningFlash& flash) override
 		{
 			if (!g_scene || !g_camera) { throw std::logic_error("Lightning requires an active scene and camera."); }
@@ -680,6 +718,7 @@ namespace
 	void ClearGameObjects()
 	{
 		g_renderer.SetItemPreview(nullptr, false, {});
+		if (g_scene) { g_scene->ClearObjectPresentations(); }
 		for (int slot = 0; slot < g_numObjectSlots; slot++)
 		{
 			if (g_objectInst[slot] != nullptr && g_scene != nullptr)
@@ -757,6 +796,7 @@ namespace
 			const GamePlay::PropertyAccessorBase prop(state);
 			if (!prop.Isvalid())
 			{
+				g_scene->RemoveObjectPresentation(slot);
 				if (inst != nullptr)
 				{
 					g_scene->RemoveRenderableInstance(inst);
@@ -782,6 +822,7 @@ namespace
 				spriteOverride = &g_fireballFrames->m_frames[frame];
 			}
 			level->ApplyRenderProperties(inst, state, spriteOverride);
+			g_scene->UpdateObjectPresentation(slot, state, inst.get());
 
 			const GamePlay::BehaviorType behavior = prop.GetBehaviorType();
 			if (behavior == GamePlay::BehaviorType::Moon && inst->GetRenderable() != nullptr && inst->m_materialOverride.size() == 1)
@@ -796,7 +837,7 @@ namespace
 			}
 			else { g_scene->AssignFireAnimations(*inst); }
 
-			// Presentation-only extras (lights, fire texture animations), once per slot. The renderer-side
+			// Scene-wide texture animations, once per slot. The renderer-side
 			// game object is not added to the scene, so it does not simulate anything itself.
 			if (!g_objectBehaviorCreated[slot] && behavior != GamePlay::BehaviorType::Moon)
 			{
@@ -1049,8 +1090,20 @@ namespace
 		if (!g_useFreeCam && g_gameCore->GetRuntimeState() == Desperabis::GameRuntimeState::Ready)
 		{
 			ApplyPlayerCamera();
+			const auto view = g_gameCore->GetWeaponView();
+			const bool firing = view && g_gameCore->selectedWeapon == Desperabis::WeaponType::Electricity &&
+				g_gameCore->weaponElectricityFiring && g_gameCore->weaponAmounts[7] > 0;
+			Vector tip(0,0,0);
+			if (firing)
+			{
+				const auto* level = g_gameCore->GetLevel();
+				if (!level || !level->modelAnchors[1]) { throw std::logic_error("Electricity requires weapon geometry."); }
+				tip = ApplicationUi::ElectricityTipWorld(*view, *level->modelAnchors[1], *g_camera, g_viewport);
+			}
+			g_scene->SetElectricityLight(firing, tip);
 			return;
 		}
+		g_scene->SetElectricityLight(false, Vector(0,0,0));
 		if (application.worldDeltaSeconds == 0) { return; }
 
 		// free camera input
@@ -1202,6 +1255,7 @@ namespace
 				g_gameCore->GetMenuPage() == Desperabis::MenuPage::Gameplay)
 			{
 				g_gameCore->DEBUG_noPlayerCollision = !g_gameCore->DEBUG_noPlayerCollision;
+				if (g_gameCore->DEBUG_noPlayerCollision) { g_gameCore->ApplyPlayerLifeDelta(0); }
 				g_gameCore->PromptUserMessage(g_gameCore->DEBUG_noPlayerCollision ?
 					"Player collision: off" : "Player collision: on", 90);
 			}

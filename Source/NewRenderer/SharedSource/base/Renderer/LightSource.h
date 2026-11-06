@@ -72,6 +72,7 @@ public:
 
     void SetCoronaSize(float r)
     {
+        m_globalBoundsDirty = true;
         m_coronaSize = r;
     }
 
@@ -93,6 +94,18 @@ protected:
     BoundingVolume m_globalBounds;
 };
 
+
+class LightFlashSource : public LightSource
+{
+public:
+    LightFlashSource(Scene* scene, float fadeInSeconds, float fadeOutSeconds);
+    void Update(double elapsedTime) override;
+    bool FillLightParams(PackedLightSourceParams& dst) const override;
+    bool IsFinished() const;
+private:
+    double m_age = 0.0;
+    float m_fadeIn, m_fadeOut;
+};
 
 class FlickeringLight : public LightSource
 {

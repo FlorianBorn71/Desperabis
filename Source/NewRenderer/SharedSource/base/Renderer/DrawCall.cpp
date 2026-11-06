@@ -5,6 +5,7 @@
 bool DrawCall::IsBatchableWith(const DrawCall& other) const
 {
     if (m_material.m_textureSlot != other.m_material.m_textureSlot
+        || m_material.m_textureSlotSource != other.m_material.m_textureSlotSource
         || m_material.m_useAlphaTest != other.m_material.m_useAlphaTest
         || m_material.m_applyLighting != other.m_material.m_applyLighting
         || m_material.m_depthOffset != other.m_material.m_depthOffset
@@ -32,7 +33,7 @@ uint64_t DrawCall::ComputeBatchingKey() const
     batchingKey ^= (uint64_t)m_material.m_reflectionType << 5;
     if (m_material.m_useAlphaTest) batchingKey |= one << 61;
     if (m_material.m_applyLighting) batchingKey |= one << 60;
-//    if (m_material.m_textureRepeat) batchingKey |= one << 59;
+    if (m_material.m_textureSlotSource == TextureSlotSource::Level) batchingKey |= one << 59;
     if (m_material.m_texture != nullptr)
     {
         batchingKey ^= (((uint64_t)m_material.m_texture->GetAssetId()) << 48);
@@ -53,6 +54,7 @@ void DrawCallMaterial::ComputeHash()
 {
     m_materialHash = *((uint32_t*)&m_opacity) ^ 0x55555555;
     m_materialHash ^= m_applyLighting ? 17 : 0;
+    m_materialHash ^= m_textureSlotSource == TextureSlotSource::Level ? 31 : 0;
     if (m_depthOffset != 0.f)
     {
         m_materialHash ^= static_cast<uint32_t>(std::hash<float>{}(m_depthOffset));

@@ -572,13 +572,14 @@ namespace
         VisibilitySettings visibilitySettings;
         DefaultVisibilityContext visibility;
         ProfilingStats stats;
+        std::size_t extraLights = 0;
         const auto render = [&](PlayerLight::Mode mode)
         {
             playerLight->SetMode(mode);
             playerLight->Update(0);
             VisibilityResult visible;
             visibility.ComputeResultFor(camera.get(), &scene, visible, settings, visibilitySettings, stats);
-            Check(visible.m_visibileLights.size() == (mode == PlayerLight::Mode::Off ? 0u : 1u) &&
+            Check(visible.m_visibileLights.size() == extraLights + (mode == PlayerLight::Mode::Off ? 0u : 1u) &&
                 visible.m_visibleInstances.m_opaqueInstances.size() == 1,
                 "The camera-following player light and terrain must pass normal visibility collection.");
             context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
@@ -599,8 +600,43 @@ namespace
         Check(blue[120 * 360 + 338] == off[120 * 360 + 338],
             "Terrain outside the 220-unit light radius must remain unchanged, not receive a global blue tint.");
         ConfigureUnderwaterView(settings, false);
+        settings.fogOverride = FogParameters{{0,0,0}, 0.f, 0.f, false};
+        instance->m_tintColor = {80,80,80,255};
+        ::RawGameObject ghost{};
+        ghost.m_rawBytes[8] = static_cast<byte>(GamePlay::BehaviorType::Ghost);
+        ghost.m_rawShorts[5] = 1040;
+        ghost.m_rawShorts[6] = Level::tileCenterX * 100 + 100;
+        ghost.m_rawShorts[7] = 32;
+        ghost.m_rawShorts[8] = 4100 - Level::tileCenterY * 100;
+        auto ghostContext = GamePlay::CreateObjectPresentation(scene, 2, ghost, nullptr);
+        const auto dormant = render(PlayerLight::Mode::Normal);
+        ghost.m_rawShorts[5] = 1000;
+        ghostContext->Update(ghost, nullptr);
+        extraLights = 1;
+        const auto nearbyGhost = render(PlayerLight::Mode::Normal);
+        std::cout << "Ghost pool at 100 units: baseline RGB " << channel(dormant,225,0) << ','
+            << channel(dormant,225,1) << ',' << channel(dormant,225,2) << ", ghost RGB "
+            << channel(nearbyGhost,225,0) << ',' << channel(nearbyGhost,225,1) << ','
+            << channel(nearbyGhost,225,2) << "; 150-unit blue "
+            << channel(dormant,248,2) << " -> " << channel(nearbyGhost,248,2) << ".\n";
+        Check(channel(nearbyGhost,225,2) >= channel(dormant,225,2) + 10 &&
+            channel(nearbyGhost,225,2) <= channel(dormant,225,2) + 25 &&
+            channel(nearbyGhost,248,2) >= channel(dormant,248,2) + 2 &&
+            channel(nearbyGhost,248,2) <= channel(dormant,248,2) + 6 &&
+            channel(nearbyGhost,225,2) >= channel(nearbyGhost,225,0) + 5 &&
+            channel(nearbyGhost,225,0) <= channel(dormant,225,0) + 4,
+            "Nearby ghosts must cast a subtler blue pool at 100/150 native units with the normal white player light enabled.");
+        Check(nearbyGhost[120 * 360 + 338] == dormant[120 * 360 + 338],
+            "Ghost illumination must remain local rather than tinting the whole floor.");
+        ghost.m_rawShorts[17] = 22;
+        ghostContext->Update(ghost, nullptr);
+        const auto dyingGhost = render(PlayerLight::Mode::Normal);
+        Check(channel(dyingGhost,225,2) >= channel(nearbyGhost,225,2) + 30,
+            "Dying ghosts must visibly brighten their blue illumination above the quiet nearby glow.");
+        ghostContext->Remove(scene);
         renderer.SetCamera(previousCamera);
         std::cout << "Underwater blue pool: camera-following light, generated terrain normals, bright blue at 100/150 units and unchanged outside radius passed.\n";
+        std::cout << "Ghost blue pool: visible 100/150-unit illumination against the white player light, stronger death glow and local falloff passed.\n";
     }
 
     void CheckUnderwaterSurface(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
@@ -3544,6 +3580,416 @@ namespace
             "Scene reset must release both flame slots and animation bindings.");
     }
 
+    void CheckVisualLightEffects()
+    {
+        LevelScene scene(23);
+        scene.m_createGameObjects = false;
+        FORCE_WAIT(scene.CreateScene());
+        const auto count = scene.GetLightSources().size();
+        class Context final : public Desperabis::GameContext
+        {
+        public:
+            explicit Context(LevelScene& scene) : scene(scene) {}
+            void OnLightFlash(const Desperabis::LightFlash& flash) override
+            {
+                scene.FlashLight(Level::DespToPos(flash.position[0], flash.position[1], flash.position[2]),
+                    {flash.color[0],flash.color[1],flash.color[2]}, flash.fadeInSeconds, flash.fadeOutSeconds,
+                    flash.radius * DespToFloat);
+            }
+            void OnFireEmitted(int slot, const std::array<std::int16_t,3>& position) override
+            {
+                ::RawGameObject raw{};
+                Desperabis::EncodeGameObject(worldObjects.at(slot), raw.m_rawBytes, sizeof(raw.m_rawBytes));
+                scene.FireEmitted(slot, raw, Level::DespToPos(position[0],position[1],position[2]));
+            }
+            LevelScene& scene;
+        } core(scene);
+        const auto position = Level::DespToPos(1000,100,1500);
+        core.FlashLight({1000,100,1500}, {255,100,30}, 0.1f, 0.2f, 300.f);
+        auto light = scene.GetLightSources().back();
+        PackedLightSourceParams params;
+        Check(!light->FillLightParams(params) && (light->GetPosition() - position).GetLength() < 0.00001f &&
+            std::abs(light->GetRadius() - 300.f * DespToFloat) < 0.00001f,
+            "GameContext flash parameters must reach the renderer with correct native position/radius conversion.");
+        scene.Update(0.05);
+        Check(light->FillLightParams(params), "Flash must fade in before contributing.");
+        const float half = params.ColorAndPadding.x;
+        scene.Update(0.05);
+        light->FillLightParams(params);
+        Check(std::abs(params.ColorAndPadding.x - half * 2.f) < 0.00001f, "Flash must reach full brightness at the fade-in boundary.");
+        scene.Update(0.1);
+        light->FillLightParams(params);
+        Check(std::abs(params.ColorAndPadding.x - half) < 0.00001f, "Flash must fade out linearly.");
+        std::weak_ptr<LightSource> expired = light;
+        light.reset();
+        scene.Update(0.11);
+        Check(expired.expired() && scene.GetLightSources().size() == count, "Finished flashes must remove themselves and release scene ownership.");
+        core.FlashLight({1000,100,1500}, {255,255,255}, 0.f, 0.1f);
+        Check(scene.GetLightSources().back()->FillLightParams(params), "Zero fade-in must begin at full brightness.");
+        scene.Update(1.0);
+        Check(scene.GetLightSources().size() == count, "Large updates must expire flashes without leaving lights behind.");
+        core.FlashLight({1000,100,1500}, {255,255,255}, 0.1f, 0.f);
+        scene.Update(0.05);
+        Check(scene.GetLightSources().back()->FillLightParams(params) &&
+            std::abs(params.ColorAndPadding.x - 2.f) < 0.00001f, "Zero fade-out must still support a linear fade-in.");
+        scene.Update(1.0);
+        for (const auto invalid : { std::array<float,3>{-1.f,1.f,200.f}, {0.f,0.f,200.f},
+            {1.f,-1.f,200.f}, {std::nanf(""),1.f,200.f}, {1.f,HUGE_VALF,200.f},
+            {0.f,1.f,0.f}, {0.f,1.f,-1.f}, {0.f,1.f,std::nanf("")} })
+        {
+            bool rejected = false;
+            try { core.FlashLight({0,0,0}, {255,255,255}, invalid[0], invalid[1], invalid[2]); }
+            catch (const std::invalid_argument&) { rejected = true; }
+            Check(rejected && scene.GetLightSources().size() == count,
+                "Invalid flash parameters must fail explicitly without creating lights.");
+        }
+
+        auto level = Desperabis::CreateDummyLevel();
+        core.level = &level; core.collisionMap = level.collisionMap.get(); core.tickCount = 1;
+        auto& emitter = core.worldObjects[2];
+        emitter.health = 1000; emitter.behavior = Desperabis::BehaviorType::FireExhauster;
+        emitter.posX = 1000; emitter.posY = 100; emitter.posZ = 1500;
+        emitter.generalPurpose1 = 1; emitter.groupIndexOrLock = 3; emitter.itemValue = 10; emitter.behaviorParameter = 5;
+        Desperabis::DispatchObjectCase(emitter, core);
+        Check(scene.GetLightSources().size() == count + 1 &&
+            scene.GetLightSources().back()->FillLightParams(params),
+            "Actual pipe emission must pulse one owner light, not create one light per fire particle.");
+        emitter.generalPurpose1 = 1;
+        Desperabis::DispatchObjectCase(emitter, core);
+        Check(scene.GetLightSources().size() == count + 1, "Repeated pipe emissions must reuse their owner light.");
+        scene.Update(0.21);
+        Check(!scene.GetLightSources().back()->FillLightParams(params), "Pipe glow must fade away after emission stops.");
+
+        Model model;
+        model.m_drawCalls.emplace_back();
+        auto instance = std::make_shared<RenderableInstance>(&model);
+        for (int index = 0; index < 3; ++index)
+        {
+            Desperabis::RawGameObject fireball{};
+            fireball.health = 500; fireball.behavior = Desperabis::BehaviorType::FlyingArrow;
+            fireball.modelId = 5; fireball.itemValue = 5;
+            ::RawGameObject raw{};
+            Desperabis::EncodeGameObject(fireball, raw.m_rawBytes, sizeof(raw.m_rawBytes));
+            scene.UpdateObjectPresentation(20 + index, raw, instance.get());
+            Check(scene.GetLightSources().back()->FillLightParams(params) &&
+                instance->GetUsedTransparencyMask() == TransparencyModeMask::AdditiveBit,
+                "Each dragon volley fireball must have a dynamic light and additive sprite.");
+        }
+        Check(scene.GetLightSources().size() == count + 4, "Dragon volley must create precisely three lights.");
+        for (const auto behavior : {Desperabis::BehaviorType::FireParticle, Desperabis::BehaviorType::FlyingArrow})
+        {
+            Desperabis::RawGameObject fire{};
+            fire.health = 20; fire.behavior = behavior; fire.modelId = 1; fire.modelAnim = 5; fire.itemValue = 7;
+            ::RawGameObject raw{};
+            Desperabis::EncodeGameObject(fire, raw.m_rawBytes, sizeof(raw.m_rawBytes));
+            scene.UpdateObjectPresentation(30, raw, instance.get());
+            Check(instance->GetUsedTransparencyMask() == TransparencyModeMask::AdditiveBit &&
+                scene.GetLightSources().size() == count + 4, "Fire particles must be additive without expensive per-particle lights.");
+        }
+        Desperabis::RawGameObject spark{};
+        spark.health = 50; spark.behavior = Desperabis::BehaviorType::BouncingObject;
+        spark.modelId = 1; spark.modelAnim = 5; spark.animFrame = 1; spark.generalPurpose1 = 1;
+        spark.spriteScale = 24; spark.blendWeightOrSpriteOpacity = 10;
+        ::RawGameObject sparkRaw{};
+        Desperabis::EncodeGameObject(spark, sparkRaw.m_rawBytes, sizeof(sparkRaw.m_rawBytes));
+        scene.UpdateObjectPresentation(31, sparkRaw, instance.get());
+        auto corona = scene.GetLightSources().back();
+        Check(!corona->FillLightParams(params) && corona->FillCoronaParams(params) &&
+            corona->GetGlobalBounds().GetSphereRadius() >= corona->GetCoronaSize(),
+            "Corona-only sparks must have nonempty visibility bounds without contributing dynamic lights.");
+        const float fullCorona = params.ColorAndPadding.x;
+        spark.behavior = Desperabis::BehaviorType::FadingParticle;
+        spark.blendWeightOrSpriteOpacity = 2; spark.posX = 1500; spark.spriteScale = 12;
+        Desperabis::EncodeGameObject(spark, sparkRaw.m_rawBytes, sizeof(sparkRaw.m_rawBytes));
+        scene.UpdateObjectPresentation(31, sparkRaw, instance.get());
+        corona->FillCoronaParams(params);
+        Check(scene.GetLightSources().back() == corona &&
+            std::abs(params.ColorAndPadding.x - fullCorona * 0.5f) < 0.00001f &&
+            std::abs(corona->GetCoronaSize() - 24.f * DespToFloat) < 0.00001f &&
+            (corona->GetPosition() - Level::DespToPos(1500,0,0)).GetLength() < 0.00001f,
+            "Breakup coronas must follow, shrink and fade with their original particle without reallocation.");
+        scene.RemoveObjectPresentation(31);
+        Desperabis::RawGameObject smoke{};
+        smoke.health = 50; smoke.behavior = Desperabis::BehaviorType::FlyingArrow;
+        smoke.modelId = 5; smoke.itemValue = 6;
+        ::RawGameObject smokeRaw{};
+        Desperabis::EncodeGameObject(smoke, smokeRaw.m_rawBytes, sizeof(smokeRaw.m_rawBytes));
+        scene.UpdateObjectPresentation(32, smokeRaw);
+        Check(!scene.GetObjectPresentation(32) && scene.GetLightSources().size() == count + 4,
+            "Dragon death clouds must not accidentally acquire fireball lights or fire-particle overrides.");
+        scene.SetElectricityLight(true, position);
+        auto electricity = scene.GetLightSources().back();
+        Check(electricity->FillLightParams(params) && params.ColorAndPadding.z > params.ColorAndPadding.x &&
+            electricity->FillCoronaParams(params), "Electricity must provide one cyan light and tip corona.");
+        scene.SetElectricityLight(true, position + Vector(1,0,0));
+        Check(scene.GetLightSources().back() == electricity &&
+            (electricity->GetPosition() - position - Vector(1,0,0)).GetLength() < 0.00001f,
+            "Electricity must follow its tip without allocating a new light every frame.");
+        scene.SetElectricityLight(false, position);
+        Check(scene.GetLightSources().size() == count + 4, "Releasing electricity must remove its light and corona immediately.");
+        scene.ClearScene();
+        Check(scene.GetLightSources().empty(), "Scene changes must clear emitter, projectile and transient lights.");
+    }
+
+    void CheckGhostPresentations()
+    {
+        LevelScene scene(20);
+        scene.m_createGameObjects = false;
+        FORCE_WAIT(scene.CreateScene());
+        const auto& objects = scene.m_level->GetRawGameObjects();
+        const auto found = std::find_if(objects.begin(), objects.end(), [](const auto& object)
+        {
+            return GamePlay::PropertyAccessorBase(object).GetBehaviorType() == GamePlay::BehaviorType::Ghost;
+        });
+        Check(found != objects.end(), "Cathedral regression requires an original ghost fixture.");
+        auto raw = *found;
+        raw.m_rawShorts[5] = 1040;
+        raw.m_rawShorts[17] = 0;
+        raw.m_rawShorts[21] = 8;
+        auto instance = std::make_shared<RenderableInstance>();
+        auto camera = Renderer::Instance().GetOrCreateCamera();
+        const auto oldCamera = camera->GetCameraTransformMatrix(0);
+        Matrix4 nearCamera;
+        const auto position = GamePlay::PropertyAccessorBase(raw).GetPosition();
+        nearCamera.SetTranslation(position + Vector(50.f * DespToFloat,0,0));
+        camera->SetCameraTransformMatrix(nearCamera);
+        scene.m_level->ApplyRenderProperties(instance, raw);
+        scene.UpdateObjectPresentation(2, raw, instance.get());
+        auto light = scene.GetLightSources().back();
+        PackedLightSourceParams params;
+        Check(instance->IsValid() && !instance->GetVisible() && !light->FillLightParams(params) &&
+            GamePlay::PropertyAccessorBase(raw).GetSpriteTransparency() == 0.f,
+            "Dormant original ghosts must be completely invisible and emit no light even beside the player.");
+        raw.m_rawShorts[5] = 1000; raw.m_rawShorts[21] = 0;
+        scene.m_level->ApplyRenderProperties(instance, raw);
+        scene.UpdateObjectPresentation(2, raw, instance.get());
+        Check(!instance->GetVisible() && instance->m_materialOverride[0].m_opacity == 0.f,
+            "An active ghost at native opacity zero must not retain the generic one-sixth sprite visibility.");
+        raw.m_rawShorts[21] = 8;
+        scene.m_level->ApplyRenderProperties(instance, raw);
+        scene.UpdateObjectPresentation(2, raw, instance.get());
+        Check(instance->GetVisible() && light->FillLightParams(params) &&
+            params.ColorAndPadding.z > params.ColorAndPadding.x * 4.f &&
+            std::abs(params.ColorAndPadding.z - 220.f / 255.f * 2.25f) < 0.00001f &&
+            std::abs(params.PositionAndRadius.w - 180.f * DespToFloat) < 0.00001f &&
+            !light->FillCoronaParams(params),
+            "A nearby active ghost must regain native visibility with a restrained dark-blue dynamic glow.");
+        light->FillLightParams(params);
+        const float quietBlue = params.ColorAndPadding.z;
+        raw.m_rawShorts[17] = 21; raw.m_rawShorts[19] = -10;
+        scene.UpdateObjectPresentation(2, raw, instance.get());
+        light->FillLightParams(params);
+        Check(params.ColorAndPadding.z > quietBlue * 3.f &&
+            std::abs(params.ColorAndPadding.z - 6.525f) < 0.00001f &&
+            std::abs(params.PositionAndRadius.w - 195.f * DespToFloat) < 0.00001f &&
+            scene.GetLightSources().back() == light, "Ghost death must brighten the existing blue light without allocating another.");
+        raw.m_rawShorts[17] = 22;
+        scene.UpdateObjectPresentation(2, raw, instance.get());
+        Check(light->FillLightParams(params) && std::abs(params.ColorAndPadding.z - 6.75f) < 0.00001f &&
+            std::abs(params.PositionAndRadius.w - 195.f * DespToFloat) < 0.00001f,
+            "The peak ghost death glow must use 75 percent of its original intensity and radius.");
+        raw.m_rawShorts[17] = 23; raw.m_rawShorts[19] = 14;
+        scene.UpdateObjectPresentation(2, raw, instance.get());
+        Check(light->FillLightParams(params) && std::abs(params.ColorAndPadding.z - 3.375f) < 0.00001f &&
+            std::abs(params.PositionAndRadius.w - 195.f * DespToFloat) < 0.00001f,
+            "The subtler ghost death glow must preserve its final fade curve.");
+        nearCamera.SetTranslation(position + Vector(300.f * DespToFloat,0,0));
+        camera->SetCameraTransformMatrix(nearCamera);
+        scene.Update(0.01);
+        Check(!light->FillLightParams(params), "Ghost glow must turn off beyond proximity range even while dying.");
+        scene.RemoveObjectPresentation(2);
+        Check(scene.GetLightSources().size() == 1, "Ghost removal must remove its light, leaving only the player light.");
+        camera->SetCameraTransformMatrix(oldCamera);
+        scene.ClearScene();
+    }
+
+    void CheckObjectPresentations()
+    {
+        static_assert(LevelScene::ObjectSlotCount == std::tuple_size_v<decltype(Desperabis::GameContext::worldObjects)>);
+        {
+            LevelScene scene(23);
+            FORCE_WAIT(scene.CreateScene());
+            std::size_t lights = 1;
+            int firstLightSlot = 0;
+            for (const auto& object : scene.m_level->GetRawGameObjects())
+            {
+                const GamePlay::PropertyAccessorBase properties(object);
+                const auto behavior = properties.GetBehaviorType();
+                const bool hasLight = properties.GetHealth() > 0 &&
+                    (behavior == GamePlay::BehaviorType::LightSource ||
+                        behavior == GamePlay::BehaviorType::PulsatingLight ||
+                        behavior == GamePlay::BehaviorType::BurningFireplace ||
+                        behavior == GamePlay::BehaviorType::FireExhauster);
+                const int slot = object.m_objectNumber + 2;
+                Check(static_cast<bool>(scene.GetObjectPresentation(slot)) == hasLight,
+                    "Level conversion must associate each existing object light with its native slot.");
+                if (hasLight) { ++lights; firstLightSlot = slot; }
+            }
+            Check(lights > 1 && scene.GetLightSources().size() == lights,
+                "Converted lights must retain their appearance without duplicate fireplace lights.");
+            std::weak_ptr<ObjectPresentationContext> removed = scene.GetObjectPresentation(firstLightSlot);
+            scene.RemoveObjectPresentation(firstLightSlot);
+            Check(removed.expired() && scene.GetLightSources().size() == lights - 1,
+                "Removing a converted object must release both its context and scene light.");
+            scene.ClearScene();
+            Check(scene.GetLightSources().empty() && !scene.GetObjectPresentation(firstLightSlot),
+                "Scene reset must clear every object presentation and light.");
+        }
+
+        LevelScene scene(23);
+        class Context final : public Desperabis::GameContext
+        {
+        public:
+            explicit Context(LevelScene& scene) : scene(scene) {}
+            void Sync(int slot)
+            {
+                ::RawGameObject object{};
+                Desperabis::EncodeGameObject(GetObjectRenderState(slot), object.m_rawBytes, sizeof(object.m_rawBytes));
+                scene.UpdateObjectPresentation(slot, object);
+            }
+            void OnObjectCreated(int slot) override { Sync(slot); }
+            void OnObjectDestroyed(int slot) override { scene.RemoveObjectPresentation(slot); }
+            LevelScene& scene;
+        } host(scene);
+        auto level = Desperabis::CreateDummyLevel();
+        host.level = &level;
+        host.collisionMap = level.collisionMap.get();
+        level.heightSurfaces[0] = Desperabis::Level::HeightSurface{0,0};
+        std::memset(level.ceilingObjects, 0, sizeof(level.ceilingObjects));
+        auto& player = host.worldObjects[1];
+        player.health = 1000;
+        player.posX = player.posZ = 1000;
+        player.posY = 120;
+        player.velocityX = 100;
+        host.selectedWeapon = host.requestedWeapon = Desperabis::WeaponType::Fireball;
+        host.weaponHand = host.requestedWeaponHand = 2;
+        host.weaponReady = true;
+        auto& held = host.inventory[1];
+        held.health = 1000;
+        held.collisionType = Desperabis::CollisionType::Weapon;
+        held.itemValue = static_cast<std::int16_t>(Desperabis::WeaponType::Fireball);
+        held.generalPurpose1 = 2;
+        host.weaponAmounts[4] = 2;
+        host.RefreshWeaponInventory();
+        auto* renderLevel = FORCE_GET(AssetManager::Instance().LoadLevel(11));
+        const auto fireballFrames = FORCE_GET(AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\SCHUSS1.AN2"));
+        auto present = [&](int slot, const RenderableInstancePtr& instance, Texture* texture = nullptr)
+        {
+            ::RawGameObject object{};
+            Desperabis::EncodeGameObject(host.GetObjectRenderState(slot), object.m_rawBytes, sizeof(object.m_rawBytes));
+            object.m_level = renderLevel;
+            renderLevel->ApplyRenderProperties(instance, object, texture);
+            scene.UpdateObjectPresentation(slot, object, instance.get());
+        };
+        Check(host.AttackWithSelectedWeapon() == Desperabis::WeaponActionStatus::Applied &&
+            scene.GetObjectPresentation(2) && scene.GetLightSources().size() == 1,
+            "The actual fireball weapon factory must create its renderer light through the lifecycle hook.");
+        std::weak_ptr<ObjectPresentationContext> original = scene.GetObjectPresentation(2);
+        std::weak_ptr<LightSource> originalLight = scene.GetLightSources()[0];
+        auto& ball = host.worldObjects[2];
+        auto ballInstance = std::make_shared<RenderableInstance>(nullptr);
+        present(2, ballInstance, &fireballFrames->m_frames[0]);
+        Check(ballInstance->GetUsedTransparencyMask() == TransparencyModeMask::AdditiveBit &&
+            ballInstance->m_materialOverride[0].m_texture == &fireballFrames->m_frames[0],
+            "The creation context must apply additive blending when the fireball render instance becomes available.");
+        host.tickCount = 12;
+        Desperabis::DispatchObjectCase(ball, host);
+        host.tickCount = 1;
+        Desperabis::DispatchObjectCase(ball, host);
+        host.Sync(2);
+        present(2, ballInstance, &fireballFrames->m_frames[1]);
+        Check(ballInstance->GetUsedTransparencyMask() == TransparencyModeMask::AdditiveBit &&
+            ballInstance->m_materialOverride[0].m_texture == &fireballFrames->m_frames[1],
+            "Fireball frame/material refreshes must preserve additive blending and the selected texture.");
+        const auto position = Level::DespToPos(ball.posX, ball.posY, ball.posZ);
+        Check(scene.GetLightSources().size() == 1 &&
+            (scene.GetLightSources()[0]->GetPosition() - position).GetLength() < 0.00001f &&
+            scene.GetObjectPresentation(2) == original.lock(),
+            "A flying fireball must move its existing light, not allocate one per update.");
+        Check(std::abs(scene.GetLightSources()[0]->GetGlobalBounds().m_box.m_min.GetX() -
+            (position.GetX() - scene.GetLightSources()[0]->GetRadius())) < 0.00001f,
+            "Moving fireball lights must update visibility bounds.");
+        for (int step = 0; step < 20; ++step) { Desperabis::DispatchObjectCase(ball, host); }
+        Check(ball.health == 0 && !scene.GetObjectPresentation(2) && original.expired() && originalLight.expired() &&
+            scene.GetLightSources().empty(),
+            "Native projectile expiry must immediately remove its light without a presentation-sync pass.");
+
+        auto exploding = ball;
+        exploding.health = 38;
+        host.ReplaceWorldObject(2, exploding);
+        host.DamageObject(host.worldObjects[2], 0);
+        Check(scene.GetLightSources().size() == 9, "Explosion sparks must each create only a corona source.");
+        for (const auto& light : scene.GetLightSources())
+        {
+            PackedLightSourceParams params;
+            Check(!light->FillLightParams(params) && light->FillCoronaParams(params),
+                "Explosion spark coronas must never enter the expensive dynamic-light list.");
+        }
+        for (int slot = 3; slot <= 11; ++slot)
+        {
+            auto& spark = host.worldObjects[slot];
+            Check(spark.behavior == Desperabis::BehaviorType::BouncingObject && scene.GetObjectPresentation(slot),
+                "Each actual fireball-breakup spark must receive its material context from the creation hook.");
+            auto instance = std::make_shared<RenderableInstance>(nullptr);
+            present(slot, instance);
+            Check(instance->GetUsedTransparencyMask() == TransparencyModeMask::AdditiveBit &&
+                instance->m_materialOverride[0].m_opacity == 1.f &&
+                instance->GetRenderable()->m_drawCalls[0].m_material.m_transparencyType != TransparencyMode::Additive,
+                "Explosion sparks must use additive instance overrides without modifying shared sprite materials or opacity.");
+            const auto context = scene.GetObjectPresentation(slot);
+            spark.behavior = Desperabis::BehaviorType::FadingParticle;
+            spark.health = 12;
+            Desperabis::DispatchObjectCase(spark, host);
+            present(slot, instance);
+            Check(scene.GetObjectPresentation(slot) == context &&
+                instance->GetUsedTransparencyMask() == TransparencyModeMask::AdditiveBit &&
+                std::abs(instance->m_materialOverride[0].m_opacity - 4.f / 6.f) < 0.00001f,
+                "Spark bounce-to-fade transitions must retain additive blending and native opacity fading.");
+            spark.behavior = Desperabis::BehaviorType::BouncingObject;
+            spark.generalPurpose1 = 0;
+            present(slot, instance);
+            Check(!scene.GetObjectPresentation(slot) &&
+                instance->GetUsedTransparencyMask() == TransparencyModeMask::AlphaBlendedBit,
+                "Unrelated bouncing debris must keep its normal alpha blending.");
+            host.SetObjectHealth(spark, 0);
+        }
+
+        Desperabis::RawGameObject replacement{};
+        replacement.health = 1000;
+        replacement.behavior = Desperabis::BehaviorType::FireballProjectile;
+        host.ReplaceWorldObject(165, replacement);
+        Check(scene.GetObjectPresentation(165) && scene.GetLightSources().size() == 1,
+            "Presentation storage must include the last native slot 165.");
+        std::weak_ptr<ObjectPresentationContext> replaced = scene.GetObjectPresentation(165);
+        replacement.behavior = Desperabis::BehaviorType::FireballImpact;
+        host.ReplaceWorldObject(165, replacement);
+        Check(replaced.expired() && scene.GetObjectPresentation(165) && scene.GetLightSources().size() == 1,
+            "Replacing a live slot must release the previous context and create only one impact light.");
+        auto& impact = host.worldObjects[165];
+        impact.modelId = 1; impact.modelAnim = 5; impact.animFrame = 1;
+        impact.spriteScale = 24;
+        impact.displayType = Desperabis::DisplayType::SpriteTransparent;
+        impact.blendWeightOrSpriteOpacity = 3;
+        auto impactInstance = std::make_shared<RenderableInstance>(nullptr);
+        present(165, impactInstance);
+        Check(impactInstance->GetUsedTransparencyMask() == TransparencyModeMask::AdditiveBit &&
+            std::abs(impactInstance->m_materialOverride[0].m_opacity - 4.f / 6.f) < 0.00001f,
+            "Fireball impact flashes must also use additive blending without losing native opacity.");
+        host.worldObjects[165].behavior = Desperabis::BehaviorType::None;
+        host.Sync(165);
+        Check(!scene.GetObjectPresentation(165) && scene.GetLightSources().empty(),
+            "In-place behavior changes must discard obsolete effect contexts.");
+        replacement.behavior = Desperabis::BehaviorType::PulsatingLight;
+        host.ReplaceWorldObject(165, replacement);
+        host.SetObjectHealth(host.worldObjects[165], 0);
+        Check(scene.GetLightSources().empty(), "Pickup/depletion must remove pulsating item lights immediately.");
+        host.SetObjectHealth(host.worldObjects[165], 1000);
+        Check(scene.GetLightSources().size() == 1, "Reactivating an object must recreate its light once.");
+        std::weak_ptr<LightSource> cleared = scene.GetLightSources()[0];
+        scene.ClearScene();
+        Check(cleared.expired() && !scene.GetObjectPresentation(165), "Level changes must not retain old object lights.");
+    }
+
     void CheckStaticFireTracking()
     {
         auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(23));
@@ -3563,6 +4009,17 @@ namespace
                 Check(material.m_texture != nullptr, "Level 23 must supply static textures in slots 13..15.");
             }
             auto instance = std::make_shared<RenderableInstance>(&model);
+            Model terrain;
+            terrain.m_drawCalls = model.m_drawCalls;
+            for (auto& draw : terrain.m_drawCalls)
+            {
+                draw.m_material.m_textureSlotSource = TextureSlotSource::Level;
+                draw.m_material.ComputeHash();
+            }
+            Check(!model.m_drawCalls[0].IsBatchableWith(terrain.m_drawCalls[0]) &&
+                model.m_drawCalls[0].ComputeBatchingKey() != terrain.m_drawCalls[0].ComputeBatchingKey(),
+                "Equal texture slots and pointers from different namespaces must not be batched together.");
+            auto terrainInstance = std::make_shared<RenderableInstance>(&terrain);
             auto loadMarkers = [&]()
             {
                 for (const int slot : { 4, 101 })
@@ -3577,12 +4034,14 @@ namespace
             };
             if (markersFirst) { loadMarkers(); }
             scene.AddRenderableInstance(instance);
+            scene.AddRenderableInstance(terrainInstance);
             if (!markersFirst)
             {
-                Check(scene.BindingCount() == 0, "Static materials must remain untracked until a marker claims their slot.");
+                Check(scene.BindingCount() == 0, "Resolved model textures must remain untracked until a marker claims their slot.");
                 loadMarkers();
             }
-            Check(scene.BindingCount() == 2, "Markers must bind static textures regardless of marker/geometry load order.");
+            Check(scene.BindingCount() == 2,
+                "Markers must bind model texture slots, not equal level slots, regardless of marker/geometry load order.");
             scene.SetFireAnimationFrame(13, 0);
             scene.SetFireAnimationFrame(14, 1);
             scene.HandleFireAnimations(0);
@@ -3590,7 +4049,16 @@ namespace
                 instance->m_materialOverride[1].m_texture == &animation->m_frames[1] &&
                 instance->m_materialOverride[0].m_transparencyType == TransparencyMode::Additive &&
                 instance->m_materialOverride[1].m_transparencyType == TransparencyMode::Additive,
-                "Registered fire slots must replace static textures with their selected additive frames.");
+                "Registered fire slots must replace resolved model textures with their selected additive frames.");
+            Check(terrainInstance->m_materialOverride.empty(),
+                "Tracked model slots must not allocate animation overrides on flat terrain with equal slot numbers.");
+            terrainInstance->m_materialOverride.push_back(terrain.m_drawCalls[0].m_material);
+            scene.AssignFireAnimations(*terrainInstance);
+            scene.HandleFireAnimations(0);
+            Check(scene.BindingCount() == 2 &&
+                terrainInstance->m_materialOverride[0].m_texture == level->GetLevelInfo().GetLevelTexture(13).get() &&
+                terrainInstance->m_materialOverride[0].m_transparencyType == TransparencyMode::Opaque,
+                "Existing level-texture overrides must keep their static texture and opaque blending.");
             Check(instance->m_materialOverride[2].m_texture == model.m_drawCalls[2].m_material.m_texture &&
                 instance->m_materialOverride[2].m_transparencyType == model.m_drawCalls[2].m_material.m_transparencyType &&
                 model.m_drawCalls[0].m_material.m_texture == level->GetLevelInfo().GetLevelTexture(13).get(),
@@ -3602,8 +4070,44 @@ namespace
             scene.HandleFireAnimations(0);
             Check(scene.BindingCount() == 2 && instance->m_materialOverride[0].m_texture == &animation->m_frames[2],
                 "Static material refreshes must rebind the current frame without duplicating animation bindings.");
+            instance->m_materialOverride[0] = terrain.m_drawCalls[0].m_material;
+            scene.AssignFireAnimations(*instance);
+            scene.HandleFireAnimations(0);
+            Check(instance->m_materialOverride[0].m_texture == level->GetLevelInfo().GetLevelTexture(13).get() &&
+                instance->m_materialOverride[0].m_transparencyType == TransparencyMode::Opaque,
+                "An old animation binding must not overwrite a refreshed material from the level-texture namespace.");
             scene.RemoveRenderableInstance(instance);
             Check(scene.BindingCount() == 0, "Removing static animated geometry must discard its bindings.");
+            scene.RemoveRenderableInstance(terrainInstance);
+
+            FlameScene converted;
+            FORCE_GET(level->PopulateScene(converted, false, false));
+            for (const int slot : { 13, 14 })
+            {
+                converted.AddFireAnimation(animation, slot, 25.1f);
+                converted.SetFireAnimationFrame(slot, 2);
+            }
+            converted.HandleFireAnimations(0);
+            int staticSurfaces = 0;
+            int collidingSlots = 0;
+            for (const auto& surface : converted.GetRenderableInstances())
+            {
+                for (std::size_t index = 0; index < surface->GetRenderable()->m_drawCalls.size(); ++index)
+                {
+                    const auto& original = surface->GetRenderable()->m_drawCalls[index].m_material;
+                    if (original.m_textureSlotSource != TextureSlotSource::Level) { continue; }
+                    const auto& current = index < surface->m_materialOverride.size() ?
+                        surface->m_materialOverride[index] : original;
+                    Check(current.m_textureSlotSource == TextureSlotSource::Level &&
+                        current.m_texture == level->GetLevelInfo().GetLevelTexture(original.m_textureSlot).get() &&
+                        current.m_transparencyType == original.m_transparencyType,
+                        "Converted level 23 walls, floors and ceilings must retain their static TUR textures and blending.");
+                    ++staticSurfaces;
+                    if (original.m_textureSlot == 13 || original.m_textureSlot == 14) { ++collidingSlots; }
+                }
+            }
+            Check(staticSurfaces > 0 && collidingSlots > 0,
+                "The original level 23 regression must exercise flat surfaces sharing the fireplace's slot numbers.");
         }
     }
 
@@ -3908,6 +4412,9 @@ int main(int argc, char* argv[])
         CheckSmoothPolygonNormals(renderer, device.Get(), context.Get());
         CheckTutorialFlames();
         CheckStaticFireTracking();
+        CheckObjectPresentations();
+        CheckVisualLightEffects();
+        CheckGhostPresentations();
         CheckWitchMouth(renderer, device.Get(), context.Get());
         CheckMutableWalls(renderer, device.Get(), context.Get());
         CheckWaterSurfaceDefinitions();
@@ -4319,6 +4826,14 @@ int main(int argc, char* argv[])
             const auto* weaponLevel = FORCE_GET(AssetManager::Instance().LoadLevel(levelNumber));
             const auto* swordModel = weaponLevel->GetLevelInfo().GetModelAnim(1)->GetModel(1, 0);
             const auto originalMaterial = swordModel->m_drawCalls[0].m_material;
+            const auto electricityBytes = FORCE_GET(files.ReadDataFuture(files.FilenameToNative(
+                L"VEKT\\VEKT" + std::to_wstring(weaponLevel->GetLevelInfo().m_loadedModelSlots[1]) + L".3DA")));
+            Desperabis::ModelAnchorGeometry electricityGeometry;
+            electricityGeometry.Load(electricityBytes.data(), electricityBytes.size());
+            const auto& electricityFrames = electricityGeometry.animations.at(1);
+            Check(electricityFrames.at(3).vertices.at(2) == std::array<std::int16_t,3>{0,0,53} &&
+                electricityFrames.at(3).vertices.at(2) == electricityFrames.at(4).vertices.at(2),
+                "Both chapter electricity bolts must originate at the same vertex 3 in both firing frames.");
             const auto placeableData = FORCE_GET(FileManager::Instance().ReadDataFuture(
                 FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS10.DAT")));
             const auto placeable = Desperabis::DecodeGameObject(placeableData.data() + 73 * 54, 54);
@@ -4373,6 +4888,57 @@ int main(int argc, char* argv[])
                     std::cout << "Weapon " << static_cast<int>(type) << " at " << size.first << "x" << size.second
                         << ": " << count << " pixels\n";
                     Check(count > 5, "Every original weapon must render actual pixels despite occluding world depth.");
+                    if (type == Desperabis::WeaponType::Electricity)
+                    {
+                        weaponCore.weaponAmounts[7] = 100;
+                        weaponCore.weaponElectricityFiring = true;
+                        Camera worldCamera;
+                        Matrix4 projection;
+                        projection.CreateProjection(target.viewport.Width / target.viewport.Height, 1.1f, 0.001f, 100.f);
+                        worldCamera.SetProjectionMatrix(projection);
+                        ::RawGameObject cameraState{};
+                        cameraState.m_rawShorts[9] = 30;
+                        cameraState.m_rawShorts[10] = 100;
+                        auto worldTransform = GamePlay::PropertyAccessorBase(cameraState).GetTransform();
+                        worldTransform.SetTranslation(Vector(2,3,4));
+                        worldCamera.SetCameraTransformMatrix(worldTransform);
+                        for (const int hand : {1,2})
+                        {
+                            weaponCore.weaponHand = static_cast<std::uint8_t>(hand);
+                            for (const int pose : {-10,0,15,30,50})
+                            {
+                                weaponCore.weaponAnimationPosition = static_cast<std::int16_t>(pose);
+                                weaponCore.playerWalkPhase = pose * 7 & 511;
+                                const auto charged = *weaponCore.GetWeaponView();
+                                ui.DrawWeapon(charged, renderer, *weaponLevel, settings, stats, target.viewport,
+                                    context.Get(), target.colorView.Get(), target.depthView.Get());
+                                ComPtr<ID3D11Buffer> instanceBuffer, globalsBuffer;
+                                context->VSGetConstantBuffers(1, 1, &instanceBuffer);
+                                context->VSGetConstantBuffers(0, 1, &globalsBuffer);
+                                const auto instanceData = ReadBuffer<float>(device.Get(), context.Get(), instanceBuffer.Get());
+                                const auto globals = ReadBuffer<float>(device.Get(), context.Get(), globalsBuffer.Get());
+                                Matrix4 actualModel, actualProjection;
+                                actualModel.Load(instanceData.data()); actualModel = actualModel.GetTransposed();
+                                actualProjection.Load(globals.data() + 64); actualProjection = actualProjection.GetTransposed();
+                                const auto gpuTip = (actualModel * actualProjection).TransformPosition(Vector(0,0,53 * DespVertToFloat));
+                                const float scale = (std::min)(target.viewport.Width / Desperabis::WeaponView::Width,
+                                    target.viewport.Height / Desperabis::WeaponView::Height);
+                                const float expectedX = target.viewport.Width * 0.5f +
+                                    gpuTip.GetX() * Desperabis::WeaponView::Width * scale * 0.5f;
+                                const float expectedY = target.viewport.Height -
+                                    (gpuTip.GetY() + 1.f) * Desperabis::WeaponView::Height * scale * 0.5f;
+                                const auto worldTip = ApplicationUi::ElectricityTipWorld(charged, electricityGeometry, worldCamera, target.viewport);
+                                const auto projected = (worldCamera.GetViewMatrix(0) * projection).TransformPosition(worldTip);
+                                const float actualX = (projected.GetX() + 1.f) * target.viewport.Width * 0.5f;
+                                const float actualY = (1.f - projected.GetY()) * target.viewport.Height * 0.5f;
+                                Check(std::abs(actualX - expectedX) < 0.25f && std::abs(actualY - expectedY) < 0.25f,
+                                    "World electricity corona must project onto the actual GPU-rendered bolt tip within a quarter pixel.");
+                            }
+                        }
+                        weaponCore.weaponHand = 2; weaponCore.weaponAnimationPosition = 15;
+                        weaponCore.playerWalkPhase = 128;
+                        weaponCore.weaponAmounts[7] = 0; weaponCore.weaponElectricityFiring = false;
+                    }
                     context->ClearRenderTargetView(target.colorView.Get(), black);
                     ui.DrawWeapon(*weapon, renderer, *weaponLevel, settings, stats, target.viewport,
                         context.Get(), target.colorView.Get(), target.depthView.Get());

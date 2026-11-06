@@ -198,6 +198,7 @@
     <ClInclude Include="..\SharedSource\base\CommonDefines.h" />
     <ClInclude Include="..\SharedSource\base\DesperabisCommon.h" />
     <ClInclude Include="..\SharedSource\base\GamePlay\GamePlay.h" />
+    <ClInclude Include="..\SharedSource\base\GamePlay\ObjectPresentation.h" />
     <ClInclude Include="..\SharedSource\base\GamePlay\SimpleBehavior.h" />
     <ClInclude Include="..\SharedSource\base\IO\FileManager.h" />
     <ClInclude Include="..\SharedSource\base\Math\Math.h" />
@@ -240,6 +241,7 @@
     <ClCompile Include="..\SharedSource\base\Asset\Texture.cpp" />
     <ClCompile Include="..\SharedSource\base\Asset\TextureAnim.cpp" />
     <ClCompile Include="..\SharedSource\base\GamePlay\GamePlay.cpp" />
+    <ClCompile Include="..\SharedSource\base\GamePlay\ObjectPresentation.cpp" />
     <ClCompile Include="..\SharedSource\base\GamePlay\SimpleBehavior.cpp" />
     <ClCompile Include="..\SharedSource\base\IO\FileManager.cpp" />
     <ClCompile Include="..\SharedSource\base\Math\Math.cpp" />

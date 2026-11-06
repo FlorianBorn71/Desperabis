@@ -34,6 +34,8 @@ public:
     void DrawWeapon(const Desperabis::WeaponView& view, RendererDX11& renderer, const Level& level,
         const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
         ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView);
+    static Vector ElectricityTipWorld(const Desperabis::WeaponView& view,
+        const Desperabis::ModelAnchorGeometry& geometry, const Camera& camera, const D3D11_VIEWPORT& viewport);
     void Draw(const Desperabis::ApplicationPresentation& presentation, RendererDX11& renderer,
         const Level& level, const Font& font, const TextureAnim& hud,
         const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,

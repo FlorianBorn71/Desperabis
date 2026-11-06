@@ -278,6 +278,7 @@ void RemoteScene::Update(double elapsedTime)
 			// turn off object
 			if (!newProp.Isvalid())
 			{
+				RemoveObjectPresentation(i + 2);
 				if (m_renderableInst[i] != nullptr)
 				{
 					RemoveRenderableInstance(m_renderableInst[i]);
@@ -285,7 +286,7 @@ void RemoteScene::Update(double elapsedTime)
 				}
 				if (m_gameObj[i] != nullptr)
 				{
-					RemoveGameObject(m_gameObj[i]); // TODO: light source must be removed
+					RemoveGameObject(m_gameObj[i]);
 					m_gameObj[i] = nullptr;
 				}				continue;
 			}
@@ -307,6 +308,7 @@ void RemoteScene::Update(double elapsedTime)
 			}
 
 			m_level->ApplyRenderProperties(m_renderableInst[i], m_currentObjState[i]);
+			UpdateObjectPresentation(i + 2, m_currentObjState[i], m_renderableInst[i].get());
 
 			if (firstAssignment)
 			{

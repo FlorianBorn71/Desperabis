@@ -167,6 +167,10 @@ namespace GamePlay
     const char* BehaviorTypeToString(BehaviorType t)
     {
         BT_ENUM2STRING(None);
+        BT_ENUM2STRING(BouncingObject);
+        BT_ENUM2STRING(FireballProjectile);
+        BT_ENUM2STRING(FadingParticle);
+        BT_ENUM2STRING(FireParticle);
         BT_ENUM2STRING(Pillar);
         BT_ENUM2STRING(LightSource);
         BT_ENUM2STRING(PulsatingLight);
@@ -528,41 +532,6 @@ namespace GamePlay
             scene.AddFireAnimation(torchAnim, targetTexSlot, speed, btype != BehaviorType::WitchMouthAnimation);
 
         }
-        else if (btype == BehaviorType::LightSource)
-        {
-            float lightRadius = 140.f;
-            if (lightRadius > 0.f)
-            {
-                std::shared_ptr<LightSource> light = std::make_shared<FlickeringLight>(&scene);
-                Vector pos = props.GetPosition();
-                float heightOverModel = 5.f * DespToFloat; // depends on the model:
-                if (go.m_renderInst != nullptr && go.m_renderInst->GetRenderable() != nullptr)
-                {
-                    heightOverModel = go.m_renderInst->GetRenderable()->m_localBounds.GetSphereRadius() * 0.20f; // heuristic
-                }
-
-                // slightly move the corona up...
-                pos += Vector(0, heightOverModel * 0.5f, 0);
-                // ..but the light even more
-                light->SetLightHeightOffset(heightOverModel * 0.5f);
-                light->SetPosition(pos);
-                light->SetColor(Color4{ 255,240,180 }, 2.0f);
-                light->SetCoronaColorMod(Color4{ 255,220,140 });
-                light->SetRadius(lightRadius * DespToFloat);
-                scene.AddLightSource(light);
-                light->UpdateGlobalBounds();
-            }
-
-        }
-        else if (btype == BehaviorType::PulsatingLight)
-        {
-            std::shared_ptr<LightSource> light = std::make_shared<PulsatingLight>(&scene); // manages color and radius
-            Vector pos = props.GetPosition();
-            float heightOverModel = 5.f * DespToFloat;
-            pos += Vector(0, heightOverModel, 0);
-            light->SetPosition(pos);
-            scene.AddLightSource(light);
-        }
         else if (btype == BehaviorType::Moon)
         {
             ConvertToMoon(*go.m_renderInst, rawGo);
@@ -579,7 +548,6 @@ namespace GamePlay
         {
         case BehaviorType::FogParticle: return std::make_shared<FogParticleObject>(&scene, rawGO);
         case BehaviorType::Flies: return std::make_shared<FliesSwarmObject>(&scene, rawGO);
-        case BehaviorType::BurningFireplace: return std::make_shared<BurningFireplaceObject>(&scene, rawGO);
         }
 
         return std::make_shared<LevelGameObject>(&scene, rawGO);
@@ -797,6 +765,11 @@ namespace GamePlay
 
     float PropertyAccessorBase::GetSpriteTransparency() const
     {
+        if (GetBehaviorType() == BehaviorType::Ghost &&
+            (GetHealth() != 1000 || m_go.m_rawShorts[21] <= 0))
+        {
+            return 0.f;
+        }
         if (GetDisplayType() != DisplayType::SpriteTransparent)
         {
             return 1.f;

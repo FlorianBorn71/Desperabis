@@ -121,6 +121,7 @@ namespace
                 host.playerLife == life - 29491 * target.behaviorParameter && host.playerHitEffectTicks == 8,
                 "Original bat, head and tail contacts must apply byte-52 damage without Enter.");
             host.DEBUG_noPlayerCollision = true;
+            host.ApplyPlayerLifeDelta(0);
             const auto remaining = host.playerLife;
             UpdatePlayerInteraction(host, input);
             Check(host.playerLife == remaining, "Cave contacts must respect the player-damage cheat.");
@@ -208,9 +209,9 @@ namespace
             electric.playerHitEffectTicks == 8,
             "Touching the original recharge pedestal must inflict native byte-52 shock damage every movement substep.");
         electric.DEBUG_noPlayerCollision = true;
-        const auto protectedLife = electric.playerLife;
         electric.Tick({0, 3}, input);
-        Check(electric.playerLife == protectedLife, "Pedestal shock must respect player damage suppression.");
+        Check(electric.playerLife == electric.playerLifeMaximum * 65536 && electric.playerHitEffectTicks == 0,
+            "Collision-off must restore full life and ignore the pedestal shock.");
     }
 
     void TestRecharge(const std::filesystem::path& assets)

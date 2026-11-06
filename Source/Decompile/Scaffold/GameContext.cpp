@@ -173,6 +173,20 @@ namespace Desperabis
     GameContext& GameContext::operator=(GameContext&&) noexcept = default;
 
     void GameContext::OnObjectCreated(int) {}
+    void GameContext::OnLightFlash(const LightFlash&) {}
+    void GameContext::OnFireEmitted(int, const std::array<std::int16_t, 3>&) {}
+
+    void GameContext::FlashLight(const std::array<std::int16_t, 3>& position,
+        const std::array<std::uint8_t, 3>& color, float fadeInSeconds, float fadeOutSeconds, float radius)
+    {
+        if (!std::isfinite(fadeInSeconds) || !std::isfinite(fadeOutSeconds) ||
+            fadeInSeconds < 0.f || fadeOutSeconds < 0.f || fadeInSeconds + fadeOutSeconds <= 0.f ||
+            !std::isfinite(fadeInSeconds + fadeOutSeconds) || !std::isfinite(radius) || radius <= 0.f)
+        {
+            throw std::invalid_argument("Light flashes require finite nonnegative fade times, a positive duration and radius.");
+        }
+        OnLightFlash({position, color, fadeInSeconds, fadeOutSeconds, radius});
+    }
     void GameContext::OnLightningShown(const LightningFlash&) {}
     void GameContext::OnLightningHidden() {}
     void GameContext::OnObjectDestroyed(int) {}
@@ -361,6 +375,7 @@ namespace Desperabis
         lightingCache = newLighting;
         field_DC34 = 0;
         if (pendingSaveGame) { RestoreSaveGame(); }
+        if (DEBUG_noPlayerCollision) { ApplyPlayerLifeDelta(0); }
         loadedLevelNumber = pendingLevelLoad->levelNumber;
         pendingLevelLoad.reset();
         levelLoadError.clear();
@@ -507,7 +522,7 @@ namespace Desperabis
             const auto bob = std::abs(static_cast<int>(signedBob));
             auto eyeY = WrapSignedWord(player.posY + player.collisionRadiusY + 2);
             bool bridgeSupported = false;
-            bool terrainSlopeEnabled = true;
+            bool terrainSlopeEnabled = !DEBUG_noPlayerCollision;
             std::uint8_t footstepEffect = 0;
             if (field_D500)
             {
@@ -772,6 +787,7 @@ namespace Desperabis
         {
             throw std::invalid_argument("Game ticks require nonnegative behavior and frame counts.");
         }
+        if (DEBUG_noPlayerCollision) { ApplyPlayerLifeDelta(0); }
         switch (runtimeState)
         {
         case GameRuntimeState::NoLevel: return { GameTickStatus::NoLevel, {}, {} };
@@ -827,6 +843,7 @@ namespace Desperabis
         if (input.IsKeyPressed(InputKey::AttackKey)) { weapon.attack = AttackWithSelectedWeapon(); }
         levelElapsedTicks = static_cast<std::int32_t>(
             static_cast<std::uint32_t>(levelElapsedTicks) + static_cast<std::uint32_t>(frameTickCount));
+        if (DEBUG_noPlayerCollision) { playerHitEffectTicks = 0; }
         return { GameTickStatus::Advanced, interaction, results, movement, weapon };
     }
 
@@ -1412,9 +1429,25 @@ namespace Desperabis
 
     void GameContext::ApplyPlayerLifeDelta(std::int32_t delta)
     {
-        if (DEBUG_noPlayerCollision && delta < 0) { return; }
         const auto previousLife = playerLife;
-        if (playerLifeDeltaSuppressed == 0)
+        if (DEBUG_noPlayerCollision)
+        {
+            playerLife = static_cast<std::int32_t>(playerLifeMaximum) * 65536;
+            if (playerDeathDirection)
+            {
+                auto& player = worldObjects[1];
+                player.velocityX = (*playerDeathDirection)[0];
+                player.velocityY = (*playerDeathDirection)[1];
+                player.velocityZ = (*playerDeathDirection)[2];
+                playerDeathDirection.reset();
+                positionalSoundsSuppressed = false;
+                playerPostureDelta = 0;
+                playerBodyHeight = 45;
+                playerVerticalSpeed = 0;
+            }
+            playerHitEffectTicks = 0;
+        }
+        else if (playerLifeDeltaSuppressed == 0)
         {
             const auto bits = static_cast<std::uint32_t>(playerLife) + static_cast<std::uint32_t>(delta);
             playerLife = bits <= 0x7fffffffu ? static_cast<std::int32_t>(bits) :
@@ -2024,6 +2057,7 @@ namespace Desperabis
             object.posX = WrapSignedWord(object.posX - 2 * object.velocityX);
             object.posZ = WrapSignedWord(object.posZ - 2 * object.velocityZ);
             PlaySoundEffect(static_cast<SoundEffect>(37), volume, 467, 1);
+            FlashLight({object.posX, object.posY, object.posZ}, {255,140,30}, 0.02f, 0.3f, 180.f);
             for (int i = 0; i < 9; ++i) { SpawnBreakupParticle(object, amount, 10, 10, 10); }
             SetObjectHealth(object, 0);
             return;

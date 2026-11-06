@@ -58,6 +58,9 @@ namespace GamePlay
     {
         None = 0,
 
+        BouncingObject = 1,
+        FireballProjectile = 4,
+        FadingParticle = 5,
         Pillar = 8,
         LightSource = 9,
         Door = 10,
@@ -68,6 +71,7 @@ namespace GamePlay
         Flies = 16, // a few instances in both forest levels
         BatOutdoor = 17, // Unlike 'Bat' does not collide with walls?
         FireFly = 19,
+        FireParticle = 21,
         BurningFireplace = 22, // e.g. lorry rails
         PulsatingLight = 23, // fireball, but also others
         SmokeFading = 24, // e.g. for fire

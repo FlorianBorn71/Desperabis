@@ -47,6 +47,10 @@ namespace
         std::optional<LevelLoadRequest> request;
         std::optional<std::array<std::int16_t, 3>> announcedHead;
         int created = 0, destroyed = 0, lifeChanges = 0;
+        std::vector<LightFlash> flashes;
+        int fireEmissions = 0;
+        void OnFireEmitted(int, const std::array<std::int16_t,3>&) override { ++fireEmissions; }
+        void OnLightFlash(const LightFlash& flash) override { flashes.push_back(flash); }
         void OnObjectCreated(int slot) override
         {
             ++created;
@@ -177,6 +181,8 @@ namespace
             }
             Check(static_cast<int>(shots.size()) == count && body.itemValue == 23 && body.spriteScale == 2 &&
                 f.context.randomSeed == seed, "Distance 200 must switch from breath to a three-shot volley without extra RNG.");
+            Check(f.context.fireEmissions == (count == 1 ? 1 : 0),
+                "Only breath must pulse the dragon-owned emitter light; volley projectiles own their lights.");
             for (int i = 0; i < count; ++i)
             {
                 const auto& shot = shots[i];
@@ -193,7 +199,7 @@ namespace
         breath.Dragon().itemValue = 50;
         breath.context.tickCount = 27;
         DispatchObjectCase(breath.Dragon(), breath.context);
-        Check(breath.context.created == 27 && breath.Dragon().itemValue == 23,
+        Check(breath.context.created == 27 && breath.context.fireEmissions == 27 && breath.Dragon().itemValue == 23,
             "Close breath must emit once per tick throughout phases 50 through 24.");
         Fixture zero(root);
         zero.context.tickCount = 0;
@@ -330,6 +336,9 @@ namespace
             "Death must replace the original slot with the actual pickable unlit key.");
         Check(f.context.randomSeed == seed && f.context.created == 43 && f.context.destroyed == 1,
             "Death must preserve fragment/cloud RNG and lifecycle-safe body replacement.");
+        Check(f.context.flashes.size() == 1 && f.context.flashes[0].color == std::array<std::uint8_t,3>{255,160,50} &&
+            f.context.flashes[0].radius == 650.f,
+            "Dragon explosion must emit exactly one warm renderer-only light flash.");
         int fragments = 0, clouds = 0;
         for (auto& object : f.context.worldObjects)
         {

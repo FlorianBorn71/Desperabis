@@ -126,6 +126,9 @@
     <ClInclude Include="..\SharedSource\base\GamePlay\GamePlay.h">
       <Filter>Desperabis\GamePlay</Filter>
     </ClInclude>
+    <ClInclude Include="..\SharedSource\base\GamePlay\ObjectPresentation.h">
+      <Filter>Desperabis\GamePlay</Filter>
+    </ClInclude>
     <ClInclude Include="..\SharedSource\base\Asset\RawGameObject.h">
       <Filter>Desperabis\Asset</Filter>
     </ClInclude>
@@ -246,6 +249,9 @@
       <Filter>Desperabis\Asset</Filter>
     </ClCompile>
     <ClCompile Include="..\SharedSource\base\GamePlay\GamePlay.cpp">
+      <Filter>Desperabis\GamePlay</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\base\GamePlay\ObjectPresentation.cpp">
       <Filter>Desperabis\GamePlay</Filter>
     </ClCompile>
     <ClCompile Include="..\SharedSource\base\Asset\DebugGeometry.cpp">
