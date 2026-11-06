@@ -46,6 +46,7 @@
   <ItemGroup>
     <ClCompile Include="..\Decompile\Scaffold\GameContext.cpp" />
     <ClCompile Include="..\Decompile\Scaffold\ApplicationFlow.cpp" />
+    <ClCompile Include="..\Decompile\Scaffold\Cutscene.cpp" />
     <ClCompile Include="..\Decompile\Scaffold\SaveGame.cpp" />
     <ClCompile Include="..\Decompile\Scaffold\BehaviorDispatch.cpp" />
     <ClCompile Include="..\Decompile\Scaffold\BehaviorHandlers.cpp" />

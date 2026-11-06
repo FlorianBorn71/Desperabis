@@ -269,6 +269,8 @@ namespace Desperabis
         runtimeState = GameRuntimeState::Loading;
         try
         {
+            cutsceneFrames.clear();
+            cutsceneCursor = 0;
             applicationTickAccumulator = 0;
             ResetUnderwater();
             StopAllSoundEffects();
@@ -317,6 +319,7 @@ namespace Desperabis
             throw std::invalid_argument("A loaded level requires owned geometry and a collision map.");
         }
         if (data.playerSpawn) { data.objects[1] = InitializeLevelPlayer(*data.playerSpawn); }
+        auto newCutscene = ReadCutscene(pendingLevelLoad->levelNumber);
         LightingCache newLighting;
         newLighting.Reset(data.objects[1].posX, data.objects[1].posZ);
 
@@ -391,6 +394,7 @@ namespace Desperabis
             OnFreshLevelLoaded();
             UpdateModelAttachments();
         }
+        BeginCutscene(std::move(newCutscene));
         pendingLevelLoad.reset();
         levelLoadError.clear();
         hasActiveGame = true;
@@ -412,6 +416,7 @@ namespace Desperabis
         }
         if (error.empty()) { throw std::invalid_argument("Level loading failures require an error message."); }
         levelLoadError = error;
+        cutsceneFrames.clear();
         pendingSaveGame.reset();
         pendingLevelLoad.reset();
         runtimeState = GameRuntimeState::LoadFailed;
@@ -623,7 +628,7 @@ namespace Desperabis
             auto target = playerTargetHeading;
             NormalizeAnglePair(target, playerHeading);
             playerHeading = static_cast<std::int16_t>(
-                (playerHeading + GetStepToward(playerHeading, target, 6)) & 511);
+                (playerHeading + GetStepToward(playerHeading, target, IsCutscenePlaying() ? 2 : 6)) & 511);
 
             std::int16_t directionX;
             std::int16_t negativeDirectionZ;
@@ -901,7 +906,7 @@ namespace Desperabis
         return result;
     }
 
-    GameTickResult GameContext::Tick(GameTickTiming timing, InputHandler& input)
+    GameTickResult GameContext::TickGameplay(GameTickTiming timing, InputHandler& input)
     {
         if (timing.behaviorTicks < 0 || timing.frameTicks < 0)
         {
@@ -926,7 +931,7 @@ namespace Desperabis
         tickCount = timing.behaviorTicks;
         frameTickCount = timing.frameTicks;
         std::optional<BasicPlayerMovementResult> movement;
-        if (basicPlayerMovementEnabled) { movement = UpdateBasicPlayerMovement(input); }
+        if (basicPlayerMovementEnabled || IsCutscenePlaying()) { movement = UpdateBasicPlayerMovement(input); }
         else
         {
             for (int step = 0; step < frameTickCount && playerLife > 0; ++step) { UpdatePlayerUnderwater(); }
@@ -1239,7 +1244,7 @@ namespace Desperabis
             break;
         case MainMenuAction::LoadGame: SetMenuPage(MenuPage::LoadGame); break;
         case MainMenuAction::SaveGame:
-            if (!CanResumeGame()) { return false; }
+            if (!CanResumeGame() || IsCutscenePlaying()) { return false; }
             SetMenuPage(MenuPage::SaveGame);
             break;
         case MainMenuAction::Settings: SetMenuPage(MenuPage::Settings); break;
@@ -1256,7 +1261,7 @@ namespace Desperabis
         {
             throw std::logic_error("Inventory can only be opened from gameplay.");
         }
-        if (positionalSoundsSuppressed) { return false; }
+        if (positionalSoundsSuppressed || IsCutscenePlaying()) { return false; }
         SetMenuPage(MenuPage::Inventory);
         return true;
     }
@@ -2481,6 +2486,52 @@ namespace Desperabis
         object.winX = static_cast<std::int16_t>(Random(512));
         object.winY = static_cast<std::int16_t>(Random(512));
         if (!active) { NotifyObjectCreated(object); }
+    }
+
+    void GameContext::UpdateMeteor(RawGameObject& object)
+    {
+        object.collisionRadiusY = 200;
+        object.posX = WrapSignedWord(object.posX + object.velocityX * tickCount);
+        object.posZ = WrapSignedWord(object.posZ + object.velocityZ * tickCount);
+        object.posY = WrapSignedWord(object.posY + object.velocityY * tickCount);
+        const auto particleSlot = FindFreeObjectIndex();
+        RawGameObject particle;
+        InitializeSmokeParticle(particle, WrapSignedWord(object.posX - object.velocityX * 10),
+            WrapSignedWord(object.posY - object.velocityY * 10),
+            WrapSignedWord(object.posZ - object.velocityZ * 10), 20, 2, 130);
+        particle.spriteScale = static_cast<std::uint8_t>(Random(80) + 80);
+        particle.velocityY = 0;
+        ReplaceWorldObject(particleSlot, particle);
+        playerTargetLookHeight = 300;
+        playerTargetHeading = GetVectorAngle(WrapSignedWord(object.posX - worldObjects[1].posX),
+            WrapSignedWord(worldObjects[1].posZ - object.posZ));
+        object.soundEffectId = 60;
+        std::int16_t floor = -500;
+        if (object.posX >= 0 && object.posX <= 5000 && object.posZ >= 0 && object.posZ <= 4000)
+        {
+            object.soundEffectId = 65;
+            floor = GetFloorHeight(object.posX, object.posY, object.posZ);
+        }
+        PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId), 255, object, 1);
+        if (object.posY < floor)
+        {
+            object.displayType = DisplayType::Hidden;
+            object.behavior = BehaviorType::MeteorImpact;
+            object.velocityX = object.velocityY = object.velocityZ = 0;
+            playerRenderTable = 16;
+            // Replace the DOS render-table-16 flash with the existing renderer-independent light hook.
+            FlashLight({object.posX, object.posY, object.posZ}, {255, 220, 180}, 0.f, 0.75f, 1800.f);
+            PlaySoundEffect(static_cast<SoundEffect>(32), 255, -1, 1);
+            PlaySoundEffect(static_cast<SoundEffect>(25), 255, -2, 1);
+        }
+        for (int dx = -2; dx <= 2; ++dx)
+        {
+            for (int dz = -2; dz <= 2; ++dz)
+            {
+                lightingCache.AddAtWorldXZ(WrapSignedWord(object.posX + dx * 30),
+                    WrapSignedWord(object.posZ + dz * 30), static_cast<std::int16_t>(Random(30)));
+            }
+        }
     }
 
     void GameContext::InitializeSmokeParticle(RawGameObject& object, std::int16_t x, std::int16_t y,

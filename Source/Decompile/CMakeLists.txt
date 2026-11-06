@@ -17,6 +17,7 @@ add_library(behavior-recovery STATIC
     Scaffold/GameRuntime.h
     Scaffold/ApplicationFlow.h
     Scaffold/ApplicationFlow.cpp
+    Scaffold/Cutscene.cpp
     Scaffold/SaveGame.cpp
     Scaffold/SaveGame.h
     Scaffold/BehaviorDispatch.cpp
@@ -49,6 +50,10 @@ foreach(target Continuous Experimental Nightly NightlyMemoryCheck)
     endif()
 endforeach()
 if(BUILD_TESTING)
+    add_executable(cutscene-tests Scaffold/CutsceneTests.cpp)
+    target_link_libraries(cutscene-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME camera-path-cutscene COMMAND cutscene-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original")
     add_executable(swamp-tests Scaffold/SwampTests.cpp)
     target_link_libraries(swamp-tests PRIVATE Desperabis::GameCore)
     add_test(NAME swamp-behaviors COMMAND swamp-tests
@@ -208,7 +213,7 @@ foreach(target behavior-recovery desperabis-recovery)
     endif()
 endforeach()
 if(BUILD_TESTING)
-    foreach(target swamp-tests mine-tests level-nineteen-twenty-tests sewer-enemy-tests cave-level-tests savegame-tests tutorial-tests ambient-tests behavior-recovery-tests application-flow-tests application-update-tests fireplace-tests particle-tests floating-debris-tests rat-snake-tests cockroach-tests bat-indoor-tests mummy-tests skeleton-tests damage-tests weapon-tests ranged-weapon-tests game-runtime-tests player-posture-tests player-look-tests player-support-tests player-health-tests level-sixteen-seventeen-tests)
+    foreach(target cutscene-tests swamp-tests mine-tests level-nineteen-twenty-tests sewer-enemy-tests cave-level-tests savegame-tests tutorial-tests ambient-tests behavior-recovery-tests application-flow-tests application-update-tests fireplace-tests particle-tests floating-debris-tests rat-snake-tests cockroach-tests bat-indoor-tests mummy-tests skeleton-tests damage-tests weapon-tests ranged-weapon-tests game-runtime-tests player-posture-tests player-look-tests player-support-tests player-health-tests level-sixteen-seventeen-tests)
         set_target_properties(${target} PROPERTIES FOLDER "Tests")
         if(MSVC)
             target_compile_options(${target} PRIVATE /W4 /WX)

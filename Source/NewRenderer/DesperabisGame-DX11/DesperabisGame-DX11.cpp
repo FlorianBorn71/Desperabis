@@ -192,7 +192,7 @@ namespace
 		void UpdateHealthBar()
 		{
 			if (!g_scene || GetRuntimeState() != Desperabis::GameRuntimeState::Ready) { return; }
-			if (GetMenuPage() != Desperabis::MenuPage::Gameplay) { ClearHealthBar(); return; }
+			if (GetMenuPage() != Desperabis::MenuPage::Gameplay || IsCutscenePlaying()) { ClearHealthBar(); return; }
 			if (playerLifeMaximum <= 0) { throw std::logic_error("Health bar requires a positive player-life maximum."); }
 			const auto* frame = g_hudAnimations->GetFrame(1, 0);
 			const float height = GetHealthBarHeight();
@@ -749,7 +749,8 @@ namespace
 	void UpdateItemPreview()
 	{
 		g_renderer.SetItemPreview(nullptr, false, {});
-		if (g_useFreeCam || g_gameCore->GetRuntimeState() != Desperabis::GameRuntimeState::Ready ||
+		if (g_useFreeCam || g_gameCore->IsCutscenePlaying() ||
+			g_gameCore->GetRuntimeState() != Desperabis::GameRuntimeState::Ready ||
 			g_gameCore->playerLife <= 0) { return; }
 		const auto slot = g_gameCore->playerCollisionSlot;
 		if (slot < 2 || slot > 164) { return; }
@@ -787,8 +788,11 @@ namespace
 		    Desperabis::Level::Width, Desperabis::Level::Height, Desperabis::Level::Width);
 		for (const auto& object : g_gameCore->GetWorldObjects())
 		{
-			if (object.health <= 0 || object.behavior != Desperabis::BehaviorType::WitchMouthAnimation) { continue; }
-			const int target = 12 + object.groupIndexOrLock;
+			if (object.health <= 0) { continue; }
+			const bool meteor = object.behavior == Desperabis::BehaviorType::Meteor ||
+			    object.behavior == Desperabis::BehaviorType::MeteorImpact;
+			if (!meteor && object.behavior != Desperabis::BehaviorType::WitchMouthAnimation) { continue; }
+			const int target = meteor ? 15 : 12 + object.groupIndexOrLock;
 			const auto frame = geometry->trackedTextureFrames.at(target);
 			if (frame != 0) { g_scene->SetFireAnimationFrame(target, frame - 1); }
 		}

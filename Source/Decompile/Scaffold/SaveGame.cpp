@@ -185,6 +185,7 @@ namespace Desperabis
         if (pendingLevelLoad) { throw std::logic_error("A level load is already in progress."); }
         auto save = NativeSaveGame::Decode(std::move(bytes));
         const auto number = save.LevelNumber();
+        if (number == 97) { throw std::runtime_error("Native saves do not contain a cutscene playback cursor."); }
         pendingSaveGame = std::move(save);
         StartLevel(number);
     }
@@ -238,6 +239,7 @@ namespace Desperabis
 
     std::vector<std::uint8_t> GameContext::CaptureSaveGame(std::string_view name)
     {
+        if (IsCutscenePlaying()) { throw std::logic_error("Saving is unavailable during a camera-path cutscene."); }
         if (runtimeState != GameRuntimeState::Ready || !CanResumeGame() || !level || !collisionMap)
         {
             throw std::logic_error("Saving requires a ready active game.");

@@ -157,6 +157,77 @@ it deliberately does not make the first sewer's harmless tentacles hurt.
 values, suppression/depletion and collision gates, plus all 91 original
 tentacles, 34 rats/snakes and two flies across the audited levels.
 
+### Camera-path cutscene after the swamp
+
+The HERZ sequence is **24 -> 97 -> 25**. Level 97 now automatically plays
+`LEVEL\DEMO6.KOO` under GameCore control; the host still uses its ordinary
+level-loading callback. Other DEMO files visit normal playable levels and do
+not automatically take control of them.
+
+The packed format agrees with `PackingTool/CameraPath.h`: a three-byte header
+(level index byte, little-endian payload-length word), followed by six-byte
+frames (signed X/Z words, angle byte, action byte). The header level index is
+**zero-based**: `0000:E589` increments it before loading. DEMO6's index 96
+therefore selects level 97, not level 96. Its payload is 2988 bytes / 498
+frames, all with zero action bits. The reader rejects empty, truncated,
+inconsistently sized, over-64000-byte or wrong-level paths.
+
+`Scaffold/Cutscene.cpp` runs every recorded frame at the existing 33 Hz
+application clock, including every intermediate world update during catch-up.
+Normal input is replaced by neutral input; terrain/body movement still supplies
+camera Y. `D060(2)` heading smoothing uses two angle units per frame, rather
+than normal keyboard mode's six. After simulation, native `C558` applies:
+
+| Action bit | Recovered operation |
+|---|---|
+| `0x20` | Lower target look height by 10 when above 50 |
+| `0x10` | Raise target look height by 10 when below 130 |
+| `0x40` | Ordinary interaction with the currently selected collision object |
+| `0x80` | Attack with the selected weapon |
+
+Lower action bits are ignored, as in the native routine. X/Z are assigned
+directly, and the next target heading is `angle * 2`. Either coordinate `-1`
+terminates playback. Validated payload exhaustion replaces the native padded
+XMS sentinel without reading past the file. The final recorded pose remains
+visible until the next controller tick, then `EndLevel()` loads level 25;
+remaining catch-up ticks do not run against the new level.
+
+Modern presentation deliberately installs the first pose immediately instead
+of briefly displaying the ordinary level spawn. Inventory, held weapon, map/
+gold overlays, health meters and item previews are hidden or disabled during
+playback. Main-menu pausing/resuming retains the cursor. Native saves contain
+no playback cursor: saving during playback is disabled, and loading a native
+level-97 save fails explicitly rather than mixing a restarted path with saved
+mid-scene world state. No save-format extension was introduced.
+
+**Meteor (135), `0000:3C8B`:** original slot 2 starts at `(4030,1730,12184)`
+with velocity `(-10,-7,-33)`. Every dispatch moves by velocity * behavior ticks,
+sets vertical collision radius 200, emits a fully initialized smoke particle
+ten velocity steps behind it (scale 80..159, no upward velocity), targets look
+height 300 and aims toward the meteor. Outside X=0..5000/Z=0..4000 it uses
+floor -500 and sound 60; inside it uses terrain height and sound 65. It adds
+25 randomized lighting-cache contributions. Below floor it becomes hidden,
+stops, selects render table 16 and requests sounds 32/25. DX11's replacement
+for the DOS table flash uses the existing `OnLightFlash` presentation hook.
+
+**MeteorImpact (136), `0000:3E89` -> `10AC:B5F4`:** the impact aftermath accumulates
+word 36 and advances word 46 while elapsed > byte 52, subtracting byte 52 + 1
+each time. Its ten-frame SCHUSS1 animation updates native bank 6, animation 3
+(model texture slot 15). The renderer binds that animation and consumes the
+core's tracked frame instead of advancing it independently. Each dispatch also
+uses the native collision-list helper and applies one damage through the
+existing general damage handler.
+
+Evidence: `cutscene-path-evidence.txt`, `cutscene-runtime-evidence.txt`,
+`cutscene-camera-evidence.txt`, `cutscene-impact-evidence.txt`,
+`cutscene-crater-evidence.txt`, `cutscene-palette-evidence.txt`; the established
+`flame-binding-evidence.txt` identifies tracked texture bank/slot addressing.
+`Scaffold/CutsceneTests.cpp` covers malformed files, all 498 original poses,
+input suppression, action flags, two-unit heading stepping, 33 Hz timing,
+pause/load cleanup, EOF/sentinels, save policy, batched simulation/RNG,
+the original meteor trail/impact, aftermath timing and actual 24 -> 97 -> 25
+progression with carried inventory and gold.
+
 ### Level 23 mine behaviors
 
 The positive-health original `OBJPOS23.DAT` records contain nine behavior

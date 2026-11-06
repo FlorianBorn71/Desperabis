@@ -301,6 +301,7 @@ namespace GamePlay
         BT_ENUM2STRING(Behavior_111);
         BT_ENUM2STRING(Behavior_161);
         BT_ENUM2STRING(Meteor);
+        BT_ENUM2STRING(MeteorImpact);
         BT_ENUM2STRING(Behavior_255);
         BT_ENUM2STRING(FlipTRexHead);
         BT_ENUM2STRING(NeonLights);
@@ -531,6 +532,12 @@ namespace GamePlay
             }
             scene.AddFireAnimation(torchAnim, targetTexSlot, speed, btype != BehaviorType::WitchMouthAnimation);
 
+        }
+        else if (btype == BehaviorType::Meteor || btype == BehaviorType::MeteorImpact)
+        {
+            const auto animation = CO_AWAIT assets.LoadAsset<TextureAnim>(L"ANIMS\\SCHUSS1.AN2");
+            scene.AddFireAnimation(animation, 15, 1.f, true);
+            scene.SetFireAnimationFrame(15, 0);
         }
         else if (btype == BehaviorType::Moon)
         {

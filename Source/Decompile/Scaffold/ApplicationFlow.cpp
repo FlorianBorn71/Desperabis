@@ -42,6 +42,7 @@ namespace Desperabis
 
     void GameContext::FinishGamePart()
     {
+        cutsceneFrames.clear();
         ResetUnderwater();
         StopAllSoundEffects();
         if (audioHandler && ambientPlaybackActive) { audioHandler->StopAmbientPlayback(); }
@@ -220,7 +221,8 @@ namespace Desperabis
         {
         case MenuPage::Gameplay:
             if (wasPressed(InputKey::MainMenuKey)) { SetMenuPage(MenuPage::MainMenu); }
-            else if (wasPressed(InputKey::InventoryKey) && runtimeState == GameRuntimeState::Ready)
+            else if (wasPressed(InputKey::InventoryKey) && runtimeState == GameRuntimeState::Ready &&
+                !IsCutscenePlaying())
             {
                 OpenInventory();
             }
@@ -332,7 +334,7 @@ namespace Desperabis
                         }
                         catch (const std::runtime_error& error) { saveError = error.what(); }
                     }
-                    else if (runtimeState == GameRuntimeState::Ready && CanResumeGame())
+                    else if (runtimeState == GameRuntimeState::Ready && CanResumeGame() && !IsCutscenePlaying())
                     {
                         editingSaveName = true;
                         saveCaretSeconds = 0;
@@ -473,6 +475,7 @@ namespace Desperabis
         ApplicationPresentation result{ menuPage, {} };
         if (menuPage == MenuPage::Gameplay)
         {
+            if (IsCutscenePlaying()) { return result; }
             if (runtimeState == GameRuntimeState::Ready && selectedWeapon == WeaponType::ShopGold &&
                 worldObjects[1].itemValue <= 0)
             {
@@ -523,7 +526,8 @@ namespace Desperabis
             text(80, 32, "Resume game", runtimeState == GameRuntimeState::Ready && CanResumeGame() ? normal : dark, 0.8f);
             text(80, 60, "New game", runtimeState == GameRuntimeState::Loading ? dark : normal, 0.8f);
             text(80, 88, "Load game", runtimeState == GameRuntimeState::Loading ? dark : normal, 0.8f);
-            text(80, 116, "Save game", runtimeState == GameRuntimeState::Ready && CanResumeGame() ? normal : dark, 0.8f);
+            text(80, 116, "Save game", runtimeState == GameRuntimeState::Ready && CanResumeGame() &&
+                !IsCutscenePlaying() ? normal : dark, 0.8f);
             text(80, 144, "Quit", normal, 0.8f);
             sword(48, 37.f + mainMenuFocus * 28.f);
             return result;

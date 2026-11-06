@@ -9,7 +9,7 @@ namespace Desperabis
 {
     std::optional<WeaponView> GameContext::GetWeaponView() const
     {
-        if (GetMenuPage() != MenuPage::Gameplay || worldObjects[1].itemValue > 0 ||
+        if (GetMenuPage() != MenuPage::Gameplay || IsCutscenePlaying() || worldObjects[1].itemValue > 0 ||
             weaponAnimationSpeed == -2 || weaponAnimationSpeed == -4 ||
             (selectedWeapon == WeaponType::None && !field_D500) ||
             selectedWeapon == WeaponType::ShopGold || weaponSpriteFrame == 0)

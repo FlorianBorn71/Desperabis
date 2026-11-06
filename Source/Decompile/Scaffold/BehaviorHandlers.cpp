@@ -2898,14 +2898,31 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::CurtainOpens, 0x3C5B };
     }
 
-    DispatchResult Function_Meteor(RawGameObject&, GameContext&)
+    DispatchResult Function_Meteor(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Meteor, 0x3C8B };
+        context.UpdateMeteor(object);
+        return { DispatchStatus::ExecutedCase, BehaviorType::Meteor, 0x3C8B };
     }
 
-    DispatchResult Function_Behavior_136(RawGameObject&, GameContext&)
+    DispatchResult Function_MeteorImpact(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_136, 0x3E89 };
+        if (!context.level) { throw std::logic_error("Meteor aftermath requires loaded geometry."); }
+        object.generalPurpose1 = static_cast<std::uint16_t>(object.generalPurpose1 + context.tickCount);
+        while (WrapSignedWord(object.generalPurpose1) > object.behaviorParameter)
+        {
+            object.doorLockOrGroupBitmask = WrapSignedWord(object.doorLockOrGroupBitmask + 1);
+            object.generalPurpose1 = static_cast<std::uint16_t>(
+                object.generalPurpose1 - object.behaviorParameter - 1);
+            // Native SCHUSS1.AN2 has ten frames and occupies bank 6, animation 3.
+            object.doorLockOrGroupBitmask = static_cast<std::int16_t>(
+                (object.doorLockOrGroupBitmask + 19) % 10 + 1);
+            context.level->trackedTextureFrames[15] = object.doorLockOrGroupBitmask;
+        }
+        for (const auto slot : context.FindCollidingObjects(object))
+        {
+            context.DamageObject(context.worldObjects[slot], 1);
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::MeteorImpact, 0x3E89 };
     }
 
     DispatchResult Function_Behavior_137(RawGameObject&, GameContext&)

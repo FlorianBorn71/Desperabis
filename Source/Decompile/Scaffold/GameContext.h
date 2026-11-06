@@ -317,6 +317,7 @@ namespace Desperabis
         const std::string& GetLevelLoadError() const;
         void SetPaused(bool paused);
         bool IsPaused() const;
+        bool IsCutscenePlaying() const;
         GameTickResult Tick(GameTickTiming timing, InputHandler& input);
         // Call every host frame, including zero-tick frames and modal/loading states.
         // Owns 33 Hz gameplay timing, input edges/repeat, and nonblocking page dispatch.
@@ -477,6 +478,7 @@ namespace Desperabis
         void SpawnSkeletonFragment(const RawGameObject& source, std::uint16_t part,
             std::int16_t x, std::int16_t y, std::int16_t z);
         void SpawnWaterImpact(std::int16_t x, std::int16_t z);
+        void UpdateMeteor(RawGameObject& object);
         // Native offsetY + encoded height (pixel count minus one), before spriteScale / 64.
         virtual std::int16_t GetSpriteBottom(const RawGameObject& object) const;
         // Asset-derived world anchors, independent of visibility and renderer timing.
@@ -598,6 +600,17 @@ namespace Desperabis
         virtual void InitializeNewGame(std::int16_t chapter);
 
     private:
+        struct CutsceneFrame
+        {
+            std::int16_t x, z;
+            std::uint8_t angle, actions;
+        };
+        std::vector<CutsceneFrame> ReadCutscene(std::int16_t levelNumber);
+        void BeginCutscene(std::vector<CutsceneFrame> frames);
+        GameTickResult TickCutscene(GameTickTiming timing);
+        GameTickResult TickGameplay(GameTickTiming timing, InputHandler& input);
+        std::vector<CutsceneFrame> cutsceneFrames;
+        std::size_t cutsceneCursor = 0;
         void EnsureGameParts();
         const std::vector<std::uint8_t>& CurrentLevelOrder();
         std::optional<std::uint8_t> NextPlayableLevel(const std::vector<std::uint8_t>& order, std::size_t first);

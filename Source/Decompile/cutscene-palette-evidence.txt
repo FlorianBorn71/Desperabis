@@ -1,0 +1,56 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Range 1E48:B74C:80
+1E48:B74C  55                       PUSH BP
+1E48:B74D  89 E5                    MOV BP,SP
+1E48:B74F  8B 46 06                 MOV AX,word ptr [BP + 0x6]
+1E48:B752  3B 06 BA D4              CMP AX,word ptr [0xd4ba]
+1E48:B756  75 02                    JNZ 0x3000:9bda ; logical module target 1E48:B75A
+1E48:B758  EB 2E                    JMP 0x3000:9c08 ; logical module target 1E48:B788
+1E48:B75A  BF 00 0A                 MOV DI,0xa00
+1E48:B75D  1E                       PUSH DS
+1E48:B75E  57                       PUSH DI
+1E48:B75F  FF 36 DC EC              PUSH word ptr [0xecdc]
+1E48:B763  68 00 08                 PUSH 0x800
+1E48:B766  8B 46 06                 MOV AX,word ptr [BP + 0x6]
+1E48:B769  99                       CWD
+1E48:B76A  8B 0E 30 03              MOV CX,word ptr [0x330]
+1E48:B76E  8B 1E 32 03              MOV BX,word ptr [0x332]
+1E48:B772  9A 1C 0E E4 3C           CALLF 0x3000:dc5c ; encoded analysis target 3CE4:0E1C, module 2CE4:0E1C
+1E48:B777  52                       PUSH DX
+1E48:B778  50                       PUSH AX
+1E48:B779  0E                       PUSH CS
+1E48:B77A  E8 74 4C                 CALL 0x3000:e871 ; logical module target 1E48:03F1
+1E48:B77D  50                       PUSH AX
+1E48:B77E  0E                       PUSH CS
+1E48:B77F  E8 1C 80                 CALL 0x3000:1c1e ; logical module target 1E48:379E
+1E48:B782  8B 46 06                 MOV AX,word ptr [BP + 0x6]
+1E48:B785  A3 BA D4                 MOV [0xd4ba],AX
+1E48:B788  C9                       LEAVE
+1E48:B789  CA 02 00                 RETF 0x2
+1E48:B78C  C8 02 00 00              ENTER 0x2,0x0
+1E48:B790  31 C0                    XOR AX,AX
+1E48:B792  89 46 FE                 MOV word ptr [BP + -0x2],AX
+1E48:B795  A1 B0 F6                 MOV AX,[0xf6b0]
+1E48:B798  05 0C 00                 ADD AX,0xc
+1E48:B79B  8B D0                    MOV DX,AX
+1E48:B79D  EC                       IN AL,DX
+1E48:B79E  3C 80                    CMP AL,0x80
+1E48:B7A0  72 0C                    JC 0x3000:9c2e ; logical module target 1E48:B7AE
+1E48:B7A2  81 7E FE 30 75           CMP word ptr [BP + -0x2],0x7530
+1E48:B7A7  7D 05                    JGE 0x3000:9c2e ; logical module target 1E48:B7AE
+1E48:B7A9  FF 46 FE                 INC word ptr [BP + -0x2]
+1E48:B7AC  EB E7                    JMP 0x3000:9c15 ; logical module target 1E48:B795
+1E48:B7AE  A1 B0 F6                 MOV AX,[0xf6b0]
+1E48:B7B1  05 0C 00                 ADD AX,0xc
+1E48:B7B4  8B D0                    MOV DX,AX
+1E48:B7B6  8A 46 06                 MOV AL,byte ptr [BP + 0x6]
+1E48:B7B9  EE                       OUT DX,AL
+1E48:B7BA  81 7E FE 3C 73           CMP word ptr [BP + -0x2],0x733c
+1E48:B7BF  7E 05                    JLE 0x3000:9c46 ; logical module target 1E48:B7C6
+1E48:B7C1  C6 06 BB F6 00           MOV byte ptr [0xf6bb],0x0
+1E48:B7C6  C9                       LEAVE
+1E48:B7C7  CA 02 00                 RETF 0x2
+STOP: instruction crosses requested range end.

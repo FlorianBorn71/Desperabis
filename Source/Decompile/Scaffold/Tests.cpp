@@ -222,6 +222,7 @@ namespace
                 entry.type == BehaviorType::FogParticle ||
                 entry.type == BehaviorType::FireFly || entry.type == BehaviorType::Switch3 ||
                 entry.type == BehaviorType::UnreachableKey ||
+                entry.type == BehaviorType::Meteor || entry.type == BehaviorType::MeteorImpact ||
                 entry.type == BehaviorType::AmbientSoundPosition ||
                 entry.type == BehaviorType::Flies ||
                 entry.type == BehaviorType::WeaponDamageCollider ||
