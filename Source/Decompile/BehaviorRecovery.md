@@ -1820,19 +1820,62 @@ Renderer tests verify the 28 visible clouds' actual alpha-blended material
 opacity, strict per-unit progression and the 40% cap. The remaining authored fog object
 is a zero-size, normal-display dummy, not an extra visible cloud.
 
-Remaining authored native-handler gaps after this fix:
+Authored native-handler status:
 
 | Behavior | Active original objects | Status |
 | --- | ---: | --- |
-| FireFly | 6 | Native handler unrecovered |
-| Switch3 | 2 | Native rotating-switch handler unrecovered |
-| UnreachableKey | 1 | Native hut-key handler unrecovered |
+| FireFly | 6 | Implemented, including activation and shared flight |
+| Switch3 | 2 | Implemented, including ordinary switch-to-door interaction |
+| UnreachableKey | 1 | Implemented, including automatic weapon-contact pickup |
 | Moon | 1 | Native handler unrecovered; renderer moon placement already exists |
 
 The other authored selectors have recovered handlers or intentionally use
 shared/no-specific-case processing. This audit concerns authored object
 dispatch coverage, not proof that every level puzzle or presentation path
 has been exhaustively recovered.
+
+### Fireflies, rotating switches and the hut key
+
+[Native dispatch](swamp-behaviors-evidence.txt) and
+[support evidence](swamp-support-evidence.txt) recover these three handlers.
+
+- **FireFly (19), slots 82..84 and 87..89:** each behavior tick has a
+  one-in-20 chance to add `RandomSigned(1)` to word-34 speed, then clamps
+  speed to 0..4 and draws `Random(200)` for the animation step. It invokes
+  the same `10AC:3391` flight helper as indoor bats, with a height limit of
+  floor +45 instead of +10000. Only the first tick of a dispatch advances
+  the animation phase, but every tick consumes its phase RNG draw.
+  The shared implementation preserves fixed-point vertical movement,
+  obstacle avoidance, native ceiling/death states and sound behavior.
+  Initial health 1010/1011 means the original fireflies wait for activation
+  groups 10/11; the wrapper still updates its speed/RNG while dormant.
+- **Switch3 (53), slots 60 and 65:** `winY` approaches the target stored in
+  `velocityY` by `abs(wrap16(word38 * behaviorTicks))`. This is a linear
+  signed angle, not a shortest-path circular rotation. On exact arrival,
+  collision type and behavior become zero, leaving the collision mask
+  untouched. The ordinary switch interaction installs rate 6 and activates
+  authored groups 4/3, opening doors 59/24. Both original switches turn
+  from 128 to -30 in 27 one-tick updates.
+- **UnreachableKey (127), slot 17:** once per dispatch, even with zero
+  behavior ticks, temporarily sets mask 2, finds the first overlapping
+  object, then clears its mask to zero. Only behavior 2
+  (`WeaponDamageCollider`) with damage byte 5 calls the existing pickup
+  path. A real shovel swing generates that contact; the handler does not
+  inspect selected weapon or require Enter. It stores the complete key
+  in the first empty inventory slot and removes the world object through
+  lifecycle hooks. Full inventory leaves the key available for retry;
+  a nonqualifying first hit masks later contacts, as in the native query.
+
+[SwampTests.cpp](Scaffold/SwampTests.cpp) covers all nine authored objects,
+switch arithmetic/wrapping and door activation, all 256 contact damage
+values, collision/ordering/inventory gates and actual shovel-animation
+pickup of the original hut key. Original fireflies run on real swamp
+geometry and retain all object bytes across native save/load. Subsequent
+continuation is compared using matching RNG streams; the original save
+format does not serialize the RNG seed.
+[BatIndoorTests.cpp](Scaffold/BatIndoorTests.cpp) additionally compares
+8192 bat/firefly cases against an independent full-record arithmetic/RNG
+reference, protecting existing bat behavior during shared-helper extraction.
 
 ## Globals and dependencies
 

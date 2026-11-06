@@ -65,10 +65,16 @@ namespace
         return object;
     }
 
-    RawGameObject Reference(RawGameObject object, std::uint32_t& seed, int ticks)
+    RawGameObject Reference(RawGameObject object, std::uint32_t& seed, int ticks, bool firefly = false)
     {
         for (int tick = 0; tick < ticks; ++tick)
         {
+            if (firefly)
+            {
+                if (Next(seed, 20) == 0) { object.itemValue = Word(object.itemValue + Signed(seed, 1)); }
+                object.itemValue = static_cast<std::int16_t>(std::clamp<int>(object.itemValue, 0, 4));
+            }
+            const auto phaseStep = firefly ? Word(Next(seed, 200)) : Word(object.generalPurpose1);
             const int distance = Word(Word(std::abs(Word(2000 - object.posX))) +
                 Word(std::abs(Word(2000 - object.posZ))));
             if (object.health == 1000)
@@ -110,9 +116,10 @@ namespace
                 if (tick == 0)
                 {
                     object.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(
-                        Word(object.blendWeightOrSpriteOpacity + object.generalPurpose1) % 200);
+                        Word(object.blendWeightOrSpriteOpacity + phaseStep) % 200);
                 }
-                if (object.posY > 10000) { object.posY = 10000; object.velocityY = 0; }
+                const int heightLimit = firefly ? 45 : 10000;
+                if (object.posY > heightLimit) { object.posY = static_cast<std::int16_t>(heightLimit); object.velocityY = 0; }
                 // Two truncating interpolation stages turn room height 50 into 96 world units.
                 if (object.posY > 76)
                 {
@@ -183,13 +190,19 @@ namespace
         RawGameObject& Object() { return context.worldObjects[2]; }
     };
 
-    void TestOracle()
+    void TestOracle(bool firefly = false)
     {
         Fixture fixture;
         for (int sample = 0; sample < 4096; ++sample)
         {
             auto object = Bat();
             object.health = sample % 4 == 0 ? 2000 : sample % 4 == 1 ? 3000 : 1000;
+            if (firefly)
+            {
+                object.behavior = BehaviorType::FireFly;
+                object.itemValue = Word(sample % 11 - 3);
+                if (sample % 7 == 0) { object.health = 1010; }
+            }
             object.displayType = sample % 7 == 0 ? DisplayType::Hidden : DisplayType::VectorNormal;
             object.posY = Word(sample % 120 - 10);
             object.velocityX = Word(sample % 7 - 3);
@@ -206,7 +219,7 @@ namespace
             fixture.context.tickCount = static_cast<std::int16_t>(sample % 5);
             fixture.context.randomSeed = static_cast<std::uint32_t>(sample) * 65537u;
             auto seed = fixture.context.randomSeed;
-            const auto expected = Reference(object, seed, fixture.context.tickCount);
+            const auto expected = Reference(object, seed, fixture.context.tickCount, firefly);
             const auto result = DispatchObjectCase(fixture.Object(), fixture.context);
             if (std::memcmp(&fixture.Object(), &expected, sizeof(expected)) != 0 || fixture.context.randomSeed != seed)
             {
@@ -221,9 +234,9 @@ namespace
                     }
                 }
             }
-            Check(result.status == DispatchStatus::ExecutedCase && result.moduleOffset == 0x161d &&
+            Check(result.status == DispatchStatus::ExecutedCase && result.moduleOffset == (firefly ? 0x17a6 : 0x161d) &&
                 std::memcmp(&fixture.Object(), &expected, sizeof(expected)) == 0 && fixture.context.randomSeed == seed,
-                "Indoor-bat full-record, fixed-point, angle, animation or RNG oracle differs.");
+                "Flying-creature full-record, fixed-point, angle, animation or RNG oracle differs.");
         }
     }
 
@@ -309,10 +322,10 @@ namespace
         fixture.context.audioHandler = &audio;
         fixture.context.soundEffectsLoaded = true;
         fixture.context.soundEffects[0] = { 1, {1,0,0,0} };
-        fixture.context.soundListenerX = 1750;
+        fixture.context.soundListenerX = 1600;
         DispatchObjectCase(fixture.Object(), fixture.context);
-        Check(audio.calls == 1 && audio.lastVolume == 105 && fixture.context.soundChannelSources[3] == 2,
-            "Bat sound must use doubled-distance attenuation and the world-slot source.");
+        Check(audio.calls == 1 && audio.lastVolume == 155 && fixture.context.soundChannelSources[3] == 2,
+            "Bat sound must use modern attenuation of its doubled native distance and the world-slot source.");
         const auto before = fixture.Object();
         fixture.context.tickCount = 0;
         const auto seed = fixture.context.randomSeed;
@@ -429,12 +442,13 @@ int main(int argc, char** argv)
     {
         Check(argc == 2, "Expected original LEVEL directory.");
         TestOracle();
+        TestOracle(true);
         TestCeilingAndDeath();
         TestWalls();
         TestAudioAndGates();
         TestAssets(argv[1]);
         TestRuntime();
-        std::cout << "Indoor-bat tests passed (4096 oracle cases and 50 original objects).\n";
+        std::cout << "Flying-creature tests passed (8192 bat/firefly oracle cases and 50 original bats).\n";
         return 0;
     }
     catch (const std::exception& error)

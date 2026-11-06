@@ -678,9 +678,10 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::RatAndSnake, 0x15EF };
     }
 
-    DispatchResult Function_BatIndoor(RawGameObject& object, GameContext& context)
+    namespace
     {
-        for (int tick = 0; tick < context.tickCount; ++tick)
+        bool UpdateFlyingCreature(RawGameObject& object, GameContext& context, std::int16_t speed,
+            std::int16_t phaseStep, std::int16_t heightLimit, bool animate)
         {
             const auto distance = context.GetSoundDistanceAt(object.posX, object.posZ);
             if (object.health == 1000)
@@ -701,8 +702,8 @@ namespace Desperabis
                     if (object.behaviorParameter == 0 || context.Random(3) > 0)
                     {
                         object.velocityY = WrapSignedWord(
-                            context.RandomSigned(static_cast<std::uint16_t>(WrapSignedWord(object.itemValue * 100))) +
-                            object.itemValue * 15);
+                            context.RandomSigned(static_cast<std::uint16_t>(WrapSignedWord(speed * 100))) +
+                            speed * 15);
                     }
                     else
                     {
@@ -721,7 +722,7 @@ namespace Desperabis
                 for (int attempt = 0; attempt < 128; ++attempt)
                 {
                     GetClampedDirectionDisplacement(object.velocityX, object.velocityZ,
-                        WrapSignedWord(object.generalPurpose2), object.itemValue);
+                        WrapSignedWord(object.generalPurpose2), speed);
                     if (WrapSignedWord(floor + 15) > object.posY)
                     {
                         object.velocityY = WrapSignedWord(WrapSignedWord(floor + 15 - object.posY) * 150);
@@ -744,16 +745,16 @@ namespace Desperabis
                 if (!clear)
                 {
                     context.HandleBlockedObject(object);
-                    break;
+                    return false;
                 }
-                if (tick == 0)
+                if (animate)
                 {
                     object.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(
-                        WrapSignedWord(object.blendWeightOrSpriteOpacity + object.generalPurpose1) % 200);
+                        WrapSignedWord(object.blendWeightOrSpriteOpacity + phaseStep) % 200);
                 }
                 const auto ceiling = WrapSignedWord(context.GetRoomHeight(object.posX, object.posZ) +
                     context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ));
-                const auto maximumHeight = WrapSignedWord(floor + 10000);
+                const auto maximumHeight = WrapSignedWord(floor + heightLimit);
                 if (maximumHeight < object.posY) { object.velocityY = 0; object.posY = maximumHeight; }
                 if (WrapSignedWord(ceiling - 20) < object.posY)
                 {
@@ -798,6 +799,16 @@ namespace Desperabis
                 }
                 if (distance < 300) { object.health = 1000; object.modelFrame2 = 2; }
             }
+            return true;
+        }
+    }
+
+    DispatchResult Function_BatIndoor(RawGameObject& object, GameContext& context)
+    {
+        for (int tick = 0; tick < context.tickCount; ++tick)
+        {
+            if (!UpdateFlyingCreature(object, context, object.itemValue,
+                WrapSignedWord(object.generalPurpose1), 10000, tick == 0)) { break; }
         }
         return { DispatchStatus::ExecutedCase, BehaviorType::BatIndoor, 0x161D };
     }
@@ -909,9 +920,19 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::DriftingParticle, 0x16E5 };
     }
 
-    DispatchResult Function_FireFly(RawGameObject&, GameContext&)
+    DispatchResult Function_FireFly(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::FireFly, 0x17A6 };
+        for (int tick = 0; tick < context.tickCount; ++tick)
+        {
+            if (context.Random(20) == 0)
+            {
+                object.itemValue = WrapSignedWord(object.itemValue + context.RandomSigned(1));
+            }
+            object.itemValue = std::clamp<std::int16_t>(object.itemValue, 0, 4);
+            const auto phaseStep = static_cast<std::int16_t>(context.Random(200));
+            if (!UpdateFlyingCreature(object, context, object.itemValue, phaseStep, 45, tick == 0)) { break; }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::FireFly, 0x17A6 };
     }
 
     DispatchResult Function_FireParticle(RawGameObject& object, GameContext& context)
@@ -1815,9 +1836,17 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::RopeSwitch, 0x2078 };
     }
 
-    DispatchResult Function_Switch3(RawGameObject&, GameContext&)
+    DispatchResult Function_Switch3(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Switch3, 0x20D7 };
+        const auto step = WrapSignedWord(std::abs(static_cast<int>(
+            WrapSignedWord(WrapSignedWord(object.generalPurpose2) * context.tickCount))));
+        object.winY = WrapSignedWord(object.winY + GetStepToward(object.winY, object.velocityY, step));
+        if (object.winY == object.velocityY)
+        {
+            object.collisionType = CollisionType::None;
+            object.behavior = BehaviorType::None;
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::Switch3, 0x20D7 };
     }
 
     DispatchResult Function_UnderwaterPlants(RawGameObject& object, GameContext& context)
@@ -2788,9 +2817,20 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::CeilingConcreteSlabStake, 0x390C };
     }
 
-    DispatchResult Function_UnreachableKey(RawGameObject&, GameContext&)
+    DispatchResult Function_UnreachableKey(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::UnreachableKey, 0x393F };
+        object.collisionMask = 2;
+        const auto slot = context.FindCollidingObject(object);
+        object.collisionMask = 0;
+        if (slot > 1)
+        {
+            const auto& contact = context.worldObjects[slot];
+            if (contact.behavior == BehaviorType::WeaponDamageCollider && contact.behaviorParameter == 5)
+            {
+                HandlePlayerObjectInteraction(object, context);
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::UnreachableKey, 0x393F };
     }
 
     DispatchResult Function_Behavior_128(RawGameObject&, GameContext&)

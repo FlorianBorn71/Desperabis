@@ -1,11 +1,19 @@
-bugs:
+bugs P0:
 - windmill entry door missing - coverd by wall polygon
 - island visibility (graveyard)
 - Darstellung Sense
 - Concrete block that falls over in mine level: Sticks in ground because of mismatching YPR?
+
+bugs P1:
+- cursor movement
+- key assignment
 
 improvements:
 - witch head pointing down
 - graveyard moon blending
 - look throgh ceiling when sliding down in cathedral
 - black clear color (burning forest)
+
+missing
+- cutscenes
+- strave keys
