@@ -561,8 +561,8 @@ namespace Desperabis
                 {
                     const auto randomDistance = context.Random(300);
                     context.PlaySoundEffect(static_cast<SoundEffect>(26),
-                        GameContext::GetSoundVolume(WrapSignedWord(
-                            randomDistance + context.GetSoundDistanceAt(object.posX, object.posZ) + 500)), object, 1);
+                        GameContext::GetPositionalSoundVolume(context.GetSoundDistanceAt(object.posX, object.posZ),
+                            static_cast<std::uint16_t>(randomDistance + 500)), object, 1);
                 }
                 object.velocityY = 0;
                 object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity +
@@ -592,8 +592,7 @@ namespace Desperabis
             if (context.Random(250) == 0 && object.blendWeightOrSpriteOpacity == 0)
             {
                 context.PlaySoundEffect(static_cast<SoundEffect>(35),
-                    GameContext::GetSoundVolume(WrapSignedWord(
-                        context.GetSoundDistanceAt(object.posX, object.posZ) + 200)), object, 1);
+                    GameContext::GetPositionalSoundVolume(context.GetSoundDistanceAt(object.posX, object.posZ), 200), object, 1);
             }
         }
         return { DispatchStatus::ExecutedCase, BehaviorType::Frog, 0x15C1 };
@@ -691,7 +690,7 @@ namespace Desperabis
                 if (context.Random(static_cast<std::uint16_t>(WrapSignedWord((distance + 1) * 2))) == 0)
                 {
                     context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
-                        GameContext::GetSoundVolume(WrapSignedWord(distance * 2)), object, 1);
+                        GameContext::GetPositionalSoundVolume(WrapSignedWord(distance * 2)), object, 1);
                 }
                 object.winX = WrapSignedWord(object.winX + GetStepToward(object.winX, 0, 23));
                 object.posX = WrapSignedWord(object.posX + object.velocityX);
@@ -1106,7 +1105,7 @@ namespace Desperabis
     {
         const auto distance = context.GetSoundDistanceAt(object.posX, object.posZ);
         const auto volume = context.GetSoundVolumeAt(object.posX, object.posZ);
-        const auto footstepVolume = GameContext::GetSoundVolume(WrapSignedWord(distance * 3));
+        const auto footstepVolume = GameContext::GetPositionalSoundVolume(WrapSignedWord(distance * 3));
         for (int tick = 0; tick < context.tickCount; ++tick)
         {
             if (object.health == 1000)
@@ -2478,9 +2477,18 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_106, 0x31FD };
     }
 
-    DispatchResult Function_FogParticle(RawGameObject&, GameContext&)
+    DispatchResult Function_FogParticle(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::FogParticle, 0x3405 };
+        // Modern deviation: field 42 stores full-resolution fade distance, not the DOS transparency bands.
+        object.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(std::clamp(
+            static_cast<int>(context.GetSoundDistanceAt(object.posX, object.posZ)) - 50, 0, 320));
+        object.generalPurpose2 = static_cast<std::uint16_t>(
+            (object.generalPurpose2 + object.velocityZ) & 511);
+        if (context.Random(40) == 0) { object.velocityZ = context.RandomSigned(4); }
+        const auto bob = WrapSignedWord(static_cast<std::int32_t>(
+            static_cast<std::uint32_t>(Sine(WrapSignedWord(object.generalPurpose2)) * 5) >> 16));
+        object.posY = WrapSignedWord(context.GetFloorHeight(object.posX, object.posY, object.posZ) + 6 + bob);
+        return { DispatchStatus::ExecutedCase, BehaviorType::FogParticle, 0x3405 };
     }
 
     DispatchResult Function_Behavior_111(RawGameObject&, GameContext&)

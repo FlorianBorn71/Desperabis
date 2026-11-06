@@ -357,7 +357,7 @@ namespace
         DispatchObjectCase(center, f.context);
         Check(center.winX == 10 && center.winY == 493 && center.winZ == 47 &&
             audio.starts == 1 && audio.sample == 42 &&
-            audio.volume == GameContext::GetSoundVolume(300),
+            audio.volume == GameContext::GetPositionalSoundVolume(300),
             "Active machinery must wrap both signed angular rates and play its positional sound once per call.");
         DispatchObjectCase(center, f.context);
         Check(audio.starts == 1 && center.winX == 22 && center.winY == 473,

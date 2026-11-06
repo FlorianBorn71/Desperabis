@@ -430,6 +430,20 @@ namespace
 			ApplyPlayerLightMode();
 		}
 
+		void OnFreshLevelLoaded() override
+		{
+			if (!g_scene || !g_scene->m_level) { throw std::logic_error("Fresh object placement requires a loaded render level."); }
+			for (std::size_t slot = 2; slot <= 164; ++slot)
+			{
+				RawGameObject raw{};
+				std::memcpy(raw.m_rawBytes, &worldObjects[slot], sizeof(worldObjects[slot]));
+				g_scene->m_level->CorrectInitialObjectPlacement(raw);
+				worldObjects[slot].posX = raw.m_rawShorts[6];
+				worldObjects[slot].posY = raw.m_rawShorts[7];
+				worldObjects[slot].posZ = raw.m_rawShorts[8];
+			}
+		}
+
 	private:
 		LightningPresentation m_lightning;
 		void ApplyPlayerLightMode()

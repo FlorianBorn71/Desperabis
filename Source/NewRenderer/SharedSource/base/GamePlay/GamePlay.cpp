@@ -774,6 +774,11 @@ namespace GamePlay
         {
             return 1.f;
         }
+        if (GetBehaviorType() == BehaviorType::FogParticle)
+        {
+            // Modern fog uses the full 50..370-unit fade ramp, capped at 40% rather than native full opacity.
+            return std::clamp(m_go.m_rawShorts[21] / 320.f, 0.f, 1.f) * 0.4f;
+        }
         short w = __min(m_go.m_rawShorts[21] + 1, (short)6);
         return (float)w / 6.f;
     }

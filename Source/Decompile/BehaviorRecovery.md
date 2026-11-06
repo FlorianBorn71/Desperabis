@@ -1735,6 +1735,60 @@ shape, thunder timing/sample/source/volume, roof/sky admission, rain rate and
 overflow, slot lifecycle, floor splashes, zero-tick differences, snapshot
 reset/freeze behavior, and the original level-10 weather and locked entrance.
 
+## Level-24 swamp audit and fog clouds
+
+The original `OBJPOS24.DAT` has 29 active `FogParticle` objects.
+Their handler at `0000:3405` is recovered in
+[swamp-fog-evidence.txt](swamp-fog-evidence.txt). The native object loop caches
+the X/Z listener distance from `10AC:202A` in DS:`05D2` before dispatch.
+
+- Field 42 becomes the arithmetic signed-word shift `(distance - 50) >> 6`.
+  Transparent sprites render `min(field42 + 1, 6) / 6`: clouds disappear
+  below 50 native units, fade through six bands, and regain full opacity at
+  370 units. This is X/Z distance, not a renderer camera-to-sprite 3D length.
+- Field 38 advances by the old velocity Z and wraps to 0..511 **once per
+  dispatch**, even for zero ticks; it is not multiplied by tick count.
+- `Random(40) == 0` changes velocity Z using the existing `RandomSigned(4)`
+  helper, including its zero-to-positive-radius substitution.
+- Y becomes native floor height plus 6 plus the signed high word of
+  `Sine(phase) * 5`. The sine is the original clamped table; negative
+  products round downward. X/Z remain fixed.
+
+**Intentional modern override:** the fog handler now stores
+`clamp(distance - 50, 0, 320)` in field 42, retaining every distance unit
+instead of the native coarse transparency bands. Fog sprite opacity is
+`clamp(field42 / 320, 0, 1) * 0.4`: transparent at/below 50 units,
+linearly fading to a maximum **40%** at 370 units. The altered field-42
+meaning is specific to fog; other sprite behaviors keep their native bands.
+This visual deviation is commented in both the handler and renderer
+property accessor. Native bobbing, RNG and update timing remain unchanged.
+
+The old renderer-only `FogParticleObject` also faded near the camera, but
+that animation is not the GameCore path. Restoring the native handler
+lets the existing sprite-property synchronization carry proximity opacity
+to the renderer; no new renderer fog policy is needed.
+
+[FogParticleTests.cpp](Scaffold/FogParticleTests.cpp) covers every fade-distance unit,
+positive/negative bobbing, phase wrap, zero/multiple ticks, independent RNG
+references and repeated near/far updates of all 29 authored clouds.
+Renderer tests verify the 28 visible clouds' actual alpha-blended material
+opacity, strict per-unit progression and the 40% cap. The remaining authored fog object
+is a zero-size, normal-display dummy, not an extra visible cloud.
+
+Remaining authored native-handler gaps after this fix:
+
+| Behavior | Active original objects | Status |
+| --- | ---: | --- |
+| FireFly | 6 | Native handler unrecovered |
+| Switch3 | 2 | Native rotating-switch handler unrecovered |
+| UnreachableKey | 1 | Native hut-key handler unrecovered |
+| Moon | 1 | Native handler unrecovered; renderer moon placement already exists |
+
+The other authored selectors have recovered handlers or intentionally use
+shared/no-specific-case processing. This audit concerns authored object
+dispatch coverage, not proof that every level puzzle or presentation path
+has been exhaustively recovered.
+
 ## Globals and dependencies
 
 [BehaviorMap.json](Scaffold/BehaviorMap.json) records, for every catalog entry:
@@ -1873,6 +1927,42 @@ virtual `LoadFile(std::string_view)`, returning `std::vector<std::uint8_t>`.
 The host implements byte retrieval only; file failures must throw (the default
 implementation throws an explicit missing-service error). Names are logical
 ASCII asset paths, not host filesystem paths.
+
+**Modern depth-buffer clearance (fresh loads only):** the optional
+`OnFreshLevelLoaded` host callback runs after object installation but before
+publishing the ready state, resolving attachments and sending creation events.
+The DX11 host places static ground keys at the floor under their origin plus
+four DOS units; polygonal oil/puddle objects and near-floor thin decoration
+use two units. Native object Y uses the nearest integer DOS floor height plus
+the corresponding clearance, regardless
+of its previous Y. Animation/model bounds can be oversized, so neither their
+bottom nor footprint corners determine this height. Bounds only identify thin
+decoration; explicit keys and oil/puddle objects do not require model bounds.
+Static models with water/mirror-receiver materials are also recognized as
+puddles independently of native behavior/collision fields. Level 10's reflective
+puddles are grid-spawned model instances, not ordinary native object records;
+some have 7.9-unit bounds height and therefore fail the old thin-decal classifier.
+Mirror-receiver materials now identify these models directly, with no behavior
+required. Their height does not depend on bounds
+or proximity to the original floor.
+Static map frames still use converted model bounds to move away from their nearest
+authored grid wall, retaining their original mounting side and clearing it
+by two units. Only native XYZ changes; inactive objects, sprites and attached
+objects are excluded. Floor objects reset to the same fixed height on fresh
+loads, while already clear wall frames stay put. Corrections are idempotent.
+
+Fresh grid-instantiated mirror-receiver models and near-floor thin polygonal
+decals use two units of clearance. Controlled river-floor variants retain their
+shared terrain anchor. Ceiling models, flat water quads and water/shoreline
+tiles are excluded. This is an intentional departure from the depth-buffer-free
+native painter's renderer, not recovered native positioning logic.
+Both original and deferred save restoration bypass the callback; the renderer's
+SPL load also disables floor-decal and raw-object corrections. Saved positions
+are never normalized. Regressions cover the original tutorial keys, level-11
+map frame, level-10 polygonal floor decals, physical/padded edges, water planes,
+idempotence and byte-preserving save loads.
+Renderer-driven `PopulateScene` creation applies the same policy to per-object
+copies, never mutating cached authored records.
 
 GameCore validates complete 54-byte records and a maximum of 163 objects,
 then decodes ordinary slots 2..164, clearing unused slots and preserving
@@ -5136,9 +5226,19 @@ accurately, and throw on playback failures rather than silently dropping them.
   10000. Its wider mode meaning is not assigned.
 - `1E48:D001(distance)` returns
   `clamp(355 - (unsigned(nativeAbs(distance)) >> 1), 0, 255)`.
-- `GetSoundVolumeAt(x,z,distanceScale)` combines these operations, preserving
-  word wrapping and `ABS(-32768)`. The scale defaults to 1; WaterDrop uses 3.
-  This is X/Z-only attenuation, not Euclidean distance or stereo panning.
+- Modern positional attenuation deliberately falls off **twice as fast**:
+  `GetPositionalSoundVolume(distance, volumeOffset)` returns
+  `clamp(355 - unsigned(nativeAbs(distance)) - volumeOffset / 2, 0, 255)`.
+  With no shaping offset, volume is 255 through distance 100, 155 at 200,
+  1 at 354, and zero at 355 rather than the native 710.
+- `GetSoundVolumeAt(x,z,distanceScale)` now applies this modern positional
+  formula, preserving word wrapping and `ABS(-32768)`. The scale defaults
+  to 1; WaterDrop uses 3. Direct physical-distance callers use the same
+  helper. Frog sounds retain their separate native random/fixed shaping
+  offsets. `GetSoundVolume` itself retains the native formula for footsteps,
+  bubbles, thunder and other non-spatial loudness shaping.
+  `GetSoundDistanceAt` is unchanged, so fog, proximity and gameplay are not
+  affected. This remains X/Z Manhattan attenuation, not stereo panning.
 - To bypass falloff, pass a fixed volume (typically 255) directly to
   `PlaySoundEffect`. There is no attenuation boolean in the four-word native
   playback call.

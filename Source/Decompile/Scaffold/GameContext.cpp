@@ -377,6 +377,11 @@ namespace Desperabis
         if (pendingSaveGame) { RestoreSaveGame(); }
         if (DEBUG_noPlayerCollision) { ApplyPlayerLifeDelta(0); }
         loadedLevelNumber = pendingLevelLoad->levelNumber;
+        if (!restoringSave)
+        {
+            OnFreshLevelLoaded();
+            UpdateModelAttachments();
+        }
         pendingLevelLoad.reset();
         levelLoadError.clear();
         hasActiveGame = true;
@@ -384,7 +389,6 @@ namespace Desperabis
         SetMenuPage(MenuPage::Gameplay);
         applicationPageChanged = true;
         applicationTickAccumulator = 0;
-        if (!restoringSave) { UpdateModelAttachments(); }
         for (std::size_t slot = 1; slot < worldObjects.size(); ++slot)
         {
             NotifyObjectCreated(worldObjects[slot]);
@@ -1987,7 +1991,7 @@ namespace Desperabis
                 if (originalStrength / 1000 != object.groupIndexOrLock / 1000 && Random(3) == 0)
                 {
                     object.itemValue = -130;
-                    play(42, GetSoundVolume(static_cast<std::int16_t>(
+                    play(42, GetPositionalSoundVolume(static_cast<std::int16_t>(
                         GetSoundDistanceAt(object.posX, object.posZ) / 2)), 3);
                 }
                 object.velocityY = 100;
@@ -3527,7 +3531,14 @@ namespace Desperabis
     {
         const auto distance = GetSoundDistanceAt(x, z);
         const auto scaled = WrapSignedWord(static_cast<std::int32_t>(distance) * distanceScale);
-        return GetSoundVolume(scaled);
+        return GetPositionalSoundVolume(scaled);
+    }
+
+    std::uint8_t GameContext::GetPositionalSoundVolume(std::int16_t distance, std::uint16_t volumeOffset)
+    {
+        // Modern attenuation doubles only spatial loss, preserving non-spatial volume shaping and distance queries.
+        const auto magnitude = static_cast<std::uint16_t>(AbsoluteWord(distance));
+        return static_cast<std::uint8_t>(std::clamp(355 - static_cast<int>(magnitude) - volumeOffset / 2, 0, 255));
     }
 
     std::uint8_t GameContext::GetSoundVolume(std::int16_t distance)

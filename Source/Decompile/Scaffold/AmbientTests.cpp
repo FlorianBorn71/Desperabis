@@ -321,11 +321,11 @@ namespace
             Check(core.randomSeed == seedBeforeMute && audio.plays.empty(), "Inactive marker must not consume RNG.");
             marker.health = 1000;
             audio.playing.fill(false);
-            core.soundListenerX = static_cast<std::int16_t>(marker.posX + 708);
+            core.soundListenerX = static_cast<std::int16_t>(marker.posX + 354);
             DispatchObjectCase(marker, core);
-            Check(audio.plays.size() == 1 && audio.plays[0].volume == 1, "Marker volume must use native positional attenuation.");
+            Check(audio.plays.size() == 1 && audio.plays[0].volume == 1, "Marker volume must use modern positional attenuation.");
             audio.plays.clear();
-            core.soundListenerX = static_cast<std::int16_t>(marker.posX + 710);
+            core.soundListenerX = static_cast<std::int16_t>(marker.posX + 355);
             auto inaudibleSeed = core.randomSeed;
             Next(inaudibleSeed);
             Next(inaudibleSeed);
@@ -349,6 +349,12 @@ namespace
                 "Enabled markers must preserve RNG with an unavailable modern audio backend.");
             core.audioHandler = &audio;
             marker.soundEffectId = 0;
+            auto silentSeed = core.randomSeed;
+            Next(silentSeed);
+            DispatchObjectCase(marker, core);
+            Check(core.randomSeed == silentSeed && audio.plays.empty(),
+                "Zero-effect markers must preserve probability RNG but bypass sample selection and playback.");
+            marker.soundEffectId = 130;
             Reject<std::out_of_range>([&] { DispatchObjectCase(marker, core); });
         }
         for (const int slot : { 132, 133, 134 })

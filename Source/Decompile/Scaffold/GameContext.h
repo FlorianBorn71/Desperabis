@@ -509,6 +509,7 @@ namespace Desperabis
         std::int16_t GetSoundDistanceAt(std::int16_t x, std::int16_t z) const;
         bool HasClearPlayerLine(std::int16_t x, std::int16_t z) const;
         static std::uint8_t GetSoundVolume(std::int16_t distance);
+        static std::uint8_t GetPositionalSoundVolume(std::int16_t distance, std::uint16_t volumeOffset = 0);
         std::uint8_t GetSoundVolumeAt(std::int16_t x, std::int16_t z, std::int16_t distanceScale = 1) const;
         // Effect 0 is the native no-sound sentinel; it consumes no RNG or audio channel.
         SoundPlaybackStatus PlaySoundEffect(SoundEffect effect, std::uint8_t volume,
@@ -579,6 +580,8 @@ namespace Desperabis
         void LoadLevelObjects(std::int16_t levelNumber, LevelLoadData& data);
         // May complete synchronously or start host-side async work. Default reports an explicit error.
         virtual void LoadLevel(const LevelLoadRequest& request);
+        // Fresh native state is installed; save restores skip this hook and retain their saved positions.
+        virtual void OnFreshLevelLoaded() {}
         // Legacy blocking recovery hooks; UpdateApplication never invokes these.
         virtual MainMenuAction ShowMainMenu();
         virtual std::optional<std::int16_t> ShowChapterSelection();

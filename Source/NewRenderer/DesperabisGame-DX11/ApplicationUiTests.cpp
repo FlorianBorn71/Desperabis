@@ -2674,11 +2674,19 @@ namespace
                 model.BuildOriginal(shoreline->GetLevelInfo(), modelGeometry);
                 Check(model.Walls().size() == 1, "The final authored/native tile must retain its static floor/ceiling model.");
                 const auto& position = model.Walls()[0]->GetTransform().GetTranslation();
-                const float expectedY = ceiling ? 100.f * DespToFloat : physical ? 0.f : -510.f * DespToFloat;
+                float expectedY = ceiling ? 100.f * DespToFloat : physical ? 0.f : -510.f * DespToFloat;
+                const auto& local = model.Walls()[0]->GetRenderable()->m_localBounds.m_box;
+                const float floorY = model.GetHeightAtPos(Vector(position.GetX(), expectedY, position.GetZ()));
+                if (!ceiling && (model.Walls()[0]->HasWaterMaterials() ||
+                    (local.m_max.GetY() - local.m_min.GetY() <= 2.f * DespToFloat &&
+                        std::abs(expectedY - floorY) <= 8.f * DespToFloat)))
+                {
+                    expectedY = floorY + 2.f * DespToFloat;
+                }
                 Check(std::abs(position.GetX() - (model.GetCellArray().GridPosX(width - 1) + 50.f * DespToFloat)) < 0.0001f &&
                     std::abs(position.GetZ() - (model.GetCellArray().GridPosY(height - 1) + 50.f * DespToFloat)) < 0.0001f &&
                     std::abs(position.GetY() - expectedY) < 0.0001f,
-                    "Edge static models must preserve native corner extrema using file padding or the physical-boundary 0/80 vertices.");
+                    "Edge models must preserve native corner anchors, except the fresh thin-floor offset; ceilings stay unchanged.");
                 modelGeometry[4 + plane * count + count - 1] = 0;
             }
         }
@@ -4096,9 +4104,267 @@ namespace
         scene.ClearScene();
     }
 
+    void CheckFreshObjectPlacement()
+    {
+        int raisedKeys = 0, wallMaps = 0;
+        for (const auto number : {50, 11})
+        {
+            LevelScene scene(number);
+            scene.m_createGameObjects = false;
+            FORCE_WAIT(scene.CreateScene());
+            for (const auto& source : scene.m_level->GetRawGameObjects())
+            {
+                const GamePlay::PropertyAccessorBase properties(source);
+                if (properties.GetHealth() <= 0 || (properties.GetCollisionType() != GamePlay::CollisionType::Key &&
+                    properties.GetCollisionType() != GamePlay::CollisionType::PictureMap)) { continue; }
+                auto raw = source;
+                scene.m_level->CorrectInitialObjectPlacement(raw);
+                auto instance = std::make_shared<RenderableInstance>();
+                scene.m_level->ApplyRenderProperties(instance, raw);
+                Check(instance->IsValid(), "Original keys and wall maps must have measurable converted model bounds.");
+                const auto& box = instance->GetGlobalBounds().m_box;
+                if (properties.GetCollisionType() == GamePlay::CollisionType::Key)
+                {
+                    const auto floor = std::lround(scene.m_level->GetHeightAtPos(properties.GetPosition()) / DespToFloat);
+                    Check(raw.m_rawShorts[7] == floor + 4 &&
+                        raw.m_rawShorts[6] == source.m_rawShorts[6] && raw.m_rawShorts[8] == source.m_rawShorts[8],
+                        "Fresh ground keys must sit exactly four DOS units above the native-rounded floor at their origin.");
+                    raisedKeys += raw.m_rawShorts[7] > source.m_rawShorts[7];
+                }
+                else
+                {
+                    Check(number == 11 && raw.m_rawShorts[6] < source.m_rawShorts[6] &&
+                        box.m_max.GetX() <= scene.m_level->GetCellArray().GridPosX(23) - 2.f * DespToFloat + 0.00001f &&
+                        raw.m_rawShorts[7] == source.m_rawShorts[7] && raw.m_rawShorts[8] == source.m_rawShorts[8],
+                        "The original level-11 map frame must remain on its wall side with at least two units of model clearance.");
+                    ++wallMaps;
+                }
+                const auto once = raw;
+                scene.m_level->CorrectInitialObjectPlacement(raw);
+                Check(raw == once, "Fresh placement correction must be idempotent, not accumulate offsets.");
+                auto attached = source;
+                attached.m_rawBytes[4] = 20;
+                const auto originalAttached = attached;
+                scene.m_level->CorrectInitialObjectPlacement(attached);
+                Check(attached == originalAttached, "Attached objects must retain their native parent-relative coordinates.");
+                auto inactive = source;
+                inactive.m_rawShorts[5] = 0;
+                const auto originalInactive = inactive;
+                scene.m_level->CorrectInitialObjectPlacement(inactive);
+                Check(inactive == originalInactive, "Inactive objects must not receive placement corrections.");
+                if (properties.GetCollisionType() == GamePlay::CollisionType::Key)
+                {
+                    auto raised = once;
+                    raised.m_rawShorts[7] += 32;
+                    scene.m_level->CorrectInitialObjectPlacement(raised);
+                    Check(raised == once, "Even elevated keys must reset to floor plus four units on fresh placement.");
+                    for (const auto collision : {GamePlay::CollisionType::BurnableOilPuddle, GamePlay::CollisionType::ActivateSpiders})
+                    {
+                        auto puddle = source;
+                        puddle.m_rawBytes[6] = static_cast<byte>(collision);
+                        puddle.m_rawShorts[7] = 32000;
+                        scene.m_level->CorrectInitialObjectPlacement(puddle);
+                        Check(puddle.m_rawShorts[7] == once.m_rawShorts[7] - 2 &&
+                            puddle.m_rawShorts[6] == source.m_rawShorts[6] && puddle.m_rawShorts[8] == source.m_rawShorts[8],
+                            "Explicit polygonal puddles must use origin-floor plus two units, regardless of bounds or previous Y.");
+                    }
+                }
+            }
+        }
+        Check(raisedKeys >= 2 && wallMaps == 1, "Placement tests must exercise the buried tutorial keys and original wall map.");
+
+        const auto tutorial = FORCE_GET(AssetManager::Instance().LoadLevel(50));
+        const auto originalRecords = tutorial->GetRawGameObjects();
+        const auto keyTemplate = std::find_if(originalRecords.begin(), originalRecords.end(), [](const RawGameObject& raw)
+        {
+            return GamePlay::PropertyAccessorBase(raw).GetCollisionType() == GamePlay::CollisionType::Key;
+        });
+        Check(keyTemplate != originalRecords.end(), "The original tutorial must supply a polygonal key record.");
+        LevelScene legacy(50);
+        legacy.m_createMapIcons = false;
+        FORCE_WAIT(legacy.CreateScene());
+        int legacyKeys = 0;
+        for (const auto& object : legacy.GetGameObjects())
+        {
+            const auto levelObject = std::dynamic_pointer_cast<LevelGameObject>(object);
+            if (!levelObject || GamePlay::PropertyAccessorBase(levelObject->m_rawGO).GetCollisionType() !=
+                GamePlay::CollisionType::Key) { continue; }
+            Check(levelObject->m_renderInst && levelObject->m_rawGO.m_rawShorts[7] ==
+                std::lround(legacy.m_level->GetHeightAtPos(levelObject->GetPosition()) / DespToFloat) + 4,
+                "Renderer-driven level creation must also place tutorial key origins at floor plus four DOS units.");
+            ++legacyKeys;
+        }
+        Check(legacyKeys == 3 && tutorial->GetRawGameObjects() == originalRecords,
+            "Legacy scene placement must correct all tutorial keys without mutating cached authored object records.");
+
+        class FloorLevel final : public Level
+        {
+        public:
+            void Initialize(const Level& source)
+            {
+                InitLevelInfo(source.GetLevelInfo());
+                m_cellArray = source.GetCellArray();
+            }
+            using Level::AddStaticCellObject;
+        };
+        class SaveHost final : public Desperabis::GameContext
+        {
+            std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+            {
+                const std::wstring name(filename.begin(), filename.end());
+                return FORCE_GET(FileManager::Instance().ReadDataFuture(FileManager::Instance().FilenameToNative(name)));
+            }
+            void LoadLevel(const Desperabis::LevelLoadRequest& request) override
+            {
+                Desperabis::LevelLoadData data;
+                LoadLevelGeometry(request.levelNumber, data);
+                LoadLevelObjects(request.levelNumber, data);
+                InitializeLevelPlayerSpawn(data, {0,0,100});
+                CompleteLevelLoad(request.id, std::move(data));
+            }
+        } host;
+        host.StartLevel(10);
+        const auto bytes = host.CaptureSaveGame("Placement regression");
+        FloorLevel saved;
+        FORCE_WAIT(saved.LoadSaveGameData(bytes.data(), static_cast<int>(bytes.size())));
+        for (const auto& source : saved.GetRawGameObjects())
+        {
+            auto raw = source;
+            saved.CorrectInitialObjectPlacement(raw);
+            Check(raw == source, "Actual SPL-loaded world objects must remain byte-for-byte unchanged by placement policy.");
+        }
+        LevelScene scene(10);
+        scene.m_createGameObjects = false;
+        FORCE_WAIT(scene.CreateScene());
+        FloorLevel fresh;
+        fresh.Initialize(*scene.m_level);
+        int puddles = 0, reflectiveTiles = 0, thickReflectiveTiles = 0;
+        const auto& cells = scene.m_level->GetCellArray();
+        for (int z = 0; z < cells.m_sizeZ; ++z)
+        {
+            for (int x = 0; x < cells.m_sizeX; ++x)
+            {
+                const auto raw = cells.GetCell(x, z).m_floor;
+                if (raw <= 31) { continue; }
+                const auto restored = saved.AddStaticCellObject(x, z, raw, HeightLevel::Floor);
+                const auto corrected = fresh.AddStaticCellObject(x, z, raw, HeightLevel::Floor);
+                Check(restored && corrected, "Authored polygonal floor models must exist in both fresh and saved scenes.");
+                if (restored->HasWaterMaterials())
+                {
+                    Check(!cells.GetCell(x, z).IsWaterSurface(),
+                        "Level-10 reflective puddle models must be distinct from grid water surfaces.");
+                    const auto position = cells.GetCenterPos(x, z, HeightLevel::Floor);
+                    const auto origin = corrected->GetTransform().GetTranslation();
+                    const auto controlled = fresh.AddStaticCellObject(x, z, raw, HeightLevel::Floor, false);
+                    Check(std::abs(restored->GetTransform().GetTranslation().GetY() - position.y) < 0.00001f &&
+                        controlled && std::abs(controlled->GetTransform().GetTranslation().GetY() - position.y) < 0.00001f &&
+                        std::abs(origin.GetY() - fresh.GetHeightAtPos(origin) - 2.f * DespToFloat) < 0.00001f,
+                        "Every actual level-10 mirror-receiver puddle must use floor plus two units; saved and controlled-terrain anchors stay unchanged.");
+                    const auto& bounds = restored->GetGlobalBounds().m_box;
+                    thickReflectiveTiles += bounds.m_max.GetY() - bounds.m_min.GetY() > 2.f * DespToFloat;
+
+                    auto object = *keyTemplate;
+                    object.m_rawBytes[0] = raw >= 160 ? 33 : 32;
+                    object.m_rawBytes[1] = (raw & 31) / 5 + 1;
+                    object.m_rawBytes[2] = 0;
+                    object.m_rawBytes[3] = (raw & 31) % 5 + 1;
+                    object.m_rawBytes[6] = static_cast<byte>(GamePlay::CollisionType::None);
+                    object.m_rawBytes[8] = static_cast<byte>(GamePlay::BehaviorType::None);
+                    const auto nativeZero = Level::DespToPos(0, 0, 0);
+                    object.m_rawShorts[6] = static_cast<short>(std::lround((origin.GetX() - nativeZero.GetX()) / DespToFloat));
+                    object.m_rawShorts[7] = 32000;
+                    object.m_rawShorts[8] = static_cast<short>(std::lround((nativeZero.GetZ() - origin.GetZ()) / DespToFloat));
+                    const auto originalObject = object;
+                    auto instance = std::make_shared<RenderableInstance>();
+                    scene.m_level->ApplyRenderProperties(instance, object);
+                    Check(instance->IsValid() && instance->HasWaterMaterials(),
+                        "The original reflective puddle model must retain mirror-receiver materials when instantiated as a behaviorless object.");
+                    scene.m_level->CorrectInitialObjectPlacement(object);
+                    Check(object.m_rawShorts[7] == std::lround(fresh.GetHeightAtPos(origin) / DespToFloat) + 2 &&
+                        object.m_rawShorts[6] == originalObject.m_rawShorts[6] &&
+                        object.m_rawShorts[8] == originalObject.m_rawShorts[8],
+                        "Behaviorless world objects must use model mirror-receiver materials to reset their origins to floor plus two units.");
+                    const auto once = object;
+                    scene.m_level->CorrectInitialObjectPlacement(object);
+                    Check(object == once, "Material-identified puddle placement must be idempotent.");
+                    auto savedObject = originalObject;
+                    saved.CorrectInitialObjectPlacement(savedObject);
+                    Check(savedObject == originalObject, "Saved material-identified puddles must not receive floor correction.");
+                    ++reflectiveTiles;
+                }
+                if (cells.GetCell(x, z).IsWaterSurface()) { continue; }
+                const auto& box = restored->GetGlobalBounds().m_box;
+                if (box.m_max.GetY() - box.m_min.GetY() > 2.f * DespToFloat) { continue; }
+                const auto position = cells.GetCenterPos(x, z, HeightLevel::Floor);
+                Check(std::abs(restored->GetTransform().GetTranslation().GetY() - position.y) < 0.00001f &&
+                    std::abs(corrected->GetTransform().GetTranslation().GetY() -
+                        fresh.GetHeightAtPos(corrected->GetTransform().GetTranslation()) - 2.f * DespToFloat) < 0.00001f,
+                    "Fresh polygonal puddle origins must equal floor plus two units; SPL-loaded tile models retain their saved placement.");
+                ++puddles;
+            }
+        }
+        Check(puddles > 0, "The placement regression must cover actual level-10 polygonal puddles, not water quads or sprites.");
+        Check(reflectiveTiles > 0 && thickReflectiveTiles > 0,
+            "Placement tests must cover actual behaviorless level-10 mirror-receiver models exceeding the old two-unit thickness limit.");
+        std::cout << "Fresh placement: " << raisedKeys << " raised keys, level-11 wall frame and " << puddles <<
+            " thin polygonal floor decals, " << reflectiveTiles << " mirror-receiver puddles (" << thickReflectiveTiles <<
+            " thicker than two units); behaviorless world-object classification, idempotence and SPL preservation passed.\n";
+    }
+
     void CheckObjectPresentations()
     {
         static_assert(LevelScene::ObjectSlotCount == std::tuple_size_v<decltype(Desperabis::GameContext::worldObjects)>);
+        {
+            LevelScene swamp(24);
+            swamp.m_createGameObjects = false;
+            FORCE_WAIT(swamp.CreateScene());
+            Desperabis::GameContext core;
+            auto geometry = Desperabis::CreateDummyLevel();
+            core.level = &geometry;
+            int clouds = 0;
+            int hiddenClouds = 0;
+            for (const auto& authored : swamp.m_level->GetRawGameObjects())
+            {
+                const GamePlay::PropertyAccessorBase properties(authored);
+                if (properties.GetBehaviorType() != GamePlay::BehaviorType::FogParticle || properties.GetHealth() <= 0) { continue; }
+                if (properties.GetScale() == 0.f)
+                {
+                    ++hiddenClouds;
+                    continue;
+                }
+                Desperabis::RawGameObject native;
+                std::memcpy(&native, authored.m_rawBytes, sizeof(native));
+                auto instance = std::make_shared<RenderableInstance>();
+                float previousOpacity = 0.f;
+                for (int distance = 0; distance <= 500; ++distance)
+                {
+                    core.soundListenerX = static_cast<std::int16_t>(native.posX + distance);
+                    core.soundListenerZ = native.posZ;
+                    Desperabis::DispatchObjectCase(native, core);
+                    RawGameObject raw = authored;
+                    std::memcpy(raw.m_rawBytes, &native, sizeof(native));
+                    swamp.m_level->ApplyRenderProperties(instance, raw);
+                    Check(instance->IsValid() && !instance->m_materialOverride.empty(),
+                        "Every original swamp cloud must have a render instance.");
+                    const auto& material = instance->m_materialOverride[0];
+                    const float expected = distance <= 50 ? 0.f : distance >= 370 ? 0.4f : (distance - 50) * 0.00125f;
+                    Check(material.m_transparencyType == TransparencyMode::AlphaBlended &&
+                        material.m_opacity >= 0.f && material.m_opacity <= 0.4f &&
+                        std::abs(material.m_opacity - expected) < 0.00001f &&
+                        (distance <= 50 || distance > 370 || material.m_opacity > previousOpacity),
+                        "Swamp clouds must fade at every distance unit, remaining within zero to 40% opacity.");
+                    previousOpacity = material.m_opacity;
+                }
+                ++clouds;
+            }
+            Check(clouds == 28 && hiddenClouds == 1,
+                "Renderer opacity coverage must include all 28 visible swamp clouds, preserving the zero-size dummy.");
+            RawGameObject ordinary{};
+            ordinary.m_rawBytes[51] = static_cast<byte>(GamePlay::DisplayType::SpriteTransparent);
+            ordinary.m_rawShorts[21] = 3;
+            Check(GamePlay::PropertyAccessorBase(ordinary).GetSpriteTransparency() == 4.f / 6.f,
+                "The full-resolution fog override must not change other sprites' native transparency bands.");
+        }
         {
             LevelScene scene(23);
             FORCE_WAIT(scene.CreateScene());
@@ -4727,6 +4993,7 @@ int main(int argc, char* argv[])
         CheckSmoothPolygonNormals(renderer, device.Get(), context.Get());
         CheckTutorialFlames();
         CheckStaticFireTracking();
+        CheckFreshObjectPlacement();
         CheckObjectPresentations();
         CheckVisualLightEffects();
         CheckGhostPresentations();

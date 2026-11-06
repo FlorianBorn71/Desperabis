@@ -219,6 +219,7 @@ namespace
                 entry.type == BehaviorType::LightningGenerator || entry.type == BehaviorType::WindController ||
                 entry.type == BehaviorType::AirborneLeaf || entry.type == BehaviorType::GroundLeaf ||
                 entry.type == BehaviorType::RainEmitter || entry.type == BehaviorType::RainDrop ||
+                entry.type == BehaviorType::FogParticle ||
                 entry.type == BehaviorType::AmbientSoundPosition ||
                 entry.type == BehaviorType::Flies ||
                 entry.type == BehaviorType::WeaponDamageCollider ||
@@ -453,7 +454,7 @@ namespace
                         state.field_DC34 == static_cast<std::uint16_t>(65535u + perturbation),
                         "LightSource must preserve near/far RNG ordering, sound RNG, and DS:DC34 wrapping.");
                     Check(audio.calls == previousCalls + (play ? 1u : 0u) &&
-                        (!play || (audio.lastSample == sample && audio.lastVolume == (distance == 0 ? 255 : 205) &&
+                        (!play || (audio.lastSample == sample && audio.lastVolume == (distance == 0 ? 255 : 54) &&
                             state.soundChannelSources[3] == 2)),
                         "LightSource sound must use strict ticks > Random(100), high byte effect, volume and source slot.");
                     Check(ObjectBytes(light) == original, "LightSource must not mutate its own object record.");
@@ -857,7 +858,7 @@ namespace
                         ReferenceSignedWord(std::abs(x)) + ReferenceSignedWord(std::abs(z)));
                     const auto doubled = ReferenceSignedWord(2LL * distance);
                     const auto volume = static_cast<std::uint8_t>(
-                        std::clamp(355 - std::abs(static_cast<int>(doubled)) / 2, 0, 255));
+                        std::clamp(355 - std::abs(static_cast<int>(doubled)), 0, 255));
                     checkStep(initial, 3, 0, volume);
                 }
             }
@@ -3284,7 +3285,7 @@ namespace
             const auto distance = ReferenceSignedWord(absolute(listenerX - x) + absolute(listenerZ - z));
             const auto scaled = ReferenceSignedWord(distance * scale);
             const auto magnitude = static_cast<std::uint16_t>(absolute(scaled));
-            return std::clamp(355 - static_cast<int>(magnitude / 2), 0, 255);
+            return std::clamp(355 - static_cast<int>(magnitude), 0, 255);
         };
         state.soundListenerX = -1234;
         state.soundListenerZ = 2700;
@@ -3302,9 +3303,13 @@ namespace
         }
         state.soundListenerX = 0;
         state.soundListenerZ = 0;
-        Check(state.GetSoundVolumeAt(200, 0) == 255 && state.GetSoundVolumeAt(201, 0) == 255 &&
-            state.GetSoundVolumeAt(202, 0) == 254 && state.GetSoundVolumeAt(708, 0) == 1 &&
-            state.GetSoundVolumeAt(710, 0) == 0, "Native sound-volume thresholds changed.");
+        Check(state.GetSoundVolumeAt(100, 0) == 255 && state.GetSoundVolumeAt(101, 0) == 254 &&
+            state.GetSoundVolumeAt(200, 0) == 155 && state.GetSoundVolumeAt(354, 0) == 1 &&
+            state.GetSoundVolumeAt(355, 0) == 0, "Modern positional sound must fall off twice as fast.");
+        Check(GameContext::GetSoundVolume(500) == 105 &&
+            GameContext::GetPositionalSoundVolume(0, 500) == 105 &&
+            GameContext::GetPositionalSoundVolume(100, 500) == 5,
+            "Spatial attenuation must preserve authored non-spatial volume offsets and local sound shaping.");
         state.positionalSoundsSuppressed = true;
         Check(state.GetSoundVolumeAt(0, 0) == 0 && state.GetSoundVolumeAt(0, 0, 3) == 0,
             "DS:D4FA positional suppression must force distance 10000.");

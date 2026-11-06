@@ -98,7 +98,7 @@ namespace Desperabis
             const auto play = [&](int effect)
             {
                 context.PlaySoundEffect(static_cast<SoundEffect>(effect),
-                    GameContext::GetSoundVolume(distance), object, 1);
+                    GameContext::GetPositionalSoundVolume(distance), object, 1);
             };
             if (WrapSignedWord(object.generalPurpose3) > 0) { --object.generalPurpose3; }
             switch (object.itemValue)
@@ -297,7 +297,7 @@ namespace Desperabis
                 break;
             }
             case 20:
-                context.PlaySoundEffect(static_cast<SoundEffect>(59), GameContext::GetSoundVolume(distance), object, 1);
+                context.PlaySoundEffect(static_cast<SoundEffect>(59), GameContext::GetPositionalSoundVolume(distance), object, 1);
                 object.displayType = DisplayType::Type3;
                 object.generalPurpose1 = 4;
                 object.collisionMask = 0;
@@ -458,7 +458,7 @@ namespace Desperabis
         }
         if (object.generalPurpose1 != 1500)
         {
-            context.PlaySoundEffect(static_cast<SoundEffect>(67), GameContext::GetSoundVolume(
+            context.PlaySoundEffect(static_cast<SoundEffect>(67), GameContext::GetPositionalSoundVolume(
                 ArithmeticShiftRight(context.GetSoundDistanceAt(object.posX, object.posZ), 1)), object, 1);
         }
         object.generalPurpose1 = 1500;

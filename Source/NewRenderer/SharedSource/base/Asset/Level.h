@@ -24,6 +24,7 @@ public:
     FUTURE(std::shared_ptr<PlayerLight>) PopulateScene(Scene& scene, bool createGameObjects, bool addMapIcons,
         ObjectPresentationCallback objectPresentation = {});
 	void ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& rawGO, Texture* spriteOverride = nullptr) const;
+    void CorrectInitialObjectPlacement(RawGameObject& rawGO) const;
     RenderableInstancePtr CreatePlayerObject();
     std::size_t SynchronizeWallTiles(const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride);
     std::size_t SynchronizeFloorTiles(const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride);
@@ -42,7 +43,7 @@ protected:
 
     void InitLevelInfo(const LevelInfo& info);
     void CreateWallGeometry();
-    RenderableInstancePtr AddStaticCellObject(int x, int y, byte rawVal, HeightLevel atHeight);
+    RenderableInstancePtr AddStaticCellObject(int x, int y, byte rawVal, HeightLevel atHeight, bool correctInitialPlacement = true);
     void CreateSkyGeometry();
     void CreateSkyCylinderMesh(std::vector<DrawCall>& drawcalls, ModelLoadingContext& context, ModelConversionContext& conversion, Texture* skyTexture, float repetitionsU, float relHeight, const Color4& col, TransparencyMode transparency);
     void CreateStars(std::vector<DrawCall>& drawcalls, ModelLoadingContext& context, ModelConversionContext& conversion, int count);
@@ -64,6 +65,7 @@ protected:
     bool CreateObjectRenderInstance(Scene& scene, std::shared_ptr<class LevelGameObject> go, RawGameObject& rawGO) const;
 
     int m_levelIndex = 0;
+    bool m_isSaveGame = false;
     LevelInfo m_levelInfo;
     GridCellArray m_cellArray;
     Vector m_playerStartPos;

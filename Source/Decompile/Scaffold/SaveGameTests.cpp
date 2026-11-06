@@ -38,10 +38,11 @@ namespace
     public:
         std::filesystem::path assets;
         bool deferred = false;
-        int created = 0, destroyed = 0;
+        int created = 0, destroyed = 0, freshLoads = 0;
         explicit Host(std::filesystem::path path) : assets(std::move(path)) {}
         void OnObjectCreated(int) override { ++created; }
         void OnObjectDestroyed(int) override { ++destroyed; }
+        void OnFreshLevelLoaded() override { ++freshLoads; }
         void Complete()
         {
             const auto request = *GetPendingLevelLoad();
@@ -65,6 +66,7 @@ namespace
         Check(save.bytes == bytes, "The original 32-bit checksum must reproduce every fixture byte.");
         Host host(assets);
         host.LoadGame(bytes);
+        Check(host.freshLoads == 0, "Original saves must bypass fresh-level placement correction.");
         Check(host.GetRuntimeState() == GameRuntimeState::Ready && host.GetLoadedLevelNumber() == save.LevelNumber(),
             "The saved ordinal/order, not LEVELS.INF's story index, must identify the restored level.");
         Check(std::memcmp(&host.worldObjects[1], bytes.data() + NativeSaveGame::Player, 165 * 54) == 0,
@@ -101,6 +103,7 @@ namespace
             host.GetGameParts()[2].levels.front() == 9 && host.GetGameParts()[2].endsWithCredits,
             "HERZ must retain transitional indices and its END sentinel.");
         host.StartNewGame(1);
+        Check(host.freshLoads == 1, "A fresh level must run placement correction exactly once.");
         host.worldObjects[2].generalPurpose1 = 1234;
         host.gold = 57;
         host.playerLife = 123 * 65536 + 42;
@@ -120,6 +123,7 @@ namespace
         Check(loaded.GetRuntimeState() == GameRuntimeState::Loading && !loaded.hasActiveGame &&
             loaded.GetPendingSaveGame(), "Deferred restores must retain the validated snapshot until completion.");
         loaded.Complete();
+        Check(loaded.freshLoads == 0, "Deferred saves must also bypass fresh-level placement correction.");
         Check(loaded.gold == 57 && loaded.playerLife == host.playerLife && loaded.playerOxygen == host.playerOxygen &&
             loaded.hasMap && loaded.worldObjects[2].generalPurpose1 == 1234 &&
             loaded.CaptureSaveGame("Fresh native save") == bytes,

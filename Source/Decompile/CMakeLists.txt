@@ -90,6 +90,10 @@ if(BUILD_TESTING)
     target_link_libraries(weather-tests PRIVATE Desperabis::GameCore)
     add_test(NAME level-ten-weather COMMAND weather-tests
         "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original")
+    add_executable(fog-particle-tests Scaffold/FogParticleTests.cpp)
+    target_link_libraries(fog-particle-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME swamp-fog COMMAND fog-particle-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original")
     add_executable(level-progression-tests Scaffold/LevelProgressionTests.cpp)
     target_link_libraries(level-progression-tests PRIVATE Desperabis::GameCore)
     add_test(NAME level-progression COMMAND level-progression-tests

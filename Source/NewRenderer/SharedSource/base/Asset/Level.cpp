@@ -9,6 +9,9 @@
 #include <Scene/GameObject.h>
 #include <Renderer/RenderableInstance.h>
 #include <GamePlay/GamePlay.h>
+#include <cmath>
+#include <limits>
+#include <stdexcept>
 
 
 // gameplay level index to level file
@@ -104,6 +107,7 @@ void Level::InitLevelInfo(const LevelInfo& info)
 
 FUTURE(void) Level::Load(int index, const LevelInfo& info)
 {
+    m_isSaveGame = false;
     m_levelIndex = index;
     InitLevelInfo(info);
 
@@ -529,7 +533,7 @@ namespace
 } // anonymous namespace
 
 
-RenderableInstancePtr Level::AddStaticCellObject(int x, int y, byte rawVal, HeightLevel atHeight)
+RenderableInstancePtr Level::AddStaticCellObject(int x, int y, byte rawVal, HeightLevel atHeight, bool correctInitialPlacement)
 {
     auto staticGeom0 = m_levelInfo.GetModelAnim(2);
     auto staticGeom1 = m_levelInfo.GetModelAnim(3);
@@ -557,8 +561,23 @@ RenderableInstancePtr Level::AddStaticCellObject(int x, int y, byte rawVal, Heig
             Matrix4 matrix = Matrix4::CreateTransform(center, euler);
             std::shared_ptr<RenderableInstance> inst = std::make_shared<RenderableInstance>(tile, (uint32_t)GamePlay::VisibilityFilter::Walls);
             m_levelInfo.AssignLevelTextures(*inst);
+            inst->ComputeTransparencyMask();
             inst->SetTransform(matrix);
             inst->UpdateGlobalBounds();
+            // Fresh polygonal floor decals need depth-buffer clearance; saved scenes keep their existing placement.
+            if (correctInitialPlacement && isFloor && !m_isSaveGame && !m_cellArray.GetCell(x, y).IsWaterSurface() &&
+                inst->GetGlobalBounds().IsValid())
+            {
+                const auto& box = inst->GetGlobalBounds().m_box;
+                if (inst->HasWaterMaterials() ||
+                    (box.m_max.GetY() - box.m_min.GetY() <= 2.f * DespToFloat &&
+                        std::abs(center.GetY() - GetHeightAtPos(center)) <= 8.f * DespToFloat))
+                {
+                    center.Set(center.GetX(), GetHeightAtPos(center) + 2.f * DespToFloat, center.GetZ());
+                    inst->SetTranslation(center);
+                    inst->UpdateGlobalBounds();
+                }
+            }
             // no scene yet, but we want to set the tile assignment manually anyway:
             BoundingVolume& vol = inst->ModifyGlobalBounds();
             vol.m_tileRange.m_minX = vol.m_tileRange.m_maxX = (int8_t)x;
@@ -959,7 +978,8 @@ void Level::CreateWallGeometry()
                     }
                     else
                     {
-                        auto inst = AddStaticCellObject(x, y, c, HeightLevel::Floor);
+                        // Controlled river variants retain one shared terrain anchor, not puddle-decal placement.
+                        auto inst = AddStaticCellObject(x, y, c, HeightLevel::Floor, floorIndex < 0);
                         if (floorIndex >= 0)
                         {
                             if (c > 31 && !inst)
@@ -1335,6 +1355,113 @@ bool Level::CreateObjectRenderInstance(Scene& scene, std::shared_ptr<LevelGameOb
 }
 
 
+void Level::CorrectInitialObjectPlacement(RawGameObject& rawGO) const
+{
+    GamePlay::PropertyAccessorBase props(rawGO);
+    if (m_isSaveGame || !props.Isvalid() || props.GetModelId() <= 30 || rawGO.m_rawBytes[4] == 20) { return; }
+    const auto behavior = props.GetBehaviorType();
+    const auto collision = props.GetCollisionType();
+    const bool key = collision == GamePlay::CollisionType::Key && behavior == GamePlay::BehaviorType::None;
+    const bool map = collision == GamePlay::CollisionType::PictureMap && behavior == GamePlay::BehaviorType::None;
+    const bool puddle = collision == GamePlay::CollisionType::BurnableOilPuddle ||
+        collision == GamePlay::CollisionType::ActivateSpiders || behavior == GamePlay::BehaviorType::BurnableOilPuddle;
+    const bool staticDecoration = collision == GamePlay::CollisionType::None && behavior == GamePlay::BehaviorType::None;
+    if (!key && !map && !puddle && behavior != GamePlay::BehaviorType::None) { return; }
+
+    const auto position = props.GetPosition();
+    const float floor = GetHeightAtPos(position);
+    const auto placeOnFloor = [&](int clearance)
+    {
+        // Model bounds include oversized animation extents; ground placement uses only the object's origin.
+        const auto height = std::lround(floor / DespToFloat) + clearance;
+        if (height < std::numeric_limits<int16_t>::min() || height > std::numeric_limits<int16_t>::max())
+        {
+            throw std::out_of_range("Initial floor placement exceeds native coordinate range.");
+        }
+        rawGO.m_rawShorts[7] = static_cast<int16_t>(height);
+    };
+    if (key || puddle)
+    {
+        placeOnFloor(key ? 4 : 2);
+        return;
+    }
+
+    auto instance = std::make_shared<RenderableInstance>();
+    ApplyRenderProperties(instance, rawGO);
+    if (!instance->IsValid()) { return; }
+    // Mirror-receiver materials identify reflective puddles even when their native behavior/collision is absent.
+    if (!map && instance->HasWaterMaterials())
+    {
+        placeOnFloor(2);
+        return;
+    }
+    if (!instance->GetGlobalBounds().IsValid()) { return; }
+    const auto& box = instance->GetGlobalBounds().m_box;
+    const float margin = 2.f * DespToFloat;
+    const auto move = [](int16_t& coordinate, float offset)
+    {
+        const float units = offset / DespToFloat;
+        const int delta = static_cast<int>(units >= 0.f ? std::ceil(units) : std::floor(units));
+        const int adjusted = coordinate + delta;
+        if (adjusted < std::numeric_limits<int16_t>::min() || adjusted > std::numeric_limits<int16_t>::max())
+        {
+            throw std::out_of_range("Initial object clearance exceeds native coordinate range.");
+        }
+        coordinate = static_cast<int16_t>(adjusted);
+    };
+
+    // Flat, floor-level decoration includes nonflammable polygonal puddles; never lift water tiles or sprites.
+    const bool floorOverlay = staticDecoration && box.m_max.GetY() - box.m_min.GetY() <= margin &&
+        std::abs(position.GetY() - floor) <= 8.f * DespToFloat;
+    if (floorOverlay)
+    {
+        placeOnFloor(2);
+        return;
+    }
+    if (!map) { return; }
+
+    bool foundWall = false, wallAlongX = false;
+    float wallPlane = 0.f, nearest = std::numeric_limits<float>::max();
+    int wallSide = 0;
+    const auto considerWall = [&](bool alongX, float plane, float start, float end, int ownerSide)
+    {
+        const float min = alongX ? box.m_min.GetZ() : box.m_min.GetX();
+        const float max = alongX ? box.m_max.GetZ() : box.m_max.GetX();
+        if (max < start || min > end) { return; }
+        const float signedDistance = (alongX ? position.GetX() : position.GetZ()) - plane;
+        const float distance = std::abs(signedDistance);
+        if (distance >= nearest || distance > 20.f * DespToFloat) { return; }
+        foundWall = true;
+        nearest = distance;
+        wallAlongX = alongX;
+        wallPlane = plane;
+        wallSide = signedDistance < 0.f ? -1 : signedDistance > 0.f ? 1 : ownerSide;
+    };
+    for (int z = m_cellArray.GetCellY(box.m_min.GetZ() - margin); z <= m_cellArray.GetCellY(box.m_max.GetZ() + margin); ++z)
+    {
+        for (int x = m_cellArray.GetCellX(box.m_min.GetX() - margin); x <= m_cellArray.GetCellX(box.m_max.GetX() + margin); ++x)
+        {
+            const auto* cell = m_cellArray.GetCellOrNull(x, z);
+            if (!cell || (cell->m_wallTextures & 15) == 0) { continue; }
+            const int wall = cell->m_wallTextures >> 5;
+            const float x0 = m_cellArray.GridPosX(x), x1 = m_cellArray.GridPosX(x + 1);
+            const float z0 = m_cellArray.GridPosY(z), z1 = m_cellArray.GridPosY(z + 1);
+            if (wall == 0 || wall == 5 || wall == 6) { considerWall(true, x0, z0, z1, 1); }
+            if (wall == 2 || wall == 5 || wall == 6) { considerWall(true, x1, z0, z1, -1); }
+            if (wall == 1 || wall == 4 || wall == 6) { considerWall(false, z0, x0, x1, 1); }
+            if (wall == 3 || wall == 4 || wall == 6) { considerWall(false, z1, x0, x1, -1); }
+        }
+    }
+    if (foundWall)
+    {
+        const float edge = wallAlongX ?
+            (wallSide < 0 ? box.m_max.GetX() : box.m_min.GetX()) :
+            (wallSide < 0 ? box.m_max.GetZ() : box.m_min.GetZ());
+        const float offset = wallPlane + wallSide * margin - edge;
+        if (offset * wallSide > 0.f) { move(rawGO.m_rawShorts[wallAlongX ? 6 : 8], offset); }
+    }
+}
+
 void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& rawGO, Texture* spriteOverride) const
 {
     inst->SetVisible(false);
@@ -1544,8 +1671,10 @@ FUTURE(std::shared_ptr<PlayerLight>) Level::PopulateScene(Scene& scene, bool cre
     if (addGameObjects)
     {
         // turn raw game objects into renderable game objects
-        for (RawGameObject& rawGO : m_rawGameObject)
+        for (const RawGameObject& original : m_rawGameObject)
         {
+            auto rawGO = original;
+            CorrectInitialObjectPlacement(rawGO);
             GamePlay::PropertyAccessorBase props(rawGO);
             if (!props.Isvalid())
                 continue;
@@ -1777,6 +1906,7 @@ FUTURE(void) Level::LoadSaveGameData(const byte* rawData, int dataSize)
     }
     const int levelFile = rawData[23 + ordinal];
     if (levelFile == 0 || levelFile == 96) { throw std::runtime_error("Invalid saved level index."); }
+    m_isSaveGame = true;
     m_levelInfo.Parse(levelFile, rawData + 103);
     InitLevelInfo(m_levelInfo);
     CO_AWAIT m_levelInfo.PreloadData();
