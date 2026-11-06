@@ -3108,7 +3108,12 @@ namespace
         GameContext state;
         Check(state.PlaySoundEffect(SoundEffect::Drop, 255, 2, 1) == SoundPlaybackStatus::AudioUnavailable,
             "Unconfigured audio must report unavailable, not successful playback.");
+        Check(state.PlaySoundEffect(static_cast<SoundEffect>(0), 255, 2, 1) == SoundPlaybackStatus::NoSample,
+            "The native zero-effect sentinel must resolve without an audio backend or table.");
         state.audioHandler = &audio;
+        Check(state.PlaySoundEffect(static_cast<SoundEffect>(0), 255, state.worldObjects[2], 1) ==
+            SoundPlaybackStatus::NoSample,
+            "A zero effect must not require a sound table even with an attached backend.");
         bool rejected = false;
         try { state.PlaySoundEffect(SoundEffect::Drop, 255, 2, 1); }
         catch (const std::runtime_error&) { rejected = true; }
@@ -3140,7 +3145,17 @@ namespace
             Check(rejected && std::memcmp(loaded.data(), state.soundEffects.data(), sizeof(loaded)) == 0,
                 "Invalid sound table was accepted or partially overwrote the loaded definitions.");
         }
-        for (const auto id : { 0, 130, 65535 })
+        const auto silentSeed = state.randomSeed;
+        const auto silentSources = state.soundChannelSources;
+        for (int repeat = 0; repeat < 100; ++repeat)
+        {
+            Check(state.PlaySoundEffect(static_cast<SoundEffect>(0), 255, 2, 1) == SoundPlaybackStatus::NoSample &&
+                state.PlaySoundEffect(static_cast<SoundEffect>(0), 255, state.worldObjects[2], 1) == SoundPlaybackStatus::NoSample,
+                "Repeated zero effects must gracefully report no sample through both playback overloads.");
+        }
+        Check(state.randomSeed == silentSeed && state.soundChannelSources == silentSources && audio.starts == 0,
+            "Silent effects must not select variants, start samples or alter audio channel ownership.");
+        for (const auto id : { 130, 65535 })
         {
             rejected = false;
             try { state.PlaySoundEffect(static_cast<SoundEffect>(id), 255, 2, 1); }

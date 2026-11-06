@@ -21,7 +21,7 @@ cbuffer GlobalsConstantBuffer : register(b0)
     float4 CurrentTime; // x: abs time, y: time modulo 2 pi
     int NumVisibleLights; // number of entries in LightListConstantBuffer
     int NumVisibleCoronas; // not used here
-    int g_padding1, g_padding2;
+    float SpecularAmount, SpecularExponent;
 };
 
 cbuffer InstanceConstantBuffer : register(b1)
@@ -65,7 +65,7 @@ cbuffer MaterialConstantBuffer : register(b4)
 struct PackedLightSourceParams
 {
     float4 PositionAndRadius;
-    float4 ColorAndCoronaSize;
+    float4 ColorAndSpecular; // RGB intensity, W specular enable (unused for corona entries).
 };
 
 cbuffer LightListConstantBuffer : register(b5)
@@ -105,6 +105,7 @@ struct PixelShaderInput
 
 #ifdef ENABLE_ADVANCED_RENDERING
     float3 normal : TEXCOORD3;
+    nointerpolation uint cameraId : TEXCOORD4;
 #endif
 
     // The render target array index is set here in the vertex shader.
@@ -332,6 +333,7 @@ PixelShaderInput vs_main(VertexShaderInput In)
 
 #ifdef ENABLE_ADVANCED_RENDERING
     Out.normal = wsNormal;
+    Out.cameraId = idx;
 #endif 
 
     if (DepthOffset != 0)
@@ -403,7 +405,7 @@ GeometryShaderInput_Corona vs_main_corona(VertexShaderInput In)
     int lightIndex = In.positionIndexAndMode[0];
 
     float4 lightPos = Lights[lightIndex].PositionAndRadius;
-    float4 lightColor = Lights[lightIndex].ColorAndCoronaSize;
+    float4 lightColor = Lights[lightIndex].ColorAndSpecular;
     float4 worldPos = float4(lightPos.xyz, 1);
     float4 viewPos = mul(worldPos, WorldViewMat);
     float3 viewDir = normalize(viewPos.xyz) * 0.1;
@@ -464,19 +466,36 @@ PixelShaderInput_Flames vs_main_flames(VertexShaderInput In)
 #ifdef IS_PIXEL_SHADER
 
 #ifdef ENABLE_ADVANCED_RENDERING
-float3 DynamicLightingColor(float3 worldPos, float3 worldNormal, float3 lightmapColor)
+float3 DynamicLightingColor(float3 worldPos, float3 worldNormal, float3 lightmapColor,
+    float reflectivity, uint cameraId, out float3 specularColor)
 {
     float ambient = 1.f - worldNormal.y * AmbientColor.w;
     float3 lightAccum = AmbientColor.xyz * ambient * lightmapColor;
+    specularColor = 0;
+    float3 viewDirection = 0;
+    if (SpecularAmount > 0)
+    {
+        float3 cameraPos = mul(float4(0,0,0,1), ViewWorldMatLeftRight[cameraId]).xyz;
+        // Native normals point inward; light and view directions both point toward the surface.
+        float3 viewDelta = worldPos - cameraPos;
+        viewDirection = dot(viewDelta, viewDelta) > 1e-12 ? normalize(viewDelta) : 0;
+    }
     for (int i = 0; i < NumVisibleLights; i++)
     {
         float3 dist = worldPos - Lights[i].PositionAndRadius.xyz;
         float distance = length(dist);
-        float3 L = dist / distance;
+        float3 L = distance > 1e-6 ? normalize(dist) : 0;
         float nDotL = saturate(dot(L, worldNormal));
-        float atten = saturate(1.0 - distance / Lights[i].PositionAndRadius.w) * nDotL;
+        float atten = saturate(1.0 - distance / Lights[i].PositionAndRadius.w);
 
-        lightAccum += Lights[i].ColorAndCoronaSize.xyz * atten;
+        lightAccum += Lights[i].ColorAndSpecular.xyz * (atten * nDotL);
+        if (SpecularAmount > 0 && nDotL > 0 && Lights[i].ColorAndSpecular.w > 0)
+        {
+            float3 halfDirection = L + viewDirection;
+            halfDirection = dot(halfDirection, halfDirection) > 1e-12 ? normalize(halfDirection) : 0;
+            float highlight = pow(saturate(dot(worldNormal, halfDirection)), SpecularExponent);
+            specularColor += Lights[i].ColorAndSpecular.xyz * (atten * highlight * SpecularAmount * Lights[i].ColorAndSpecular.w * reflectivity);
+        }
     }
     return lightAccum;
 }
@@ -502,7 +521,11 @@ float4 ps_main(PixelShaderInput input) : SV_TARGET
         float3 lightmapColor = lightmap.Sample(defaultSampler, lmCoord).xyz;
 
         float3 normal = normalize(input.normal);
-        finalColor.xyz = finalColor.xyz * DynamicLightingColor(input.worldPosition.xyz, normal, lightmapColor);
+        float3 specularColor;
+        float reflectivity = dot(texCol.rgb, texCol.rgb);
+        float3 lightingColor = DynamicLightingColor(input.worldPosition.xyz, normal, lightmapColor,
+            reflectivity, input.cameraId, specularColor);
+        finalColor.xyz = finalColor.xyz * lightingColor + specularColor;
         //finalColor.xyz = DynamicLightingColor(input.worldPosition.xyz, input.normal, float3(0,0,0)) * 4;
 #endif
     }

@@ -5,11 +5,12 @@
 
 struct PackedLightSourceParams
 {
-    inline void SetLight(float x, float y, float z, float radius, const Color4& color, float multiplier = 1.f)
+    inline void SetLight(float x, float y, float z, float radius, const Color4& color,
+        float multiplier = 1.f, float specularAmount = 1.f)
     {
 		Vector4 colF = color.ToFloat(multiplier);
 		PositionAndRadius = { x, y, z, radius };
-        ColorAndPadding = { colF.x, colF.y, colF.z, 1.f }; //.w yet unused
+        ColorAndPadding = { colF.x, colF.y, colF.z, specularAmount };
     }
 
     inline void SetCorona(float x, float y, float z, float radius, const Color4& color, float multiplier = 1.f)
@@ -20,7 +21,7 @@ struct PackedLightSourceParams
 	}
 
     Float4Storage PositionAndRadius;
-    Float4Storage ColorAndPadding;
+    Float4Storage ColorAndPadding; // Light entries: RGB intensity, W specular amount. Corona entries: W unused.
 };
 
 
@@ -45,6 +46,8 @@ public:
     {
         return m_coronaSize;
     }
+    float GetSpecularAmount() const { return m_specularAmount; }
+    void SetSpecularAmount(float amount);
     float GetEffectiveCoronaSize() const
     {
         return m_coronaSize < 0.f ? (m_radius * 0.2f * DespRelativeInvScaling) : m_coronaSize;
@@ -91,6 +94,7 @@ protected:
     float m_heightOffset = 0.f;
     Color4 m_color, m_coronaColorMod;
     bool m_globalBoundsDirty = true;
+    float m_specularAmount = 1.f;
     BoundingVolume m_globalBounds;
 };
 

@@ -506,6 +506,31 @@ are 75% of the previous tuning. This illuminates nearby surfaces,
 not a corona/halo around the sprite. Pixel regressions check visible blue
 illumination at 100/150 native units with the normal player light enabled.
 
+DX11 dynamic-light specularity defaults to amount 2.0 and exponent 16.
+The experimental F6-F8 controls have been removed from both clients.
+A zero amount disables the specular contribution.
+
+These are per-view `RenderingSettings`, shared by all lit materials. The
+pixel shader adds Blinn-Phong half-vector highlights from each dynamic
+light, scaled by its color, radial attenuation and `dot(albedo, albedo)`
+of the sampled texture RGB. This unnormalized squared mask ranges from
+0 to 3: half-gray contributes one quarter as much as white, exaggerating
+bright surfaces. Ambient/baked light, unlit materials and coronas receive no
+specular term. `LightSource::SetSpecularAmount` sets a finite, nonnegative
+per-light multiplier, defaulting to 1; zero disables highlights. It multiplies
+the global amount, allowing fractional or boosted specularity per source.
+`PlayerLight` uses 1 in blue mode and 0 in normal/off modes. This parameter
+changes only the specular term, not diffuse
+illumination, fading or coronas. Highlights follow the active camera (including each
+stereo eye and reflection views) and are fogged with the lit surface.
+BurningFireplace lights use intensity 1.5 instead of 3.0 to reduce the
+overlapping illumination in the mine; their color, radius and flicker
+remain unchanged.
+After HLSL edits, rebuild `ShaderCompiler-DX11.vcxproj` in Release/x64 and
+run `GenerateBuiltInCpps.exe` with its project directory as the working
+directory before rebuilding clients: DX11 loads the embedded bytecode in
+`SharedSource/DX11/BuiltInShaders_Release.cpp`, not the HLSL source at runtime.
+
 While a charged electricity weapon is firing in gameplay, the DX11 host
 maintains one cyan light and small corona at its bolt origin. Native weapon
 model vertex 3 is unchanged between the two firing frames. The application

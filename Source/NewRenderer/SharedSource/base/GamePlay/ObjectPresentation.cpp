@@ -252,7 +252,7 @@ std::shared_ptr<ObjectPresentationContext> GamePlay::CreateObjectPresentation(
         break;
     case BehaviorType::BurningFireplace:
         light = std::make_shared<FlickeringLight>(&scene);
-        light->SetColor(Color4{255,230,170}, 3.f);
+        light->SetColor(Color4{255,230,170}, 1.5f);
         light->SetCoronaColorMod(Color4{255,220,140});
         light->SetRadius(450.f * DespToFloat);
         break;

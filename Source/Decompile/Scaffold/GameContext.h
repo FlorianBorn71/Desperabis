@@ -510,6 +510,7 @@ namespace Desperabis
         bool HasClearPlayerLine(std::int16_t x, std::int16_t z) const;
         static std::uint8_t GetSoundVolume(std::int16_t distance);
         std::uint8_t GetSoundVolumeAt(std::int16_t x, std::int16_t z, std::int16_t distanceScale = 1) const;
+        // Effect 0 is the native no-sound sentinel; it consumes no RNG or audio channel.
         SoundPlaybackStatus PlaySoundEffect(SoundEffect effect, std::uint8_t volume,
             std::int16_t sourceId, std::int16_t instanceLimit);
         SoundPlaybackStatus PlaySoundEffect(SoundEffect effect, std::uint8_t volume,

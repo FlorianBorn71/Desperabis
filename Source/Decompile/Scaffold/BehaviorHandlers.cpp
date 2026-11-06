@@ -506,7 +506,6 @@ namespace Desperabis
         const auto amount = static_cast<std::int16_t>(context.Random(30) + 5);
         context.lightingCache.AddAtWorldXZ(object.posX, object.posZ, amount);
         const auto soundChance = context.Random(100);
-        // Native effect 0 denotes no sample; keep the playback API's invalid-ID checks for other values.
         if (context.tickCount > soundChance && object.soundEffectId != 0)
         {
             context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId), volume, object, 2);

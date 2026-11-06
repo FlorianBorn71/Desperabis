@@ -245,8 +245,9 @@ Its assignment to scenery does not imply an animation responsibility.
 Evidence: [complete case](behavior-158-evidence.txt) and
 [effect resolution/playback guards](sound-evidence.txt).
 The C++ handler now implements the timer, preserving the authored zero-effect
-no-op rather than passing zero to the host sound API, which deliberately
-requires effect IDs 1..129. Nonzero effects retain normal API validation.
+no-op. The shared sound API also accepts zero as the no-sound sentinel,
+returning `NoSample` without variant RNG or backend access; nonzero effects
+retain normal API validation.
 
 ### Levels 19 and 20: digging, leash, ghosts and conditional pickups
 
@@ -5078,8 +5079,12 @@ bytes, with little-endian header words **129, 5**:
 - References remain one-based, matching the original samples. Zero or a
   reference above the backend's available sample count produces `NoSample`.
 - Zero-count effects are legitimate empty entries. Invalid table dimensions,
-  incomplete/extra bytes, counts above four, and effect IDs outside 1..129
-  are explicit errors. Loading validates the whole input before mutation.
+  incomplete/extra bytes, counts above four, and nonzero effect IDs outside
+  1..129 are explicit errors. Effect 0 is the native no-sound sentinel:
+  `PlaySoundEffect` returns `NoSample` before accessing the table, RNG or
+  audio backend. This lets level 24's authored silent RotatingMachineCenter
+  advance every frame instead of throwing during its sound request.
+  Loading validates the whole input before mutation.
 - The loader loads all records; only the enum's semantic names await further
   identification. The enum is separate from generated renderer enums.
 

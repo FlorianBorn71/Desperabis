@@ -3540,9 +3540,10 @@ namespace Desperabis
         SoundEffect effect, std::uint8_t volume, std::int16_t sourceId, std::int16_t instanceLimit)
     {
         const auto effectId = static_cast<std::uint16_t>(effect);
-        if (effectId < 1 || effectId > SoundEffectCount)
+        if (effectId == 0) { return SoundPlaybackStatus::NoSample; }
+        if (effectId > SoundEffectCount)
         {
-            throw std::out_of_range("Sound-effect ID must be in the native range 1..129.");
+            throw std::out_of_range("Sound-effect ID must be zero (no sound) or in the native range 1..129.");
         }
         if (!soundEffectsLoaded)
         {

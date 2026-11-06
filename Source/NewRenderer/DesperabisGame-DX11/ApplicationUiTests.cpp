@@ -21,6 +21,7 @@
 #include <cstring>
 #include <iostream>
 #include <fstream>
+#include <limits>
 #include <stdexcept>
 
 namespace
@@ -122,13 +123,14 @@ namespace
         ComPtr<ID3D11DepthStencilView> depthView;
         D3D11_VIEWPORT viewport;
 
-        Target(ID3D11Device3* device, UINT width, UINT height)
+        Target(ID3D11Device3* device, UINT width, UINT height, UINT layers = 1)
             : width(width), height(height), viewport{ 0,0,static_cast<float>(width),static_cast<float>(height),0,1 }
         {
             D3D11_TEXTURE2D_DESC desc{};
             desc.Width = width;
             desc.Height = height;
-            desc.MipLevels = desc.ArraySize = 1;
+            desc.MipLevels = 1;
+            desc.ArraySize = layers;
             desc.SampleDesc.Count = 1;
             desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
             desc.BindFlags = D3D11_BIND_RENDER_TARGET;
@@ -139,11 +141,12 @@ namespace
             CheckHr(device->CreateTexture2D(&desc, nullptr, &depth));
             D3D11_DEPTH_STENCIL_VIEW_DESC depthDesc{};
             depthDesc.Format = DXGI_FORMAT_D32_FLOAT;
-            depthDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+            depthDesc.ViewDimension = layers == 1 ? D3D11_DSV_DIMENSION_TEXTURE2D : D3D11_DSV_DIMENSION_TEXTURE2DARRAY;
+            if (layers > 1) { depthDesc.Texture2DArray.ArraySize = layers; }
             CheckHr(device->CreateDepthStencilView(depth.Get(), &depthDesc, &depthView));
         }
 
-        std::vector<std::uint32_t> Pixels(ID3D11Device3* device, ID3D11DeviceContext3* context)
+        std::vector<std::uint32_t> Pixels(ID3D11Device3* device, ID3D11DeviceContext3* context, UINT layer = 0)
         {
             D3D11_TEXTURE2D_DESC desc;
             color->GetDesc(&desc);
@@ -154,14 +157,14 @@ namespace
             CheckHr(device->CreateTexture2D(&desc, nullptr, &staging));
             context->CopyResource(staging.Get(), color.Get());
             D3D11_MAPPED_SUBRESOURCE mapped;
-            CheckHr(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped));
+            CheckHr(context->Map(staging.Get(), layer, D3D11_MAP_READ, 0, &mapped));
             std::vector<std::uint32_t> result(static_cast<std::size_t>(width) * height);
             for (UINT y = 0; y < height; ++y)
             {
                 std::memcpy(result.data() + static_cast<std::size_t>(y) * width,
                     static_cast<const byte*>(mapped.pData) + static_cast<std::size_t>(y) * mapped.RowPitch, width * 4);
             }
-            context->Unmap(staging.Get(), 0);
+            context->Unmap(staging.Get(), layer);
             return result;
         }
 
@@ -394,7 +397,8 @@ namespace
                 std::abs(normalLight.PositionAndRadius.w - 600.f * DespToFloat) < 0.00001f &&
                 std::abs(normalLight.ColorAndPadding.x - 1.5f) < 0.00001f &&
                 std::abs(normalLight.ColorAndPadding.y - 1.5f) < 0.00001f &&
-                std::abs(normalLight.ColorAndPadding.z - 1.5f) < 0.00001f && playerLight.GetCoronaSize() == 0.f,
+                std::abs(normalLight.ColorAndPadding.z - 1.5f) < 0.00001f && playerLight.GetCoronaSize() == 0.f &&
+                playerLight.GetSpecularAmount() == 0.f && normalLight.ColorAndPadding.w == 0.f,
                 "The default above-water player light must retain its white color, radius, intensity and no corona.");
             const auto& normalVector = mesh.m_vertices.front().Normal;
             const float lightDistance = 0.25f * DespRelativeScaling;
@@ -410,6 +414,8 @@ namespace
                 const bool enabled = playerLight.FillLightParams(packed);
                 Check(enabled == (mode != PlayerLight::Mode::Off),
                     "Off player light must be omitted from GPU lighting, not just recolored.");
+                Check(packed.ColorAndPadding.w == (mode == PlayerLight::Mode::Blue ? 1.f : 0.f),
+                    "Only blue player-light mode must enable specularity.");
                 if (enabled)
                 {
                     Check(std::abs(packed.PositionAndRadius.w -
@@ -637,6 +643,293 @@ namespace
         renderer.SetCamera(previousCamera);
         std::cout << "Underwater blue pool: camera-following light, generated terrain normals, bright blue at 100/150 units and unchanged outside radius passed.\n";
         std::cout << "Ghost blue pool: visible 100/150-unit illumination against the white player light, stronger death glow and local falloff passed.\n";
+    }
+
+    void CheckDynamicSpecularity(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        const std::array<std::shared_ptr<LightSource>, 4> sources{
+            std::make_shared<LightSource>(nullptr), std::make_shared<FlickeringLight>(nullptr),
+            std::make_shared<PulsatingLight>(nullptr), std::make_shared<LightFlashSource>(nullptr, 1.f, 1.f)};
+        for (const auto& source : sources)
+        {
+            source->SetPosition(Vector(0,1,0));
+            source->SetRadius(1.f);
+            source->SetColor({128,192,255,255});
+            source->SetCoronaColorMod({255,255,255,255});
+            source->SetCoronaSize(0.2f);
+            source->Update(0.5);
+            PackedLightSourceParams enabled{}, scaled{}, coronaBefore{}, coronaAfter{};
+            Check(source->GetSpecularAmount() == 1.f && source->FillLightParams(enabled) && enabled.ColorAndPadding.w == 1.f,
+                "Ordinary, flickering, pulsating and fading lights must default to specular amount one.");
+            source->FillCoronaParams(coronaBefore);
+            for (const auto amount : {0.f, 0.25f, 2.f})
+            {
+                source->SetSpecularAmount(amount);
+                Check(source->GetSpecularAmount() == amount && source->FillLightParams(scaled) &&
+                    scaled.ColorAndPadding.w == amount &&
+                    scaled.PositionAndRadius.x == enabled.PositionAndRadius.x &&
+                    scaled.PositionAndRadius.y == enabled.PositionAndRadius.y &&
+                    scaled.PositionAndRadius.z == enabled.PositionAndRadius.z &&
+                    scaled.PositionAndRadius.w == enabled.PositionAndRadius.w &&
+                    scaled.ColorAndPadding.x == enabled.ColorAndPadding.x &&
+                    scaled.ColorAndPadding.y == enabled.ColorAndPadding.y &&
+                    scaled.ColorAndPadding.z == enabled.ColorAndPadding.z,
+                    "Every light type must pack zero, fractional and boosted specularity without changing diffuse lighting.");
+                source->FillCoronaParams(coronaAfter);
+                Check(std::memcmp(&coronaBefore, &coronaAfter, sizeof(coronaBefore)) == 0,
+                    "Changing specular amount must not change corona parameters.");
+            }
+            for (const auto invalid : {-1.f, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()})
+            {
+                bool rejected = false;
+                try { source->SetSpecularAmount(invalid); }
+                catch (const std::invalid_argument&) { rejected = true; }
+                Check(rejected && source->GetSpecularAmount() == 2.f,
+                    "Invalid specular amounts must be explicitly rejected without changing the previous value.");
+            }
+            source->SetSpecularAmount(1.f);
+            Check(source->FillLightParams(enabled) && enabled.ColorAndPadding.w == 1.f,
+                "Each light type must support restoring default specularity.");
+        }
+        RenderingSettings settings;
+        Check(settings.specularAmount == 2.f && settings.specularExponent == 16.f,
+            "Dynamic specularity must default to amount 2 and exponent 16.");
+        settings.fogOverride = FogParameters{{0,0,0}, 0.f, 0.f, false};
+        ModelLoadingContext positions;
+        positions.m_vertexPos = {{-2,0,-2,1}, {2,0,-2,1}, {2,0,2,1}, {-2,0,2,1}};
+        ModelConversionContext mesh(positions);
+        mesh.m_numPositions = 4;
+        for (uint16_t index = 0; index < 4; ++index)
+        {
+            mesh.AddToBounds(positions.m_vertexPos[index], 0.f);
+            mesh.m_vertices.emplace_back().SetTextured(index, Color4{255,255,255,0}, {0,0});
+        }
+        mesh.m_sortedIndices = {0,1,2,0,2,3};
+        mesh.GeneratePerTriangleNormals(mesh.m_sortedIndices.data(), 6, 0);
+        Renderable model;
+        model.m_runtime = renderer.CreateModelBuffers(mesh);
+        model.m_numPositions = 4;
+        model.m_numPolygons = 2;
+        mesh.GenerateBoundingVolume(model.m_localBounds);
+        auto& draw = model.m_drawCalls.emplace_back();
+        draw.m_primitiveCount = 2;
+        draw.m_material.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
+        draw.m_material.m_applyLighting = true;
+        draw.m_material.ComputeHash();
+        auto instance = std::make_shared<RenderableInstance>(&model);
+        instance->ComputeTransparencyMask();
+        instance->UpdateGlobalBounds();
+        Texture lightmap;
+        lightmap.CreatePlainWhite();
+        lightmap.m_atlasData = {0,0,0.5f,0.5f};
+        Camera camera;
+        Matrix4 projection, transform;
+        projection.CreateOrthographic(4.f, 4.f, 0.001f, 20.f);
+        transform.Create(Vector(0,1,0,1), Vector(1,0,0,0), Vector(0,0,-1,0), Vector(0,1,0,0));
+        camera.SetProjectionMatrix(projection);
+        camera.SetCameraTransformMatrix(transform);
+        Target target(device, 256, 256);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        VisibilityResult visible;
+        visible.m_mainCamera = &camera;
+        visible.m_visibleInstances.m_opaqueInstances.push_back({instance.get(),0});
+        visible.m_visibleInstances.m_visibleTransparencyTypes = TransparencyModeMask::OpaqueBit;
+        visible.m_lightmap = &lightmap;
+        visible.m_ambientColor = {0,0,0};
+        PackedLightSourceParams light{};
+        light.PositionAndRadius = {0,1,0,5};
+        light.ColorAndPadding = {0.05f,0.1f,0.15f,1};
+        visible.m_visibileLights.push_back(light);
+        ProfilingStats stats;
+        const auto render = [&](bool enabled)
+        {
+            auto renderSettings = settings;
+            if (!enabled) { renderSettings.specularAmount = 0.f; }
+            const float black[4]{0,0,0,1};
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
+            renderer.RenderSceneElements(visible, renderSettings, stats);
+            return target.Pixels(device, context);
+        };
+        const auto channel = [](const auto& pixels, int x, int component)
+        {
+            return static_cast<int>((pixels[128 * 256 + x] >> (component * 8)) & 255);
+        };
+        const auto off = render(false);
+        const auto defaults = render(true);
+        ComPtr<ID3D11Buffer> globalsBuffer;
+        context->PSGetConstantBuffers(0, 1, &globalsBuffer);
+        auto globals = ReadBuffer<float>(device, context, globalsBuffer.Get());
+        Check(globals[globals.size() - 2] == 2.f && globals.back() == 16.f,
+            "The default amount 2 and exponent 16 must reach the pixel shader.");
+        Check(channel(defaults,128,2) >= channel(off,128,2) + 150,
+            "Default amount 2/exponent 16 must produce highlights with the unnormalized squared-albedo mask.");
+        settings.specularAmount = 1.f;
+        settings.specularExponent = 32.f;
+        const auto on = render(true);
+        const int peak = channel(on,128,2) - channel(off,128,2);
+        std::cout << "Specular center RGB: " << channel(off,128,0) << ',' << channel(off,128,1) << ','
+            << channel(off,128,2) << " -> " << channel(on,128,0) << ',' << channel(on,128,1) << ','
+            << channel(on,128,2) << ".\n";
+        globals = ReadBuffer<float>(device, context, globalsBuffer.Get());
+        Check(peak >= 80 && peak <= 100 && channel(on,128,0) - channel(off,128,0) >= 25 &&
+            std::abs(peak - 3 * (channel(on,128,0) - channel(off,128,0))) <= 3,
+            "Dynamic highlights must add a visible, light-colored half-vector lobe on real-facing terrain.");
+        Check(globals[globals.size() - 2] == 1.f && globals.back() == 32.f,
+            "The pixel shader must receive the selected global amount and exponent.");
+        visible.m_visibileLights[0].ColorAndPadding.w = 0.f;
+        Check(render(true) == off, "Disabling a light's specularity must preserve its exact diffuse contribution.");
+        for (const auto amount : {0.25f, 2.f})
+        {
+            visible.m_visibileLights[0].ColorAndPadding.w = amount;
+            Check(render(false) == off,
+                "Changing per-light specular amount must leave diffuse-only pixels identical.");
+            const auto scaled = render(true);
+            Check(std::abs(channel(scaled,128,2) - channel(off,128,2) - peak * amount) <= 2.f,
+                "A light's fractional and boosted specular amounts must linearly scale its pixel highlight.");
+        }
+        visible.m_visibileLights[0] = light;
+        Check(render(true) == on, "Re-enabling a light's specularity must restore its highlight.");
+        settings.specularAmount = 0.f;
+        Check(render(true) == off, "Enabled specularity with amount zero must exactly match disabled rendering.");
+        settings.specularAmount = 1.f;
+        Check(render(false) == off, "Zeroing the rendering multiplier must restore identical diffuse-only pixels.");
+        globals = ReadBuffer<float>(device, context, globalsBuffer.Get());
+        Check(globals[globals.size() - 2] == 0.f && globals.back() == 32.f &&
+            settings.specularAmount == 1.f, "Disabling must upload zero without losing the selected strength.");
+        settings.specularAmount = 0.5f;
+        const auto half = render(true);
+        Check(std::abs(2 * (channel(half,128,2) - channel(off,128,2)) - peak) <= 2,
+            "Specular amount must linearly scale the highlight contribution.");
+        settings.specularAmount = 1.f;
+        settings.specularExponent = 8.f;
+        const auto broad = render(true);
+        settings.specularExponent = 128.f;
+        const auto tight = render(true);
+        int broadPixels = 0, tightPixels = 0;
+        for (std::size_t index = 0; index < off.size(); ++index)
+        {
+            const int baseline = (off[index] >> 16) & 255;
+            broadPixels += static_cast<int>((broad[index] >> 16) & 255) > baseline + 4;
+            tightPixels += static_cast<int>((tight[index] >> 16) & 255) > baseline + 4;
+        }
+        Check(tightPixels > 0 && broadPixels > tightPixels * 4,
+            "Increasing the exponent must visibly narrow the highlight across pixels, not merely scale vertex lighting.");
+        settings.specularExponent = 32.f;
+        visible.m_visibileLights.push_back(light);
+        const auto twoOff = render(false);
+        const auto twoOn = render(true);
+        Check(std::abs(channel(twoOn,128,2) - channel(twoOff,128,2) - peak * 2) <= 2,
+            "Each visible dynamic light must contribute its own specular highlight.");
+        visible.m_visibileLights[0].ColorAndPadding.w = 0.f;
+        const auto mixed = render(true);
+        Check(std::abs(channel(mixed,128,2) - channel(twoOff,128,2) - peak) <= 1,
+            "One diffuse-only light must not suppress the other light's specular highlight.");
+        visible.m_visibileLights.pop_back();
+        visible.m_visibileLights[0] = light;
+        PlayerLight playerLight(nullptr);
+        playerLight.SetPosition(Vector(0,1,0));
+        instance->m_tintColor = {64,64,64,255};
+        for (const auto mode : {PlayerLight::Mode::Normal, PlayerLight::Mode::Blue, PlayerLight::Mode::Normal})
+        {
+            playerLight.SetMode(mode);
+            PackedLightSourceParams player{};
+            Check(playerLight.FillLightParams(player) &&
+                player.ColorAndPadding.w == (mode == PlayerLight::Mode::Blue ? 1.f : 0.f),
+                "Player-light mode changes must enable specularity only for blue mode.");
+            visible.m_visibileLights[0] = player;
+            const auto playerOff = render(false);
+            const auto playerOn = render(true);
+            Check(channel(playerOff,128,2) > 0 &&
+                (mode == PlayerLight::Mode::Blue ?
+                    channel(playerOn,128,2) >= channel(playerOff,128,2) + 30 : playerOn == playerOff),
+                "Blue player light must add a visible highlight; returning to normal must restore diffuse-only illumination.");
+        }
+        instance->m_tintColor = {255,255,255,255};
+        visible.m_visibileLights[0] = light;
+        for (const Color4 color : {Color4{128,128,128,255}, Color4{0,0,0,255},
+            Color4{255,0,0,255}, Color4{0,255,0,255}})
+        {
+            Texture albedo;
+            albedo.SetDefaultParams();
+            albedo.m_width = albedo.m_height = 2;
+            TextureLoadingContext data;
+            data.m_rgbaData.assign(4, color);
+            renderer.CreateTexture(albedo, data);
+            draw.m_material.m_texture = &albedo;
+            const auto maskedOff = render(false);
+            const auto maskedOn = render(true);
+            const float brightness = (float(color.r) * color.r + float(color.g) * color.g + float(color.b) * color.b) /
+                (3.f * 255.f * 255.f);
+            Check(std::abs(channel(maskedOn,128,2) - channel(maskedOff,128,2) - peak * brightness) <= 2.f,
+                "Specular masking must use dot(albedo, albedo): half-gray is quarter-strength and pure colors are equal.");
+            draw.m_material.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
+        }
+        transform.SetTranslation(Vector(0.8f,1,0,1));
+        camera.SetCameraTransformMatrix(transform);
+        const auto movedOff = render(false);
+        const auto movedOn = render(true);
+        Check(channel(movedOn,77,2) - channel(movedOff,77,2) < peak / 2,
+            "Moving the camera must change the highlight at the same world-space surface point.");
+        transform.SetTranslation(Vector(0,1,0,1));
+        camera.SetCameraTransformMatrix(transform);
+        draw.m_material.m_applyLighting = false;
+        draw.m_material.ComputeHash();
+        const auto unlit = render(false);
+        Check(render(true) == unlit, "Unlit materials must not receive dynamic specularity.");
+        draw.m_material.m_applyLighting = true;
+        draw.m_material.ComputeHash();
+        visible.m_visibileLights.clear();
+        visible.m_ambientColor = {0.05f,0.1f,0.15f};
+        const auto ambient = render(false);
+        Check(render(true) == ambient, "Ambient and baked light must not produce specular highlights.");
+        visible.m_ambientColor = {0,0,0};
+        visible.m_visibileLights.push_back(light);
+        visible.m_visibileLights[0].PositionAndRadius.w = 0.5f;
+        const auto outside = render(false);
+        Check(render(true) == outside, "Specular highlights must obey the dynamic light's radius.");
+        visible.m_visibileLights[0] = light;
+        visible.m_visibileLights[0].PositionAndRadius.y = -1.f;
+        const auto backlit = render(false);
+        Check(render(true) == backlit, "Lights behind the surface must not generate specular highlights.");
+        visible.m_visibileLights[0] = light;
+        settings.fogOverride->falloff = 1.f;
+        const auto fogOff = render(false);
+        const auto fogOn = render(true);
+        Check(std::abs(channel(fogOn,128,2) - channel(fogOff,128,2) - peak * std::exp(-1.f)) <= 2.f,
+            "Specular and diffuse contributions must be fogged together.");
+        settings.fogOverride->falloff = 0.f;
+        Target stereoTarget(device, 256, 256, 2);
+        Matrix4 rightEye = transform;
+        rightEye.SetTranslation(Vector(0.8f,1,0,1));
+        camera.SetCameraTransformMatrices(transform, rightEye);
+        renderer.ReInitialize(stereoTarget.colorView.Get(), nullptr, stereoTarget.viewport);
+        const auto renderStereo = [&](bool enabled)
+        {
+            auto renderSettings = settings;
+            if (!enabled) { renderSettings.specularAmount = 0.f; }
+            const float black[4]{0,0,0,1};
+            context->ClearRenderTargetView(stereoTarget.colorView.Get(), black);
+            renderer.RenderSceneElements(visible, renderSettings, stats);
+            return std::array<std::vector<std::uint32_t>, 2>{
+                stereoTarget.Pixels(device, context, 0), stereoTarget.Pixels(device, context, 1)};
+        };
+        const auto stereoOff = renderStereo(false);
+        const auto stereoOn = renderStereo(true);
+        Check(std::abs(channel(stereoOn[0],128,2) - channel(stereoOff[0],128,2) - peak) <= 1 &&
+            channel(stereoOff[1],77,2) >= 25 &&
+            channel(stereoOn[1],77,2) - channel(stereoOff[1],77,2) < peak / 2,
+            "Stereo highlights must use each eye's camera, not a shared left-eye view direction.");
+        camera.SetCameraTransformMatrix(transform);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        settings.specularExponent = 0.f;
+        bool rejected = false;
+        try { render(true); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        Check(rejected, "Invalid specular exponents must report an explicit error before uploading shader constants.");
+        settings.specularExponent = 32.f;
+        std::cout << "Dynamic specularity: " << peak << " peak blue increment; " << broadPixels << '/'
+            << tightPixels << " broad/tight highlight pixels; defaults, zero equivalence, squared albedo, camera/stereo, multiple lights, unlit, radius and fog passed.\n";
     }
 
     void CheckUnderwaterSurface(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
@@ -3811,6 +4104,7 @@ namespace
             FORCE_WAIT(scene.CreateScene());
             std::size_t lights = 1;
             int firstLightSlot = 0;
+            int fireplaces = 0;
             for (const auto& object : scene.m_level->GetRawGameObjects())
             {
                 const GamePlay::PropertyAccessorBase properties(object);
@@ -3821,12 +4115,33 @@ namespace
                         behavior == GamePlay::BehaviorType::BurningFireplace ||
                         behavior == GamePlay::BehaviorType::FireExhauster);
                 const int slot = object.m_objectNumber + 2;
+                if (behavior == GamePlay::BehaviorType::BurningFireplace && properties.GetHealth() > 0)
+                {
+                    FlameScene fireplace;
+                    const auto presentation = GamePlay::CreateObjectPresentation(fireplace, slot, object, nullptr);
+                    Check(presentation && fireplace.GetLightSources().size() == 1,
+                        "Each original mine fireplace must own exactly one light.");
+                    const auto light = fireplace.GetLightSources().front();
+                    light->Update(0.1);
+                    PackedLightSourceParams dimmed{}, original{};
+                    Check(light->FillLightParams(dimmed) &&
+                        dimmed.PositionAndRadius.w == 450.f * DespToFloat && dimmed.ColorAndPadding.w == 1.f,
+                        "Dimmed mine fireplaces must retain their radius, flicker and specularity.");
+                    light->SetColor({255,230,170}, 3.f);
+                    Check(light->FillLightParams(original) &&
+                        std::abs(original.ColorAndPadding.x - dimmed.ColorAndPadding.x * 2.f) < 0.00001f &&
+                        std::abs(original.ColorAndPadding.y - dimmed.ColorAndPadding.y * 2.f) < 0.00001f &&
+                        std::abs(original.ColorAndPadding.z - dimmed.ColorAndPadding.z * 2.f) < 0.00001f,
+                        "Every original mine fireplace must emit exactly half its previous light at the same flicker phase.");
+                    ++fireplaces;
+                }
                 Check(static_cast<bool>(scene.GetObjectPresentation(slot)) == hasLight,
                     "Level conversion must associate each existing object light with its native slot.");
                 if (hasLight) { ++lights; firstLightSlot = slot; }
             }
             Check(lights > 1 && scene.GetLightSources().size() == lights,
                 "Converted lights must retain their appearance without duplicate fireplace lights.");
+            Check(fireplaces == 5, "The brightness regression must cover all five original mine fireplaces.");
             std::weak_ptr<ObjectPresentationContext> removed = scene.GetObjectPresentation(firstLightSlot);
             scene.RemoveObjectPresentation(firstLightSlot);
             Check(removed.expired() && scene.GetLightSources().size() == lights - 1,
@@ -4425,6 +4740,7 @@ int main(int argc, char* argv[])
         CheckLightning(renderer, device.Get(), context.Get());
         CheckUnderwater(renderer, device.Get(), context.Get());
         CheckUnderwaterLightPool(renderer, device.Get(), context.Get());
+        CheckDynamicSpecularity(renderer, device.Get(), context.Get());
         CheckUnderwaterSurface(renderer, device.Get(), context.Get());
         const auto singleLine = font.CreateGlyphMesh("Nimm den Schl\x81ssel", Color4{ 204,102,0,255 },
             Font::HorizontalAlignment::Center, Font::VerticalAlignment::Center);

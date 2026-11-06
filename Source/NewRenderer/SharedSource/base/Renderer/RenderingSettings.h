@@ -22,6 +22,8 @@ public:
 	bool useFog = true;
 	bool fullbrightRendering = false;
 	bool dynamicLights = true;
+	float specularAmount = 2.f;
+	float specularExponent = 16.f;
 	bool renderCoronas = true;
 	bool gridVisibility = true;
 	float gamma = 1.0f;

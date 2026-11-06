@@ -13,8 +13,17 @@ LightSource::LightSource(Scene* scene)
 
 bool LightSource::FillLightParams(PackedLightSourceParams& dst) const
 {
-    dst.SetLight(m_pos.GetX(), m_pos.GetY() + m_heightOffset, m_pos.GetZ(), m_radius, m_color, m_multiplier);
+    dst.SetLight(m_pos.GetX(), m_pos.GetY() + m_heightOffset, m_pos.GetZ(), m_radius, m_color, m_multiplier, m_specularAmount);
     return m_radius > 0.f;
+}
+
+void LightSource::SetSpecularAmount(float amount)
+{
+    if (!std::isfinite(amount) || amount < 0.f)
+    {
+        throw std::invalid_argument("Light specular amount must be finite and nonnegative.");
+    }
+    m_specularAmount = amount;
 }
 
 
@@ -76,7 +85,7 @@ bool LightFlashSource::FillLightParams(PackedLightSourceParams& dst) const
     const float weight = IsFinished() ? 0.f : m_age < m_fadeIn ?
         static_cast<float>(m_age / m_fadeIn) :
         m_fadeOut > 0.f ? static_cast<float>(1.0 - (m_age - m_fadeIn) / m_fadeOut) : 0.f;
-    dst.SetLight(m_pos.GetX(), m_pos.GetY(), m_pos.GetZ(), m_radius, m_color, m_multiplier * weight);
+    dst.SetLight(m_pos.GetX(), m_pos.GetY(), m_pos.GetZ(), m_radius, m_color, m_multiplier * weight, m_specularAmount);
     return weight > 0.f && m_radius > 0.f;
 }
 
@@ -91,7 +100,7 @@ bool FlickeringLight::FillLightParams(PackedLightSourceParams& dst) const
 {
     float rnd = (float)(cos(m_phase) + 0.6 * sin(m_phase * 2.41) + 0.4 * sin(m_phase * 4.17) + 0.2 * sin(m_phase * 11.821) + 0.15 * sin(m_phase * 29.198));
     float m = m_multiplier * (1.0f + rnd * 0.2f);
-	dst.SetLight(m_pos.GetX(), m_pos.GetY() + sinf(rnd * 2.f) * 3.f * DespToFloat, m_pos.GetZ(), m_radius, m_color, m);
+	dst.SetLight(m_pos.GetX(), m_pos.GetY() + sinf(rnd * 2.f) * 3.f * DespToFloat, m_pos.GetZ(), m_radius, m_color, m, m_specularAmount);
 
     return true;
 }
@@ -141,14 +150,17 @@ void PlayerLight::SetMode(Mode mode)
     switch (mode)
     {
     case Mode::Off:
+        SetSpecularAmount(0.f);
         SetRadius(0.f);
         break;
     case Mode::Blue:
+        SetSpecularAmount(1.f);
         m_bluePhase = 0.0;
         SetColor(Color4{ 32, 80, 255, 255 }, 6.f);
         SetRadius(220.f * DespToFloat);
         break;
     case Mode::Normal:
+        SetSpecularAmount(0.f);
         SetColor(Color4{ 255, 255, 255, 255 }, 1.5f);
         SetRadius(600.f * DespToFloat);
         break;

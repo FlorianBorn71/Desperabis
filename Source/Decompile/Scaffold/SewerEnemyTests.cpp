@@ -328,7 +328,7 @@ namespace
             "The scorpion's completed death pose must persist as a world object.");
     }
 
-    void TestRotatingCenters()
+    void TestRotatingCenters(const std::filesystem::path& assets)
     {
         struct Audio final : AudioHandler
         {
@@ -379,6 +379,30 @@ namespace
                 f.context.randomSeed == seed && audio.starts == 2,
                 "Only health 1000 may animate or play rotating-center sound.");
         }
+        Host swamp(assets);
+        swamp.StartLevel(24);
+        swamp.audioHandler = &audio;
+        const auto starts = audio.starts;
+        int silentCenters = 0;
+        for (auto& original : swamp.worldObjects)
+        {
+            if (original.behavior != BehaviorType::RotatingMachineCenter || original.health != 1000) { continue; }
+            Check(original.soundEffectId == 0, "The original swamp machinery must exercise the zero-sound sentinel.");
+            const auto seed = swamp.randomSeed;
+            swamp.tickCount = 1;
+            for (int frame = 0; frame < 100; ++frame)
+            {
+                const auto oldX = original.winX, oldY = original.winY;
+                Check(DispatchObjectCase(original, swamp).status == DispatchStatus::ExecutedCase &&
+                    original.winX == ((oldX + original.velocityX) & 511) &&
+                    original.winY == ((oldY + original.velocityY) & 511),
+                    "The original swamp machinery must keep rotating every frame without a zero-sound exception.");
+            }
+            Check(swamp.randomSeed == seed && audio.starts == starts,
+                "Silent swamp machinery must not advance audio RNG or start samples.");
+            ++silentCenters;
+        }
+        Check(silentCenters == 1, "The regression must cover the original swamp's silent machine center.");
     }
 
     void TestOriginalTentacles(const std::filesystem::path& assets)
@@ -589,7 +613,7 @@ int main(int argc, char** argv)
         TestHeadNavigation();
         TestAttachmentModes();
         TestScorpions();
-        TestRotatingCenters();
+        TestRotatingCenters(argv[1]);
         TestOriginalTentacles(argv[1]);
         TestOriginalKrakenMotion(argv[1]);
         TestOriginalSecondSewer(argv[1]);

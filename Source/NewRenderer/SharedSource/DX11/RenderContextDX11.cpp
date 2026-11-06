@@ -13,6 +13,8 @@
 #include <Asset/ModelAnim.h>
 #include <Scene/Scene.h>
 #include <cstring>
+#include <cmath>
+#include <stdexcept>
 
 static const DepthWriteMode BlendModeToDepthMode[(int)TransparencyMode::TransparencyModeCount] =
 {
@@ -174,7 +176,14 @@ void RenderContextDX11::TrackGlobals()
     m_isStereo = camera->IsStereo();
 
 	const RenderingSettings& settings = m_settings;
+    if (!std::isfinite(settings.specularAmount) || settings.specularAmount < 0.f ||
+        !std::isfinite(settings.specularExponent) || settings.specularExponent <= 0.f)
+    {
+        throw std::invalid_argument("Specular lighting requires a finite nonnegative amount and a finite positive exponent.");
+    }
     Renderer::GlobalsData& globals(m_rendererDX11.m_globalsData);
+    globals.specularAmount = settings.dynamicLights ? settings.specularAmount : 0.f;
+    globals.specularExponent = settings.specularExponent;
     if (m_renderTargetPass == RenderTargetPassType::MainView)
     {
 		globals.gamma = settings.gamma;

@@ -113,7 +113,7 @@ protected:
         Float4Storage CurrentTime;
         int NumVisibleLights;
         int NumVisibleCoronas;
-        int padding1, padding2;
+        float specularAmount, specularExponent;
     };
 
     struct InstanceData
