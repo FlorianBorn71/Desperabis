@@ -182,6 +182,7 @@ namespace
                 m_light->SetLightHeightOffset(height * 0.5f);
                 break;
             case GamePlay::BehaviorType::PulsatingLight:
+            case GamePlay::BehaviorType::SpawnInCrater:
                 position += Vector(0, 5.f * DespToFloat, 0);
                 break;
             case GamePlay::BehaviorType::FireballProjectile:
@@ -205,7 +206,7 @@ namespace
 }
 
 std::shared_ptr<ObjectPresentationContext> GamePlay::CreateObjectPresentation(
-    Scene& scene, int slot, const RawGameObject& object, RenderableInstance* instance)
+    Scene& scene, int levelIndex, int slot, const RawGameObject& object, RenderableInstance* instance)
 {
     if (slot < 1 || slot > 165) { throw std::out_of_range("Object presentation slots must be in 1..165."); }
     const PropertyAccessorBase properties(object);
@@ -249,6 +250,14 @@ std::shared_ptr<ObjectPresentationContext> GamePlay::CreateObjectPresentation(
         break;
     case BehaviorType::PulsatingLight:
         light = std::make_shared<PulsatingLight>(&scene);
+        break;
+    case BehaviorType::SpawnInCrater:
+        // One persistent emitter anchors the crater glow; do not light all 28 smoke sources.
+        if (levelIndex != 25 || slot != 24) { return {}; }
+        light = std::make_shared<PulsatingLight>(&scene, 2.f);
+        light->SetColor({100,255,16}, 2.f);
+        light->SetRadius(250.f * DespToFloat);
+        light->SetCoronaSize(0.f);
         break;
     case BehaviorType::BurningFireplace:
         light = std::make_shared<FlickeringLight>(&scene);

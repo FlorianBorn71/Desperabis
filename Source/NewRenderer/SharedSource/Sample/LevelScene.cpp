@@ -89,7 +89,7 @@ void LevelScene::UpdateObjectPresentation(int slot, const RawGameObject& object,
         return;
     }
     if (context && !context->Matches(object)) { RemoveObjectPresentation(slot); }
-    if (!context) { context = GamePlay::CreateObjectPresentation(*this, slot, object, instance); }
+    if (!context) { context = GamePlay::CreateObjectPresentation(*this, m_levelIndex, slot, object, instance); }
     else { context->Update(object, instance); }
 }
 

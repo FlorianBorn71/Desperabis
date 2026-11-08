@@ -16,5 +16,5 @@ public:
 namespace GamePlay
 {
     std::shared_ptr<ObjectPresentationContext> CreateObjectPresentation(
-        Scene& scene, int slot, const RawGameObject& object, RenderableInstance* instance);
+        Scene& scene, int levelIndex, int slot, const RawGameObject& object, RenderableInstance* instance);
 }

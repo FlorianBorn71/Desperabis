@@ -114,7 +114,7 @@ namespace
     void DrawModel(const Desperabis::UiModel& command, const Level& level, RendererDX11& renderer,
         const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
         ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView,
-        Texture* weaponTexture = nullptr, bool faceSwordCamera = false)
+        Texture* weaponTexture = nullptr, bool faceSwordCamera = false, Model* modelOverride = nullptr)
     {
         Desperabis::RawGameObject object;
         object.health = 1000;
@@ -130,7 +130,13 @@ namespace
         RawGameObject raw;
         Desperabis::EncodeGameObject(object, raw.m_rawBytes, sizeof(raw.m_rawBytes));
         auto instance = std::make_shared<RenderableInstance>();
-        level.ApplyRenderProperties(instance, raw);
+        if (modelOverride)
+        {
+            instance->SetRenderable(modelOverride, nullptr);
+            level.GetLevelInfo().AssignLevelTextures(*instance);
+            instance->ComputeTransparencyMask();
+        }
+        else { level.ApplyRenderProperties(instance, raw); }
         if (!instance->IsValid() || !instance->GetVisible())
         {
             throw std::runtime_error("Application UI references an unavailable model frame.");
@@ -247,6 +253,7 @@ FUTURE(void) ApplicationUi::Initialize()
         m_mapPaperPixels[i] = paperPalette->GetEntryCustomAlpha(paper[i + 4], 255);
     }
     m_weapons = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\WAFFEN.AN2");
+    m_scytheModel = CO_AWAIT AssetManager::Instance().LoadAsset<ModelAnim>(L"VEKT\\VEKT67.3DA");
     if (m_weapons->m_countX != 4 || m_weapons->m_countY != 3)
     {
         throw std::runtime_error("Expected the original 4x3 first-person weapon bitmap bank.");
@@ -390,8 +397,15 @@ void ApplicationUi::DrawWeapon(const Desperabis::WeaponView& view, RendererDX11&
             bottom - WeaponView::Height * scale, WeaponView::Width * scale, WeaponView::Height * scale, 0,1 };
         auto* weaponTexture = view.bindWeaponBitmap ?
             &m_weapons->m_frames.at(view.bitmapFrame) : nullptr;
+        Model* modelOverride = nullptr;
+        if (view.modelSource == WeaponView::ModelSource::Scythe)
+        {
+            if (!m_scytheModel) { throw std::logic_error("Scythe presentation requires its model asset."); }
+            modelOverride = m_scytheModel->GetModelSafe(object.modelAnim - 1, object.animFrame - 1);
+            if (!modelOverride) { throw std::runtime_error("Scythe presentation references an unavailable frame."); }
+        }
         DrawModel(command, level, renderer, settings, stats, modelViewport, deviceContext, colorView, depthView,
-            weaponTexture, faceSwordCamera);
+            weaponTexture, faceSwordCamera, modelOverride);
         return;
     }
     const Texture* texture = nullptr;
@@ -476,6 +490,7 @@ void ApplicationUi::Deinitialize()
     m_heldWeaponMesh = {};
     m_heldWeaponTexture = nullptr;
     m_weapons.reset();
+    m_scytheModel.reset();
     m_mapPaper.reset();
     m_menuBackground.reset();
     m_menuCursor.reset();

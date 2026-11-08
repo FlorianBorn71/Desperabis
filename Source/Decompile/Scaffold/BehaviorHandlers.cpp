@@ -2925,14 +2925,31 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::MeteorImpact, 0x3E89 };
     }
 
-    DispatchResult Function_Behavior_137(RawGameObject&, GameContext&)
+    DispatchResult Function_DormantMeteorDebris(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_137, 0x3E9C };
+        context.SetObjectHealth(object, static_cast<std::int16_t>(context.Random(50) + 70));
+        return { DispatchStatus::ExecutedCase, BehaviorType::DormantMeteorDebris, 0x3E9C };
     }
 
-    DispatchResult Function_Behavior_138(RawGameObject&, GameContext&)
+    DispatchResult Function_MeteorFireWave(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_138, 0x3EB8 };
+        object.posX = WrapSignedWord(object.posX + object.velocityX * context.tickCount);
+        object.posZ = WrapSignedWord(object.posZ + object.velocityZ * context.tickCount);
+        object.posY = WrapSignedWord(object.posY + object.velocityY * context.tickCount);
+        context.PlaySoundEffect(static_cast<SoundEffect>(22), 255, object, 1);
+        if (context.Random(5) == 0)
+        {
+            const auto slot = context.FindFreeObjectIndex();
+            context.InitializeSmokeParticle(context.worldObjects[slot], object.posX, object.posY,
+                WrapSignedWord(object.posZ - 10), 20, 2, 130);
+        }
+        if ((context.GetCollisionMapPixelAtWorldXZ(WrapSignedWord(object.posX + object.velocityX),
+            WrapSignedWord(object.posZ + object.velocityZ)) & 8) == 8)
+        {
+            context.SetObjectHealth(object, 0);
+        }
+        else { context.ReplaceSurfaceSelector(object.posX, object.posZ, 0, 29); }
+        return { DispatchStatus::ExecutedCase, BehaviorType::MeteorFireWave, 0x3EB8 };
     }
 
     DispatchResult Function_SpawnInCrater(RawGameObject& object, GameContext& context)

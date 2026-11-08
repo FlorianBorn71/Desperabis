@@ -214,7 +214,7 @@ void RenderContextDX11::TrackGlobals()
     float fRTHeight = (float)renderTarget->m_height;
     globals.renderTargetSize = { fRTWidth, fRTHeight, 1.f / fRTWidth, 1.f / fRTHeight };
     float fogFalloff = m_elements.m_fogFalloff;
-    globals.fogParameter = { m_elements.m_fogColor.x, m_elements.m_fogColor.y, m_elements.m_fogColor.z,  fogFalloff }; // matches clear color
+    globals.fogParameter = { m_elements.m_fogColor.x, m_elements.m_fogColor.y, m_elements.m_fogColor.z,  fogFalloff };
     globals.fogDistanceOffset = 0.f;
     globals.fogOnUnlit = 0.f;
     if (settings.fogOverride)
@@ -267,10 +267,12 @@ void RenderContextDX11::TrackGlobals()
     }
 
     renderTarget->BindAsTarget(true);
-    float clearcolor[4] = { 
-        pow(globals.fogParameter.x, settings.gamma),
-		pow(globals.fogParameter.y, settings.gamma),
-		pow(globals.fogParameter.z, settings.gamma), 0 };
+    const auto clear = settings.clearColorOverride.value_or(
+        Vector4{globals.fogParameter.x, globals.fogParameter.y, globals.fogParameter.z, 0});
+    float clearcolor[4] = {
+        pow(clear.x, settings.gamma),
+        pow(clear.y, settings.gamma),
+        pow(clear.z, settings.gamma), clear.w };
 
     renderTarget->Clear(clearcolor);
 

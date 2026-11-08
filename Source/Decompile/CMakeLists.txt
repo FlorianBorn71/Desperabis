@@ -52,7 +52,7 @@ endforeach()
 if(BUILD_TESTING)
     add_executable(cutscene-tests Scaffold/CutsceneTests.cpp)
     target_link_libraries(cutscene-tests PRIVATE Desperabis::GameCore)
-    add_test(NAME camera-path-cutscene COMMAND cutscene-tests
+    add_test(NAME timed-meteor-cutscene COMMAND cutscene-tests
         "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original")
     add_executable(swamp-tests Scaffold/SwampTests.cpp)
     target_link_libraries(swamp-tests PRIVATE Desperabis::GameCore)

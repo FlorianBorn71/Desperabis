@@ -104,6 +104,7 @@ namespace Desperabis
             break;
         case WeaponType::Scythe:
             sprite(0);
+            view.modelSource = WeaponView::ModelSource::Scythe;
             tableModel({ {{ 10,35,32,-32,-60,0 }, { 15,25,32,-22,-70,0 }, { 0,25,32,-22,60,0 },
                 { 0,27,32,-30,70,0 }, { 15,35,32,-32,-60,0 }} }, 2, std::abs(pose), true, playerLookHeight);
             break;

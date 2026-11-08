@@ -1,52 +1,21 @@
-#include "BehaviorDispatch.h"
-#include "GameMath.h"
+#include "GameContext.h"
 
+#include <algorithm>
 #include <stdexcept>
 
 namespace Desperabis
 {
-    bool GameContext::IsCutscenePlaying() const { return !cutsceneFrames.empty(); }
+    bool GameContext::IsCutscenePlaying() const { return cutscenePlaying; }
 
-    std::vector<GameContext::CutsceneFrame> GameContext::ReadCutscene(std::int16_t levelNumber)
+    void GameContext::BeginCutscene(bool restoringSave)
     {
-        // Other DEMO paths also visit playable levels; only the authored story scene auto-starts.
-        if (levelNumber != 97) { return {}; }
-        const auto bytes = LoadFile("LEVEL\\DEMO6.KOO");
-        const auto invalid = [] { throw std::invalid_argument("LEVEL\\DEMO6.KOO: invalid camera path."); };
-        if (bytes.size() < 9 || bytes[0] + 1 != levelNumber) { invalid(); }
-        const std::size_t count = bytes[1] | (static_cast<std::size_t>(bytes[2]) << 8);
-        if (count != bytes.size() - 3 || count % 6 != 0 || count > 64000) { invalid(); }
-        const auto word = [&](std::size_t offset)
+        // 07E0..07E8 initializes player word 34 from LEVELS.INF byte 104, at 35 ticks per unit.
+        const auto duration = level->nativeInfo[104];
+        cutscenePlaying = duration != 0 && (!restoringSave || worldObjects[1].itemValue > 0);
+        if (cutscenePlaying && !restoringSave)
         {
-            return WrapSignedWord(bytes[offset] | (static_cast<int>(bytes[offset + 1]) << 8));
-        };
-        std::vector<CutsceneFrame> frames;
-        frames.reserve(count / 6);
-        for (std::size_t offset = 3; offset < bytes.size(); offset += 6)
-        {
-            frames.push_back({word(offset), word(offset + 2), bytes[offset + 4], bytes[offset + 5]});
+            worldObjects[1].itemValue = static_cast<std::int16_t>(duration * 35);
         }
-        return frames;
-    }
-
-    void GameContext::BeginCutscene(std::vector<CutsceneFrame> frames)
-    {
-        cutsceneFrames = std::move(frames);
-        cutsceneCursor = 0;
-        if (!IsCutscenePlaying()) { return; }
-        const auto& first = cutsceneFrames.front();
-        if (first.x == -1 || first.z == -1) { return; }
-        auto& player = worldObjects[1];
-        // Present the first recorded pose immediately, rather than flashing the ordinary level spawn.
-        player.posX = first.x;
-        player.posZ = first.z;
-        playerHeading = playerTargetHeading = static_cast<std::int16_t>(first.angle * 2);
-        std::int16_t negativeZ;
-        GetDirectionDisplacement(player.velocityX, negativeZ, playerHeading, 100);
-        player.velocityZ = WrapSignedWord(-negativeZ);
-        soundListenerX = first.x;
-        soundListenerZ = first.z;
-        lightingCache.Reset(first.x, first.z, lightingCache.activeRadius);
     }
 
     GameTickResult GameContext::Tick(GameTickTiming timing, InputHandler& input)
@@ -74,14 +43,6 @@ namespace Desperabis
         const auto requestId = nextLoadRequestId;
         for (int step = 0; step < timing.frameTicks; ++step)
         {
-            if (cutsceneCursor == cutsceneFrames.size())
-            {
-                EndLevel();
-                result.status = GameTickStatus::LevelEnded;
-                result.objects.reset();
-                return result;
-            }
-            const auto frame = cutsceneFrames[cutsceneCursor++];
             const auto ticks = static_cast<std::int16_t>(
                 (step + 1) * timing.behaviorTicks / timing.frameTicks -
                 step * timing.behaviorTicks / timing.frameTicks);
@@ -93,33 +54,16 @@ namespace Desperabis
                 movement.blockedTicks += result.playerMovement->blockedTicks;
                 result.playerMovement = movement;
             }
-            // C558 applies action bits and the next X/Z/heading after simulation, not instead of it.
-            if ((frame.actions & 0x20) && playerTargetLookHeight > 50) { playerTargetLookHeight -= 10; }
-            if ((frame.actions & 0x10) && playerTargetLookHeight < 130) { playerTargetLookHeight += 10; }
-            if ((frame.actions & 0x40) && playerCollisionSlot > 0)
-            {
-                result.interaction = HandlePlayerObjectInteraction(worldObjects.at(playerCollisionSlot), *this);
-                if (nextLoadRequestId != requestId || runtimeState != GameRuntimeState::Ready ||
-                    menuPage != MenuPage::Gameplay)
-                {
-                    result.status = GameTickStatus::LevelEnded;
-                    result.objects.reset();
-                    return result;
-                }
-            }
-            if (frame.actions & 0x80) { result.weapon->attack = AttackWithSelectedWeapon(); }
-            playerTargetHeading = static_cast<std::int16_t>(frame.angle * 2);
-            if (frame.x == -1 || frame.z == -1)
+            // C9E0..CA18 counts down after world simulation; no KOO pose overrides this camera.
+            auto& remaining = worldObjects[1].itemValue;
+            remaining = static_cast<std::int16_t>(std::max(0, static_cast<int>(remaining) - ticks));
+            if (remaining == 0)
             {
                 EndLevel();
                 result.status = GameTickStatus::LevelEnded;
                 result.objects.reset();
                 return result;
             }
-            worldObjects[1].posX = frame.x;
-            worldObjects[1].posZ = frame.z;
-            soundListenerX = frame.x;
-            soundListenerZ = frame.z;
         }
         return result;
     }

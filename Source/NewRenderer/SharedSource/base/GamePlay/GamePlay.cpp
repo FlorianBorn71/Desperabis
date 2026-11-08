@@ -606,6 +606,11 @@ namespace GamePlay
         winX = (float)(512 - m_go.m_rawShorts[14]) * DespToRad;       // pitch
         winY = (float)(m_go.m_rawShorts[15] + 256) * DespToRad; // yaw
         winZ = (float)(512 - m_go.m_rawShorts[16]) * DespToRad;       // roll
+        if (GetBehaviorType() == BehaviorType::WitchHead)
+        {
+            const float pitch = 3.f + (std::clamp((float)m_go.m_rawShorts[14], 3.f, 57.f) - 3.f) / 9.f;
+            winX = (512.f - pitch) * DespToRad;
+        }
 
         return Vector(winY, winX, winZ);
 

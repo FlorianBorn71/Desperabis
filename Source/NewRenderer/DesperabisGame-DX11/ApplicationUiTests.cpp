@@ -207,7 +207,7 @@ namespace
         {
             settings.fogOverride = FogParameters{
                 {0.045f,0.065f,0.055f}, 1.f / (400.f * DespToFloat), 160.f * DespToFloat, true};
-            settings.clearColorOverride = Vector4{0.045f,0.065f,0.055f,0};
+            settings.clearColorOverride = Vector4{0.015f,0.015f,0.015f,0};
         }
         else
         {
@@ -493,8 +493,8 @@ namespace
             const auto drySky = render();
             Check(pixelAt(drySky, 10, 10) == 0x3264c8, "Sky fixture must be visible outside water.");
             ConfigureUnderwaterView(settings, true);
-            Check(pixelAt(render(), 10, 10) == 0x0e110b,
-                "Underwater must hide the dry sky against the matching gray-green fog background.");
+            Check(pixelAt(render(), 10, 10) == 0x040404,
+                "Underwater must hide the dry sky against a near-black neutral background, independently of fog.");
             ConfigureUnderwaterView(settings, false);
             override.m_transparencyType = TransparencyMode::Opaque;
             override.ComputeHash();
@@ -515,7 +515,7 @@ namespace
         renderer.RenderSceneElements(emptyView, settings, stats);
         const auto offsetPixels = offsetTarget.Pixels(device, context);
         Check((offsetPixels[10 * 360 + 10] & 0xffffff) == 0x0000ff &&
-            (offsetPixels[40 * 360 + 30] & 0xffffff) == 0x0e110b &&
+            (offsetPixels[40 * 360 + 30] & 0xffffff) == 0x040404 &&
             (offsetPixels[220 * 360 + 330] & 0xffffff) == 0x0000ff,
             "Underwater background must respect a nonzero viewport origin and preserve pixels outside it.");
         ConfigureUnderwaterView(settings, false);
@@ -614,7 +614,7 @@ namespace
         ghost.m_rawShorts[6] = Level::tileCenterX * 100 + 100;
         ghost.m_rawShorts[7] = 32;
         ghost.m_rawShorts[8] = 4100 - Level::tileCenterY * 100;
-        auto ghostContext = GamePlay::CreateObjectPresentation(scene, 2, ghost, nullptr);
+        auto ghostContext = GamePlay::CreateObjectPresentation(scene, 0, 2, ghost, nullptr);
         const auto dormant = render(PlayerLight::Mode::Normal);
         ghost.m_rawShorts[5] = 1000;
         ghostContext->Update(ghost, nullptr);
@@ -2166,6 +2166,8 @@ namespace
             const auto& GeneratedWalls() const { return m_wallRenderables; }
             const auto& MutableWalls() const { return m_mutableWalls; }
             const auto& MutableFloors() const { return m_mutableFloors; }
+            const auto& FloorModels() const { return m_floorModels; }
+            Texture& Lightmap() { CreateLightmap(); return *m_lightmap; }
             const Scene& WallScene() const { return m_scene; }
             RenderableInstancePtr UpdateFront(const Desperabis::RawGameObject& object)
             {
@@ -2958,6 +2960,79 @@ namespace
                 (!floor.replacement || floor.replacement->GetVisible()),
                 "Textured and empty floor variants must switch visibility without duplicate or missing faces.");
         }
+        auto* meteorAssets = FORCE_GET(AssetManager::Instance().LoadLevel(97));
+        auto fireGeometry = Desperabis::CreateDummyLevel();
+        for (auto& row : fireGeometry.floorHeights) { std::fill_n(row, 50, byte(102)); }
+        fireGeometry.floorObjects[riverRow][riverColumn] = 47;
+        fireGeometry.floorObjects[riverRow][riverColumn + 1] = 47;
+        fireGeometry.surfaceFlags[riverRow][riverColumn] = 0x80;
+        fireGeometry.surfaceFlags[riverRow][riverColumn + 1] = 0x80;
+        WallLevel fire;
+        fire.Build(meteorAssets->GetLevelInfo(), fireGeometry, std::vector<byte>(54));
+        Check(fire.FloorModels().size() == 2, "Fire fixture must expose two independent static model tiles.");
+        const auto fireInstances = fire.Walls();
+        std::vector<std::shared_ptr<IGraphicsRuntimeObject>> fireBuffers;
+        for (const auto& instance : fireInstances) { fireBuffers.push_back(instance->GetRenderable()->m_runtime); }
+        Texture* fireLightmap = &fire.Lightmap();
+        const auto lightmapBefore = fireLightmap->m_runtime;
+        const auto unburnt = renderRiver(fire, {});
+        Desperabis::GameContext fireCore;
+        fireCore.level = &fireGeometry;
+        Check(fireCore.ReplaceSurfaceSelector(originalFront.posX, originalFront.posZ, 0, 29),
+            "The recovered native surface helper must burn the rendered fixture cell.");
+        Check(fire.SynchronizeSurfaceTiles(&fireGeometry.surfaceFlags[0][0], 50, 40, 50) == 1 &&
+            fire.SynchronizeSurfaceTiles(&fireGeometry.surfaceFlags[0][0], 50, 40, 50) == 0,
+            "Surface synchronization must update one cell exactly once.");
+        const auto& burningTile = fire.FloorModels()[0].instance;
+        const auto& untouchedTile = fire.FloorModels()[1].instance;
+        Check(std::abs(burningTile->m_fireIntensity - 30.f / 70.f) < 0.00001f &&
+            burningTile->m_tintColor.r == 72 && untouchedTile->m_fireIntensity == 0 &&
+            untouchedTile->m_tintColor.r == 255 && fireLightmap == &fire.Lightmap() &&
+            fireLightmap->m_runtime != lightmapBefore &&
+            fire.GetCellArray().GetCell(riverColumn, riverRow).m_brightness.r == 100,
+            "Surface 29 must apply native table 80's fire presentation only to its tile and refresh cleared brightness.");
+        const auto burnt = renderRiver(fire, {});
+        std::size_t firePixels = 0;
+        for (std::size_t i = 0; i < burnt.size(); ++i) { firePixels += burnt[i] != unburnt[i]; }
+        Check(firePixels > 100, "A core-driven surface change must visibly affect the static model.");
+        WallLevel fireSave;
+        fireSave.Build(meteorAssets->GetLevelInfo(), fireGeometry, std::vector<byte>(54));
+        Check(renderRiver(fireSave, {}) == burnt,
+            "Saved burnt geometry must render identically to a runtime-updated surface.");
+        for (std::size_t i = 0; i < fireInstances.size(); ++i)
+        {
+            Check(fire.Walls()[i] == fireInstances[i] &&
+                fireInstances[i]->GetRenderable()->m_runtime == fireBuffers[i],
+                "Burning surfaces must retain their original static instances and GPU model buffers.");
+        }
+        std::vector<byte> stridedSurfaces(53 * 40, 0);
+        for (std::size_t row = 0; row < 40; ++row)
+        {
+            std::copy_n(&fireGeometry.surfaceFlags[row][0], 50, stridedSurfaces.data() + row * 53);
+        }
+        stridedSurfaces[riverRow * 53 + riverColumn] = 0x80;
+        Check(fire.SynchronizeSurfaceTiles(stridedSurfaces.data(), 50, 40, 53) == 1 &&
+            renderRiver(fire, {}) == unburnt,
+            "Strided surface restoration must remove the fire overlay and restore original pixels.");
+        for (const byte selector : { byte(30), byte(31) })
+        {
+            stridedSurfaces[riverRow * 53 + riverColumn] = selector;
+            Check(fire.SynchronizeSurfaceTiles(stridedSurfaces.data(), 50, 40, 53) == 1 &&
+                burningTile->m_fireIntensity == 0 && burningTile->m_tintColor.r < 255,
+                "Native surface tables 30/31 must use a charred non-burning remap.");
+        }
+        rejected = false;
+        try { fire.SynchronizeSurfaceTiles(nullptr, 50, 40, 50); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        Check(rejected, "Surface synchronization must reject missing storage explicitly.");
+        stridedSurfaces[riverRow * 53 + riverColumn] = 1;
+        rejected = false;
+        try { fire.SynchronizeSurfaceTiles(stridedSurfaces.data(), 50, 40, 53); }
+        catch (const std::runtime_error&) { rejected = true; }
+        Check(rejected && fire.GetCellArray().GetCell(riverColumn, riverRow).m_walls == 31,
+            "Unsupported water geometry replacement must fail before mutating surface state.");
+        std::cout << "Meteor surfaces: core-driven burning pixels, saved pixels, stable static buffers, "
+            "lightmap refresh, charred remaps, restoration and stride passed (" << firePixels << " changed pixels).\n";
         std::cout << "Forest flooding: 127 original river tiles, unchanged GPU buffers, core-driven water-front morph pixels, "
             "partial/completed save pixels, midway continuation, visibility, restoration and stride passed ("
             << morphPixels << " morph pixels).\n";
@@ -4157,7 +4232,8 @@ namespace
                     auto raised = once;
                     raised.m_rawShorts[7] += 32;
                     scene.m_level->CorrectInitialObjectPlacement(raised);
-                    Check(raised == once, "Even elevated keys must reset to floor plus four units on fresh placement.");
+                    Check(raised.m_rawShorts[7] == once.m_rawShorts[7] + 32,
+                        "Elevated keys must retain their authored height rather than being moved down to terrain.");
                     for (const auto collision : {GamePlay::CollisionType::BurnableOilPuddle, GamePlay::CollisionType::ActivateSpiders})
                     {
                         auto puddle = source;
@@ -4172,6 +4248,27 @@ namespace
             }
         }
         Check(raisedKeys >= 2 && wallMaps == 1, "Placement tests must exercise the buried tutorial keys and original wall map.");
+        {
+            LevelScene swamp(24);
+            swamp.m_createGameObjects = false;
+            FORCE_WAIT(swamp.CreateScene());
+            auto windmillKey = swamp.m_level->GetRawGameObjects().at(39);
+            const auto original = windmillKey;
+            Check(original.m_rawShorts[7] == 29 && original.m_rawShorts[5] == 1000 &&
+                GamePlay::PropertyAccessorBase(original).GetBehaviorType() == GamePlay::BehaviorType::None,
+                "The windmill key must be the active, elevated original slot 41.");
+            swamp.m_level->CorrectInitialObjectPlacement(windmillKey);
+            auto instance = std::make_shared<RenderableInstance>();
+            swamp.m_level->ApplyRenderProperties(instance, windmillKey);
+            Check(windmillKey == original && instance->IsValid() && instance->GetVisible() &&
+                windmillKey.m_rawShorts[7] > swamp.m_level->GetHeightAtPos(
+                    GamePlay::PropertyAccessorBase(windmillKey).GetPosition()) / DespToFloat + 100.f,
+                "Fresh swamp loading must preserve and render the ladder-height key, not drop it under the windmill.");
+            auto shovelKey = swamp.m_level->GetRawGameObjects().at(15);
+            const auto originalShovelKey = shovelKey;
+            swamp.m_level->CorrectInitialObjectPlacement(shovelKey);
+            Check(shovelKey == originalShovelKey, "The separate shovel-retrieved key must remain unchanged.");
+        }
 
         const auto tutorial = FORCE_GET(AssetManager::Instance().LoadLevel(50));
         const auto originalRecords = tutorial->GetRawGameObjects();
@@ -4315,6 +4412,86 @@ namespace
     {
         static_assert(LevelScene::ObjectSlotCount == std::tuple_size_v<decltype(Desperabis::GameContext::worldObjects)>);
         {
+            RawGameObject head{};
+            head.m_rawShorts[4] = static_cast<int16_t>(GamePlay::BehaviorType::WitchHead);
+            head.m_rawShorts[14] = 3;
+            const float attentive = GamePlay::PropertyAccessorBase(head).GetEuler().GetY();
+            head.m_rawShorts[14] = 57;
+            const float resting = GamePlay::PropertyAccessorBase(head).GetEuler().GetY();
+            Check(std::abs(attentive - resting - 6.f * Math::Pi / 256.f) < 0.00001f &&
+                head.m_rawShorts[14] == 57,
+                "The witch's native 54-unit nod must render as a subtle six-unit tilt without changing gameplay state.");
+            head.m_rawShorts[4] = 0;
+            Check(std::abs(GamePlay::PropertyAccessorBase(head).GetEuler().GetY() - resting) > 0.5f,
+                "The subtle nod must not change unrelated model rotations.");
+        }
+        {
+            LevelScene forest(25);
+            FORCE_WAIT(forest.CreateScene());
+            const auto& objects = forest.m_level->GetRawGameObjects();
+            RawGameObject anchor = objects.at(22);
+            Check(anchor.m_objectNumber + 2 == 24 && anchor.m_rawShorts[6] == 1258 &&
+                anchor.m_rawShorts[7] == -104 && anchor.m_rawShorts[8] == 2723,
+                "The toxic-green crater glow must use the original persistent level-25 emitter in native slot 24.");
+            int emitters = 0;
+            for (const auto& object : objects)
+            {
+                if (GamePlay::PropertyAccessorBase(object).GetBehaviorType() != GamePlay::BehaviorType::SpawnInCrater) { continue; }
+                const int slot = object.m_objectNumber + 2;
+                Check(static_cast<bool>(forest.GetObjectPresentation(slot)) == (slot == 24),
+                    "Only the selected crater emitter may own a toxic-green light presentation.");
+                ++emitters;
+            }
+            Check(emitters == 28, "Crater presentation coverage must include all 28 original smoke emitters.");
+            const auto originalContext = forest.GetObjectPresentation(24);
+            std::shared_ptr<PulsatingLight> glow;
+            int pulses = 0;
+            for (const auto& light : forest.GetLightSources())
+            {
+                if (auto pulse = std::dynamic_pointer_cast<PulsatingLight>(light)) { glow = pulse; ++pulses; }
+            }
+            Check(originalContext && glow && pulses == 1,
+                "The crater must reuse the existing PulsatingLight and per-object context, exactly once.");
+            const auto position = GamePlay::PropertyAccessorBase(anchor).GetPosition() + Vector(0, 5.f * DespToFloat, 0);
+            Check(glow->GetRadius() == 250.f * DespToFloat && glow->GetCoronaSize() == 0.f &&
+                std::abs(glow->GetPosition().GetX() - position.GetX()) < 0.00001f &&
+                std::abs(glow->GetPosition().GetY() - position.GetY()) < 0.00001f &&
+                std::abs(glow->GetPosition().GetZ() - position.GetZ()) < 0.00001f,
+                "The smaller green glow must remain local, inside the crater, without a floating corona.");
+            float minimum = (std::numeric_limits<float>::max)(), maximum = 0.f;
+            for (int step = 0; step < 64; ++step)
+            {
+                glow->Update(0.1);
+                PackedLightSourceParams packed{};
+                Check(glow->FillLightParams(packed) && packed.ColorAndPadding.y > packed.ColorAndPadding.x * 2.f &&
+                    packed.ColorAndPadding.x > packed.ColorAndPadding.z * 4.f,
+                    "Every pulse phase must remain toxic green, with enough red to affect the crater albedo.");
+                minimum = (std::min)(minimum, packed.ColorAndPadding.y);
+                maximum = (std::max)(maximum, packed.ColorAndPadding.y);
+            }
+            Check(minimum >= 0.5999f && minimum < 0.7f && maximum > 5.3f && maximum <= 5.4001f,
+                "The crater must retain its reduced twofold brightness throughout pulse updates, spanning 0.6..5.4.");
+            const auto lightCount = forest.GetLightSources().size();
+            for (int frame = 0; frame < 20; ++frame) { forest.UpdateObjectPresentation(24, anchor); }
+            Check(forest.GetObjectPresentation(24) == originalContext && forest.GetLightSources().size() == lightCount,
+                "Object synchronization must retain the pulse phase and never duplicate the crater light.");
+            LevelScene unrelated(24);
+            unrelated.UpdateObjectPresentation(24, anchor);
+            Check(!unrelated.GetObjectPresentation(24) && unrelated.GetLightSources().empty(),
+                "The crater decoration must not attach to the same slot or behavior in another level.");
+            anchor.m_rawShorts[5] = 0;
+            forest.UpdateObjectPresentation(24, anchor);
+            Check(!forest.GetObjectPresentation(24) && forest.GetLightSources().size() == lightCount - 1,
+                "Removing the emitter must remove its light through the existing presentation lifecycle.");
+            anchor = objects.at(22);
+            forest.UpdateObjectPresentation(24, anchor);
+            Check(forest.GetObjectPresentation(24) != originalContext && forest.GetLightSources().size() == lightCount,
+                "Restoring the emitter must create exactly one new crater light.");
+            forest.ClearScene();
+            Check(!forest.GetObjectPresentation(24) && forest.GetLightSources().empty(),
+                "Scene cleanup must release the crater presentation and light.");
+        }
+        {
             LevelScene swamp(24);
             swamp.m_createGameObjects = false;
             FORCE_WAIT(swamp.CreateScene());
@@ -4384,7 +4561,7 @@ namespace
                 if (behavior == GamePlay::BehaviorType::BurningFireplace && properties.GetHealth() > 0)
                 {
                     FlameScene fireplace;
-                    const auto presentation = GamePlay::CreateObjectPresentation(fireplace, slot, object, nullptr);
+                    const auto presentation = GamePlay::CreateObjectPresentation(fireplace, 23, slot, object, nullptr);
                     Check(presentation && fireplace.GetLightSources().size() == 1,
                         "Each original mine fireplace must own exactly one light.");
                     const auto light = fireplace.GetLightSources().front();
@@ -5404,6 +5581,10 @@ int main(int argc, char* argv[])
             }
             previousMap = std::move(map);
         }
+        const auto scytheAsset = FORCE_GET(AssetManager::Instance().LoadAsset<ModelAnim>(L"VEKT\\VEKT67.3DA"));
+        const auto* scytheModel = scytheAsset->GetModel(1, 1);
+        Check(scytheModel->m_numPositions == 14,
+            "The complete scythe frame must contain all fourteen authored vertices, including the blade tip.");
         for (const auto levelNumber : { 10, 11, 50 })
         {
             const auto* weaponLevel = FORCE_GET(AssetManager::Instance().LoadLevel(levelNumber));
@@ -5455,6 +5636,14 @@ int main(int argc, char* argv[])
                     context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 0, 0);
                     ui.DrawWeapon(*weapon, renderer, *weaponLevel, settings, stats, target.viewport,
                         context.Get(), target.colorView.Get(), target.depthView.Get());
+                    if (type == Desperabis::WeaponType::Scythe)
+                    {
+                        ComPtr<ID3D11Buffer> boundPositions;
+                        context->VSGetConstantBuffers(2, 1, &boundPositions);
+                        Check(weapon->modelSource == Desperabis::WeaponView::ModelSource::Scythe &&
+                            boundPositions.Get() == scytheModel->GetNativeRuntimeObj<NativeModelMeshObjectDX11>()->m_positionBuffer.Get(),
+                            "First-person scythes must bind the complete VEKT67 geometry in both chapter banks.");
+                    }
                     const auto pixels = target.Pixels(device.Get(), context.Get());
                     ComPtr<ID3D11Buffer> swordBuffer;
                     if (type == Desperabis::WeaponType::Sword)
@@ -5653,6 +5842,28 @@ int main(int argc, char* argv[])
                 renderer.RenderSceneElements(visible, settings, stats);
                 Check(weaponCalls == 1, "Weapon callbacks must be consumed, not retained across renders or menu pages.");
             }
+        }
+        {
+            const auto* scytheLevel = FORCE_GET(AssetManager::Instance().LoadLevel(30));
+            Target target(device.Get(), 1280, 720);
+            renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+            Desperabis::GameContext core;
+            core.SetMenuPage(Desperabis::MenuPage::Gameplay);
+            core.selectedWeapon = Desperabis::WeaponType::Scythe;
+            core.weaponHand = 2;
+            core.weaponSpriteFrame = 1;
+            core.weaponAnimationPosition = 10;
+            const auto view = core.GetWeaponView();
+            const float black[]{0,0,0,1};
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            ui.DrawWeapon(*view, renderer, *scytheLevel, settings, stats, target.viewport,
+                context.Get(), target.colorView.Get(), target.depthView.Get());
+            ComPtr<ID3D11Buffer> boundPositions;
+            context->VSGetConstantBuffers(2, 1, &boundPositions);
+            const auto pixels = target.Pixels(device.Get(), context.Get());
+            Check(boundPositions.Get() == scytheModel->GetNativeRuntimeObj<NativeModelMeshObjectDX11>()->m_positionBuffer.Get() &&
+                std::count_if(pixels.begin(), pixels.end(), [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; }) > 100,
+                "The second-chapter scythe bank must retain the same complete, visible blade as the first-chapter override.");
         }
         const auto messageCount = info->GetNumStoredMessages();
         for (UINT64 i = 0; i < messageCount; ++i)

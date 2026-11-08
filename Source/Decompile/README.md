@@ -84,10 +84,13 @@ For the first explained case and shared collision-map pointer, see
   explicit throwing hooks, not rendering or a playable application.
 - `Scaffold/ApplicationFlowTests.cpp`: menu gates, full scripted page flow,
   startup failure handling, and routing coverage for every state word.
-- `Scaffold/Cutscene.cpp`, `Scaffold/CutsceneTests.cpp`: validated KOO playback,
-  core-owned 33 Hz camera/action sequencing and the original post-swamp
-  24 -> 97 -> 25 transition, including meteor flight and impact.
-  See [camera-path recovery](BehaviorRecovery.md#camera-path-cutscene-after-the-swamp).
+- `Scaffold/Cutscene.cpp`, `Scaffold/CutsceneTests.cpp`: native timed-cutscene
+  playback, stationary windmill camera with meteor-driven rotation, and the
+  post-swamp 24 -> 97 -> 25 transition after 700 ticks, including authored
+  impact debris and the thirty radial fire-wave triggers. Moving fire changes
+  surface selectors to 29; the renderer updates static-model fire presentation
+  and grid brightness without replacing meshes.
+  See [meteor cutscene recovery](BehaviorRecovery.md#timed-meteor-cutscene-after-the-swamp).
 - `player-movement-evidence.txt`: keyboard/mouse controls, movement/turning,
   terrain support, collision-map correction, and player-object synchronization.
   The controller is identified but not yet implemented.

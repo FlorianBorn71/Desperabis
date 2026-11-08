@@ -566,6 +566,9 @@ void TestWeaponPresentation()
         context.inventory[1].health = 1000;
         context.weaponAnimationSpeed = 0;
         const auto view = context.GetWeaponView();
+        Check(view && view->modelSource == (type == WeaponType::Scythe ?
+            WeaponView::ModelSource::Scythe : WeaponView::ModelSource::Level),
+            "Only the scythe must select its dedicated complete weapon asset.");
         Check(view.has_value(), "Every supported weapon requires a first-person recipe.");
         context.weaponAnimationSpeed = -3;
         Check(context.GetWeaponView().has_value(), "Queued attacks must retain the last rendered pose until the next animation update.");

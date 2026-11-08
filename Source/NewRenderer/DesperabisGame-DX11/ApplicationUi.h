@@ -61,6 +61,7 @@ private:
     std::array<std::array<byte, 256>, 8> m_shades{};
     std::array<byte, 90> m_healthGradient{};
     std::shared_ptr<TextureAnim> m_weapons;
+    std::shared_ptr<ModelAnim> m_scytheModel;
     std::array<std::array<std::shared_ptr<TextMesh>, 2>, 12> m_weaponMeshes;
     CachedMesh m_heldWeaponMesh;
     const Texture* m_heldWeaponTexture = nullptr;

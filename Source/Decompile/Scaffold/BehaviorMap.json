@@ -1690,8 +1690,8 @@
     },
     {
       "value": 137,
-      "name": "Behavior_137",
-      "namedInRenderer": false,
+      "name": "DormantMeteorDebris",
+      "namedInRenderer": true,
       "hasSpecificCase": true,
       "entry": "0000:3E9C",
       "reachableInstructionCount": 6,
@@ -1702,8 +1702,8 @@
     },
     {
       "value": 138,
-      "name": "Behavior_138",
-      "namedInRenderer": false,
+      "name": "MeteorFireWave",
+      "namedInRenderer": true,
       "hasSpecificCase": true,
       "entry": "0000:3EB8",
       "reachableInstructionCount": 67,

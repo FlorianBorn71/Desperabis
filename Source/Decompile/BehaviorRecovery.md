@@ -157,48 +157,39 @@ it deliberately does not make the first sewer's harmless tentacles hurt.
 values, suppression/depletion and collision gates, plus all 91 original
 tentacles, 34 rats/snakes and two flies across the audited levels.
 
-### Camera-path cutscene after the swamp
+### Timed meteor cutscene after the swamp
 
-The HERZ sequence is **24 -> 97 -> 25**. Level 97 now automatically plays
-`LEVEL\DEMO6.KOO` under GameCore control; the host still uses its ordinary
-level-loading callback. Other DEMO files visit normal playable levels and do
-not automatically take control of them.
+The HERZ sequence is **24 -> 97 -> 25**. Level 97 uses the ordinary level
+loader and a **timed, behavior-driven camera**, not a KOO recording.
+`LEVELS.INF` byte 104 is 20. Native `0000:07E0..07E8` multiplies this byte
+by 35 and stores the result in player word 34 (`itemValue`). After world
+simulation, `0000:C9E0..CA18` discards keyboard events and approaches zero
+by the behavior tick count; reaching zero calls `CE0F`, the normal level-end
+routine. Thus the original scene lasts **700 ticks**, not 498 frames.
 
-The packed format agrees with `PackingTool/CameraPath.h`: a three-byte header
-(level index byte, little-endian payload-length word), followed by six-byte
-frames (signed X/Z words, angle byte, action byte). The header level index is
-**zero-based**: `0000:E589` increments it before loading. DEMO6's index 96
-therefore selects level 97, not level 96. Its payload is 2988 bytes / 498
-frames, all with zero action bits. The reader rejects empty, truncated,
-inconsistently sized, over-64000-byte or wrong-level paths.
+The previous implementation incorrectly bound `DEMO6.KOO` to this scene.
+Its header byte 96 really selects **asset level 96**: `E589` adds one to
+make a native level ordinal, but disables HERZ remapping, and `0427`
+subtracts one again at `04E4..0508` before loading resources. The KOO
+alignment itself was correct: three header bytes and six bytes per frame.
+Its recorded X/Z movement belongs to a different presentation. It must not
+be applied to meteor level 97; automatic KOO playback is not currently exposed
+by GameCore.
 
-`Scaffold/Cutscene.cpp` runs every recorded frame at the existing 33 Hz
-application clock, including every intermediate world update during catch-up.
-Normal input is replaced by neutral input; terrain/body movement still supplies
-camera Y. `D060(2)` heading smoothing uses two angle units per frame, rather
-than normal keyboard mode's six. After simulation, native `C558` applies:
+`Scaffold/Cutscene.cpp` retains the ordinary authored spawn:
+eye position **(1750, -111, 3250)**. Neutral input leaves this camera stationary
+on the windmill while meteor behavior supplies target heading and look height.
+The normal controller uses **six-unit** heading smoothing (`E3B0`), rather
+than the alternate demo loop's two-unit smoothing. Every intermediate world
+update runs at the existing 33 Hz application clock, including during catch-up.
+Timer expiration calls `EndLevel()` and discards leftover catch-up work rather
+than ticking level 25.
 
-| Action bit | Recovered operation |
-|---|---|
-| `0x20` | Lower target look height by 10 when above 50 |
-| `0x10` | Raise target look height by 10 when below 130 |
-| `0x40` | Ordinary interaction with the currently selected collision object |
-| `0x80` | Attack with the selected weapon |
-
-Lower action bits are ignored, as in the native routine. X/Z are assigned
-directly, and the next target heading is `angle * 2`. Either coordinate `-1`
-terminates playback. Validated payload exhaustion replaces the native padded
-XMS sentinel without reading past the file. The final recorded pose remains
-visible until the next controller tick, then `EndLevel()` loads level 25;
-remaining catch-up ticks do not run against the new level.
-
-Modern presentation deliberately installs the first pose immediately instead
-of briefly displaying the ordinary level spawn. Inventory, held weapon, map/
-gold overlays, health meters and item previews are hidden or disabled during
-playback. Main-menu pausing/resuming retains the cursor. Native saves contain
-no playback cursor: saving during playback is disabled, and loading a native
-level-97 save fails explicitly rather than mixing a restarted path with saved
-mid-scene world state. No save-format extension was introduced.
+Inventory, held weapon, map/gold overlays, health meters and item previews
+remain hidden or disabled. Modern menu pausing/resuming retains the timer.
+Saving during playback remains disabled, and native level-97 save loading
+remains explicitly unsupported. The countdown is a native player-record word,
+not an absent KOO cursor; no save-format extension was introduced.
 
 **Meteor (135), `0000:3C8B`:** original slot 2 starts at `(4030,1730,12184)`
 with velocity `(-10,-7,-33)`. Every dispatch moves by velocity * behavior ticks,
@@ -209,6 +200,10 @@ floor -500 and sound 60; inside it uses terrain height and sound 65. It adds
 25 randomized lighting-cache contributions. Below floor it becomes hidden,
 stops, selects render table 16 and requests sounds 32/25. DX11's replacement
 for the DOS table flash uses the existing `OnLightFlash` presentation hook.
+The native horizon target remains 300. Its former perspective approximation
+pitched up by about 62 degrees, missing the meteor. The camera snapshot now
+supplies the meteor's actual rise/run as a presentation-only elevation override,
+retaining native horizontal heading smoothing, player state and timed flow.
 
 **MeteorImpact (136), `0000:3E89` -> `10AC:B5F4`:** the impact aftermath accumulates
 word 36 and advances word 46 while elapsed > byte 52, subtracting byte 52 + 1
@@ -218,15 +213,46 @@ core's tracked frame instead of advancing it independently. Each dispatch also
 uses the native collision-list helper and applies one damage through the
 existing general damage handler.
 
+**DormantMeteorDebris (137) / MeteorFireWave (138):** `0000:3E9C` refreshes health to `Random(50)+70`
+on every dispatch. The 43 authored level-97 records (slots 35..77) are hidden
+debris with collision type 138 and word 46 = 41. Damage activates the existing
+FlyingArrow handler, not selector 138. `0000:3EB8` moves all three coordinates
+by velocity * ticks with word wrapping, requests sound 22 at full volume,
+and with probability 1/5 creates smoke at `(x,y,z-10)`, radius 20, rise 2,
+placement 130. A next-step collision-map bit 8 kills it; otherwise
+`10AC:B2C8` replaces surface selector 0 with the whole byte 29, clearing
+the upper lighting bits. The helper rejects outside native cells rather
+than clamping and leaves other selectors, floor models and collision data intact.
+
+The native tile renderer (`0000:5DFB..5E93`) does **not** select a new mesh:
+surface 29 supplies render-table argument 80 from DS:0472; 30/31 supply 15.
+The modern renderer reuses its burning-model tint/fire overlay for 29 and
+charred/oil tint for 30/31, including saved geometry and live surface updates.
+Static model/GPU buffers are retained; changed upper bits refresh the lightmap.
+These remain RGB/fire-shader approximations of DOS indexed-color rendering.
+The activation chain is authored separately: level-97 slots 5..34 start
+with behavior 0, health 1000, collision type 138, word 46 = 138 and hidden
+display. All thirty share `(1050,-329,2150)` with radial X/Z velocities
+and zero Y velocity. MeteorImpact's collision-list damage activates these
+through the existing damage helper, revealing their sprites and assigning
+behavior 138. Slots 35..77 independently become FlyingArrow debris.
+The original-fixture test verifies all thirty wave activations and 250 actual
+selector-0 -> 29 terrain writes. No modern radial spawn or speculative
+137 -> 138 transition is introduced.
+
 Evidence: `cutscene-path-evidence.txt`, `cutscene-runtime-evidence.txt`,
 `cutscene-camera-evidence.txt`, `cutscene-impact-evidence.txt`,
-`cutscene-crater-evidence.txt`, `cutscene-palette-evidence.txt`; the established
+`cutscene-crater-evidence.txt`, `cutscene-palette-evidence.txt`,
+`cutscene-start-evidence.txt`, `cutscene-script-evidence.txt`,
+`meteor-fire-spread-evidence.txt` and
+`weapon-selection-tail-evidence.txt`; the established
 `flame-binding-evidence.txt` identifies tracked texture bank/slot addressing.
-`Scaffold/CutsceneTests.cpp` covers malformed files, all 498 original poses,
-input suppression, action flags, two-unit heading stepping, 33 Hz timing,
-pause/load cleanup, EOF/sentinels, save policy, batched simulation/RNG,
+`Scaffold/CutsceneTests.cpp` verifies the original stationary windmill eye
+position throughout all 699 pre-expiry ticks, meteor-driven heading,
+six-unit stepping, the 700-tick timer, zero-tick frames, input suppression,
+33 Hz timing, pause/load cleanup, save policy, batched simulation/RNG,
 the original meteor trail/impact, aftermath timing and actual 24 -> 97 -> 25
-progression with carried inventory and gold.
+progression with carried inventory and gold. Its host rejects all KOO reads.
 
 ### Level 23 mine behaviors
 
@@ -4475,11 +4501,16 @@ use `abs(2*bob)` in their bitmap offsets.
 | Trap / pole | Held object's own model/frame, fixed `10,30,0` orientation, depth `35+abs(bob)/2` |
 | Electricity | Model 31, 2/3 charged, 2/4 firing with blend target 5, 5/4 depleted; WAFFEN frame 5 |
 | Shovel (`Showel`) | Model 31, 2/2, DS:03DA pose table and WAFFEN frames 9/10 |
-| Scythe | Model 31, 2/2, DS:0416 pose table and forced mirrored transform |
+| Scythe | VEKT67, 2/2, DS:0416 pose table and forced mirrored transform |
 
 The scythe selector retains the inspected executable's zero byte at
 DS:`0452+24`; no speculative replacement picture is substituted for that native
 bitmap base. Shovel recoil chooses its second bitmap using existing core state.
+For modern first-person use in any chapter, the scythe explicitly selects
+VEKT67's complete 14-vertex frame. The first-chapter slot-1 bank, VEKT14,
+contains a shovel in frame 2/2; using that bank incorrectly omitted the scythe
+blade. This presentation asset choice leaves native weapon IDs, pose and
+combat behavior unchanged.
 The model texture copy at DS:71F0 resolves to material slot **9** in the loaded
 bank. DX11 binds the cached selected WAFFEN frame as an **instance material
 override**; it never edits the shared level model or atlas.
@@ -4784,6 +4815,26 @@ All **28** initial `SpawnInCrater` records occur in `OBJPOS25.DAT`.
 They have Y radius 17 and intensities 16, 36 or 46. They corroborate the
 emission fields; tests use their original records with explicit dummy floor
 geometry, not a claim to have loaded level 25's actual heightfield.
+
+The renderer adds a deliberately modern **toxic-green pulsating crater glow** to
+one persistent emitter: level 25, native slot 24, position `(1258,-104,2723)`.
+The existing per-object presentation factory receives the level identity from
+`LevelScene`, reuses `PulsatingLight` with RGB `(100,255,16)`, radius 250 DOS
+units and twofold pulse intensity (multipliers 0.6..5.4), and places it five
+units above the emitter without a corona. All other
+crater emitters retain their normal presentation. Object removal/replacement
+and scene cleanup use the existing context lifecycle; gameplay records and
+smoke spawning are unchanged. `ApplicationUiTests.cpp` exercises the original
+level assets, pulse color/variation, slot/level isolation and lifecycle cleanup.
+
+Modern depth-buffer presentation corrections lift ground keys to at least
+four DOS units above terrain, but never lower elevated authored keys. In
+swamp level 24, active slot 41 remains at `(409,29,815)` inside the windmill;
+the separate shovel-retrieved slot 17 is unaffected. Saved placements are
+never patched. WitchHead keeps its native 3..57 pitch and animation logic,
+while the renderer maps that nod to 3..9 units so its chin stays clear of the
+body. World-view clear color is near-black neutral gray `(0.015,0.015,0.015)`,
+independent of fog, including underwater and reflection passes.
 
 [ParticleTests.cpp](Scaffold/ParticleTests.cpp) checks complete 54-byte records,
 all signed-word fade/phase patterns, maximum ticks and continued death-loop

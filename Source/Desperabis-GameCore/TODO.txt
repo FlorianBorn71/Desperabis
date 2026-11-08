@@ -1,8 +1,9 @@
 bugs P0:
-- windmill entry door missing - coverd by wall polygon
+- windmill entry door missing - covered by wall polygon
 - island visibility (graveyard)
-- Darstellung Sense
+- Skythe model missing tip when 1st person model
 - Concrete block that falls over in mine level: Sticks in ground because of mismatching YPR?
+- key in windmill level not reachable
 
 bugs P1:
 - cursor movement

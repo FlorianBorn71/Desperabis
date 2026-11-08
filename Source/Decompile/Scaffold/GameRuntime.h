@@ -16,6 +16,8 @@ namespace Desperabis
         std::array<std::int16_t, 3> direction;
         // Native screen horizon (DS:D4A4), neutral 110; independent of the direction's Y word.
         std::int16_t lookHeight = 110;
+        // Optional perspective elevation (rise/run), without changing the native horizon or heading.
+        std::optional<float> elevationSlope;
     };
 
     enum class InteractionStatus

@@ -160,6 +160,8 @@ namespace GamePlay
         CurtainOpens = 134, // the curtains that open on proximity in witch-level 90
         Meteor = 135, // The meteor in the meteor cutscene
         MeteorImpact = 136,
+        DormantMeteorDebris = 137,
+        MeteorFireWave = 138,
         SpawnInCrater = 139, // not exactly sure what it is, but it is invisble objects in the meteor crater (many of them)
         RotatingMachineCenter = 140, // e.g. level 22
         Submarine = 141,

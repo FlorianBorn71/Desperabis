@@ -167,12 +167,12 @@ namespace
 		RenderingSettings GetWorldRenderSettings() const
 		{
 			auto settings = g_renderSettings;
+			settings.clearColorOverride = Vector4{0.015f,0.015f,0.015f,0.f};
 			if (m_underwaterView)
 			{
 				settings.fogOverride = FogParameters{
 					{0.045f,0.065f,0.055f}, 1.f / (400.f * DespToFloat), 160.f * DespToFloat, true};
 				settings.renderSky = false;
-				settings.clearColorOverride = Vector4{0.045f,0.065f,0.055f,0.f};
 			}
 			return settings;
 		}
@@ -786,6 +786,8 @@ namespace
 		    Desperabis::Level::Width, Desperabis::Level::Height, Desperabis::Level::Width);
 		level->SynchronizeFloorTiles(&geometry->floorObjects[0][0],
 		    Desperabis::Level::Width, Desperabis::Level::Height, Desperabis::Level::Width);
+		level->SynchronizeSurfaceTiles(&geometry->surfaceFlags[0][0],
+		    Desperabis::Level::Width, Desperabis::Level::Height, Desperabis::Level::Width);
 		for (const auto& object : g_gameCore->GetWorldObjects())
 		{
 			if (object.health <= 0) { continue; }
@@ -880,6 +882,10 @@ namespace
 			const float horizontalLength = Vector((float)dir[0], 0.f, (float)dir[2], 0.f).GetLength();
 			Vector forward(-(float)dir[0],
 				(float)dir[1] + (110.f - playerCam.lookHeight) * horizontalLength / 100.f, (float)dir[2], 0.f);
+			if (playerCam.elevationSlope)
+			{
+				forward.Set(forward.GetX(), -*playerCam.elevationSlope * horizontalLength, forward.GetZ(), 0.f);
+			}
 			forward.Normalize();
 			Vector worldUp(0.f, 1.f, 0.f, 0.f);
 			if (worldUp.GetCross(forward).GetLength() > 1e-4f) // looking straight up/down has no defined right vector

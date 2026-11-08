@@ -104,8 +104,10 @@ namespace Desperabis
     struct WeaponView
     {
         enum class Kind { Sprite, HeldBitmap, Model };
+        enum class ModelSource { Level, Scythe };
         static constexpr float Width = 320, Height = 220;
         Kind kind = Kind::Sprite;
+        ModelSource modelSource = ModelSource::Level;
         RawGameObject object{};
         std::uint8_t bitmapFrame = 0; // Linear, zero-based WAFFEN.AN2 frame.
         float anchorX = 0.5f; // Fraction of viewport width.
@@ -537,6 +539,9 @@ namespace Desperabis
         void SetBarrierCollisionMapAtWorldXZ(std::int16_t x, std::int16_t z,
             std::int16_t heading, std::uint8_t value);
         void ExtinguishLavaTile(std::int16_t x, std::int16_t z, std::uint8_t floorFrame);
+        // Original 10AC:B2C8: replace the whole surface byte when its low selector matches.
+        bool ReplaceSurfaceSelector(std::int16_t x, std::int16_t z,
+            std::uint8_t oldSelector, std::uint8_t replacement);
 
         // Original 1E48:CF49: X/Z word arguments, RETF 4; returns a byte in AL.
         std::uint8_t GetCollisionMapPixelAtWorldXZ(std::int16_t x, std::int16_t z) const;
@@ -600,17 +605,10 @@ namespace Desperabis
         virtual void InitializeNewGame(std::int16_t chapter);
 
     private:
-        struct CutsceneFrame
-        {
-            std::int16_t x, z;
-            std::uint8_t angle, actions;
-        };
-        std::vector<CutsceneFrame> ReadCutscene(std::int16_t levelNumber);
-        void BeginCutscene(std::vector<CutsceneFrame> frames);
+        void BeginCutscene(bool restoringSave);
         GameTickResult TickCutscene(GameTickTiming timing);
         GameTickResult TickGameplay(GameTickTiming timing, InputHandler& input);
-        std::vector<CutsceneFrame> cutsceneFrames;
-        std::size_t cutsceneCursor = 0;
+        bool cutscenePlaying = false;
         void EnsureGameParts();
         const std::vector<std::uint8_t>& CurrentLevelOrder();
         std::optional<std::uint8_t> NextPlayableLevel(const std::vector<std::uint8_t>& order, std::size_t first);

@@ -129,11 +129,12 @@ private:
 class PulsatingLight : public LightSource
 {
 public:
-    PulsatingLight(Scene* scene);
+    PulsatingLight(Scene* scene, float intensity = 1.f);
     virtual ~PulsatingLight() = default;
 
     virtual void Update(double elapsedTime) override final;
 private:
+    float m_intensity = 1.f;
     double m_phase = 0.f;
     double m_speed = 1.0f;
 };

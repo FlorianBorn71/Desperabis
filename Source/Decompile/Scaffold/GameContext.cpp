@@ -269,8 +269,7 @@ namespace Desperabis
         runtimeState = GameRuntimeState::Loading;
         try
         {
-            cutsceneFrames.clear();
-            cutsceneCursor = 0;
+            cutscenePlaying = false;
             applicationTickAccumulator = 0;
             ResetUnderwater();
             StopAllSoundEffects();
@@ -319,7 +318,6 @@ namespace Desperabis
             throw std::invalid_argument("A loaded level requires owned geometry and a collision map.");
         }
         if (data.playerSpawn) { data.objects[1] = InitializeLevelPlayer(*data.playerSpawn); }
-        auto newCutscene = ReadCutscene(pendingLevelLoad->levelNumber);
         LightingCache newLighting;
         newLighting.Reset(data.objects[1].posX, data.objects[1].posZ);
 
@@ -394,7 +392,7 @@ namespace Desperabis
             OnFreshLevelLoaded();
             UpdateModelAttachments();
         }
-        BeginCutscene(std::move(newCutscene));
+        BeginCutscene(restoringSave);
         pendingLevelLoad.reset();
         levelLoadError.clear();
         hasActiveGame = true;
@@ -416,7 +414,7 @@ namespace Desperabis
         }
         if (error.empty()) { throw std::invalid_argument("Level loading failures require an error message."); }
         levelLoadError = error;
-        cutsceneFrames.clear();
+        cutscenePlaying = false;
         pendingSaveGame.reset();
         pendingLevelLoad.reset();
         runtimeState = GameRuntimeState::LoadFailed;
@@ -444,8 +442,22 @@ namespace Desperabis
         const auto eyeY = loadedLevelNumber ?
             WrapSignedWord(player.posY + player.collisionRadiusY + 2) : player.posY;
         const std::array<std::int16_t, 3> direction{player.velocityX, player.velocityY, player.velocityZ};
-        return { { player.posX, eyeY, player.posZ },
+        PlayerCamera camera{ { player.posX, eyeY, player.posZ },
             playerLife <= 0 && playerDeathDirection ? *playerDeathDirection : direction, playerLookHeight };
+        if (IsCutscenePlaying())
+        {
+            for (const auto& object : worldObjects)
+            {
+                if (object.health <= 0 || (object.behavior != BehaviorType::Meteor &&
+                    object.behavior != BehaviorType::MeteorImpact)) { continue; }
+                const float dx = static_cast<float>(object.posX - player.posX);
+                const float dz = static_cast<float>(object.posZ - player.posZ);
+                const float distance = std::sqrt(dx * dx + dz * dz);
+                if (distance > 0.f) { camera.elevationSlope = (object.posY - eyeY) / distance; }
+                break;
+            }
+        }
+        return camera;
     }
 
     void GameContext::UpdatePlayerDeathCamera()
@@ -628,7 +640,7 @@ namespace Desperabis
             auto target = playerTargetHeading;
             NormalizeAnglePair(target, playerHeading);
             playerHeading = static_cast<std::int16_t>(
-                (playerHeading + GetStepToward(playerHeading, target, IsCutscenePlaying() ? 2 : 6)) & 511);
+                (playerHeading + GetStepToward(playerHeading, target, 6)) & 511);
 
             std::int16_t directionX;
             std::int16_t negativeDirectionZ;
@@ -3396,6 +3408,25 @@ namespace Desperabis
             }
             if (horizontal) { break; }
         }
+    }
+
+    bool GameContext::ReplaceSurfaceSelector(std::int16_t x, std::int16_t z,
+        std::uint8_t oldSelector, std::uint8_t replacement)
+    {
+        if (!level) { throw std::logic_error("Surface replacement requires loaded geometry."); }
+        const int column = x / 100;
+        const int zTile = z / 100;
+        if (column < -128 || column > 127 || zTile < -128 || zTile > 127)
+        {
+            throw std::overflow_error("Surface replacement would overflow the DOS signed-byte division.");
+        }
+        const int row = 41 - zTile;
+        if (column < 1 || column > 50 || row < 1 || row > 40) { return false; }
+        auto& surface = level->surfaceFlags[row - 1][column - 1];
+        if ((surface & 31) != oldSelector || surface == replacement) { return false; }
+        surface = replacement;
+        ++level->geometryRevision;
+        return true;
     }
 
     void GameContext::ExtinguishLavaTile(std::int16_t x, std::int16_t z, std::uint8_t floorFrame)

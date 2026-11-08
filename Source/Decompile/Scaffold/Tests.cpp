@@ -174,6 +174,7 @@ namespace
                 entry.type == BehaviorType::MummieGuard || entry.type == BehaviorType::Gorilla ||
                 entry.type == BehaviorType::AirborneLeaf || entry.type == BehaviorType::GroundLeaf ||
                 entry.type == BehaviorType::RainDrop || entry.type == BehaviorType::FlyingArrow ||
+                entry.type == BehaviorType::MeteorFireWave ||
                 entry.type == BehaviorType::Frog || entry.type == BehaviorType::ExtinguishLava ||
                 entry.type == BehaviorType::AnacondaHeadDying ||
                 entry.type == BehaviorType::Behavior_11 ||
@@ -223,6 +224,7 @@ namespace
                 entry.type == BehaviorType::FireFly || entry.type == BehaviorType::Switch3 ||
                 entry.type == BehaviorType::UnreachableKey ||
                 entry.type == BehaviorType::Meteor || entry.type == BehaviorType::MeteorImpact ||
+                entry.type == BehaviorType::DormantMeteorDebris || entry.type == BehaviorType::MeteorFireWave ||
                 entry.type == BehaviorType::AmbientSoundPosition ||
                 entry.type == BehaviorType::Flies ||
                 entry.type == BehaviorType::WeaponDamageCollider ||

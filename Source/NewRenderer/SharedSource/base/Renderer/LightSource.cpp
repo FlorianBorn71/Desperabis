@@ -116,11 +116,15 @@ void FlickeringLight::Update(double elapsedTime)
 /// Pulsating light - fireball ammo
 /// </summary>
 
-PulsatingLight::PulsatingLight(Scene* scene)
-    : LightSource(scene)
+PulsatingLight::PulsatingLight(Scene* scene, float intensity)
+    : LightSource(scene), m_intensity(intensity)
 {
+    if (!std::isfinite(intensity) || intensity < 0.f)
+    {
+        throw std::invalid_argument("Pulsating light intensity must be finite and nonnegative.");
+    }
     SetRadius(120.f * DespToFloat);
-    SetColor(Color4{ 255, 140, 30,255 }); // orange
+    SetColor(Color4{ 255, 140, 30,255 }, intensity); // orange
     m_phase = Math::GetRandD() * 10.0;
     m_speed = 4.0; // 0.8 + 0.4 * Math::GetRandD();
 }
@@ -129,7 +133,7 @@ PulsatingLight::PulsatingLight(Scene* scene)
 void PulsatingLight::Update(double elapsedTime)
 {
     m_phase += elapsedTime * m_speed;
-    m_multiplier = 1.5f + (float)sin(m_phase) * 1.2f;
+    m_multiplier = m_intensity * (1.5f + (float)sin(m_phase) * 1.2f);
 }
 
 

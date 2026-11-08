@@ -533,6 +533,18 @@ namespace
 } // anonymous namespace
 
 
+void Level::ApplyFloorSurface(RenderableInstance& instance, byte surface)
+{
+    const int selector = surface & 31;
+    // DS:0472 supplies native render-table arguments 80/15/15, not display IDs.
+    const auto display = selector == 29 ? static_cast<GamePlay::DisplayType>(80) :
+        selector >= 30 ? GamePlay::DisplayType::VectorOilTint : GamePlay::DisplayType::VectorNormal;
+    if (!GamePlay::IsVectorDisplayType(display, instance.m_tintColor, instance.m_fireIntensity))
+    {
+        throw std::logic_error("Static floor surface requires a supported vector display.");
+    }
+}
+
 RenderableInstancePtr Level::AddStaticCellObject(int x, int y, byte rawVal, HeightLevel atHeight, bool correctInitialPlacement)
 {
     auto staticGeom0 = m_levelInfo.GetModelAnim(2);
@@ -584,6 +596,11 @@ RenderableInstancePtr Level::AddStaticCellObject(int x, int y, byte rawVal, Heig
 			vol.m_tileRange.m_minZ = vol.m_tileRange.m_maxZ = (int8_t)y;
             vol.m_visibilityIsland = m_cellArray.GetCell(x, y).m_visibilityIsland;
             m_wallGeometry.push_back(inst);
+            if (isFloor)
+            {
+                ApplyFloorSurface(*inst, m_cellArray.GetCell(x, y).m_walls);
+                m_floorModels.push_back({ x, y, inst });
+            }
             return inst;
         }
         else
@@ -756,12 +773,12 @@ void Level::CreateSkyGeometry()
 
 void Level::CreateLightmap()
 {
-    if (m_lightmap != nullptr)
+    if (m_lightmap != nullptr && !m_lightmapDirty)
     {
         return;
     }
 
-    m_lightmap = std::make_shared<Texture>();
+    if (!m_lightmap) { m_lightmap = std::make_shared<Texture>(); }
     m_lightmap->m_width = m_cellArray.m_sizeX;
     m_lightmap->m_height = m_cellArray.m_sizeZ;
 
@@ -788,6 +805,7 @@ void Level::CreateLightmap()
 
     Renderer::Instance().CreateTexture(*m_lightmap, thisData);
     m_lightmap->m_runtimeHighres = m_lightmap->m_runtime;
+    m_lightmapDirty = false;
 }
 
 
@@ -1238,6 +1256,52 @@ std::size_t Level::SynchronizeFloorTiles(
 }
 
 
+std::size_t Level::SynchronizeSurfaceTiles(
+    const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride)
+{
+    if (!tiles || width != static_cast<std::size_t>(m_cellArray.m_sizeX) ||
+        height != static_cast<std::size_t>(m_cellArray.m_sizeZ) || rowStride < width)
+    {
+        throw std::invalid_argument("Surface synchronization requires matching level dimensions and tile storage.");
+    }
+    for (int row = 0; row < m_cellArray.m_sizeZ; ++row)
+    {
+        for (int column = 0; column < m_cellArray.m_sizeX; ++column)
+        {
+            const auto before = m_cellArray.GetCell(column, row).m_walls & 31;
+            const auto after = tiles[row * rowStride + column] & 31;
+            if (before != after && ((before >= 1 && before <= 4) || (after >= 1 && after <= 4)))
+            {
+                throw std::runtime_error("Surface synchronization cannot replace prepared water geometry.");
+            }
+        }
+    }
+    std::size_t changed = 0;
+    for (int row = 0; row < m_cellArray.m_sizeZ; ++row)
+    {
+        for (int column = 0; column < m_cellArray.m_sizeX; ++column)
+        {
+            auto& cell = m_cellArray.GetCell(column, row);
+            const byte surface = tiles[row * rowStride + column];
+            if (cell.m_walls == surface) { continue; }
+            m_lightmapDirty |= (cell.m_walls >> 5) != (surface >> 5);
+            cell.m_walls = surface;
+            const byte brightness = static_cast<byte>((surface >> 5) * 155 / 7 + 100);
+            cell.m_brightness = { brightness, brightness, brightness, 0 };
+            ++changed;
+        }
+    }
+    if (changed)
+    {
+        for (const auto& floor : m_floorModels)
+        {
+            ApplyFloorSurface(*floor.instance, m_cellArray.GetCell(floor.column, floor.row).m_walls);
+        }
+    }
+    if (m_lightmap && m_lightmapDirty) { CreateLightmap(); }
+    return changed;
+}
+
 bool Level::CreateObjectRenderInstance(Scene& scene, std::shared_ptr<LevelGameObject> go, RawGameObject& rawGO) const
 {
     AssetManager& assets = AssetManager::Instance();
@@ -1380,9 +1444,16 @@ void Level::CorrectInitialObjectPlacement(RawGameObject& rawGO) const
         }
         rawGO.m_rawShorts[7] = static_cast<int16_t>(height);
     };
-    if (key || puddle)
+    if (key)
     {
-        placeOnFloor(key ? 4 : 2);
+        const auto authoredHeight = rawGO.m_rawShorts[7];
+        placeOnFloor(4);
+        rawGO.m_rawShorts[7] = (std::max)(authoredHeight, rawGO.m_rawShorts[7]);
+        return;
+    }
+    if (puddle)
+    {
+        placeOnFloor(2);
         return;
     }
 

@@ -97,7 +97,7 @@ public:
                 byte unknownSky; // [1 or 2], ofs 101
                 byte ignored_Zero; // always 0
                 byte levelIndexInArray; // but 0 for puzzle level, ofs 103
-                byte cutsceneScript; // ofs 104
+                byte cutsceneScript; // Timed-scene duration in units of 35 native ticks, ofs 104.
                 byte ignored_Ten; // almost always 10, ofs 105
                 byte waterAmplitude; // ofs 106
                 byte amoutOfStars; // number of stars rendered into sky, ofs 107
