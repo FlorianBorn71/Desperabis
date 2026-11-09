@@ -196,6 +196,10 @@ For the first explained case and shared collision-map pointer, see
   plus both original integer sine tables and the sine/cosine lookup helpers.
 - `rotation-evidence.txt`, `rotation-runtime-evidence.txt`: table initialization,
   masked lookups, and the original x87 sine/rounding path.
+- `model-rotation-evidence.txt`: native model sine/cosine consumers, X/Z/Y
+  multiplications and world-object angle submission. The modern conversion is
+  pitch `-winX`, roll `+winZ`, yaw `256+winY`; see
+  [native model rotation](Findings.md#native-model-rotation-and-modern-euler-conversion).
 - `Scaffold/Sound.h`: named sound effects and virtual audio interface.
   Table loading, attenuation, random selection, and channel admission are in
   `GameContext.cpp`.

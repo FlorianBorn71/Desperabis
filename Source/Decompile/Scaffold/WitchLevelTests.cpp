@@ -299,7 +299,23 @@ namespace
         host.playerCollisionSlot = 0;
         host.tickCount = 30;
         Function_WitchHead(head, host);
-        Check(head.generalPurpose2 == 0 && head.winX == 57, "Leaving contact must return the head to its resting tilt.");
+        Check(head.generalPurpose2 == 0 && head.winX == 9, "Leaving contact must return the head to its subtle resting tilt.");
+        const auto restingYaw = head.winY;
+        host.soundListenerX = head.posX + 100;
+        host.soundListenerZ = head.posZ;
+        Function_WitchHead(head, host);
+        Check(head.winY == restingYaw && head.winX == 9,
+            "The reduced pitch must not allow a resting witch to turn when the native nod phase blocks yaw.");
+        host.tickCount = 0;
+        for (std::uint16_t phase = 0; phase < 512; ++phase)
+        {
+            head.generalPurpose2 = phase;
+            Function_WitchHead(head, host);
+            const auto originalPitch = WrapSignedWord(static_cast<std::int32_t>(
+                static_cast<std::uint32_t>(Cosine(WrapSignedWord(phase)) * 27) >> 16) + 30);
+            Check(head.winX == 3 + (originalPitch - 3) / 9 && head.winX >= 3 && head.winX <= 9,
+                "Every native witch nod phase must produce the reduced 3..9 angle range in the behavior.");
+        }
 
         auto& petting = host.worldObjects[14];
         petting.velocityZ = 127; petting.velocityX = 5;

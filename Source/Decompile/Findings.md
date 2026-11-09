@@ -1031,7 +1031,8 @@ Evidence: [rotation-evidence.txt](rotation-evidence.txt).
 The lookups use only entries 0..511; the extra endpoint at index 512 is
 initialized but masked out by these two helpers. Four-byte stride and
 separate low/high word loads establish the 32-bit type, not a 16-bit
-approximation. The first table's consumers have not been traced here.
+approximation. The model renderer uses the first, unboosted table through
+`1E48:0000` (sine) and `1E48:0027` (cosine).
 
 **These are runtime data, not a static 2,048-byte blob in the EXE.**
 The main DS is module-relative segment `2E9E`. Thus the sine table's first
@@ -1132,6 +1133,61 @@ dwords) are `7CCFEECA` for `SineTable` and `F0DFDDDA` for
 formula, the boosted plateau boundaries (indices 111..145 at +65536),
 and both lookup helpers for all 65,536 word angles. Runtime table access
 requires neither mutable context globals nor floating-point computation.
+
+### Native model rotation and modern Euler conversion
+
+The original model transform is recoverable without reconstructing the
+rasterizer. World-object submission at `1E48:B0D5..B152` passes `winX`,
+`winY + playerHeading`, and `winZ` unchanged to `1E48:9C62`. Its sine/cosine
+loads and signed fixed-point multiplications establish X-pitch, Z-roll,
+then Y-yaw. With raw model coordinates `(x,y,z)`, angles `(p,h,r)`, and
+camera heading removed, the rotation is:
+
+```text
+y1 = y*cos(p) - z*sin(p)
+z1 = z*cos(p) + y*sin(p)
+x2 = x*cos(r) - y1*sin(r)
+y2 = y1*cos(r) + x*sin(r)
+dx = x2*cos(h) - z1*sin(h)
+dy = y2
+dz = z1*cos(h) + x2*sin(h)
+```
+
+Native model Y points down; modern world Y points up and world Z is reversed.
+The vertex upload already converts raw coordinates to `(-x,-y,z)`.
+Consequently, the existing modern row-vector X/Z/Y matrix must receive
+**pitch `-winX`, roll `+winZ`, yaw `256+winY`**, each in pi/256 radians.
+No quadrant-specific correction or Euler-angle extraction is required.
+`PropertyAccessorBase::GetEuler` and GameCore's model-anchor sampling now
+use these same signs. The generic matrix builder's order is unchanged.
+The witch behavior supplies its intentional reduced head pitch directly;
+the conversion layer contains no game-specific pitch adjustment.
+
+Previously roll had the opposite sign. Authored roll 0/256 and symmetric
+meshes often hid the mistake. Mine level 23's
+falling slab, native slot 29, starts at `(0,256,128)`; the old conversion
+put its upright end underground. Meteor level 97's slot 2 uses
+`(0,105,496)`, making the roll error visible as an upward instead of downward
+tilt. Neither object's native angle values or behavior needs modification.
+
+An initial transcription reversed the subtraction operands at `A168` and
+`A1F4`, incorrectly suggesting that yaw needed reversing too. In both cases
+the first product is pushed, the second is computed into DX:AX, then
+`POP CX; POP BX; SUB AX,CX; SBB DX,BX` computes **second minus first**.
+The original yaw sign is correct; reversing it made the witch face away.
+
+Regression tests compare both scaled/unscaled matrices and core attachments
+against the independent equations above for 2,197 combined/signed angle
+triples and three basis vectors plus an asymmetric point. They also cover
+both original records and every integer roll from 128 to 0 in the slab's
+fall. An additional original witch-head regression checks that native
+`GetVectorAngle` makes her rendered face point toward a listener in each
+cardinal direction, independently of the transcribed transform oracle.
+This verifies orientation, not bit-exact DOS projection or per-product
+fixed-point rounding; the renderer and anchor sampler retain floating-point
+geometry.
+
+Evidence: [model-rotation-evidence.txt](model-rotation-evidence.txt).
 
 ### Typed game enums
 

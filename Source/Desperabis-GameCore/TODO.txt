@@ -3,18 +3,25 @@ bugs P0:
 - island visibility (graveyard)
 - Skythe model missing tip when 1st person model
 - Concrete block that falls over in mine level: Sticks in ground because of mismatching YPR?
-- key in windmill level not reachable
+- skybox not high engough in general
 
 bugs P1:
 - cursor movement
-- key assignment
+- keyboard assignment
+- visibility bbox fo morphed models (doors, ladder...)
 
 improvements:
-- witch head pointing down
 - graveyard moon blending
-- look throgh ceiling when sliding down in cathedral
+- look through ceiling when sliding down in cathedral
 - black clear color (burning forest)
 
 missing
 - cutscenes
 - strave keys
+- book text
+- music
+
+---------------------------------------------
+Fixed:
+- witch head pointing down
+- key in windmill level not reachable

@@ -593,25 +593,10 @@ namespace GamePlay
     Vector PropertyAccessorBase::GetEuler() const
     {
         const float DespToRad = (float)(Math::Pi / 256.0);
-        float winX = (float)(m_go.m_rawShorts[14]) * DespToRad;       // pitch
-        float winY = (float)(m_go.m_rawShorts[15] + 256) * DespToRad; // yaw
-        float winZ = (float)(m_go.m_rawShorts[16]) * DespToRad;       // roll
-
-        // correct for coffin, but not for switch in sewer
-        winX = (float)(512 - m_go.m_rawShorts[14]) * DespToRad;       // pitch
-        winY = (float)(m_go.m_rawShorts[15] + 256) * DespToRad; // yaw
-        winZ = (float)(m_go.m_rawShorts[16]) * DespToRad;       // roll
-
-        // testing
-        winX = (float)(512 - m_go.m_rawShorts[14]) * DespToRad;       // pitch
-        winY = (float)(m_go.m_rawShorts[15] + 256) * DespToRad; // yaw
-        winZ = (float)(512 - m_go.m_rawShorts[16]) * DespToRad;       // roll
-        if (GetBehaviorType() == BehaviorType::WitchHead)
-        {
-            const float pitch = 3.f + (std::clamp((float)m_go.m_rawShorts[14], 3.f, 57.f) - 3.f) / 9.f;
-            winX = (512.f - pitch) * DespToRad;
-        }
-
+        // Native 1E48:9C62 rotates X/Z/Y; model vertices already negate X/Y.
+        const float winX = -(float)m_go.m_rawShorts[14] * DespToRad;
+        const float winY = (float)(256 + m_go.m_rawShorts[15]) * DespToRad;
+        const float winZ = (float)m_go.m_rawShorts[16] * DespToRad;
         return Vector(winY, winX, winZ);
 
     }

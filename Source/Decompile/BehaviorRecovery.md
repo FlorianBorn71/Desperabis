@@ -3232,6 +3232,13 @@ including nonnumeric transitions; it is not a claim that native `CE0F` adds
 one to those resource IDs. The native routine increments its logical level
 and tests the chapter's final-level bound.
 
+The DX11 all-weapons cheat is restricted by
+`GameContext::CanApplyWeaponCheatLoadout` to HERZ's training and second game
+part. First-part levels keep their ordinary weapon inventory; their asset
+banks do not support the extra weapons. Eligibility uses the destination
+level's part membership, including nonnumeric transitions, and saved-game
+loads still never apply the cheat.
+
 `HandleLevelEndContact` implements the collision-100 branches in
 [the contact and interaction evidence](player-collision-evidence.txt):
 
@@ -4831,9 +4838,12 @@ Modern depth-buffer presentation corrections lift ground keys to at least
 four DOS units above terrain, but never lower elevated authored keys. In
 swamp level 24, active slot 41 remains at `(409,29,815)` inside the windmill;
 the separate shovel-retrieved slot 17 is unaffected. Saved placements are
-never patched. WitchHead keeps its native 3..57 pitch and animation logic,
-while the renderer maps that nod to 3..9 units so its chin stays clear of the
-body. World-view clear color is near-black neutral gray `(0.015,0.015,0.015)`,
+never patched. WitchHead's behavior maps its native nod phase to a 3..9-unit
+pitch so its chin stays clear of the body. The original 3..57 pitch is derived
+from that phase for yaw gating, preserving when she is allowed to turn.
+Euler conversion contains no behavior-specific adjustment. The reduced angle
+is now stored in the object and its saves, rather than patched by the renderer.
+World-view clear color is near-black neutral gray `(0.015,0.015,0.015)`,
 independent of fog, including underwater and reflection passes.
 
 [ParticleTests.cpp](Scaffold/ParticleTests.cpp) checks complete 54-byte records,
@@ -5609,8 +5619,10 @@ selector, not a vector-model scale; the head keeps its own scale 32/64.
 GameCore reads checked original 3DA vertices/markers into level-owned geometry,
 samples the current frame and same-bank `modelFrame2` target, folds weights
 above 100 back toward zero (above 200 uses zero), and applies the renderer's
-coordinate conversion and X-pitch/Z-roll/Y-yaw order. Raw model coordinates
-have ten units per native world unit. World positions round to signed words;
+coordinate conversion and X-pitch/Z-roll/Y-yaw order: pitch `-winX`, roll
+`+winZ` and yaw `256+winY` after the upload's X/Y reflection; see
+[native rotation recovery](Findings.md#native-model-rotation-and-modern-euler-conversion).
+Raw model coordinates have ten units per native world unit. World positions round to signed words;
 WARP compares head and muzzle samples with the actual renderer transform to
 within one native world unit.
 Attachments refresh on level installation, before player contact, and around

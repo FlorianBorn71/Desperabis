@@ -105,8 +105,8 @@ namespace Desperabis
         // Same coordinate conversion and X/Z/Y rotation order as the model renderer.
         double x = -position[0], y = -position[1], z = position[2];
         const double pitch = -object.winX * (3.14159265358979323846 / 256);
-        const double roll = -object.winZ * (3.14159265358979323846 / 256);
-        const double yaw = (object.winY + 256) * (3.14159265358979323846 / 256);
+        const double roll = object.winZ * (3.14159265358979323846 / 256);
+        const double yaw = (256 + object.winY) * (3.14159265358979323846 / 256);
         const auto py = y * std::cos(pitch) - z * std::sin(pitch);
         z = y * std::sin(pitch) + z * std::cos(pitch);
         y = py;

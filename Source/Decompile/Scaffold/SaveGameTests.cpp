@@ -102,6 +102,18 @@ namespace
         Check(host.GetGameParts().size() == 3 && host.GetGameParts()[1].levels.front() == 29 &&
             host.GetGameParts()[2].levels.front() == 9 && host.GetGameParts()[2].endsWithCredits,
             "HERZ must retain transitional indices and its END sentinel.");
+        for (std::size_t part = 0; part < host.GetGameParts().size(); ++part)
+        {
+            for (const auto level : host.GetGameParts()[part].levels)
+            {
+                Check(host.CanApplyWeaponCheatLoadout(level) == (part == 0 || part == 2),
+                    "Weapon cheats must follow HERZ training/part-2 membership and exclude every part-1 level.");
+            }
+        }
+        Check(host.CanApplyWeaponCheatLoadout(50) && host.CanApplyWeaponCheatLoadout(10) &&
+            host.CanApplyWeaponCheatLoadout(90) && !host.CanApplyWeaponCheatLoadout(30) &&
+            !host.CanApplyWeaponCheatLoadout(36) && !host.CanApplyWeaponCheatLoadout(255),
+            "Weapon cheat eligibility must cover training, part-2 shop, nonnumeric part-1 order and unknown levels.");
         host.StartNewGame(1);
         Check(host.freshLoads == 1, "A fresh level must run placement correction exactly once.");
         host.worldObjects[2].generalPurpose1 = 1234;

@@ -108,6 +108,18 @@ namespace Desperabis
         StartLevel(*start);
     }
 
+    bool GameContext::CanApplyWeaponCheatLoadout(std::int16_t levelNumber)
+    {
+        if (levelNumber <= 0) { throw std::invalid_argument("Level numbers must be positive."); }
+        EnsureGameParts();
+        const auto containsLevel = [levelNumber](const GamePart& part)
+        {
+            return std::find(part.levels.begin(), part.levels.end(), levelNumber) != part.levels.end();
+        };
+        return containsLevel(gameParts.at(0)) ||
+            (gameParts.size() > 2 && containsLevel(gameParts[2]));
+    }
+
     void GameContext::InitializeNewGame(std::int16_t chapter)
     {
         EnsureGameParts();

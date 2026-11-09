@@ -3,6 +3,7 @@
 #include "LightningPresentation.h"
 
 #include <GameContext.h>
+#include <GameMath.h>
 #include <BehaviorDispatch.h>
 #include <Asset/AssetManager.h>
 #include <Asset/Font.h>
@@ -4408,22 +4409,154 @@ namespace
             " thicker than two units); behaviorless world-object classification, idempotence and SPL preservation passed.\n";
     }
 
+    void CheckNativeObjectRotations()
+    {
+        const auto nativeOffset = [](const RawGameObject& object, const std::array<int16_t, 3>& vertex)
+        {
+            const double radians = 3.14159265358979323846 / 256.0;
+            const double pitch = (object.m_rawShorts[14] & 511) * radians;
+            const double yaw = (object.m_rawShorts[15] & 511) * radians;
+            const double roll = (object.m_rawShorts[16] & 511) * radians;
+            // Direct transcription of 1E48:9E02..9E9F and A136..A291,
+            // before projection, translation and the uniform vertex scale.
+            const double y1 = vertex[1] * std::cos(pitch) - vertex[2] * std::sin(pitch);
+            const double z1 = vertex[2] * std::cos(pitch) + vertex[1] * std::sin(pitch);
+            const double x2 = vertex[0] * std::cos(roll) - y1 * std::sin(roll);
+            const double y2 = y1 * std::cos(roll) + vertex[0] * std::sin(roll);
+            return std::array<double, 3>{ x2 * std::cos(yaw) - z1 * std::sin(yaw),
+                -y2, -(z1 * std::cos(yaw) + x2 * std::sin(yaw)) };
+        };
+        const std::array<std::array<int16_t, 3>, 4> vertices{{
+            {{1000,0,0}}, {{0,1000,0}}, {{0,0,1000}}, {{-700,430,210}}
+        }};
+        Desperabis::ModelAnchorGeometry anchors;
+        anchors.animations.resize(1);
+        anchors.animations[0].resize(1);
+        auto& frame = anchors.animations[0][0];
+        frame.vertices.assign(vertices.begin(), vertices.end());
+        frame.linkedObjectVertices = {1,2,3,4};
+        const auto check = [&](const RawGameObject& raw)
+        {
+            const auto before = raw;
+            const GamePlay::PropertyAccessorBase props(raw);
+            const auto unscaled = props.GetTransform();
+            const auto scaled = props.GetScaledTransform();
+            auto object = Desperabis::DecodeGameObject(raw.m_rawBytes, 54);
+            object.modelAnim = object.animFrame = 1;
+            object.modelFrame2 = 0;
+            for (std::size_t i = 0; i < vertices.size(); ++i)
+            {
+                const auto& vertex = vertices[i];
+                const auto expected = nativeOffset(raw, vertex);
+                const Vector local(-vertex[0] * DespVertToFloat, -vertex[1] * DespVertToFloat,
+                    vertex[2] * DespVertToFloat);
+                const auto offset = Vector(static_cast<float>(expected[0]) * DespVertToFloat,
+                    static_cast<float>(expected[1]) * DespVertToFloat,
+                    static_cast<float>(expected[2]) * DespVertToFloat);
+                auto scaledOffset = offset;
+                scaledOffset *= props.GetScale();
+                Check((unscaled.TransformPosition(local) - (props.GetPosition() + offset)).GetLength() < 0.0001f &&
+                    (scaled.TransformPosition(local) - (props.GetPosition() + scaledOffset)).GetLength() < 0.0001f,
+                    "Both world-object matrices must match native X/Z/Y arithmetic for every combined angle.");
+                const auto point = anchors.Sample(object, false, static_cast<uint16_t>(i + 1));
+                Check(point && (*point)[0] == Desperabis::WrapSignedWord(object.posX +
+                        static_cast<int>(std::lround(expected[0] / 10))) &&
+                    (*point)[1] == Desperabis::WrapSignedWord(object.posY +
+                        static_cast<int>(std::lround(expected[1] / 10))) &&
+                    (*point)[2] == Desperabis::WrapSignedWord(object.posZ -
+                        static_cast<int>(std::lround(expected[2] / 10))),
+                    ("Core attachments must match native rotation: angles " + std::to_string(object.winX) + "," +
+                        std::to_string(object.winY) + "," + std::to_string(object.winZ) + " vertex " +
+                        std::to_string(i) + " actual " + (point ? std::to_string((*point)[0]) + "," +
+                        std::to_string((*point)[1]) + "," + std::to_string((*point)[2]) : "missing") +
+                        " offset " + std::to_string(expected[0]) + "," + std::to_string(expected[1]) + "," +
+                        std::to_string(expected[2])).c_str());
+            }
+            Check(std::memcmp(before.m_rawBytes, raw.m_rawBytes, 54) == 0,
+                "Rotation conversion must not rewrite native angles or positions.");
+        };
+        RawGameObject raw{};
+        raw.m_rawBytes[1] = raw.m_rawBytes[3] = 1;
+        raw.m_rawShorts[6] = 1200;
+        raw.m_rawShorts[7] = 40;
+        raw.m_rawShorts[8] = 2300;
+        raw.m_rawUShorts[26] = 40960;
+        const int16_t angles[] = {0,32,105,128,255,256,384,496,511,-16,-128,-32768,32767};
+        for (auto pitch : angles)
+        {
+            for (auto yaw : angles)
+            {
+                for (auto roll : angles)
+                {
+                    raw.m_rawShorts[14] = pitch;
+                    raw.m_rawShorts[15] = yaw;
+                    raw.m_rawShorts[16] = roll;
+                    check(raw);
+                }
+            }
+        }
+        for (int level : {23,97})
+        {
+            const auto records = FORCE_GET(FileManager::Instance().ReadDataFuture(
+                FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS" + std::to_wstring(level) + L".DAT")));
+            const int slot = level == 23 ? 29 : 2;
+            std::memcpy(raw.m_rawBytes, records.data() + (slot - 2) * 54, 54);
+            Check(raw.m_rawShorts[14] == 0 && raw.m_rawShorts[15] == (level == 23 ? 256 : 105) &&
+                raw.m_rawShorts[16] == (level == 23 ? 128 : 496),
+                "Rotation regressions must use the authored mine slab and meteor angle triples.");
+            check(raw);
+            if (level != 23) { continue; }
+            for (int16_t roll = 128; roll >= 0; --roll)
+            {
+                raw.m_rawShorts[16] = roll;
+                check(raw);
+                const auto raisedEnd = GamePlay::PropertyAccessorBase(raw).GetTransform().TransformPosition(
+                    Vector(1000 * DespVertToFloat, 0, 0));
+                Check(raisedEnd.GetY() >= GamePlay::PropertyAccessorBase(raw).GetPosition().GetY() - 0.00001f,
+                    "The mine slab's raised end must fall toward the ground, never rotate underneath it.");
+            }
+        }
+        const auto witchRecords = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS90.DAT")));
+        std::memcpy(raw.m_rawBytes, witchRecords.data() + (5 - 2) * 54, 54);
+        Check(raw.m_rawShorts[15] == 310 &&
+            GamePlay::PropertyAccessorBase(raw).GetBehaviorType() == GamePlay::BehaviorType::WitchHead,
+            "The facing regression must use the original witch head, not a symmetric test mesh.");
+        const std::array<std::array<int16_t, 2>, 4> listenerOffsets{{
+            {{100,0}}, {{0,100}}, {{-100,0}}, {{0,-100}}
+        }};
+        for (const auto& target : listenerOffsets)
+        {
+            raw.m_rawShorts[15] = Desperabis::GetVectorAngle(target[0], target[1]);
+            const GamePlay::PropertyAccessorBase head(raw);
+            auto facing = head.GetTransform().TransformPosition(Vector(0,0,-1)) - head.GetPosition();
+            facing.Set(facing.GetX(), 0, facing.GetZ(), 0);
+            facing.Normalize();
+            Check(std::abs(facing.GetX() - target[0] / 100.f) < 0.00001f &&
+                std::abs(facing.GetZ() + target[1] / 100.f) < 0.00001f,
+                "The witch's rendered face must point toward the listener selected by native heading math in all four directions.");
+        }
+        std::cout << "Object rotations: 2197 combined/signed angle triples, native basis/attachment agreement, "
+            "authored meteor, every mine-slab roll and witch/listener cardinal facing passed.\n";
+    }
+
     void CheckObjectPresentations()
     {
+        CheckNativeObjectRotations();
         static_assert(LevelScene::ObjectSlotCount == std::tuple_size_v<decltype(Desperabis::GameContext::worldObjects)>);
         {
             RawGameObject head{};
             head.m_rawShorts[4] = static_cast<int16_t>(GamePlay::BehaviorType::WitchHead);
             head.m_rawShorts[14] = 3;
             const float attentive = GamePlay::PropertyAccessorBase(head).GetEuler().GetY();
-            head.m_rawShorts[14] = 57;
+            head.m_rawShorts[14] = 9;
             const float resting = GamePlay::PropertyAccessorBase(head).GetEuler().GetY();
             Check(std::abs(attentive - resting - 6.f * Math::Pi / 256.f) < 0.00001f &&
-                head.m_rawShorts[14] == 57,
-                "The witch's native 54-unit nod must render as a subtle six-unit tilt without changing gameplay state.");
+                head.m_rawShorts[14] == 9,
+                "Euler conversion must preserve the six-unit nod supplied by the witch behavior.");
             head.m_rawShorts[4] = 0;
-            Check(std::abs(GamePlay::PropertyAccessorBase(head).GetEuler().GetY() - resting) > 0.5f,
-                "The subtle nod must not change unrelated model rotations.");
+            Check(GamePlay::PropertyAccessorBase(head).GetEuler().GetY() == resting,
+                "Euler conversion must be identical for witch heads and all other object behaviors.");
         }
         {
             LevelScene forest(25);

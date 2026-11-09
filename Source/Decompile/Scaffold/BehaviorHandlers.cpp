@@ -3277,12 +3277,17 @@ namespace Desperabis
 
     DispatchResult Function_WitchHead(RawGameObject& object, GameContext& context)
     {
+        const auto nativePitch = [&object]()
+        {
+            return WrapSignedWord(static_cast<std::int32_t>(
+                static_cast<std::uint32_t>(Cosine(WrapSignedWord(object.generalPurpose2)) * 27) >> 16) + 30);
+        };
         auto target = GetVectorAngle(WrapSignedWord(context.soundListenerX - object.posX),
             WrapSignedWord(context.soundListenerZ - object.posZ));
         NormalizeAnglePair(object.winY, target);
         if (context.tickCount > context.Random(25)) { object.velocityY = static_cast<std::int16_t>(context.Random(4) + 2); }
         const auto delta = GetStepToward(object.winY, target, WrapSignedWord(object.velocityY * context.tickCount));
-        if (delta != 0 && object.winX < 10) { object.winY = WrapSignedWord(object.winY + delta); }
+        if (delta != 0 && nativePitch() < 10) { object.winY = WrapSignedWord(object.winY + delta); }
         else if (context.tickCount > context.Random(20)) { object.velocityY = 0; }
         if (context.playerCollisionSlot > 0)
         {
@@ -3291,8 +3296,8 @@ namespace Desperabis
         object.generalPurpose2 = static_cast<std::uint16_t>(object.generalPurpose2 +
             GetStepToward(WrapSignedWord(object.generalPurpose2), context.playerCollisionSlot > 0 ? 256 : 0,
                 WrapSignedWord(context.tickCount * 10)));
-        object.winX = WrapSignedWord(static_cast<std::int32_t>(
-            static_cast<std::uint32_t>(Cosine(WrapSignedWord(object.generalPurpose2)) * 27) >> 16) + 30);
+        // Keep the native phase/yaw gate, but reduce the chin-clipping nod to six angle units.
+        object.winX = static_cast<std::int16_t>(3 + (nativePitch() - 3) / 9);
         object.blendWeightOrSpriteOpacity = WrapSignedWord(
             object.blendWeightOrSpriteOpacity + object.velocityX * context.tickCount);
         if (object.blendWeightOrSpriteOpacity > 200)

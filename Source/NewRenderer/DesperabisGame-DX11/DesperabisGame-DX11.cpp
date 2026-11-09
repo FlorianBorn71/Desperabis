@@ -418,7 +418,7 @@ namespace
 			g_scene = std::move(scene);
 			g_worldTime = 0;
 			g_freeCam->JumpTo(g_scene->GetInitialPosition());
-			if (g_cheatMode && !savedData) { ApplyCheatLoadout(); }
+			if (g_cheatMode && !savedData && CanApplyWeaponCheatLoadout(request.levelNumber)) { ApplyCheatLoadout(); }
 			const auto title = "Desperabis (DX11) - level " + std::to_string(request.levelNumber);
 			SetWindowTextA(g_hWnd, title.c_str());
 			if (g_initialized)

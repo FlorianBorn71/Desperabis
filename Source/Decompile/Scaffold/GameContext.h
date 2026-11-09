@@ -368,6 +368,7 @@ namespace Desperabis
         void LoadGameParts();
         void SetGameParts(const std::uint8_t* bytes, std::size_t size);
         const std::vector<GamePart>& GetGameParts() const;
+        bool CanApplyWeaponCheatLoadout(std::int16_t levelNumber);
         void LoadGame(std::vector<std::uint8_t> bytes);
         std::vector<std::uint8_t> CaptureSaveGame(std::string_view name);
         const std::vector<std::uint8_t>* GetPendingSaveGame() const;
