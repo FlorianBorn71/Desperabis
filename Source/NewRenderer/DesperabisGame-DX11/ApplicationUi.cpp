@@ -15,6 +15,41 @@
 #include <cmath>
 #include <stdexcept>
 
+void ApplicationUi::SynchronizeObjectPresentations(const std::function<void(int)>& update,
+    const std::function<void(int, const char*)>& reportError)
+{
+    if (!update || !reportError) { throw std::invalid_argument("Object synchronization requires update and error callbacks."); }
+    for (int slot = 2; slot <= 164; ++slot)
+    {
+        try { update(slot); }
+        catch (const std::exception& error) { reportError(slot, error.what()); }
+    }
+}
+
+bool ApplicationUi::SynchronizeLevelGeometry(Level& level, const Desperabis::Level& geometry,
+    const std::function<void(const char*, const char*)>& reportError)
+{
+    if (!reportError) { throw std::invalid_argument("Geometry synchronization requires an error reporter."); }
+    bool succeeded = true;
+    const auto synchronize = [&](const char* operation, auto method, const auto& tiles)
+    {
+        try
+        {
+            (level.*method)(&tiles[0][0],
+                Desperabis::Level::Width, Desperabis::Level::Height, Desperabis::Level::Width);
+        }
+        catch (const std::exception& error)
+        {
+            succeeded = false;
+            reportError(operation, error.what());
+        }
+    };
+    synchronize("wall synchronization failed", &Level::SynchronizeWallTiles, geometry.wallTextures);
+    synchronize("floor synchronization failed", &Level::SynchronizeFloorTiles, geometry.floorObjects);
+    synchronize("surface synchronization failed", &Level::SynchronizeSurfaceTiles, geometry.surfaceFlags);
+    return succeeded;
+}
+
 std::vector<std::shared_ptr<TextMeshInstance>> ApplicationUi::CreateVitalMeters(
     const Texture& healthTexture, const Desperabis::UiRectangle& bounds,
     float healthFraction, std::optional<float> oxygenFraction)
@@ -114,7 +149,8 @@ namespace
     void DrawModel(const Desperabis::UiModel& command, const Level& level, RendererDX11& renderer,
         const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
         ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView,
-        Texture* weaponTexture = nullptr, bool faceSwordCamera = false, Model* modelOverride = nullptr)
+        Texture* weaponTexture = nullptr, bool faceSwordCamera = false, Model* modelOverride = nullptr,
+        bool clearDepth = true)
     {
         Desperabis::RawGameObject object;
         object.health = 1000;
@@ -139,7 +175,9 @@ namespace
         else { level.ApplyRenderProperties(instance, raw); }
         if (!instance->IsValid() || !instance->GetVisible())
         {
-            throw std::runtime_error("Application UI references an unavailable model frame.");
+            throw std::runtime_error("Application UI references an unavailable model frame: " +
+                std::to_string(command.modelId) + "/" + std::to_string(command.animation + 1) +
+                "/" + std::to_string(command.frame + 1) + ".");
         }
         const auto& bounds = instance->GetRenderable()->m_localBounds;
         const auto center = bounds.GetCenter();
@@ -209,7 +247,7 @@ namespace
         context.TrackGlobals();
         context.SetGeometryPassType(GeometryPassType::Instances);
         // Model pictures need private depth, but must retain earlier UI color.
-        deviceContext->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1.f, 0);
+        if (clearDepth) { deviceContext->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1.f, 0); }
         deviceContext->OMSetRenderTargets(1, &colorView, depthView);
         deviceContext->RSSetViewports(1, &viewport);
         const auto draw = [&context](const RenderableInstance& item)
@@ -372,6 +410,47 @@ Vector ApplicationUi::ElectricityTipWorld(const Desperabis::WeaponView& view,
         Vector(px / viewport.Width * 2.f - 1.f, 1.f - py / viewport.Height * 2.f, 0.5f));
     ray *= -tip.GetZ() / std::fabs(ray.GetZ());
     return camera.GetCameraTransformMatrix(0).TransformPosition(ray);
+}
+
+void ApplicationUi::DrawBossFall(const std::vector<Desperabis::RawGameObject>& objects,
+    RendererDX11& renderer, const Level& level, const RenderingSettings& settings,
+    ProfilingStats& stats, const D3D11_VIEWPORT& viewport, ID3D11DeviceContext3* deviceContext,
+    ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView)
+{
+    const float black[]{0, 0, 0, 1};
+    deviceContext->ClearRenderTargetView(colorView, black);
+    deviceContext->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1.f, 0);
+    for (const auto& object : objects)
+    {
+        const auto animation = level.GetLevelInfo().GetModelAnim(object.modelId - 30);
+        const auto* model = animation ? animation->GetModelSafe(object.modelAnim - 1, object.animFrame - 1) : nullptr;
+        if (!model) { throw std::runtime_error("Boss presentation references a missing model frame."); }
+        if (!model->HasOwnDrawcalls() && model->m_subRenderables.empty())
+        {
+            if (model->m_numPositions == 0 || model->m_numUnsupportedPrimitives != 0)
+            {
+                throw std::runtime_error("Boss presentation references an unsupported model frame.");
+            }
+            // The staged root is an anchor rig; its linked world objects provide the visible body.
+            continue;
+        }
+        Desperabis::UiModel command{};
+        command.bounds = {0, 0, 320, 240};
+        command.modelId = object.modelId;
+        command.animation = object.modelAnim - 1;
+        command.frame = object.animFrame - 1;
+        command.blendFrame = object.modelFrame2;
+        command.blendWeight = object.blendWeightOrSpriteOpacity;
+        command.displayType = object.displayType;
+        command.angles = {object.winX, object.winY, object.winZ};
+        command.focalLength = 128;
+        command.color = {255, 255, 255};
+        command.cameraSpacePosition = std::array<std::int16_t, 3>{
+            object.posX, static_cast<std::int16_t>(-object.posY), object.posZ};
+        command.projectionCenterY = 90.f;
+        DrawModel(command, level, renderer, settings, stats, viewport,
+            deviceContext, colorView, depthView, nullptr, false, nullptr, false);
+    }
 }
 
 void ApplicationUi::DrawWeapon(const Desperabis::WeaponView& view, RendererDX11& renderer, const Level& level,

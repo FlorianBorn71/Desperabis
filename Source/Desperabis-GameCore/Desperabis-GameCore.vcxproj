@@ -64,6 +64,7 @@
     <ClCompile Include="..\Decompile\Scaffold\PlayerInteraction.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\GameDiagnostics.h" />
     <ClInclude Include="..\Decompile\Scaffold\GameContext.h" />
     <ClInclude Include="..\Decompile\Scaffold\SaveGame.h" />
     <ClInclude Include="..\Decompile\Scaffold\GameRuntime.h" />

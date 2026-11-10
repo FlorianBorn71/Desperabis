@@ -336,6 +336,21 @@ public:
         audio.CopyAmbient(1, 0);
         audio.EndAmbientLoopCreation(2048);
         audio.StartAmbientPlayback();
+        Reject<std::invalid_argument>([&] { audio.CreateMusicPlayback({}, false); });
+        std::vector<byte> music(1024, 128);
+        audio.CreateMusicPlayback(music, false);
+        music.clear();
+        Check(audio.m_ambientPcm.size() == 1024 && !audio.m_loopAmbient && !audio.m_buildingAmbient,
+            "Music must own its PCM independently of the input and preserve non-looping playback.");
+        audio.StartAmbientPlayback();
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        audio.m_ambientVoice->GetState(&state);
+        Check(state.BuffersQueued == 0, "Non-looping music must finish without restarting.");
+        audio.BeginAmbientLoopCreation(2048);
+        audio.CopyAmbient(1, 0);
+        audio.EndAmbientLoopCreation(1024);
+        Check(audio.m_loopAmbient, "Regular ambience must restore looping after non-looping music.");
+        audio.StartAmbientPlayback();
     }
 
     static void RunRecipes(AudioPlayer& audio)
@@ -366,6 +381,9 @@ int main(int argc, char** argv)
         TestRenderer renderer;
         FileManagerBuiltIn files;
         files.Initialize();
+        Check(FORCE_GET(files.ReadDataFuture(L"SAMP/MUSIC1.WAV")) ==
+            ReadFile(std::filesystem::path(argv[1]) / "MUSIC1.WAV"),
+            "The embedded final-ending soundtrack must retain every original RIFF byte.");
         FORCE_WAIT(TestAwaitMacros());
         Check(FORCE_GET(AwaitValue()) == 42, "FORCE_GET lost its return value.");
         Reject<std::runtime_error>([] { FORCE_WAIT(AwaitFailure()); });

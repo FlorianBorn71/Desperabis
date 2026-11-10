@@ -134,6 +134,8 @@ namespace GamePlay
         EndBossFeeler = 93,
         EndBossBody = 94,
         BreakableGround = 95, // In final level 26, where endboss falls down
+        FallingGroundFragment = 96,
+        BossPitTrap = 97,
         Moon = 100,
         WaterDrop = 101,
         UnderwaterColorAnim = 104, // underwater vertex color animation
@@ -207,11 +209,11 @@ namespace GamePlay
         SkullInCutScene = 212, // the skull in the crystal ball
         // unknowns:
         LightningGenerator = 102,
-        Behavior_111 = 111, // Something in the ending village cutscene. One instance assigned to the shovel
+        EndingSequenceTrigger = 111,
         WindController = 108,
         Behavior_148 = 148, // something I could not locate in level 35
-        Behavior_161 = 161, // Something in the ending merlin cutscene
-        Behavior_170 = 170, // Something in the ending village cutscene. 2 instances assigned to grates
+        RandomAttachmentYaw = 161,
+        ObjectPoseSequence = 170,
         Behavior_178 = 178, // the barrel in the staircase, probably manages the staircase up/down teleport
         Behavior_201 = 201, // could be thunder or leaf particles gen (assigned once to decoration in level 10)
         ForceWeaponSelection = 206,
@@ -284,7 +286,7 @@ namespace GamePlay
         RotatingBlades = 103,
         WaterRecharge = 105, // at fountain
         Type_107 = 107, // unknown, two trees in level 10, but no behavior
-        CutSceneCloud = 110, // in end cut scene
+        RenderSuppressed = 110, // Native draw exclusion, including ending pose templates.
         SwimmingParticles = 117, // underwater with large Octopus
         Teleporter = 120, // various teleporter to jump between map parts in level 10 and 36
         SarcophagusWithBones = 121, // reveals bones to feed dogs
@@ -355,6 +357,8 @@ namespace GamePlay
         int LogLineBestMatch(int line, std::wstringstream& wss) const;
 
         inline bool Isvalid() const { return GetHealth() != 0; }
+        // Native draw entry 1E48:A6ED excludes collision 110, including live pose-template records.
+        inline bool IsRenderSuppressed() const { return GetCollisionType() == CollisionType::RenderSuppressed; }
         inline DisplayType GetDisplayType() const { return (DisplayType)m_go.m_rawBytes[51]; }
 
         inline int GetModelId() const { return (int)m_go.m_rawBytes[0]; }

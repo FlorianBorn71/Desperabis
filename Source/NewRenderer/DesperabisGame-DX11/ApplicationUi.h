@@ -5,6 +5,7 @@
 #include <Renderer/TextMesh.h>
 #include <Renderer/RenderingSettings.h>
 #include <DX11/DX11Decls.h>
+#include <functional>
 #include <map>
 
 class RendererDX11;
@@ -26,6 +27,11 @@ public:
     // Called only when a map is visible. Clears the core's dirty flag after a successful upload.
     bool UploadCollisionMap(Desperabis::GameContext& core, Renderer& renderer);
     bool UploadGeometryMap(const Desperabis::GameContext& core, Renderer& renderer);
+    // Reports each failed plane independently; false does not prevent subsequent object presentation.
+    static bool SynchronizeLevelGeometry(Level& level, const Desperabis::Level& geometry,
+        const std::function<void(const char*, const char*)>& reportError);
+    static void SynchronizeObjectPresentations(const std::function<void(int)>& update,
+        const std::function<void(int, const char*)>& reportError);
     void ApplyMapMaterial(RenderableInstance& instance, const ModelAnim& model, Renderer& renderer);
     const Texture* GetGeometryMapTexture() const { return m_geometryMap.get(); }
     static std::vector<std::shared_ptr<TextMeshInstance>> CreateVitalMeters(
@@ -36,6 +42,10 @@ public:
         ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView);
     static Vector ElectricityTipWorld(const Desperabis::WeaponView& view,
         const Desperabis::ModelAnchorGeometry& geometry, const Camera& camera, const D3D11_VIEWPORT& viewport);
+    void DrawBossFall(const std::vector<Desperabis::RawGameObject>& objects, RendererDX11& renderer,
+        const Level& level, const RenderingSettings& settings, ProfilingStats& stats,
+        const D3D11_VIEWPORT& viewport, ID3D11DeviceContext3* deviceContext,
+        ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView);
     void Draw(const Desperabis::ApplicationPresentation& presentation, RendererDX11& renderer,
         const Level& level, const Font& font, const TextureAnim& hud,
         const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,

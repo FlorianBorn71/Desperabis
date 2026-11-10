@@ -3243,8 +3243,8 @@ loads still never apply the cheat.
 [the contact and interaction evidence](player-collision-evidence.txt):
 
 * Contact with signed word **44 = 1000** is a terminal-part exit, regardless
-  of word 46. Per the requested modern flow, it goes directly to the main menu
-  rather than invoking the native chapter-completion presentation.
+  of word 46. Training and the first part return to the main menu; the final
+  second-part level starts the recovered ending presentation.
 * Otherwise, contact advances only when signed word **46 = 0**.
 * Explicit interaction with **46 > 0** invokes the existing key-unlock helper
   `10AC:3DCE`; a matching key is consumed and the lock cleared. Subsequent
@@ -3252,8 +3252,10 @@ loads still never apply the cheat.
   automatic exits.
 
 `EndLevel` selects the next resource level within the current part; finishing
-`50`, `35` or `26` unloads gameplay and selects `MainMenu`, with no active/resumable
-game and no wrap into another part. `StartNextGamePart` is a separate development
+`50` or `35` unloads gameplay and selects `MainMenu`, with no active/resumable
+game and no wrap into another part. Completing `26` starts recorded `96`,
+then timed village epilogue `95`, then unloads to `MainMenu`.
+`StartNextGamePart` is a separate development
 operation. Tab/Shift+Tab are sampled by `UpdateApplication`, with a single
 navigation edge even if Shift changes while Tab is held.
 
@@ -3280,6 +3282,146 @@ exit contact loading actual level-11 assets, key/terminal gates, zero/batched
 ticks, input edges, session cleanup, lifecycle unload, synchronous/deferred
 loading, explicit failures and retries. `ambient-sound` also verifies stopping
 the old loop at request time rather than waiting for completion.
+
+### Final boss, collapsing floor and ending
+
+[Bounded native evidence](final-level-native-evidence.txt) records the dispatch,
+boss helpers, floor trap, dam/flood, projectile variants and ending presentation
+against the executable hash above. Native slots below include the two reserved
+records before OBJPOS data; behavior IDs come from the dispatch, not nearby enum
+names.
+
+In asset **26**, entrance trigger **60** activates group **20**. Boss root
+**23** (`TriggerDebris`, 70, helper `10AC:B833`) follows the player with map and
+object collision correction. Its animated parts are head **28** (91), legs
+**31/32** (92), feelers **30/33** (93), and body **26** (94). Leg frame transitions
+drive stride/hopping; head phase drives vertical motion and the root's firing
+counter selects head frame 4 and the large subtype-nine flame. This emitter uses
+the existing `FlyingArrow` item-7 flame update, with scale 21, XZ/Y radii 40/32,
+damage byte 30 and a 14..18-tick lifetime.
+
+Slabs **34..45** use `BreakableGround` (95) and collision 47. Central slabs
+**40/41** have strength **20**, versus 1000 for the others. Each actual boss
+support contact subtracts **2**. Exhaustion changes the slab to
+`FallingGroundFragment` (96), removes its collision mask, and gives it 30 ticks
+of falling lifetime. Collapse propagates through temporary mask-80 contacts and
+random strength loss. The root's signed-half vertical movement, per-tick gravity,
+terrain support and leg impulses remain active after its support disappears.
+These are dynamic slab models over an already-authored pit: removing the slabs
+exposes the original geometry rather than replacing static terrain.
+
+Hidden controller **46**, `BossPitTrap` (97, `10AC:CC18`), kills colliding weapon/
+ammo objects. Boss contact starts the isolated falling-boss presentation
+`1E48:B2FE(300,47)`. Only after playback does it kill the root, invoke
+zero-damage activation for health **1002** records in slots 2..140, and clear short-lived effects. This
+opens the rescue route and activates falling debris. Native doors are opened
+through their hinge fields; their activation does not necessarily normalize
+health to 1000. The magician is terminal collision-100 object **19**.
+
+The authored falling rocks **58,63..81** are `FlyingArrow` (41), **not**
+`MercuryLamp` (42). Item 8 waits until `Random(5000) < 500 - soundDistance`,
+then changes to item 9. Item 9 applies gravity, bounces with quarter-speed
+rebound, plays impact sound 37, derives its damage byte from vertical speed,
+and becomes inert when rebound is below 4. Floors deeper than -300 use the
+native -1000 debris support clamp.
+
+Dam **9** is `BreakableStoneWallFloodingWater` (48), **not** drawbridge 49.
+A weapon hit starts its ten-unit hinge velocity and activates group 1.
+`FloodingWater` (131) front **6** moves at X velocity -6, patches matching dry
+collision pixels to water, changes surface selector 0 to byte **225**, converts
+mask-80 contacts to floating debris, and emits a drifting ripple each tick.
+Wall contact ends the front; its freed slot may immediately become that final
+ripple. Map writes use the core upload-dirty helpers and surface changes advance
+the geometry revision.
+
+The ending route is **26 -> 96 -> 95 -> menu**. Native presentation 33 loads
+`DEMO6.KOO` with asset 96 before the logical-loader decrement selects village
+epilogue 95. The recording is a three-byte header (level byte plus uint16 payload
+size), followed by **498 six-byte frames**: int16 X, int16 Z, uint8 heading,
+uint8 action bits. Heading is doubled into the existing target-yaw smoothing;
+there are no Y/pitch triples. World simulation precedes each recorded pose
+override, as in native `C558`. Pause and zero ticks do not consume frames;
+batched playback preserves per-tick simulation. Nonzero action bits and malformed
+frames are explicit load failures. Meteor 97 remains a separate, stationary,
+700-tick camera scene and never consumes DEMO6.
+
+`ObjectPoseSequence` (170, `10AC:BCAE`) drives the ending's linear XYZ/angle/frame
+interpolation and template replacements. `RandomAttachmentYaw` (161) drives its
+attached actor. Epilogue `EndingSequenceTrigger` (111) applies wind, delayed group
+activation and camera heading. Its LEVELS.INF timer is **18 * 35 = 630 ticks**.
+`LightningGenerator` (102) reuses the existing weather implementation.
+
+Native object draw entry `1E48:A6D8` tests collision byte 6 at `A6ED` and
+skips drawing collision type **110**. This field is therefore also a presentation
+marker, not merely a collision response. The ending's health-1000 slots
+**4, 6..10, 12..15, 23** are pose templates. Live actor **11** follows
+`11 -> 4 -> 15 -> 7 -> 8 -> 9 -> 10 -> 12 -> 13 -> 14 -> 6 -> 23`;
+`ObjectPoseSequence` copies the next template into slot 11 and clears its
+collision type to None, leaving the source template intact. The renderer
+suppresses type 110 in initial scene population and runtime mesh/sprite updates,
+including attached presentation effects, without changing simulation validity or
+template health. Collision type 110 is named `RenderSuppressed`; it is distinct
+from `BehaviorType::CutSceneCloud` (171).
+
+Music selector **101** decodes mono unsigned 8-bit, 11025-Hz `MUSIC1.WAV` as a
+non-looping track; selector **102** preserves it across 96 -> 95 without restart.
+The RIFF parser walks chunk lengths/padding (the original has an extended fmt
+and fact chunk), validates format and data, and submits only owned PCM.
+The DX11 sample embedding generator also includes MUSIC1, so production playback
+does not depend on mounting MUSIC.DAT or finding loose source assets.
+
+The pit presentation uses authored staged root **47** and linked parts **48..57**,
+not the live boss or a downward rotation of the player's camera. Ordinary
+simulation and gameplay input stop while the staged rig animates. Its depth
+starts at -100 with velocity 1 and acceleration 0.25 per tick; yaw is elapsed+100.
+Native post-draw termination compares depth-1500 against 940 (tick 140 for
+single-tick steps), with 300 as an upper time limit. The subtraction is a
+termination test, not a camera offset: `0D9A` projects against actual vertex depth.
+The lava shaft uses model **36**, bank 1, frames 1/2, plus five rotating frame-3
+strips from DS:`0366/0370/037A`; the strip multiplier is an 80-bit **1.2** constant,
+not a double. Behavior-52 morphs advance explicitly during this modal loop.
+The root is an anchor-only rig and is not itself a drawable mesh. The DX11
+application draws the assembly in a separate shared-depth view; native world
+records, player position and player camera remain unchanged. Pause and zero ticks
+freeze playback, and completion removes the live boss and linked emitters before
+opening the rescue route. Palette and near-plane rasterization remain modern
+renderer adaptations, not pixel-exact DOS reproduction.
+
+Other modern presentation adaptations remain explicit. The
+DOS projected-muzzle sentinel is replaced by model-anchor resolution, so attack
+simulation is not camera-visibility-gated. Player pit contact uses the existing
+core depletion/death path rather than unloading mid-object-update.
+`CutSceneCloud` (171) overrides native depth attenuation, not cloud-scroll speed;
+the application approximates it with a temporary fog-falloff multiplier and
+restores ordinary fog on expiry. No game-state policy is added to the renderer.
+
+`final-level-and-ending` exercises original-asset dispatch, activation, exact
+weak-slab thresholds, the native-spawn chase and gravity/collapse-to-pit defeat
+without a forced impact teleport, flames, dam/flood/debris, rescue, all 498 camera frames, pause,
+batching, malformed inputs, music reuse and all 630 epilogue ticks. DX11 audio
+tests verify byte-exact embedded music, owned PCM and real non-looping completion.
+Release WARP tests exercise original dam/prison/ripple morph pixels, scene-bound
+boss-head subtexture preservation, next-frame GPU light removal after actual gold
+pickup, and visible isolated-fall animation. Ending visibility regressions use
+the original level-96 templates, initial scene population, hide/show transitions,
+sprite overrides, and 1000 ticks of the complete live pose chain, requiring
+unchanged source records and visible attachment/lightning meshes. These tests do
+not yet reproduce the reported persistent pickup light and must not be interpreted
+as a fix for that report.
+
+The head corruption was reproduced specifically across animation-frame changes.
+Native head helper `10AC:BAC9..BBCE` updates its phase, vertical attachment offset,
+and frame **3** (rest) or **4** (fire); it does not rewrite model geometry or change
+display modes. Both converted frames contain five genuine sprite quads alongside
+the mesh. A reused render instance incorrectly retained the previous frame's
+material overrides: a draw-call slot that previously bound the complete model
+atlas could now belong to a sprite requiring an owned subtexture. `ApplyRenderProperties`
+now discards those overrides only when the primary model/frame changes, then
+rebuilds texture bindings; same-frame overrides remain intact. The remote viewer
+also rebinds tracked animations after updates, matching the game client.
+Release WARP regressions start in fire frame 4, repeatedly switch 4/3, and require
+pixel-identical rendering to a fresh instance of each frame, not just unchanged
+texture pointers within one frame.
 
 ### Inventory and explicit interaction
 

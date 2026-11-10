@@ -37,6 +37,80 @@ namespace
         if (FAILED(result)) { throw std::runtime_error("D3D11 test setup failed: " + std::to_string(result)); }
     }
 
+    template<typename Exception, typename Action>
+    void CheckRecoverableError(Action action)
+    {
+        bool rejected = false;
+        try { action(); }
+        catch (const Exception&) { rejected = true; }
+#ifndef NDEBUG
+        Check(rejected, "Recoverable errors must throw their original exception type in Debug.");
+#else
+        Check(!rejected, "Recoverable errors must log and take their safe recovery path in Release.");
+#endif
+    }
+
+    void CheckPresentationRecovery()
+    {
+        class RecoveryScene final : public Scene
+        {
+            FUTURE(void) CreateScene() override { CO_RETURN; }
+        } scene;
+        const auto invalidAnimation = [&] { scene.AddFireAnimation(nullptr, 13, 1.f); };
+        CheckRecoverableError<std::invalid_argument>(invalidAnimation);
+        CheckRecoverableError<std::out_of_range>([&] { scene.SetFireAnimationFrame(13, 0); });
+        RenderableInstance material;
+        material.m_materialOverride.resize(1);
+        material.m_materialOverride[0].m_textureSlot = 17;
+        CheckRecoverableError<std::out_of_range>([&] { scene.AddFireAnimationInstance(material, 0); });
+        CheckRecoverableError<std::out_of_range>([&] { scene.AddFireAnimationInstance(material, 1); });
+        scene.HandleFireAnimations(0.1);
+        Check(scene.GetRenderableInstances().empty(),
+            "Rejected optional animations must not register renderables or corrupt subsequent animation updates.");
+
+        Desperabis::GameContext core;
+        core.worldObjects[2].health = 1000;
+        core.worldObjects[2].renderPlacementMode = 20;
+        core.worldObjects[2].generalPurpose3 = 1;
+        core.worldObjects[2].doorLockOrGroupBitmask = 166;
+        std::array<int, 166> updates{};
+        int failures = 0;
+        for (int tick = 0; tick < 2; ++tick)
+        {
+            ApplicationUi::SynchronizeObjectPresentations([&](int slot)
+            {
+                core.GetObjectRenderState(slot);
+                ++updates[slot];
+            }, [&](int slot, const char* message)
+            {
+                Check(slot == 2 && message && *message,
+                    "Presentation failures must identify the offending slot and provide a diagnostic.");
+                ++failures;
+            });
+        }
+        Check(failures == 2 && updates[2] == 0 && updates[3] == 2 && updates[164] == 2,
+            "Failed object presentation must be retried without starving subsequent slots or later frames.");
+        core.worldObjects[2].renderPlacementMode = 0;
+        ApplicationUi::SynchronizeObjectPresentations([&](int slot)
+        {
+            core.GetObjectRenderState(slot);
+            ++updates[slot];
+        }, [&](int, const char*) { ++failures; });
+        Check(updates[2] == 1 && updates[164] == 3 && failures == 2,
+            "A repaired object's presentation must recover on its very next synchronization.");
+        std::cout << "Recovery policy: optional animation skips, per-slot presentation failure isolation, retries and recovery passed.\n";
+    }
+
+    std::vector<RenderableInstancePtr> PopulatedGeometry(const std::vector<RenderableInstancePtr>& instances)
+    {
+        std::vector<RenderableInstancePtr> result;
+        for (const auto& instance : instances)
+        {
+            if (instance->GetRenderable()->IsValid()) { result.push_back(instance); }
+        }
+        return result;
+    }
+
     template<typename T>
     std::vector<T> ReadBuffer(ID3D11Device3* device, ID3D11DeviceContext3* context, ID3D11Buffer* buffer)
     {
@@ -682,11 +756,9 @@ namespace
             }
             for (const auto invalid : {-1.f, std::numeric_limits<float>::infinity(), std::numeric_limits<float>::quiet_NaN()})
             {
-                bool rejected = false;
-                try { source->SetSpecularAmount(invalid); }
-                catch (const std::invalid_argument&) { rejected = true; }
-                Check(rejected && source->GetSpecularAmount() == 2.f,
-                    "Invalid specular amounts must be explicitly rejected without changing the previous value.");
+                CheckRecoverableError<std::invalid_argument>([&] { source->SetSpecularAmount(invalid); });
+                Check(source->GetSpecularAmount() == 2.f,
+                    "Invalid specular amounts must leave the previous value unchanged.");
             }
             source->SetSpecularAmount(1.f);
             Check(source->FillLightParams(enabled) && enabled.ColorAndPadding.w == 1.f,
@@ -1936,6 +2008,543 @@ namespace
             "Slime dissolve must forward the native blend weight.");
     }
 
+    void CheckFinalLevelRuntimePresentation(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        class Host final : public Desperabis::GameContext
+        {
+        public:
+            LevelScene* scene = nullptr;
+            void OnObjectDestroyed(int slot) override { if (scene) { scene->RemoveObjectPresentation(slot); } }
+        private:
+            std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+            {
+                return FORCE_GET(FileManager::Instance().ReadDataFuture(FileManager::Instance().FilenameToNative(
+                    std::wstring(filename.begin(), filename.end()))));
+            }
+            void LoadLevel(const Desperabis::LevelLoadRequest& request) override
+            {
+                Desperabis::LevelLoadData data;
+                LoadLevelGeometry(request.levelNumber, data);
+                LoadLevelObjects(request.levelNumber, data);
+                InitializeLevelPlayerSpawn(data, {0, 0, 100});
+                CompleteLevelLoad(request.id, std::move(data));
+            }
+        } core;
+        core.StartLevel(26);
+        LevelScene scene(26);
+        scene.m_createGameObjects = false;
+        FORCE_WAIT(scene.CreateScene());
+        core.scene = &scene;
+        scene.ClearObjectPresentations();
+        scene.GetPlayerLight()->SetMode(PlayerLight::Mode::Off);
+        const float extent = 20.f * DespToFloat;
+        ModelLoadingContext positions;
+        positions.m_vertexPos = {{-extent,-extent,0,1}, {extent,-extent,0,1},
+            {extent,extent,0,1}, {-extent,extent,0,1}};
+        ModelConversionContext mesh(positions);
+        mesh.m_numPositions = 4;
+        for (uint16_t vertex = 0; vertex < 4; ++vertex)
+        {
+            mesh.AddToBounds(positions.m_vertexPos[vertex], 0.f);
+            mesh.m_vertices.emplace_back().SetTextured(vertex, {255,255,255,0}, {0,0});
+        }
+        mesh.m_sortedIndices = {0,1,2,0,2,3,0,2,1,0,3,2};
+        mesh.GeneratePerTriangleNormals(mesh.m_sortedIndices.data(), 12, 0);
+        for (auto& vertex : mesh.m_vertices) { vertex.Normal = {0,0,-1}; }
+        Renderable receiver;
+        receiver.m_runtime = renderer.CreateModelBuffers(mesh);
+        receiver.m_numPositions = 4;
+        receiver.m_numPolygons = 2;
+        mesh.GenerateBoundingVolume(receiver.m_localBounds);
+        auto& draw = receiver.m_drawCalls.emplace_back();
+        draw.m_primitiveCount = 4;
+        draw.m_material.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
+        draw.m_material.m_transparencyType = TransparencyMode::Opaque;
+        draw.m_material.m_applyLighting = true;
+        draw.m_material.ComputeHash();
+        auto cube = std::make_shared<RenderableInstance>(&receiver);
+        const auto& gold = core.worldObjects[5];
+        const auto position = Level::DespToPos(gold.posX, gold.posY, gold.posZ);
+        cube->SetTranslation(Vector(position.GetX(), position.GetY(), position.GetZ() - 30.f * DespToFloat));
+        for (auto& material : cube->GetOrCreateMaterialOverrides())
+        {
+            material.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
+            material.m_applyLighting = true;
+            material.ComputeHash();
+        }
+        cube->ComputeTransparencyMask();
+        Matrix4 projection, transform;
+        projection.CreateOrthographic(80.f * DespToFloat, 60.f * DespToFloat, 0.01f, 20.f);
+        transform.SetTranslation(Vector(position.GetX(), position.GetY(), position.GetZ() - 30.f * DespToFloat + 5.f));
+        Camera camera;
+        camera.SetProjectionMatrix(projection);
+        camera.SetCameraTransformMatrix(transform);
+        VisibilityResult visible;
+        visible.m_mainCamera = &camera;
+        visible.m_visibleInstances.m_opaqueInstances.push_back({cube.get(), ~uint32_t{0}});
+        visible.m_visibleInstances.m_visibleTransparencyTypes = cube->GetUsedTransparencyMask();
+        visible.m_ambientColor = {0, 0, 0};
+        visible.m_ambientNrmlContribution = 0;
+        visible.m_fogColor = {0, 0, 0};
+        visible.m_fogFalloff = 0;
+        visible.m_lightmap = AssetManager::Instance().GetPlainWhiteTexture();
+        Target target(device, 320, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        RenderingSettings settings;
+        ProfilingStats stats;
+        const auto renderLight = [&]
+        {
+            visible.m_visibileLights.clear();
+            for (const auto& source : scene.GetLightSources())
+            {
+                PackedLightSourceParams packed;
+                if (source->FillLightParams(packed)) { visible.m_visibileLights.push_back(packed); }
+            }
+            const float black[]{0, 0, 0, 1};
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            return target.Pixels(device, context);
+        };
+        visible.m_ambientColor = {1,1,1};
+        const auto receiverPixels = renderLight();
+        Check(std::any_of(receiverPixels.begin(), receiverPixels.end(),
+            [](auto pixel) { return (pixel & 0xffffff) != 0; }),
+            "The GPU light-lifetime receiver must render visible geometry.");
+        visible.m_ambientColor = {0,0,0};
+        const auto dark = renderLight();
+        ::RawGameObject raw{};
+        Desperabis::EncodeGameObject(gold, raw.m_rawBytes, 54);
+        scene.UpdateObjectPresentation(5, raw);
+        scene.Update(0.1);
+        const auto lit = renderLight();
+        Check(lit != dark, "Original gold must illuminate actual pixels before pickup.");
+        Desperabis::HandlePlayerObjectInteraction(core.worldObjects[5], core);
+        Check(renderLight() == dark && !scene.GetObjectPresentation(5),
+            "Picking up original gold must remove its GPU lighting on the very next frame.");
+        ApplicationUi ui;
+        class Input final : public Desperabis::InputHandler
+        {
+            bool IsKeyPressed(Desperabis::InputKey) override { return false; }
+        } input;
+        std::vector<std::pair<std::string, std::string>> synchronizationErrors;
+        const auto reportSynchronizationError = [&](const char* operation, const char* message)
+        {
+            synchronizationErrors.emplace_back(operation, message);
+        };
+        Check(ApplicationUi::SynchronizeLevelGeometry(*scene.m_level, *core.level, reportSynchronizationError) &&
+            synchronizationErrors.empty(), "Original final-level geometry must synchronize without errors.");
+        const auto originalSurface = core.level->surfaceFlags[3][21];
+        Check((originalSurface & 31) == 0, "The native flood regression must start on dry ground.");
+        core.level->surfaceFlags[3][21] = 225;
+        core.basicPlayerMovementEnabled = false;
+        core.UpdateApplication(0, input);
+        Check(Desperabis::HandlePlayerObjectInteraction(core.worldObjects[20], core).status ==
+            Desperabis::InteractionStatus::Applied && core.worldObjects[18].generalPurpose2 == 3,
+            "The original prison switch must activate its door before testing presentation fault isolation.");
+        auto ripple = core.worldObjects[6];
+        ripple.health = 40;
+        ripple.behavior = Desperabis::BehaviorType::DriftingParticle;
+        ripple.animFrame = 5;
+        ripple.modelFrame2 = 4;
+        ripple.displayType = Desperabis::DisplayType::VectorNormal;
+        ripple.renderPlacementMode = 3;
+        ripple.blendWeightOrSpriteOpacity = 80;
+        ripple.posX = ripple.posZ = 150;
+        ripple.posY = ripple.velocityY = ripple.velocityZ = 0;
+        ripple.velocityX = 2;
+        core.ReplaceWorldObject(100, ripple);
+        auto doorInstance = std::make_shared<RenderableInstance>();
+        auto rippleInstance = std::make_shared<RenderableInstance>();
+        const auto sceneTimeBeforeFailure = scene.GetSceneTime();
+        float previousDoorBlend = 0.f;
+        for (int frame = 1; frame <= 3; ++frame)
+        {
+            const auto application = core.UpdateApplication(1.0 / 33, input);
+            Check(application.tick && application.tick->status == Desperabis::GameTickStatus::Advanced &&
+                application.worldDeltaSeconds > 0, "Flooding must not stop successful core ticks.");
+            Check(ApplicationUi::SynchronizeLevelGeometry(*scene.m_level, *core.level, reportSynchronizationError) &&
+                synchronizationErrors.empty() &&
+                scene.m_level->GetCellArray().GetCell(21, 3).m_waterSlot == WaterSlotIndex::WaterSlot1,
+                "The native flood transition must update water geometry without reporting a synchronization error.");
+            for (const int slot : {18, 100})
+            {
+                raw.m_level = scene.m_level;
+                Desperabis::EncodeGameObject(core.GetObjectRenderState(slot), raw.m_rawBytes, 54);
+                scene.m_level->ApplyRenderProperties(slot == 18 ? doorInstance : rippleInstance, raw);
+            }
+            Check(doorInstance->m_blendWeight > previousDoorBlend &&
+                std::abs(doorInstance->m_blendWeight -
+                    core.worldObjects[18].blendWeightOrSpriteOpacity * 0.01f) < 0.00001f,
+                "The switch-operated prison door must keep receiving advancing morphs while the level floods.");
+            Check(core.worldObjects[100].posX == 150 + frame * 2 && core.worldObjects[100].health == 40 - frame &&
+                rippleInstance->GetRenderable() &&
+                std::abs(rippleInstance->m_blendWeight - (80 - frame * 5) * 0.01f) < 0.00001f,
+                "Ripple movement, lifetime and presentation must continue while the level floods.");
+            previousDoorBlend = doorInstance->m_blendWeight;
+            const auto previousSceneTime = scene.GetSceneTime();
+            scene.Update(application.worldDeltaSeconds);
+            Check(scene.GetSceneTime() > previousSceneTime,
+                "Flood synchronization must preserve the successful core tick's scene-time delta.");
+        }
+        Check(scene.GetSceneTime() > sceneTimeBeforeFailure,
+            "Scene animations must advance during flood synchronization.");
+        core.level->surfaceFlags[3][21] = originalSurface;
+        Check(ApplicationUi::SynchronizeLevelGeometry(*scene.m_level, *core.level, reportSynchronizationError) &&
+            synchronizationErrors.empty(), "Water removal must synchronize without errors.");
+        std::cout << "Final-level flooding: water synchronization, switch-operated prison door, "
+            "ripple movement/presentation and scene time advance without errors.\n";
+        core.BeginBossFall(23, 46);
+        const auto renderFall = [&](bool bossOnly = false)
+        {
+            auto view = core.GetBossFallView();
+            if (bossOnly) { view.erase(view.begin(), view.begin() + 7); }
+            ui.DrawBossFall(view, renderer, *scene.m_level, settings, stats,
+                target.viewport, context, target.colorView.Get(), target.depthView.Get());
+            return target.Pixels(device, context);
+        };
+        const auto start = renderFall();
+        core.Tick({60,60}, input);
+        const auto falling = renderFall();
+        int changed = 0, pixels = 0;
+        for (std::size_t pixel = 0; pixel < start.size(); ++pixel)
+        {
+            if (start[pixel] != falling[pixel]) { ++changed; }
+            if ((falling[pixel] & 0xffffff) != 0) { ++pixels; }
+        }
+        Check(pixels > 200 && changed > 200,
+            "The native staged assembly and lava shaft must visibly animate in the isolated GPU view.");
+        const auto visibleBossPixels = [&]
+        {
+            const auto body = renderFall(true);
+            return std::count_if(body.begin(), body.end(),
+                [](auto pixel) { return (pixel & 0xffffff) != 0; });
+        };
+        const auto nearBossPixels = visibleBossPixels();
+        core.Tick({60,60}, input);
+        const auto farBossPixels = visibleBossPixels();
+        Check(farBossPixels > 0 && farBossPixels < nearBossPixels,
+            "The staged boss itself must remain visible and shrink as it falls away, independently of the shaft.");
+        std::cout << "Final-level runtime: gold pickup clears next-frame GPU illumination; isolated boss fall has "
+            << pixels << " visible pixels and " << changed << " changing pixels; boss shrinks from "
+            << nearBossPixels << " to " << farBossPixels << " pixels.\n";
+        core.scene = nullptr;
+    }
+
+    void CheckEndingActorVisibility()
+    {
+        static_assert(static_cast<int>(Desperabis::CollisionType::RenderSuppressed) == 110);
+        static_assert(static_cast<int>(GamePlay::CollisionType::RenderSuppressed) == 110);
+        Check(std::string(GamePlay::CollisionTypeToString(GamePlay::CollisionType::RenderSuppressed)) ==
+            "RenderSuppressed", "Collision diagnostics must use the recovered render-suppression name.");
+        auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(96));
+        const auto originals = level->GetRawGameObjects();
+        const int templates[]{4, 6, 7, 8, 9, 10, 12, 13, 14, 15, 23};
+        auto instance = std::make_shared<RenderableInstance>();
+        auto actor = originals.at(11 - 2);
+        level->ApplyRenderProperties(instance, actor);
+        Check(instance->GetVisible() && instance->IsValid(),
+            "The original ending's live magician must render before its first pose transition.");
+        const auto* actorModel = instance->GetRenderable();
+        for (const int slot : templates)
+        {
+            auto pose = originals.at(slot - 2);
+            const auto originalPose = pose;
+            const GamePlay::PropertyAccessorBase properties(pose);
+            Check(properties.Isvalid() && properties.IsRenderSuppressed() && properties.GetHealth() == 1000,
+                "Ending pose templates must remain active records despite native render suppression.");
+            level->ApplyRenderProperties(instance, pose);
+            Check(!instance->GetVisible() && !instance->IsValid() && pose == originalPose,
+                "Switching a visible instance to a pose template must clear its mesh without changing gameplay data.");
+            auto fresh = std::make_shared<RenderableInstance>();
+            level->ApplyRenderProperties(fresh, pose);
+            Check(!fresh->GetVisible() && !fresh->IsValid(),
+                "Fresh pose-template instances must also remain hidden.");
+            level->ApplyRenderProperties(instance, actor);
+            Check(instance->GetVisible() && instance->GetRenderable() == actorModel,
+                "Clearing render suppression must restore a reused actor instance.");
+        }
+        for (const byte collision : {byte{109}, byte{111}})
+        {
+            auto neighbor = actor;
+            neighbor.m_rawBytes[6] = collision;
+            level->ApplyRenderProperties(instance, neighbor);
+            Check(instance->GetVisible() && instance->IsValid(),
+                "Only collision 110, not neighboring collision types, must suppress rendering.");
+        }
+        auto sprite = originals.at(0);
+        sprite.m_rawBytes[6] = 110;
+        level->ApplyRenderProperties(instance, sprite, AssetManager::Instance().GetPlainWhiteTexture());
+        Check(!instance->GetVisible() && !instance->IsValid(),
+            "Native suppression must also apply to sprites, including explicit texture overrides.");
+
+        LevelScene legacy(96);
+        legacy.m_createMapIcons = false;
+        FORCE_WAIT(legacy.CreateScene());
+        int liveActors = 0;
+        for (const auto& object : legacy.GetGameObjects())
+        {
+            const auto levelObject = std::dynamic_pointer_cast<LevelGameObject>(object);
+            if (!levelObject) { continue; }
+            const GamePlay::PropertyAccessorBase properties(levelObject->m_rawGO);
+            Check(!properties.IsRenderSuppressed(),
+                "Initial scene population must not replace suppressed templates with debug fallback sprites.");
+            if (properties.GetBehaviorType() == GamePlay::BehaviorType::ObjectPoseSequence)
+            {
+                Check(levelObject->m_renderInst && levelObject->m_renderInst->GetVisible(),
+                    "Initial scene population must retain the live pose-sequence actor.");
+                ++liveActors;
+            }
+        }
+        Check(liveActors == 1, "The original ending must populate exactly one live magician pose-sequence actor.");
+        for (int slot = 16; slot <= 22; ++slot)
+        {
+            auto effect = originals.at(slot - 2);
+            level->ApplyRenderProperties(instance, effect);
+            Check(instance->GetVisible() && instance->IsValid(),
+                "The magician's attachment and lightning-generator meshes must not be suppressed.");
+        }
+        auto emitter = actor;
+        emitter.m_rawShorts[4] = static_cast<short>(GamePlay::BehaviorType::LightSource);
+        const auto lightCount = legacy.GetLightSources().size();
+        legacy.UpdateObjectPresentation(11, emitter);
+        Check(legacy.GetObjectPresentation(11) && legacy.GetLightSources().size() == lightCount + 1,
+            "An ordinary live emitter must own its presentation light.");
+        emitter.m_rawBytes[6] = 110;
+        legacy.UpdateObjectPresentation(11, emitter);
+        Check(!legacy.GetObjectPresentation(11) && legacy.GetLightSources().size() == lightCount,
+            "Render suppression must also remove an existing object's presentation extras.");
+        legacy.UpdateObjectPresentation(11, emitter);
+        Check(!legacy.GetObjectPresentation(11) && legacy.GetLightSources().size() == lightCount,
+            "Suppressed source records must not create presentation extras on subsequent frames.");
+        emitter.m_rawBytes[6] = 0;
+        legacy.UpdateObjectPresentation(11, emitter);
+        Check(legacy.GetObjectPresentation(11) && legacy.GetLightSources().size() == lightCount + 1,
+            "Clearing render suppression must restore presentation extras.");
+        legacy.RemoveObjectPresentation(11);
+
+        Desperabis::GameContext core;
+        for (std::size_t index = 0; index < originals.size(); ++index)
+        {
+            core.ReplaceWorldObject(static_cast<int>(index + 2),
+                Desperabis::DecodeGameObject(originals[index].m_rawBytes, 54));
+        }
+        core.tickCount = 1;
+        std::array<bool, 166> visited{};
+        for (int tick = 0; tick < 1000; ++tick)
+        {
+            core.UpdateObjectPoseSequence(core.worldObjects[11]);
+            const auto& live = core.worldObjects[11];
+            Check(live.collisionType == Desperabis::CollisionType::None &&
+                live.behavior == Desperabis::BehaviorType::ObjectPoseSequence,
+                "Every copied ending pose must remain a drawable live actor, not a suppressed template.");
+            visited.at(live.generalPurpose1) = true;
+            Desperabis::EncodeGameObject(live, actor.m_rawBytes, 54);
+            level->ApplyRenderProperties(instance, actor);
+            Check(instance->GetVisible() && instance->IsValid(),
+                "The live magician must remain visible throughout the original pose chain.");
+        }
+        for (const int slot : templates)
+        {
+            Check(visited.at(slot), "The original pose sequence must visit every ending template.");
+            auto pose = originals.at(slot - 2);
+            Desperabis::EncodeGameObject(core.worldObjects[slot], pose.m_rawBytes, 54);
+            Check(pose == originals.at(slot - 2),
+                "Rendering and pose playback must preserve each original source template.");
+        }
+        Check(level->GetRawGameObjects() == originals,
+            "Ending presentation must not mutate cached authored records.");
+        std::cout << "Ending visibility: 11 hidden templates, initial population, hide/show, sprite overrides, "
+            "presentation lights and 1000 live pose-chain ticks passed.\n";
+    }
+
+    void CheckFinalLevelMorphs(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(26));
+        const auto records = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS26.DAT")));
+        const auto geometryBytes = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"LEVEL\\FELD26.256")));
+        Desperabis::Level floodedGeometry;
+        floodedGeometry.LoadGeometry(geometryBytes.data(), geometryBytes.size());
+        floodedGeometry.surfaceFlags[3][21] = 225;
+        LevelScene scene(26);
+        scene.m_createGameObjects = false;
+        FORCE_WAIT(scene.CreateScene());
+        ::RawGameObject head{};
+        head.m_level = level;
+        std::memcpy(head.m_rawBytes, records.data() + (28 - 2) * 54, 54);
+        head.m_rawBytes[3] = 4;
+        auto headInstance = std::make_shared<RenderableInstance>();
+        level->ApplyRenderProperties(headInstance, head);
+        const auto headMaterials = headInstance->GetOrCreateMaterialOverrides();
+        scene.AddRenderableInstance(headInstance);
+        scene.Update(0.03);
+        for (std::size_t material = 0; material < headMaterials.size(); ++material)
+        {
+            Check(headInstance->m_materialOverride.at(material).m_texture == headMaterials[material].m_texture,
+                "Scene animation binding must preserve the boss head's owned billboard subtextures.");
+        }
+        Texture lightmap;
+        lightmap.CreatePlainWhite();
+        lightmap.m_atlasData = { 0, 0, 0.5f, 0.5f };
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        RenderingSettings settings;
+        ProfilingStats stats;
+        head.m_rawShorts[6] = head.m_rawShorts[7] = head.m_rawShorts[8] = 0;
+        head.m_rawShorts[14] = head.m_rawShorts[15] = head.m_rawShorts[16] = 0;
+        const auto headAnimation = level->GetLevelInfo().GetModelAnim(5);
+        const auto* headMesh = headAnimation->GetModel(3, 2)->GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
+        const auto headVertices = ReadBuffer<ModelVertex>(device, context, headMesh->m_vertexBuffer.Get());
+        const auto headIndices = ReadBuffer<uint16_t>(device, context, headMesh->m_indexBuffer.Get());
+        int atlasToSpriteChanges = 0;
+        for (const int frame : {3, 3, 4, 4, 3})
+        {
+            const auto previousMaterials = headInstance->GetOrCreateMaterialOverrides();
+            head.m_rawBytes[3] = static_cast<byte>(frame);
+            level->ApplyRenderProperties(headInstance, head);
+            scene.AssignFireAnimations(*headInstance);
+            scene.Update(0.03);
+            auto freshHead = std::make_shared<RenderableInstance>();
+            level->ApplyRenderProperties(freshHead, head);
+            freshHead->UpdateGlobalBounds();
+            const auto center = freshHead->GetGlobalBounds().GetCenter();
+            const float span = (std::max)(freshHead->GetGlobalBounds().GetSphereRadius() * 3.f, 0.2f);
+            Matrix4 projection, transform;
+            projection.CreateOrthographic(span * 1.5f, span, 0.1f, 20.f);
+            transform.SetTranslation(Vector(center.GetX(), center.GetY(), center.GetZ() + 10.f));
+            Camera camera;
+            camera.SetProjectionMatrix(projection);
+            camera.SetCameraTransformMatrix(transform);
+            VisibilityResult visible;
+            visible.m_mainCamera = &camera;
+            visible.m_ambientColor = {1, 1, 1};
+            visible.m_ambientNrmlContribution = 0;
+            visible.m_fogColor = {0, 0, 0};
+            visible.m_fogFalloff = 0;
+            visible.m_lightmap = &lightmap;
+            const auto renderHead = [&](RenderableInstance* instance)
+            {
+                visible.m_visibleInstances.m_opaqueInstances = {{instance, ~uint32_t{0}}};
+                visible.m_visibleInstances.m_visibleTransparencyTypes = instance->GetUsedTransparencyMask();
+                const float black[]{0, 0, 0, 1};
+                context->ClearRenderTargetView(target.colorView.Get(), black);
+                context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+                renderer.RenderSceneElements(visible, settings, stats);
+                return target.Pixels(device, context);
+            };
+            const auto expected = renderHead(freshHead.get());
+            const auto& drawCalls = headInstance->GetRenderable()->m_drawCalls;
+            int spriteTriangles = 0;
+            for (const auto& drawCall : drawCalls)
+            {
+                for (int triangle = 0; triangle < drawCall.m_primitiveCount; ++triangle)
+                {
+                    if (headVertices[headIndices[drawCall.m_firstIndex + triangle * 3]].StretchMode ==
+                        static_cast<uint16_t>(VertexStretchMode::Sprite))
+                    {
+                        ++spriteTriangles;
+                        Check(drawCall.m_material.m_texture != &headAnimation->m_textureAtlas,
+                            "Boss-head sprites must bind owned subtextures, not the complete model atlas.");
+                        const auto material = static_cast<std::size_t>(&drawCall - drawCalls.data());
+                        if (material < previousMaterials.size() &&
+                            previousMaterials[material].m_texture == &headAnimation->m_textureAtlas)
+                        {
+                            ++atlasToSpriteChanges;
+                        }
+                    }
+                }
+            }
+            std::cout << "Final-level boss head frame " << frame << ": " << spriteTriangles << " sprite triangles.\n";
+            Check(std::any_of(expected.begin(), expected.end(),
+                [](auto pixel) { return (pixel & 0xffffff) != 0; }),
+                "Both original boss-head animation frames must render visible reference pixels.");
+            Check(renderHead(headInstance.get()) == expected,
+                "Switching boss-head frames must render exactly like a fresh instance, without stale atlas materials.");
+            const auto& materials = headInstance->GetOrCreateMaterialOverrides();
+            for (std::size_t material = 0; material < drawCalls.size(); ++material)
+            {
+                Check(materials.at(material).m_texture == drawCalls[material].m_material.m_texture,
+                    "Switching boss-head frames must replace old atlas/subtexture material overrides.");
+            }
+        }
+        Check(atlasToSpriteChanges > 0,
+            "Original boss-head transitions must exercise an old atlas-material slot becoming a sprite subtexture.");
+        headInstance->GetOrCreateMaterialOverrides().front().m_depthOffset = 0.125f;
+        level->ApplyRenderProperties(headInstance, head);
+        Check(headInstance->GetMaterialOverrides().front().m_depthOffset == 0.125f,
+            "Updates within the same model frame must preserve instance-specific material overrides.");
+        std::cout << "Final-level boss head: repeated frames 4/3 match fresh-instance GPU pixels and materials.\n";
+        for (const int slot : {9, 18, 6})
+        {
+            ::RawGameObject raw{};
+            raw.m_level = level;
+            std::memcpy(raw.m_rawBytes, records.data() + (slot - 2) * 54, 54);
+            if (slot == 6)
+            {
+                raw.m_rawBytes[3] = 5;
+                raw.m_rawBytes[2] = 4;
+            }
+            raw.m_rawShorts[6] = raw.m_rawShorts[7] = raw.m_rawShorts[8] = 0;
+            raw.m_rawShorts[14] = raw.m_rawShorts[15] = raw.m_rawShorts[16] = 0;
+            raw.m_rawShorts[21] = 0;
+            auto instance = std::make_shared<RenderableInstance>();
+            level->ApplyRenderProperties(instance, raw);
+            Check(instance->GetRenderable() && instance->GetBlendTargetRenderable(),
+                "Original dam, prison door and flood surface must resolve both morph frames.");
+            instance->UpdateGlobalBounds();
+            const auto center = instance->GetGlobalBounds().GetCenter();
+            const float span = (std::max)(instance->GetGlobalBounds().GetSphereRadius() * 3.f, 0.2f);
+            Matrix4 projection, transform;
+            projection.CreateOrthographic(span * 1.5f, span, 0.1f, 20.f);
+            transform.SetTranslation(Vector(center.GetX(), center.GetY(), center.GetZ() + 10.f));
+            Camera camera;
+            camera.SetProjectionMatrix(projection);
+            camera.SetCameraTransformMatrix(transform);
+            VisibilityResult visible;
+            visible.m_mainCamera = &camera;
+            visible.m_visibleInstances.m_opaqueInstances.push_back({instance.get(), ~uint32_t{0}});
+            visible.m_visibleInstances.m_visibleTransparencyTypes = instance->GetUsedTransparencyMask();
+            visible.m_ambientColor = {1.f, 1.f, 1.f};
+            visible.m_fogColor = {0.f, 0.f, 0.f};
+            visible.m_fogFalloff = 0.f;
+            visible.m_lightmap = &lightmap;
+            const auto render = [&](short blend)
+            {
+                Check(ApplicationUi::SynchronizeLevelGeometry(*level, floodedGeometry,
+                    [](const char* operation, const char* message)
+                    {
+                        throw std::runtime_error(std::string(operation) + ": " + message);
+                    }), "Water synchronization must succeed before GPU morph updates.");
+                raw.m_rawShorts[21] = blend;
+                level->ApplyRenderProperties(instance, raw);
+                Check(std::abs(instance->m_blendWeight - blend * 0.01f) < 0.00001f,
+                    "Final-level native morph weights must reach their render instances.");
+                const float black[]{0, 0, 0, 1};
+                context->ClearRenderTargetView(target.colorView.Get(), black);
+                context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+                renderer.RenderSceneElements(visible, settings, stats);
+                return target.Pixels(device, context);
+            };
+            const auto closed = render(0);
+            const auto half = render(50);
+            const auto open = render(100);
+            int halfwayChanges = 0, endpointChanges = 0, visiblePixels = 0;
+            for (std::size_t pixel = 0; pixel < closed.size(); ++pixel)
+            {
+                if ((closed[pixel] & 0xffffff) != 0) { ++visiblePixels; }
+                if (closed[pixel] != half[pixel]) { ++halfwayChanges; }
+                if (closed[pixel] != open[pixel]) { ++endpointChanges; }
+            }
+            std::cout << "Final-level slot " << slot << ": " << visiblePixels
+                << " visible pixels, " << halfwayChanges << " halfway changes, "
+                << endpointChanges << " endpoint changes.\n";
+            Check(visiblePixels > 20 && halfwayChanges > 20 && endpointChanges > 20,
+                "Original final-level morphs must visibly animate on the GPU, not just update CPU properties.");
+        }
+    }
+
     void CheckMummyFade(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
         const struct
@@ -2163,11 +2772,13 @@ namespace
                 CreateWallGeometry();
                 for (const auto& instance : m_wallGeometry) { m_scene.AddRenderableInstance(instance); }
             }
-            const auto& Walls() const { return m_wallGeometry; }
+            auto Walls() const { return PopulatedGeometry(m_wallGeometry); }
             const auto& GeneratedWalls() const { return m_wallRenderables; }
             const auto& MutableWalls() const { return m_mutableWalls; }
             const auto& MutableFloors() const { return m_mutableFloors; }
             const auto& FloorModels() const { return m_floorModels; }
+            const auto& WaterSurfaces() const { return m_waterSurfaces; }
+            RenderableInstancePtr InvalidStaticTile() { return AddStaticCellObject(1, 1, 63, HeightLevel::Floor); }
             Texture& Lightmap() { CreateLightmap(); return *m_lightmap; }
             const Scene& WallScene() const { return m_scene; }
             RenderableInstancePtr UpdateFront(const Desperabis::RawGameObject& object)
@@ -2296,6 +2907,27 @@ namespace
         Check(promotedCaveCorners > 0, "Connected-material promotion must affect the real cave floor/ceiling models.");
         const auto feld = read(L"LEVEL\\FELD11.256");
         auto objects = read(L"LEVEL\\OBJPOS11.DAT");
+        auto controls = objects;
+        auto badMarker = Desperabis::DecodeGameObject(controls.data() + (49 - 2) * 54, 54);
+        badMarker.posX = -100;
+        Desperabis::EncodeGameObject(badMarker, controls.data(), 54);
+        WallLevel invalidControl;
+        CheckRecoverableError<std::runtime_error>([&]
+        {
+            invalidControl.BuildOriginal(assets->GetLevelInfo(), feld, controls);
+        });
+#ifdef NDEBUG
+        Check(invalidControl.MutableWalls().size() == 2,
+            "Release must skip a bad wall marker while still preparing both subsequent valid wall triggers.");
+#endif
+        LevelInfo missingFrameInfo = assets->GetLevelInfo();
+        missingFrameInfo.m_loadedModel[2] = std::make_shared<ModelAnim>();
+        WallLevel missingFrame;
+        missingFrame.ReadGrid(missingFrameInfo, feld, true);
+        RenderableInstancePtr missingTile;
+        CheckRecoverableError<std::runtime_error>([&] { missingTile = missingFrame.InvalidStaticTile(); });
+        Check(!missingTile && missingFrame.FloorModels().empty(),
+            "An unavailable optional static tile must not publish a render instance or floor presentation.");
         Desperabis::Level geometry;
         geometry.LoadGeometry(feld.data(), feld.size());
         geometry.BuildCollisionMap();
@@ -2415,6 +3047,25 @@ namespace
         }
         Check(restored.MutableWalls().empty() && restoredTriangles + removableTriangles == triangles,
             "Saved cleared tiles and dead/repositioned triggers must never resurrect removed wall faces.");
+        const auto& invalidWall = level.MutableWalls().front();
+        const auto originalWall = geometry.wallTextures[invalidWall.row][invalidWall.column];
+        const auto originalBrightness = geometry.surfaceFlags[0][0];
+        geometry.wallTextures[invalidWall.row][invalidWall.column] = static_cast<byte>(invalidWall.originalWall ^ 16);
+        geometry.surfaceFlags[0][0] ^= 0xe0;
+        std::vector<std::pair<std::string, std::string>> geometryErrors;
+        const auto reportGeometryError = [&](const char* operation, const char* message)
+        {
+            geometryErrors.emplace_back(operation, message);
+        };
+        Check(!ApplicationUi::SynchronizeLevelGeometry(level, geometry, reportGeometryError) &&
+            geometryErrors.size() == 1 && geometryErrors[0].first == "wall synchronization failed" &&
+            !geometryErrors[0].second.empty() &&
+            level.GetCellArray().GetCell(0, 0).m_walls == geometry.surfaceFlags[0][0],
+            "A genuinely unsupported wall replacement must be reported without preventing later surface synchronization.");
+        geometry.wallTextures[invalidWall.row][invalidWall.column] = originalWall;
+        geometry.surfaceFlags[0][0] = originalBrightness;
+        Check(ApplicationUi::SynchronizeLevelGeometry(level, geometry, reportGeometryError) && geometryErrors.size() == 1,
+            "Restored geometry must synchronize normally after an independently reported wall failure.");
         int changedPixels = 0;
         for (int direction = 0; direction < 4; ++direction)
         {
@@ -2836,14 +3487,14 @@ namespace
         Desperabis::EncodeGameObject(originalFront, riverObjects.data(), 54);
         WallLevel river;
         river.Build(forestAssets->GetLevelInfo(), riverGeometry, riverObjects);
-        const Vector riverCenter = Level::DespToPos(100 * riverColumn + 150, -200, 4050 - 100 * riverRow);
+        Vector riverCenter = Level::DespToPos(100 * riverColumn + 150, -200, 4050 - 100 * riverRow);
         const auto renderRiver = [&](WallLevel& drawn, const Desperabis::RawGameObject& front)
         {
             drawn.UpdateFront(front);
             Camera camera;
             Matrix4 projection, transform;
             projection.CreateOrthographic(130.f * DespToFloat, 130.f * DespToFloat, 0.01f, 30.f);
-            transform.Create(riverCenter + Vector(0, 300.f * DespToFloat, 0),
+            transform.Create(Vector(riverCenter.GetX(), riverCenter.GetY() + 300.f * DespToFloat, riverCenter.GetZ()),
                 Vector(0, -static_cast<float>(Math::Pi * 0.5), 0));
             camera.SetProjectionMatrix(projection);
             camera.SetCameraTransformMatrix(transform);
@@ -2926,17 +3577,36 @@ namespace
         invalidFront.behaviorParameter = 31;
         std::vector<byte> invalidObjects(54);
         Desperabis::EncodeGameObject(invalidFront, invalidObjects.data(), 54);
-        rejected = false;
-        try { WallLevel invalid; invalid.Build(forestAssets->GetLevelInfo(), riverGeometry, invalidObjects); }
-        catch (const std::runtime_error&) { rejected = true; }
-        Check(rejected, "Unavailable river model variants must report an explicit asset error.");
+        WallLevel invalidRiverModel;
+        CheckRecoverableError<std::runtime_error>([&]
+        {
+            invalidRiverModel.Build(forestAssets->GetLevelInfo(), riverGeometry, invalidObjects);
+        });
+#ifdef NDEBUG
+        Check(invalidRiverModel.MutableFloors().size() == 1 &&
+            invalidRiverModel.MutableFloors()[0].original &&
+            invalidRiverModel.MutableFloors()[0].original->GetVisible() &&
+            !invalidRiverModel.MutableFloors()[0].replacement,
+            "An unavailable replacement model must retain the original prepared riverbed.");
+        riverGeometry.floorObjects[riverRow][riverColumn] = 159;
+        Check(invalidRiverModel.SynchronizeFloorTiles(&riverGeometry.floorObjects[0][0], 50, 40, 50) == 0 &&
+            invalidRiverModel.GetCellArray().GetCell(riverColumn, riverRow).m_floor == 138 &&
+            invalidRiverModel.MutableFloors()[0].original->GetVisible(),
+            "Release must not hide a valid floor or claim synchronization succeeded when its replacement asset is missing.");
+        riverGeometry.floorObjects[riverRow][riverColumn] = 138;
+#endif
         invalidFront = originalFront;
         invalidFront.posX = 0;
         Desperabis::EncodeGameObject(invalidFront, invalidObjects.data(), 54);
-        rejected = false;
-        try { WallLevel invalid; invalid.Build(forestAssets->GetLevelInfo(), riverGeometry, invalidObjects); }
-        catch (const std::runtime_error&) { rejected = true; }
-        Check(rejected, "River paths outside native tile storage must fail before building geometry.");
+        WallLevel invalidRiverPath;
+        CheckRecoverableError<std::runtime_error>([&]
+        {
+            invalidRiverPath.Build(forestAssets->GetLevelInfo(), riverGeometry, invalidObjects);
+        });
+#ifdef NDEBUG
+        Check(invalidRiverPath.MutableFloors().empty(),
+            "Release must stop an out-of-grid river path before indexing tile storage.");
+#endif
         for (const auto values : { std::pair<byte, byte>{ 1, 3 }, { 0, 3 }, { 16, 3 }, { 1, 0 } })
         {
             riverGeometry.floorObjects[riverRow][riverColumn] = values.first;
@@ -3027,11 +3697,121 @@ namespace
         catch (const std::invalid_argument&) { rejected = true; }
         Check(rejected, "Surface synchronization must reject missing storage explicitly.");
         stridedSurfaces[riverRow * 53 + riverColumn] = 1;
-        rejected = false;
-        try { fire.SynchronizeSurfaceTiles(stridedSurfaces.data(), 50, 40, 53); }
-        catch (const std::runtime_error&) { rejected = true; }
-        Check(rejected && fire.GetCellArray().GetCell(riverColumn, riverRow).m_walls == 31,
-            "Unsupported water geometry replacement must fail before mutating surface state.");
+        Check(fire.SynchronizeSurfaceTiles(stridedSurfaces.data(), 50, 40, 53) == 1 &&
+            fire.GetCellArray().GetCell(riverColumn, riverRow).m_waterSlot == WaterSlotIndex::WaterSlot1,
+            "Strided surface updates must support replacing charred ground with water.");
+        stridedSurfaces[riverRow * 53 + riverColumn] = 31;
+        Check(fire.SynchronizeSurfaceTiles(stridedSurfaces.data(), 50, 40, 53) == 1 &&
+            !fire.GetCellArray().GetCell(riverColumn, riverRow).IsWaterSurface(),
+            "Replacing water with charred ground must remove the water slot.");
+
+        auto* floodAssets = FORCE_GET(AssetManager::Instance().LoadLevel(26));
+        Desperabis::Level floodGeometry;
+        for (auto& row : floodGeometry.floorHeights) { std::fill(std::begin(row), std::end(row), byte(220)); }
+        for (auto& row : floodGeometry.roomHeights) { std::fill(std::begin(row), std::end(row), byte(200)); }
+        floodGeometry.floorObjects[3][20] = floodGeometry.floorObjects[3][21] = 1;
+        floodGeometry.BuildCollisionMap();
+        Desperabis::GameContext floodCore;
+        floodCore.level = &floodGeometry;
+        floodCore.collisionMap = floodGeometry.collisionMap.get();
+        auto waterFront = Desperabis::DecodeGameObject(read(L"LEVEL\\OBJPOS26.DAT").data() + (6 - 2) * 54, 54);
+        waterFront.posX = 2256;
+        waterFront.posY = -160;
+        waterFront.posZ = 3750;
+        waterFront.velocityX = -6;
+        waterFront.velocityZ = 0;
+        floodCore.ReplaceWorldObject(6, waterFront);
+        floodCore.SetObjectHealth(floodCore.worldObjects[6], 1000);
+        floodCore.tickCount = 1;
+        WallLevel flood;
+        flood.Build(floodAssets->GetLevelInfo(), floodGeometry, std::vector<byte>(54));
+        riverCenter = Level::DespToPos(2250, -160, 3750);
+        const auto dryFlood = renderRiver(flood, {});
+        const auto registeredFloodInstances = flood.WallScene().GetRenderableInstances();
+        const auto floodTerrain = flood.Walls();
+        std::vector<std::shared_ptr<IGraphicsRuntimeObject>> floodTerrainBuffers;
+        for (const auto& instance : floodTerrain) { floodTerrainBuffers.push_back(instance->GetRenderable()->m_runtime); }
+        const auto island = flood.GetCellArray().GetCell(21, 3).m_visibilityIsland;
+        const auto findWater = [&](WaterSlotIndex slot)
+        {
+            const auto batch = std::find_if(flood.WaterSurfaces().begin(), flood.WaterSurfaces().end(),
+                [&](const auto& water) { return water.island == island && water.slot == slot; });
+            Check(batch != flood.WaterSurfaces().end(), "Enabled water slots need stable registered batches, even when dry.");
+            return &*batch;
+        };
+        const auto* water1 = findWater(WaterSlotIndex::WaterSlot1);
+        const auto* water2 = findWater(WaterSlotIndex::WaterSlot2);
+        const auto originalWater2 = water2->geometry;
+        Check(!water1->instance->GetVisible() && !water2->instance->GetVisible(),
+            "Dry water batches must not emit receiver passes or cover the original floor.");
+        Desperabis::UpdateObject(floodCore.worldObjects[6], floodCore);
+        Check(floodGeometry.surfaceFlags[3][21] == 225 &&
+            flood.SynchronizeSurfaceTiles(&floodGeometry.surfaceFlags[0][0], 50, 40, 50) == 1 &&
+            flood.SynchronizeSurfaceTiles(&floodGeometry.surfaceFlags[0][0], 50, 40, 50) == 0 &&
+            water1->instance->GetVisible() && water1->instance->HasWaterMaterials() &&
+            water1->geometry->m_drawCalls.at(0).m_primitiveCount == 2 &&
+            water2->geometry == originalWater2,
+            "The original flood behavior must add precisely one water quad without rebuilding other water slots.");
+        bool reflects = false;
+        float waterHeight = 0.f;
+        Check(water1->instance->RetrieveWaterProperties(reflects, waterHeight) &&
+            std::abs(waterHeight + 160.f * DespToFloat) < 0.00001f &&
+            water1->geometry->m_drawCalls.at(0).m_material.m_reflectionType ==
+                floodAssets->GetLevelInfo().m_raw.m_data.water[0].reflectionType,
+            "New flood geometry must use the final level's native height and reflection/refraction mode.");
+        const auto wetFlood = renderRiver(flood, {});
+        std::size_t floodPixels = 0;
+        for (std::size_t pixel = 0; pixel < wetFlood.size(); ++pixel) { floodPixels += wetFlood[pixel] != dryFlood[pixel]; }
+        Check(floodPixels > 100, "A native dry-to-water transition must create visibly rendered water, not just flags.");
+        WallLevel floodSave;
+        floodSave.Build(floodAssets->GetLevelInfo(), floodGeometry, std::vector<byte>(54));
+        Check(renderRiver(floodSave, {}) == wetFlood,
+            "Newly flooded runtime water must render pixel-identically to saved flooded geometry.");
+        const auto firstWaterBuffer = water1->geometry->m_runtime;
+        floodCore.worldObjects[6].posX = 2156;
+        Desperabis::UpdateObject(floodCore.worldObjects[6], floodCore);
+        Check(flood.SynchronizeSurfaceTiles(&floodGeometry.surfaceFlags[0][0], 50, 40, 50) == 1 &&
+            water1->geometry->m_drawCalls.at(0).m_primitiveCount == 4 &&
+            water1->geometry->m_runtime != firstWaterBuffer && water2->geometry == originalWater2 &&
+            water1->instance->GetGlobalBounds().m_tileRange.m_minX == 20 &&
+            water1->instance->GetGlobalBounds().m_tileRange.m_maxX == 21,
+            "Flood growth must rebuild only its water batch and expand visibility bounds to the newly flooded tile.");
+        std::vector<byte> floodSurfaces(53 * 40, 0);
+        for (int row = 0; row < 40; ++row)
+        {
+            std::copy_n(&floodGeometry.surfaceFlags[row][0], 50, floodSurfaces.data() + row * 53);
+        }
+        floodSurfaces[3 * 53 + 21] = 0;
+        Check(flood.SynchronizeSurfaceTiles(floodSurfaces.data(), 50, 40, 53) == 1 &&
+            water1->geometry->m_drawCalls.at(0).m_primitiveCount == 2 &&
+            !flood.GetCellArray().GetCell(21, 3).IsWaterSurface(),
+            "Strided water removal must remove only the selected tile's quad and cached water slot.");
+        floodSurfaces[3 * 53 + 20] = 226;
+        Check(flood.SynchronizeSurfaceTiles(floodSurfaces.data(), 50, 40, 53) == 1 &&
+            !water1->instance->GetVisible() && water1->geometry->m_drawCalls.empty() &&
+            water2->instance->GetVisible() && water2->geometry->m_drawCalls.at(0).m_primitiveCount == 2 &&
+            water2->instance->RetrieveWaterProperties(reflects, waterHeight) &&
+            std::abs(waterHeight + 390.f * DespToFloat) < 0.00001f &&
+            flood.GetCellArray().GetCell(20, 3).m_waterSlot == WaterSlotIndex::WaterSlot2,
+            "Switching water slots must remove the old receiver and use the new native plane.");
+        floodSurfaces[3 * 53 + 20] = 3;
+        Check(flood.SynchronizeSurfaceTiles(floodSurfaces.data(), 50, 40, 53) == 1 &&
+            !water2->instance->GetVisible() &&
+            flood.GetCellArray().GetCell(20, 3).m_waterSlot == WaterSlotIndex::WaterSlot3,
+            "A zero-depth water slot must update collision metadata without emitting flat water geometry.");
+        floodSurfaces[3 * 53 + 20] = 0;
+        Check(flood.SynchronizeSurfaceTiles(floodSurfaces.data(), 50, 40, 53) == 1 &&
+            renderRiver(flood, {}) == dryFlood &&
+            flood.WallScene().GetRenderableInstances() == registeredFloodInstances,
+            "Removing all water must restore original pixels without replacing registered scene instances.");
+        for (std::size_t index = 0; index < floodTerrain.size(); ++index)
+        {
+            Check(floodTerrain[index]->GetRenderable()->m_runtime == floodTerrainBuffers[index],
+                "Flood growth, slot replacement and removal must preserve wall/floor/ceiling GPU buffers.");
+        }
+        std::cout << "Dynamic water: native flood behavior, " << floodPixels
+            << " changed GPU pixels, saved-pixel equivalence, stable terrain/instances, growth bounds, "
+            "slot heights, removal and stride passed.\n";
         std::cout << "Meteor surfaces: core-driven burning pixels, saved pixels, stable static buffers, "
             "lightmap refresh, charred remaps, restoration and stride passed (" << firePixels << " changed pixels).\n";
         std::cout << "Forest flooding: 127 original river tiles, unchanged GPU buffers, core-driven water-front morph pixels, "
@@ -3063,7 +3843,7 @@ namespace
                 CreateWallGeometry();
                 for (const auto& instance : m_wallGeometry) { instance->ComputeTransparencyMask(); }
             }
-            const auto& Walls() const { return m_wallGeometry; }
+            auto Walls() const { return PopulatedGeometry(m_wallGeometry); }
         };
         LevelInfo fixture;
         fixture.m_raw.m_data.water[0] = { WaterReflectionType::Water, 10 };
@@ -3099,6 +3879,22 @@ namespace
             }
         }
         Check(fourthSurface, "The fourth native special surface must generate geometry.");
+        std::vector<byte> changedSurfaces(50 * 40, 0);
+        for (int row = 0; row < 40; ++row)
+        {
+            for (int column = 0; column < 50; ++column)
+            {
+                changedSurfaces[row * 50 + column] = surfaces.GetCellArray().GetCell(column, row).m_walls;
+            }
+        }
+        changedSurfaces[51] = 2;
+        Check(surfaces.SynchronizeSurfaceTiles(changedSurfaces.data(), 50, 40, 50) == 1 &&
+            surfaces.Walls().size() == 2 &&
+            surfaces.GetCellArray().GetCell(1, 1).m_waterSlot == WaterSlotIndex::WaterSlot2,
+            "Switching to a disabled nonzero-depth slot must remove the old plane without emitting a replacement.");
+        changedSurfaces[51] = 1;
+        Check(surfaces.SynchronizeSurfaceTiles(changedSurfaces.data(), 50, 40, 50) == 1 &&
+            surfaces.Walls().size() == 3, "Restoring an enabled slot must restore its water geometry.");
         for (auto& slot : fixture.m_raw.m_data.water) { slot.height = 0; }
         SurfaceLevel zeroDepth;
         zeroDepth.Build(fixture);
@@ -4014,11 +4810,11 @@ namespace
             {1.f,-1.f,200.f}, {std::nanf(""),1.f,200.f}, {1.f,HUGE_VALF,200.f},
             {0.f,1.f,0.f}, {0.f,1.f,-1.f}, {0.f,1.f,std::nanf("")} })
         {
-            bool rejected = false;
-            try { core.FlashLight({0,0,0}, {255,255,255}, invalid[0], invalid[1], invalid[2]); }
-            catch (const std::invalid_argument&) { rejected = true; }
-            Check(rejected && scene.GetLightSources().size() == count,
-                "Invalid flash parameters must fail explicitly without creating lights.");
+            CheckRecoverableError<std::invalid_argument>([&]
+            {
+                core.FlashLight({0,0,0}, {255,255,255}, invalid[0], invalid[1], invalid[2]);
+            });
+            Check(scene.GetLightSources().size() == count, "Invalid flash parameters must never create lights.");
         }
 
         auto level = Desperabis::CreateDummyLevel();
@@ -5311,6 +6107,10 @@ int main(int argc, char* argv[])
         CheckMutableWalls(renderer, device.Get(), context.Get());
         CheckWaterSurfaceDefinitions();
         CheckEnemyModels();
+        CheckPresentationRecovery();
+        CheckEndingActorVisibility();
+        CheckFinalLevelMorphs(renderer, device.Get(), context.Get());
+        CheckFinalLevelRuntimePresentation(renderer, device.Get(), context.Get());
         CheckMummyFade(renderer, device.Get(), context.Get());
         CheckDragon(renderer, device.Get(), context.Get());
         CheckRainSprites(renderer, device.Get(), context.Get());

@@ -7,6 +7,7 @@
 #include <cstring>
 #include <limits>
 #include <iterator>
+#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -183,13 +184,20 @@ namespace Desperabis
             fadeInSeconds < 0.f || fadeOutSeconds < 0.f || fadeInSeconds + fadeOutSeconds <= 0.f ||
             !std::isfinite(fadeInSeconds + fadeOutSeconds) || !std::isfinite(radius) || radius <= 0.f)
         {
-            throw std::invalid_argument("Light flashes require finite nonnegative fade times, a positive duration and radius.");
+            GAME_ERROR_AND_RETURN(std::invalid_argument("Light flashes require finite nonnegative fade times, a positive duration and radius."));
         }
         OnLightFlash({position, color, fadeInSeconds, fadeOutSeconds, radius});
     }
     void GameContext::OnLightningShown(const LightningFlash&) {}
     void GameContext::OnLightningHidden() {}
     void GameContext::OnObjectDestroyed(int) {}
+    void GameContext::OnObjectUpdateFailed(int slot, BehaviorType behavior, std::string_view message)
+    {
+        const auto context = "Object update failed [level " +
+            (loadedLevelNumber ? std::to_string(*loadedLevelNumber) : "none") + ", slot " + std::to_string(slot) +
+            ", behavior " + std::to_string(static_cast<unsigned int>(behavior)) + "]";
+        Diagnostics::ReportOnce(context, message);
+    }
     void GameContext::OnPlayerHealthChanged(std::int32_t, std::int32_t) {}
     void GameContext::OnUnderwaterChanged(bool) {}
     void GameContext::OnPlayerOxygenChanged(std::int32_t, std::int32_t) {}
@@ -273,8 +281,13 @@ namespace Desperabis
             applicationTickAccumulator = 0;
             ResetUnderwater();
             StopAllSoundEffects();
-            if (audioHandler && ambientPlaybackActive) { audioHandler->StopAmbientPlayback(); }
-            ambientPlaybackActive = false;
+            const bool reuseEndingMusic = loadedLevelNumber == 96 && request.levelNumber == 95 && musicAmbientLoaded;
+            if (!reuseEndingMusic)
+            {
+                if (audioHandler && ambientPlaybackActive) { audioHandler->StopAmbientPlayback(); }
+                ambientPlaybackActive = false;
+                musicAmbientLoaded = false;
+            }
             ClearLightningFlashes();
             LoadLevel(request);
         }
@@ -326,7 +339,7 @@ namespace Desperabis
             if (soundEnabled)
             {
                 CreateAmbientLoop(*data.ambientSound);
-                audioHandler->StartAmbientPlayback();
+                if (*data.ambientSound != 102) { audioHandler->StartAmbientPlayback(); }
                 ambientPlaybackActive = true;
             }
         }
@@ -965,6 +978,7 @@ namespace Desperabis
         soundListenerZ = worldObjects[1].posZ;
         UpdateWeaponSelection();
         const auto results = UpdateObjects(*this);
+        if (IsBossFallPlaying()) { return {GameTickStatus::Advanced, interaction, results, movement}; }
         PlayerWeaponResult weapon;
         weapon.animation = UpdateWeaponAnimation(frameTickCount);
         if (input.IsKeyPressed(InputKey::SelectDaggerKey)) { SelectWeapon(WeaponType::Dagger); }
@@ -1827,7 +1841,8 @@ namespace Desperabis
 
     std::uint16_t GameContext::SpawnEmitterProjectile(const RawGameObject& source)
     {
-        if (source.generalPurpose1 != 1 && source.generalPurpose1 != 11 && source.generalPurpose1 != 7)
+        if (source.generalPurpose1 != 1 && source.generalPurpose1 != 11 &&
+            source.generalPurpose1 != 7 && source.generalPurpose1 != 9)
         {
             throw std::invalid_argument("Unrecovered emitter projectile selector.");
         }
@@ -1841,7 +1856,7 @@ namespace Desperabis
         shot.collisionType = CollisionType::FlyingArrow;
         shot.posX = emitter.posX; shot.posY = emitter.posY; shot.posZ = emitter.posZ;
         GetClampedDirectionDisplacement(shot.velocityX, shot.velocityZ,
-            emitter.winY & 511, emitter.generalPurpose1 == 7 ?
+            emitter.winY & 511, (emitter.generalPurpose1 == 7 || emitter.generalPurpose1 == 9) ?
                 emitter.behaviorParameter : emitter.doorLockOrGroupBitmask);
         shot.modelAnim = 1;
         shot.displayType = DisplayType::VectorNormal;
@@ -1854,7 +1869,7 @@ namespace Desperabis
             shot.collisionRadiusXZ = 10;
             shot.collisionRadiusY = 8;
         }
-        else if (emitter.generalPurpose1 == 7)
+        else if (emitter.generalPurpose1 == 7 || emitter.generalPurpose1 == 9)
         {
             shot.modelId = 1;
             shot.modelAnim = 5;
@@ -1870,6 +1885,20 @@ namespace Desperabis
             shot.winY = static_cast<std::int16_t>(Random(2));
             shot.health = static_cast<std::int16_t>(Random(5) + 22);
             shot.renderPlacementMode = 1;
+            if (emitter.generalPurpose1 == 9)
+            {
+                shot.health -= 8;
+                shot.spriteScale = 21;
+                shot.collisionRadiusY = 32;
+                shot.collisionRadiusXZ = 40;
+                shot.renderPlacementMode = 3;
+                shot.behaviorParameter = 30;
+                std::int16_t x = 0, z = 0;
+                std::uint16_t center = 0;
+                QueryCollisionMapNeighborhood(shot.posX, shot.posZ, 3, x, z, center, 0x18);
+                if (x != 0 || z != 0) { shot.velocityX = shot.velocityZ = 0; }
+                if (center != 0) { shot.health = 0; }
+            }
         }
         else
         {
@@ -3444,12 +3473,20 @@ namespace Desperabis
             ++level->geometryRevision;
             collisionmapUploadDirty = true;
         }
+        PatchCollisionMapFootprint(x, z, -3, -3, 1, 1, 128, 128, 2);
+    }
+
+    void GameContext::PatchCollisionMapFootprint(std::int16_t x, std::int16_t z,
+        std::int16_t left, std::int16_t top, std::int16_t right, std::int16_t bottom,
+        std::uint8_t mask, std::uint8_t expected, std::uint8_t replacement)
+    {
+        if (!collisionMap) { throw std::logic_error("Collision-map footprint requires loaded map memory."); }
+        if (left > right || top > bottom) { throw std::invalid_argument("Collision-map footprint bounds are inverted."); }
         const auto column = WrapSignedWord(x - 112) / 25;
         const auto row = WrapSignedWord(162 - WrapSignedWord(z - 38) / 25);
-        // 10AC:01D6 replaces only pixels with bit 7 set, in an inclusive 5x5 footprint.
-        for (int dx = -3; dx <= 1; ++dx)
+        for (int dx = left; dx <= right; ++dx)
         {
-            for (int dz = -3; dz <= 1; ++dz)
+            for (int dz = top; dz <= bottom; ++dz)
             {
                 const auto px = WrapSignedWord(column + dx);
                 const auto pz = WrapSignedWord(row + dz);
@@ -3462,11 +3499,69 @@ namespace Desperabis
                 {
                     throw std::out_of_range("River flooding exceeds collision-map storage.");
                 }
-                if ((collisionMap->data[address] & 128) == 128)
+                if ((collisionMap->data[address] & mask) == expected)
                 {
-                    WriteCollisionMapByte(offsetof(CollisionMap, data) + address, 2);
+                    WriteCollisionMapByte(offsetof(CollisionMap, data) + address, replacement);
                 }
             }
+
+        }
+    }
+
+    void GameContext::UpdateFloodingWater(RawGameObject& object)
+    {
+        if (object.health != 1000) { return; }
+        for (int tick = 0; tick < tickCount; ++tick)
+        {
+            if (object.health != 1000) { break; }
+            PlaySoundEffect(static_cast<SoundEffect>(10), 255, -10, 1);
+            PlaySoundEffect(SoundEffect::WaterEntry, 255, -11, 1);
+            PlaySoundEffect(static_cast<SoundEffect>(14), 255, -12, 1);
+            object.collisionType = CollisionType::PushPlayer;
+            object.posX = WrapSignedWord(object.posX + object.velocityX);
+            object.posZ = WrapSignedWord(object.posZ + object.velocityZ);
+            object.generalPurpose2 = static_cast<std::uint16_t>(object.generalPurpose2 +
+                std::abs(static_cast<int>(object.velocityX)) + std::abs(static_cast<int>(object.velocityZ)));
+            const auto dx = ArithmeticShiftRight(WrapSignedWord(object.velocityX * 2), 1);
+            const auto dz = ArithmeticShiftRight(WrapSignedWord(object.velocityZ * 2), 1);
+            PatchCollisionMapFootprint(object.posX, object.posZ, -2, -2, 1, 1, 255, 0, 1);
+            ReplaceSurfaceSelector(object.posX, object.posZ, 0, 225);
+            object.collisionMask = 0x80;
+            const auto contacts = FindCollidingObjects(object);
+            object.collisionMask = 1;
+            for (const auto slot : contacts)
+            {
+                auto& debris = worldObjects[slot];
+                debris.behavior = BehaviorType::FloatingDebris;
+                debris.collisionType = CollisionType::SwimmingParticles;
+                debris.collisionMask = 1;
+                debris.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(Random(100));
+                debris.behaviorParameter = 0;
+            }
+            if ((GetCollisionMapPixelAtWorldXZ(object.posX, object.posZ) & 0x38) != 0)
+            {
+                SetObjectHealth(object, 0);
+            }
+            RawGameObject particle;
+            particle.posX = WrapSignedWord(object.posX + RandomSigned(static_cast<std::uint16_t>(std::abs(SignWord(dz) * 45))));
+            particle.posZ = WrapSignedWord(object.posZ + RandomSigned(static_cast<std::uint16_t>(std::abs(SignWord(dx) * 45))));
+            particle.posY = WrapSignedWord(object.posY + RandomSigned(25));
+            particle.modelId = object.modelId;
+            particle.collisionRadiusXZ = particle.collisionRadiusY = 5;
+            particle.modelAnim = 5;
+            particle.animFrame = 5;
+            particle.modelFrame2 = 4;
+            particle.renderPlacementMode = 3;
+            particle.displayType = DisplayType::VectorNormal;
+            particle.behavior = BehaviorType::DriftingParticle;
+            particle.health = 40;
+            particle.blendWeightOrSpriteOpacity = 80;
+            particle.velocityX = dx;
+            particle.velocityZ = dz;
+            particle.velocityY = static_cast<std::int16_t>(Random(2));
+            particle.winX = static_cast<std::int16_t>(Random(512));
+            particle.winY = static_cast<std::int16_t>(Random(512));
+            ReplaceWorldObject(FindFreeObjectIndex(), particle);
         }
     }
 
@@ -3625,7 +3720,65 @@ namespace Desperabis
         if (!audioHandler) { throw std::logic_error("Ambient creation requires an audio handler."); }
         if (environment >= 100 && environment <= 150)
         {
-            throw std::runtime_error("Music/cutscene ambient selectors are not implemented.");
+            if (environment == 102)
+            {
+                if (!musicAmbientLoaded) { throw std::logic_error("Music reuse requires a previously loaded track."); }
+                return;
+            }
+            const auto music = environment <= 101 ? 1 : environment - 100;
+            const auto bytes = LoadFile("SAMP\\MUSIC" + std::to_string(music) + ".WAV");
+            const auto matches = [&](std::size_t offset, const char* text)
+            {
+                return bytes.size() >= offset + 4 &&
+                    std::equal(bytes.begin() + offset, bytes.begin() + offset + 4, text);
+            };
+            const auto word = [&](std::size_t offset)
+            {
+                return static_cast<std::uint16_t>(bytes[offset] | (bytes[offset + 1] << 8));
+            };
+            const auto dword = [&](std::size_t offset)
+            {
+                return static_cast<std::uint32_t>(word(offset)) |
+                    (static_cast<std::uint32_t>(word(offset + 2)) << 16);
+            };
+            if (bytes.size() < 12 || !matches(0, "RIFF") || !matches(8, "WAVE") ||
+                dword(4) < 4 || dword(4) > bytes.size() - 8)
+            {
+                throw std::invalid_argument("Music requires a complete RIFF/WAVE payload.");
+            }
+            const auto end = static_cast<std::size_t>(dword(4)) + 8;
+            bool format = false;
+            std::optional<std::pair<std::size_t, std::size_t>> data;
+            for (std::size_t offset = 12; offset < end;)
+            {
+                if (end - offset < 8) { throw std::invalid_argument("Truncated music chunk header."); }
+                const auto size = static_cast<std::size_t>(dword(offset + 4));
+                const auto start = offset + 8;
+                if (size > end - start) { throw std::invalid_argument("Truncated music chunk."); }
+                if (matches(offset, "fmt "))
+                {
+                    if (format || size < 16 || word(start) != 1 || word(start + 2) != 1 ||
+                        dword(start + 4) != 11025 || dword(start + 8) != 11025 ||
+                        word(start + 12) != 1 || word(start + 14) != 8)
+                    {
+                        throw std::invalid_argument("Music requires mono 8-bit PCM at 11025 Hz.");
+                    }
+                    format = true;
+                }
+                else if (matches(offset, "data"))
+                {
+                    if (data || size == 0) { throw std::invalid_argument("Music requires one nonempty data chunk."); }
+                    data = std::make_pair(start, size);
+                }
+                const auto padded = size + (size & 1);
+                if (padded > end - start) { throw std::invalid_argument("Truncated music chunk padding."); }
+                offset = start + padded;
+            }
+            if (!format || !data) { throw std::invalid_argument("Music is missing PCM format or sample data."); }
+            audioHandler->CreateMusicPlayback(
+                {bytes.begin() + data->first, bytes.begin() + data->first + data->second}, environment != 101);
+            musicAmbientLoaded = true;
+            return;
         }
         struct Overlay
         {

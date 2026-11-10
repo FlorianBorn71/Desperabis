@@ -315,6 +315,7 @@ void RemoteScene::Update(double elapsedTime)
 				this->AddRenderableInstance(m_renderableInst[i]);
 				m_renderableInst[i]->UpdateGlobalBounds();
 			}
+			else { AssignFireAnimations(*m_renderableInst[i]); }
 		}
 
 		memcpy(m_lastUpdatedState, m_currentObjState, sizeof(m_currentObjState));

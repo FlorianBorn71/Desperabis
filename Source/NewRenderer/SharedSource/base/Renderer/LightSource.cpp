@@ -21,7 +21,7 @@ void LightSource::SetSpecularAmount(float amount)
 {
     if (!std::isfinite(amount) || amount < 0.f)
     {
-        throw std::invalid_argument("Light specular amount must be finite and nonnegative.");
+        GAME_ERROR_AND_RETURN(std::invalid_argument("Light specular amount must be finite and nonnegative."));
     }
     m_specularAmount = amount;
 }
@@ -169,7 +169,7 @@ void PlayerLight::SetMode(Mode mode)
         SetRadius(600.f * DespToFloat);
         break;
     default:
-        throw std::invalid_argument("Unknown player-light mode.");
+        GAME_ERROR_AND_RETURN(std::invalid_argument("Unknown player-light mode."));
     }
     m_mode = mode;
 }

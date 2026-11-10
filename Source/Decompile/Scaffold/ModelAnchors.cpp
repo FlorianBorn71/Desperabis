@@ -142,15 +142,25 @@ namespace Desperabis
             return object;
         }
         const auto& parent = worldObjects.at(object.doorLockOrGroupBitmask);
+        return ResolveAttachedRenderState(object, parent);
+    }
+
+    RawGameObject GameContext::ResolveAttachedRenderState(RawGameObject object, const RawGameObject& parent) const
+    {
         if (parent.health <= 0) { object.health = 0; return object; }
         if (parent.modelId <= 30) { return object; }
         const auto modelSlot = static_cast<std::size_t>(parent.modelId - 30);
         if (!level || modelSlot >= level->modelAnchors.size() || !level->modelAnchors[modelSlot])
         {
-            throw std::runtime_error("Linked object rendering requires loaded parent geometry.");
+            object.health = 0;
+            GAME_ERROR_AND_RETURN_VALUE(std::runtime_error("Linked object rendering requires loaded parent geometry."), object);
         }
         const auto anchor = level->modelAnchors[modelSlot]->Sample(parent, false, object.generalPurpose3);
-        if (!anchor) { throw std::logic_error("Linked object polygon has no model anchor."); }
+        if (!anchor)
+        {
+            object.health = 0;
+            GAME_ERROR_AND_RETURN_VALUE(std::logic_error("Linked object polygon has no model anchor."), object);
+        }
         object.posX = (*anchor)[0];
         object.posY = (*anchor)[1];
         object.posZ = (*anchor)[2];
@@ -163,25 +173,38 @@ namespace Desperabis
 
     void GameContext::UpdateModelAttachments()
     {
-        for (auto& head : worldObjects)
+        for (std::size_t index = 0; index < worldObjects.size(); ++index)
         {
+            auto& head = worldObjects[index];
             if (head.health <= 0 || head.behavior != BehaviorType::DragonHead) { continue; }
-            const auto slot = head.doorLockOrGroupBitmask;
-            if (slot < 1 || slot >= static_cast<int>(worldObjects.size()))
+            try
             {
-                throw std::out_of_range("Dragon head requires a parent slot in 1..165.");
+                const auto slot = head.doorLockOrGroupBitmask;
+                if (slot < 1 || slot >= static_cast<int>(worldObjects.size()))
+                {
+                    throw std::out_of_range("Dragon head requires a parent slot in 1..165.");
+                }
+                const auto& parent = worldObjects[slot];
+                if (parent.health <= 0 || (parent.behavior != BehaviorType::Dragon && parent.behavior != BehaviorType::DragonDying))
+                {
+                    SetObjectHealth(head, 0);
+                    continue;
+                }
+                const auto anchor = GetModelAnchor(parent, false);
+                if (!anchor) { SetObjectHealth(head, 0); continue; }
+                head.posX = (*anchor)[0]; head.posY = (*anchor)[1]; head.posZ = (*anchor)[2];
+                head.modelAnim = static_cast<std::uint8_t>(((-GetPlayerHeading() - parent.winY + 43) & 511) / 86 + 1);
+                head.animFrame = parent.spriteScale;
             }
-            const auto& parent = worldObjects[slot];
-            if (parent.health <= 0 || (parent.behavior != BehaviorType::Dragon && parent.behavior != BehaviorType::DragonDying))
+            catch (const std::exception& error)
             {
-                SetObjectHealth(head, 0);
-                continue;
+#ifndef NDEBUG
+                (void)error;
+                throw;
+#else
+                OnObjectUpdateFailed(static_cast<int>(index), head.behavior, error.what());
+#endif
             }
-            const auto anchor = GetModelAnchor(parent, false);
-            if (!anchor) { SetObjectHealth(head, 0); continue; }
-            head.posX = (*anchor)[0]; head.posY = (*anchor)[1]; head.posZ = (*anchor)[2];
-            head.modelAnim = static_cast<std::uint8_t>(((-GetPlayerHeading() - parent.winY + 43) & 511) / 86 + 1);
-            head.animFrame = parent.spriteScale;
         }
     }
 }

@@ -98,8 +98,8 @@ namespace Desperabis
         EndBossFeeler = 93,
         EndBossBody = 94,
         BreakableGround = 95, // In final level 26, where endboss falls down
-        Behavior_96 = 96,
-        Behavior_97 = 97,
+        FallingGroundFragment = 96,
+        BossPitTrap = 97,
         Behavior_98 = 98,
         Moon = 100,
         WaterDrop = 101,
@@ -111,7 +111,7 @@ namespace Desperabis
         WindController = 108,
         AirborneLeaf = 109,
         FogParticle = 110,
-        Behavior_111 = 111, // Something in the ending village cutscene. One instance assigned to the shovel
+        EndingSequenceTrigger = 111,
         GroundLeaf = 112,
         RainEmitter = 113,
         RainDrop = 114,
@@ -158,7 +158,7 @@ namespace Desperabis
         GrandfatherClockPendulum = 157, // level 35, hours and minutes
         PeriodicGlobalSound = 158, // Church bell in level 19; periodic sound without distance attenuation.
         RotateKnightsInClock = 159,
-        Behavior_161 = 161, // Something in the ending merlin cutscene
+        RandomAttachmentYaw = 161,
         KnightsCrossbow = 162, // level 31
         Behavior_163 = 163,
         RotatingBlades = 164, // level 23 on lorry track
@@ -167,7 +167,7 @@ namespace Desperabis
         SqueezingMachine = 167, // level 31
         Behavior_168 = 168,
         RoofTopThunderHandler1 = 169,// not sure what this does
-        Behavior_170 = 170, // Something in the ending village cutscene. 2 instances assigned to grates
+        ObjectPoseSequence = 170,
         CutSceneCloud = 171, // in end cut scene
         CeilingBladesComingDown = 172, // In level 33, the ones that can be stopped by coffin
         PortableCoffin = 173, // In level 33
@@ -266,7 +266,7 @@ namespace Desperabis
         RotatingBlades = 103,
         WaterRecharge = 105, // at fountain
         Type_107 = 107, // unknown, two trees in level 10, but no behavior
-        CutSceneCloud = 110, // in end cut scene
+        RenderSuppressed = 110, // Native draw exclusion, including ending pose templates.
         SwimmingParticles = 117, // underwater with large Octopus
         Teleporter = 120, // various teleporter to jump between map parts in level 10 and 36
         SarcophagusWithBones = 121, // reveals bones to feed dogs

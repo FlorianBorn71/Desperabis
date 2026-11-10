@@ -580,6 +580,9 @@ namespace
             case DispatchStatus::DispatchDisabled:
                 std::cout << "Skipped behavior cascade: modeled DS:04CD flag is clear";
                 break;
+            case DispatchStatus::Failed:
+                std::cout << "Object update failed; see error diagnostics";
+                break;
             }
             std::cout << " (module 0000:" << std::hex << std::setw(4) << std::setfill('0')
                 << result.moduleOffset << std::dec << ")\nFull gameplay simulation is NOT IMPLEMENTED.\n";

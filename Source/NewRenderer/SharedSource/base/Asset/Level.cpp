@@ -605,7 +605,7 @@ RenderableInstancePtr Level::AddStaticCellObject(int x, int y, byte rawVal, Heig
         }
         else
         {
-            throw std::runtime_error("Static floor/ceiling tile references an unavailable model frame.");
+            GAME_ERROR_AND_RETURN_VALUE(std::runtime_error("Static floor/ceiling tile references an unavailable model frame."), nullptr);
         }
     }
     return nullptr;
@@ -822,7 +822,6 @@ void Level::CreateWallGeometry()
     bool addWalls = true;
     bool addFloor = true;
     bool addCeiling = true;
-    bool addWater = true;
 
     std::unique_ptr<IslandWallConversion> perIslandConversion[256];
     int maxIslands = 0;
@@ -836,7 +835,8 @@ void Level::CreateWallGeometry()
         const int row = 40 - object.m_rawShorts[8] / 100;
         if (!m_cellArray.IsInside(column, row))
         {
-            throw std::runtime_error("Wall-destruction object is outside level geometry.");
+            GAME_ERROR(std::runtime_error("Wall-destruction object is outside level geometry."));
+            continue;
         }
         mutableTiles[row * m_cellArray.m_sizeX + column] = true;
     }
@@ -855,7 +855,8 @@ void Level::CreateWallGeometry()
             const int row = 40 - z / 100;
             if (!m_cellArray.IsInside(column, row))
             {
-                throw std::runtime_error("River flooding path is outside level geometry.");
+                GAME_ERROR(std::runtime_error("River flooding path is outside level geometry."));
+                break;
             }
             const auto index = row * m_cellArray.m_sizeX + column;
             const byte original = m_cellArray.GetCell(column, row).m_floor;
@@ -864,7 +865,8 @@ void Level::CreateWallGeometry()
             {
                 if (m_mutableFloors[mutableFloorIndices[index]].replacementFloor != replacement)
                 {
-                    throw std::runtime_error("Overlapping river flooding paths require conflicting floor variants.");
+                    GAME_ERROR(std::runtime_error("Overlapping river flooding paths require conflicting floor variants."));
+                    continue;
                 }
             }
             else if (original != replacement)
@@ -1002,7 +1004,7 @@ void Level::CreateWallGeometry()
                         {
                             if (c > 31 && !inst)
                             {
-                                throw std::runtime_error("River flooding requires a valid floor model variant.");
+                                GAME_ERROR_AND_RETURN(std::runtime_error("River flooding requires a valid floor model variant."));
                             }
                             auto& floor = m_mutableFloors[floorIndex];
                             (replacement ? floor.replacement : floor.original) = inst;
@@ -1047,40 +1049,6 @@ void Level::CreateWallGeometry()
                     AddStaticCellObject(x, y, cell.m_ceiling, HeightLevel::Ceiling);
                 }
             } // add ceiling
-            if (addWater)
-            {
-                if (cell.IsWaterSurface())
-                {
-                    int slotIndex = (int)cell.m_waterSlot - (int)WaterSlotIndex::WaterSlot1; // 0..3
-                    assert(slotIndex >= 0 && slotIndex < 4);
-                    const LevelInfo::WaterSlot& waterSlot(m_levelInfo.m_raw.m_data.water[slotIndex]);
-                    if (waterSlot.height != 0 && waterSlot.reflectionType != WaterReflectionType::Disabled)
-                    {
-                        HeightLevel level = (HeightLevel)(slotIndex + (int)HeightLevel::WaterLevel1); // translate into height level
-                        int firstIndex = (int)indices.size();
-                        Color4 waterCol = { 255,255,255,0 };
-                        DrawCallMaterial::GetWaterTintColor(waterSlot.reflectionType, waterCol);
-                        AddFloorOrCeiling(level, islandWalls.m_vertexCache, islandWalls.m_conversion.m_vertices, indices, x, y, false, waterCol);
-                        DrawCall dc;
-                        dc.m_material.m_transparencyType = TransparencyMode::Water;
-                        dc.m_material.m_reflectionType = waterSlot.reflectionType;
-                        dc.m_material.m_mirrorHeight = m_cellArray.m_waterHeights[slotIndex];
-                        dc.m_material.m_opacity = 1.f;
-                        dc.m_material.m_textureSlot = -1;
-                        //dc.m_material.m_textureRepeat = true;
-                        dc.m_firstIndex = firstIndex;
-                        dc.m_primitiveCount = ((int)indices.size() - firstIndex) / 3;
-                        dc.m_material.m_useAlphaTest = false;
-                        dc.m_material.m_applyLighting = false;
-                        dc.m_material.ComputeHash();
-                        if (dc.m_primitiveCount > 0)
-                        {
-                            dc.m_material.m_texture = nullptr;
-                            islandWalls.m_dcs.emplace_back(dc);
-                        }
-                    }
-                }
-            } // add mirror
         }
     }
 
@@ -1200,6 +1168,77 @@ void Level::CreateWallGeometry()
             */
         }
     }
+    for (int island = 0; island <= maxIslands; ++island)
+    {
+        if (!perIslandConversion[island]) { continue; }
+        for (int slot = 0; slot < 4; ++slot)
+        {
+            const auto& definition = m_levelInfo.m_raw.m_data.water[slot];
+            if (definition.height == 0 || definition.reflectionType == WaterReflectionType::Disabled) { continue; }
+            const auto waterSlot = static_cast<WaterSlotIndex>(slot + 1);
+            auto geometry = CreateWaterGeometry(static_cast<byte>(island), waterSlot);
+            auto instance = std::make_shared<RenderableInstance>(
+                geometry.get(), static_cast<uint32_t>(GamePlay::VisibilityFilter::Walls));
+            instance->ComputeTransparencyMask();
+            instance->SetVisible(geometry->IsValid());
+            instance->UpdateGlobalBounds();
+            if (instance->GetVisible())
+            {
+                auto& bounds = instance->ModifyGlobalBounds();
+                m_cellArray.GetTileAssignment(instance->GetTransform().GetTranslation(), bounds);
+                bounds.m_visibilityIsland = static_cast<byte>(island);
+            }
+            m_wallGeometry.push_back(instance);
+            m_waterSurfaces.push_back({ static_cast<byte>(island), waterSlot, std::move(geometry), instance });
+        }
+    }
+}
+
+std::shared_ptr<Renderable> Level::CreateWaterGeometry(
+    byte island, WaterSlotIndex slot, const byte* surfaces, std::size_t rowStride)
+{
+    const int slotIndex = static_cast<int>(slot) - 1;
+    const auto& definition = m_levelInfo.m_raw.m_data.water[slotIndex];
+    auto geometry = std::make_shared<Renderable>();
+    IslandWallConversion water(this);
+    auto& conversion = water.m_conversion;
+    Color4 color{ 255,255,255,0 };
+    DrawCallMaterial::GetWaterTintColor(definition.reflectionType, color);
+    for (int row = 0; row < m_cellArray.m_sizeZ; ++row)
+    {
+        for (int column = 0; column < m_cellArray.m_sizeX; ++column)
+        {
+            const auto& cell = m_cellArray.GetCell(column, row);
+            const byte surface = surfaces ? surfaces[row * rowStride + column] : cell.m_walls;
+            if (cell.m_visibilityIsland != island || (surface & 31) != static_cast<int>(slot)) { continue; }
+            AddFloorOrCeiling(static_cast<HeightLevel>(slotIndex + static_cast<int>(HeightLevel::WaterLevel1)),
+                water.m_vertexCache, conversion.m_vertices, conversion.m_indices, column, row, false, color);
+        }
+    }
+    if (conversion.m_indices.empty()) { return geometry; }
+    conversion.m_sortedIndices = std::move(conversion.m_indices);
+    conversion.GeneratePerTriangleNormals(
+        conversion.m_sortedIndices.data(), static_cast<int>(conversion.m_sortedIndices.size()), 0);
+    DrawCall draw;
+    draw.m_firstIndex = 0;
+    draw.m_primitiveCount = static_cast<int>(conversion.m_sortedIndices.size() / 3);
+    draw.m_material.m_transparencyType = TransparencyMode::Water;
+    draw.m_material.m_reflectionType = definition.reflectionType;
+    draw.m_material.m_mirrorHeight = m_cellArray.m_waterHeights[slotIndex];
+    draw.m_material.m_opacity = 1.f;
+    draw.m_material.m_textureSlot = -1;
+    draw.m_material.m_texture = nullptr;
+    draw.m_material.m_useAlphaTest = false;
+    draw.m_material.m_applyLighting = false;
+    draw.m_material.ComputeHash();
+    geometry->m_drawCalls.push_back(draw);
+    geometry->m_runtime = Renderer::Instance().CreateModelBuffers(conversion);
+    GeometryUtils::ComputeBoundingVolume(geometry->m_localBounds, geometry->m_drawCalls,
+        conversion.m_vertices, water.m_context.m_vertexPos, conversion.m_sortedIndices);
+    TriangularShapeDesc physics;
+    conversion.GeneratePhysicsGeometry(geometry->m_drawCalls, physics);
+    geometry->m_physicsShape = PhysicsModule::Instance().CreateTriMesh(physics);
+    return geometry;
 }
 
 std::size_t Level::SynchronizeWallTiles(
@@ -1247,6 +1286,11 @@ std::size_t Level::SynchronizeFloorTiles(
         }
         auto& cell = m_cellArray.GetCell(floor.column, floor.row);
         if (cell.m_floor == value) { continue; }
+        if (value > 31 && !(value == floor.originalFloor ? floor.original : floor.replacement))
+        {
+            GAME_ERROR(std::runtime_error("River floor model variant is unavailable; retaining the current tile."));
+            continue;
+        }
         if (floor.original) { floor.original->SetVisible(value == floor.originalFloor); }
         if (floor.replacement) { floor.replacement->SetVisible(value == floor.replacementFloor); }
         cell.m_floor = value;
@@ -1264,16 +1308,27 @@ std::size_t Level::SynchronizeSurfaceTiles(
     {
         throw std::invalid_argument("Surface synchronization requires matching level dimensions and tile storage.");
     }
+    std::array<std::array<bool, 4>, 256> dirtyWater{};
     for (int row = 0; row < m_cellArray.m_sizeZ; ++row)
     {
         for (int column = 0; column < m_cellArray.m_sizeX; ++column)
         {
-            const auto before = m_cellArray.GetCell(column, row).m_walls & 31;
+            const auto& cell = m_cellArray.GetCell(column, row);
+            const auto before = cell.m_walls & 31;
             const auto after = tiles[row * rowStride + column] & 31;
-            if (before != after && ((before >= 1 && before <= 4) || (after >= 1 && after <= 4)))
+            if (before != after)
             {
-                throw std::runtime_error("Surface synchronization cannot replace prepared water geometry.");
+                if (before >= 1 && before <= 4) { dirtyWater[cell.m_visibilityIsland][before - 1] = true; }
+                if (after >= 1 && after <= 4) { dirtyWater[cell.m_visibilityIsland][after - 1] = true; }
             }
+        }
+    }
+    std::vector<std::pair<WaterSurface*, std::shared_ptr<Renderable>>> replacements;
+    for (auto& water : m_waterSurfaces)
+    {
+        if (dirtyWater[water.island][static_cast<int>(water.slot) - 1])
+        {
+            replacements.emplace_back(&water, CreateWaterGeometry(water.island, water.slot, tiles, rowStride));
         }
     }
     std::size_t changed = 0;
@@ -1286,6 +1341,9 @@ std::size_t Level::SynchronizeSurfaceTiles(
             if (cell.m_walls == surface) { continue; }
             m_lightmapDirty |= (cell.m_walls >> 5) != (surface >> 5);
             cell.m_walls = surface;
+            const byte selector = surface & 31;
+            cell.m_waterSlot = selector >= 1 && selector <= 4 ?
+                static_cast<WaterSlotIndex>(selector) : WaterSlotIndex::None;
             const byte brightness = static_cast<byte>((surface >> 5) * 155 / 7 + 100);
             cell.m_brightness = { brightness, brightness, brightness, 0 };
             ++changed;
@@ -1296,6 +1354,21 @@ std::size_t Level::SynchronizeSurfaceTiles(
         for (const auto& floor : m_floorModels)
         {
             ApplyFloorSurface(*floor.instance, m_cellArray.GetCell(floor.column, floor.row).m_walls);
+        }
+        for (auto& replacement : replacements)
+        {
+            auto& water = *replacement.first;
+            water.instance->SetRenderable(replacement.second.get());
+            water.geometry = std::move(replacement.second);
+            water.instance->ComputeTransparencyMask();
+            water.instance->SetVisible(water.geometry->IsValid());
+            water.instance->UpdateGlobalBounds();
+            if (water.instance->GetVisible())
+            {
+                auto& bounds = water.instance->ModifyGlobalBounds();
+                m_cellArray.GetTileAssignment(water.instance->GetTransform().GetTranslation(), bounds);
+                bounds.m_visibilityIsland = water.island;
+            }
         }
     }
     if (m_lightmap && m_lightmapDirty) { CreateLightmap(); }
@@ -1308,6 +1381,10 @@ bool Level::CreateObjectRenderInstance(Scene& scene, std::shared_ptr<LevelGameOb
 	PhysicsWorld* physicsWorld = scene.GetPhysicsWorld();
 	go->m_rawGO = rawGO;
     GamePlay::PropertyAccessorBase prop(rawGO);
+    if (prop.IsRenderSuppressed())
+    {
+        return false;
+    }
     GamePlay::BehaviorType behavior = prop.GetBehaviorType();
     GamePlay::DisplayType display = prop.GetDisplayType();
     int modelId = prop.GetModelId();
@@ -1440,7 +1517,7 @@ void Level::CorrectInitialObjectPlacement(RawGameObject& rawGO) const
         const auto height = std::lround(floor / DespToFloat) + clearance;
         if (height < std::numeric_limits<int16_t>::min() || height > std::numeric_limits<int16_t>::max())
         {
-            throw std::out_of_range("Initial floor placement exceeds native coordinate range.");
+            GAME_ERROR_AND_RETURN(std::out_of_range("Initial floor placement exceeds native coordinate range."));
         }
         rawGO.m_rawShorts[7] = static_cast<int16_t>(height);
     };
@@ -1476,7 +1553,7 @@ void Level::CorrectInitialObjectPlacement(RawGameObject& rawGO) const
         const int adjusted = coordinate + delta;
         if (adjusted < std::numeric_limits<int16_t>::min() || adjusted > std::numeric_limits<int16_t>::max())
         {
-            throw std::out_of_range("Initial object clearance exceeds native coordinate range.");
+            GAME_ERROR_AND_RETURN(std::out_of_range("Initial object clearance exceeds native coordinate range."));
         }
         coordinate = static_cast<int16_t>(adjusted);
     };
@@ -1541,6 +1618,10 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
 	int modelId = prop.GetModelId();
     const Renderable* oldRenderable = inst->GetRenderable();
     inst->SetRenderable(nullptr, nullptr);
+    if (prop.IsRenderSuppressed())
+    {
+        return;
+    }
     bool assignLevelTextures = true;
 
 	// model & animation:
@@ -1566,6 +1647,10 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
         if (model2 != nullptr)
         {
             inst->m_blendWeight = prop.GetAnimBlendWeight();
+        }
+        if (oldRenderable != model)
+        {
+            inst->m_materialOverride.clear();
         }
         inst->SetRenderable(model, model2);
 
@@ -1747,7 +1832,7 @@ FUTURE(std::shared_ptr<PlayerLight>) Level::PopulateScene(Scene& scene, bool cre
             auto rawGO = original;
             CorrectInitialObjectPlacement(rawGO);
             GamePlay::PropertyAccessorBase props(rawGO);
-            if (!props.Isvalid())
+            if (!props.Isvalid() || props.IsRenderSuppressed())
                 continue;
 
             GamePlay::BehaviorType behavior = props.GetBehaviorType();

@@ -1037,7 +1037,8 @@ namespace Desperabis
     DispatchResult Function_FlyingArrow(RawGameObject& object, GameContext& context)
     {
         if (object.itemValue != 0 && object.itemValue != 11 && object.itemValue != 3 && object.itemValue != 103 &&
-            object.itemValue != 4 && object.itemValue != 5 && object.itemValue != 6 && object.itemValue != 7)
+            object.itemValue != 4 && object.itemValue != 5 && object.itemValue != 6 && object.itemValue != 7 &&
+            object.itemValue != 8 && object.itemValue != 9)
         {
             return { DispatchStatus::UnimplementedHandler, BehaviorType::FlyingArrow, 0x1E1A };
         }
@@ -1048,7 +1049,7 @@ namespace Desperabis
             object.posY = WrapSignedWord(object.posY + object.velocityY);
             object.posZ = WrapSignedWord(object.posZ + object.velocityZ);
             const bool wall = (context.GetCollisionMapPixelAtWorldXZ(object.posX, object.posZ) & 8) != 0;
-            const auto floor = object.itemValue >= 4 && object.itemValue <= 6 ?
+            auto floor = object.itemValue >= 4 && object.itemValue <= 6 ?
                 context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ) :
                 context.GetFloorHeight(object.posX, object.posY, object.posZ);
             if (object.itemValue == 0)
@@ -1114,6 +1115,30 @@ namespace Desperabis
                 }
                 object.blendWeightOrSpriteOpacity = object.health;
                 if (object.health < 18) { object.animFrame = 1; }
+            }
+            else if (object.itemValue == 8)
+            {
+                const auto threshold = 500 - static_cast<int>(context.GetSoundDistanceAt(object.posX, object.posZ));
+                if (static_cast<int>(context.Random(5000)) < threshold) { object.itemValue = 9; }
+            }
+            else if (object.itemValue == 9)
+            {
+                object.velocityY = WrapSignedWord(object.velocityY - 1);
+                if (floor < -300) { floor = -1000; }
+                if (object.posY < floor)
+                {
+                    object.posY = floor;
+                    object.velocityY = ArithmeticShiftRight(
+                        WrapSignedWord(std::abs(static_cast<int>(object.velocityY))), 2);
+                    if (object.velocityY < 4)
+                    {
+                        object.collisionType = CollisionType::None;
+                        object.behavior = BehaviorType::None;
+                    }
+                    context.PlaySoundEffect(static_cast<SoundEffect>(37),
+                        GameContext::GetSoundVolume(static_cast<std::int16_t>(context.Random(500))), object, 1);
+                }
+                object.behaviorParameter = static_cast<std::uint8_t>(std::abs(static_cast<int>(object.velocityY)) * 4);
             }
             else if (object.itemValue == 3)
             {

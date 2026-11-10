@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
+#include <vector>
 
 namespace Desperabis
 {
@@ -47,6 +48,8 @@ namespace Desperabis
         virtual void EndAmbientLoopCreation(std::size_t) { throw std::logic_error("Ambient audio is unsupported."); }
         virtual void StartAmbientPlayback() { throw std::logic_error("Ambient audio is unsupported."); }
         virtual void StopAmbientPlayback() { throw std::logic_error("Ambient audio is unsupported."); }
+        virtual void CreateMusicPlayback(const std::vector<std::uint8_t>&, bool)
+        { throw std::logic_error("Music audio is unsupported."); }
         virtual void StartUnderwaterPlayback(std::uint8_t, std::uint8_t)
         { throw std::logic_error("Underwater audio is unsupported."); }
         virtual void StopUnderwaterPlayback() { throw std::logic_error("Underwater audio is unsupported."); }

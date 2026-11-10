@@ -58,6 +58,18 @@ namespace
         std::string userMessage;
         std::int16_t userMessageTicks = 0;
         int promptCalls = 0;
+        struct ObjectFailure
+        {
+            int slot;
+            BehaviorType behavior;
+            std::string message;
+        };
+        std::vector<ObjectFailure> objectFailures;
+
+        void OnObjectUpdateFailed(int slot, BehaviorType behavior, std::string_view message) override
+        {
+            objectFailures.push_back({slot, behavior, std::string(message)});
+        }
 
         void PromptUserMessage(std::string_view text, std::int16_t duration) override
         {
@@ -691,6 +703,139 @@ namespace
         ExpectError<std::invalid_argument>([&] { host.Tick({ 1, -1 }, input); });
         host.level = nullptr;
         ExpectError<std::logic_error>([&] { host.Tick({}, input); });
+    }
+
+    void TestObjectFailureIsolation()
+    {
+        Host host;
+        host.basicPlayerMovementEnabled = false;
+        const auto request = host.StartLevel(10);
+        auto data = MakeLevel();
+        for (const int slot : {2, 4})
+        {
+            auto& object = data.objects[slot];
+            object.health = 1000;
+            object.behavior = slot == 2 ? BehaviorType::EndBossFeeler : BehaviorType::EndBossLeg;
+            object.doorLockOrGroupBitmask = 166;
+        }
+        for (const int slot : {3, 164})
+        {
+            auto& object = data.objects[slot];
+            object.health = 1000;
+            object.behavior = BehaviorType::IdleAnimation;
+            object.itemValue = 3;
+        }
+        auto& ripple = data.objects[5];
+        ripple.health = 40;
+        ripple.behavior = BehaviorType::DriftingParticle;
+        ripple.posX = 150;
+        ripple.velocityX = 2;
+        ripple.blendWeightOrSpriteOpacity = 80;
+        host.CompleteLevelLoad(request.id, std::move(data));
+        Input input;
+        const auto result = host.Tick({1, 1}, input);
+        Check(result.status == GameTickStatus::Advanced && result.objects &&
+            result.objects->at(0).status == DispatchStatus::Failed &&
+            result.objects->at(0).behavior == BehaviorType::EndBossFeeler &&
+            result.objects->at(0).moduleOffset == 0x2C97 &&
+            result.objects->at(2).status == DispatchStatus::Failed &&
+            result.objects->at(1).status == DispatchStatus::ExecutedCase &&
+            result.objects->at(3).status == DispatchStatus::ExecutedCase &&
+            result.objects->at(162).status == DispatchStatus::ExecutedCase,
+            "Object failures must be explicit without aborting later slots or the advanced game tick.");
+        Check(host.objectFailures.size() == 2 &&
+            host.objectFailures[0].slot == 2 && host.objectFailures[0].behavior == BehaviorType::EndBossFeeler &&
+            !host.objectFailures[0].message.empty() && host.objectFailures[1].slot == 4 &&
+            host.objectFailures[1].behavior == BehaviorType::EndBossLeg && !host.objectFailures[1].message.empty(),
+            "Every failed object must report its original slot, behavior and exception message.");
+        Check(host.worldObjects[3].blendWeightOrSpriteOpacity == 3 &&
+            host.worldObjects[164].blendWeightOrSpriteOpacity == 3 &&
+            host.worldObjects[5].posX == 152 && host.worldObjects[5].health == 39 &&
+            host.worldObjects[5].blendWeightOrSpriteOpacity == 75,
+            "Animations and particle movement, lifetime and fading must continue after earlier failures.");
+        const auto next = host.Tick({1, 1}, input);
+        Check(next.status == GameTickStatus::Advanced && host.objectFailures.size() == 4 &&
+            host.worldObjects[3].blendWeightOrSpriteOpacity == 6 &&
+            host.worldObjects[5].posX == 154 && host.worldObjects[5].health == 38,
+            "Failed objects must be retried without freezing subsequent simulation frames.");
+        struct NoInput final : InputHandler
+        {
+            bool IsKeyPressed(InputKey) override { return false; }
+        } noInput;
+        host.UpdateApplication(0, noInput);
+        const auto update = host.UpdateApplication(1.0 / 33, noInput);
+        Check(update.tick && update.tick->status == GameTickStatus::Advanced &&
+            update.worldDeltaSeconds > 0 && host.objectFailures.size() == 6 &&
+            host.worldObjects[5].posX == 156,
+            "Object failures must not freeze the application's presentation clock or particle simulation.");
+        ExpectError<std::out_of_range>([&] { UpdateObject(host.worldObjects[2], host); });
+    }
+
+    void TestAttachmentFailureIsolation()
+    {
+        Host host;
+        host.basicPlayerMovementEnabled = false;
+        const auto request = host.StartLevel(10);
+        auto data = MakeLevel();
+        RawGameObject broken;
+        broken.health = 1000;
+        broken.behavior = BehaviorType::DragonHead;
+        broken.doorLockOrGroupBitmask = 166;
+        RawGameObject orphan;
+        orphan.health = 1000;
+        orphan.behavior = BehaviorType::DragonHead;
+        orphan.doorLockOrGroupBitmask = 4;
+        data.objects[5].health = 1000;
+        data.objects[5].behavior = BehaviorType::IdleAnimation;
+        data.objects[5].itemValue = 3;
+        host.CompleteLevelLoad(request.id, std::move(data));
+        host.ReplaceWorldObject(2, broken);
+        host.ReplaceWorldObject(3, orphan);
+        Input input;
+#ifndef NDEBUG
+        ExpectError<std::out_of_range>([&] { host.Tick({1, 1}, input); });
+        Check(host.worldObjects[3].health == 1000, "Debug attachment failures must remain fail-fast.");
+#else
+        const auto first = host.Tick({1, 1}, input);
+        Check(first.status == GameTickStatus::Advanced && host.worldObjects[2].health == 1000 &&
+            host.worldObjects[3].health == 0 && host.worldObjects[5].blendWeightOrSpriteOpacity == 3 &&
+            !host.objectFailures.empty() && host.objectFailures.front().slot == 2,
+            "Release must report and skip broken attachments while later attachments and behaviors continue.");
+        const auto second = host.Tick({1, 1}, input);
+        Check(second.status == GameTickStatus::Advanced && host.worldObjects[5].blendWeightOrSpriteOpacity == 6,
+            "Broken attachments must be retried without stopping subsequent Release ticks.");
+#endif
+    }
+
+    void TestRecoverableVisualState()
+    {
+        GameContext context;
+        auto& marker = context.worldObjects[2];
+        marker.health = 1000;
+        marker.behavior = BehaviorType::TrackFireAnimation;
+        marker.generalPurpose1 = 123;
+#ifndef NDEBUG
+        ExpectError<std::invalid_argument>([&] { UpdateObject(marker, context); });
+#else
+        const auto result = UpdateObject(marker, context);
+        Check(result.status == DispatchStatus::ExecutedCase,
+            "An unavailable optional tracked animation must not abort the object's Release update.");
+#endif
+        Check(marker.health == 1000 && marker.generalPurpose1 == 123 && marker.generalPurpose2 == 0,
+            "Skipping an invalid optional animation must preserve its native object state.");
+        marker.renderPlacementMode = 20;
+        marker.generalPurpose3 = 1;
+        marker.doorLockOrGroupBitmask = 3;
+        context.worldObjects[3].health = 1000;
+        context.worldObjects[3].modelId = 31;
+#ifndef NDEBUG
+        ExpectError<std::runtime_error>([&] { context.GetObjectRenderState(2); });
+#else
+        Check(context.GetObjectRenderState(2).health == 0,
+            "An attachment lacking parent geometry must be omitted rather than drawn at an invented position.");
+#endif
+        Check(marker.health == 1000 && marker.renderPlacementMode == 20,
+            "Omitting a broken attachment's render state must not delete or detach the gameplay object.");
     }
 
     void TestPlayerCamera()
@@ -2053,6 +2198,9 @@ int main(int argc, char** argv)
         TestWeaponCreationLifecycle();
         TestLevelPlayerInitialization();
         TestTick();
+        TestObjectFailureIsolation();
+        TestAttachmentFailureIsolation();
+        TestRecoverableVisualState();
         TestPlayerCamera();
         TestBasicPlayerMovement();
         TestPlayerGrounding();

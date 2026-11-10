@@ -155,6 +155,7 @@ void AudioPlayer::BeginAmbientLoopCreation(std::size_t capacityFrames)
     m_ambientPcm.swap(pcm);
     m_ambientLoopLength = 0;
     m_buildingAmbient = true;
+    m_loopAmbient = true;
 }
 
 void AudioPlayer::ValidateAmbientWrite(std::size_t offset, std::size_t length) const
@@ -207,7 +208,8 @@ void AudioPlayer::StartAmbientPlayback()
     XAUDIO2_BUFFER buffer{};
     buffer.AudioBytes = static_cast<UINT32>(m_ambientLoopLength);
     buffer.pAudioData = m_ambientPcm.data();
-    buffer.LoopCount = XAUDIO2_LOOP_INFINITE;
+    buffer.LoopCount = m_loopAmbient ? XAUDIO2_LOOP_INFINITE : 0;
+    buffer.Flags = XAUDIO2_END_OF_STREAM;
     CheckAudioResult(voice->SubmitSourceBuffer(&buffer), "Ambient loop submission");
     CheckAudioResult(voice->Start(), "Ambient playback");
     m_ambientVoice = std::move(voice);
@@ -216,4 +218,18 @@ void AudioPlayer::StartAmbientPlayback()
 void AudioPlayer::StopAmbientPlayback()
 {
     m_ambientVoice.reset();
+}
+
+void AudioPlayer::CreateMusicPlayback(const std::vector<std::uint8_t>& pcm, bool looping)
+{
+    if (pcm.empty() || pcm.size() > XAUDIO2_MAX_BUFFER_BYTES)
+    {
+        throw std::invalid_argument("Music PCM must fit a nonempty XAudio2 buffer.");
+    }
+    auto owned = pcm;
+    StopAmbientPlayback();
+    m_ambientPcm.swap(owned);
+    m_ambientLoopLength = m_ambientPcm.size();
+    m_buildingAmbient = false;
+    m_loopAmbient = looping;
 }

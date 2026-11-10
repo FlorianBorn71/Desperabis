@@ -29,6 +29,7 @@ namespace Desperabis
     // Recovered shared gameplay prefix plus case dispatch; render-list postprocessing is separate.
     DispatchResult UpdateObject(RawGameObject& object, GameContext& context);
     // Results correspond to original slots 2..164, processed sequentially in place.
+    // Per-object std::exceptions produce Failed, notify OnObjectUpdateFailed, and do not stop later slots.
     std::array<DispatchResult, 163> UpdateObjects(GameContext& context);
 
 #define BEHAVIOR_CASE(name, entry) DispatchResult Function_##name(RawGameObject&, GameContext&);

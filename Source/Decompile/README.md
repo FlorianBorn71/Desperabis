@@ -15,6 +15,9 @@ For the first explained case and shared collision-map pointer, see
 
 ## Directory conventions
 
+- `final-level-native-evidence.txt`, `Scaffold/FinalLevelTests.cpp`: final boss,
+  collapsing slabs, isolated staged boss fall, dam/flood/debris, magician rescue, recorded ending and
+  uninterrupted MUSIC1 playback. See [final boss and ending](BehaviorRecovery.md#final-boss-collapsing-floor-and-ending).
 - `InspectExecutable.ps1`: read-only DOS MZ inspection and baseline generation.
 - `InstallTools.ps1`: pinned official downloads, SHA-256 verification, and
   extraction. Resumes partial downloads; refuses existing installation
@@ -751,6 +754,49 @@ turn, and interaction actions through `IsKeyPressed(InputKey)`.
 case dispatch for slots 2..164; the console uses this path. Both native
 free-slot allocation methods are available on the context. There is no
 universal velocity or angular-speed integration in the original shared loop.
+Each object's shared prefix/case update catches `std::exception` independently:
+its result is `DispatchStatus::Failed`, `OnObjectUpdateFailed` reports the slot,
+original behavior and exception message, and later objects continue normally.
+The default hook logs to stderr; DX11 uses debug output and its window title.
+Failed objects retain changes already made and are retried next tick, not silently
+deleted or disabled. Direct `UpdateObject`/`DispatchObjectCase` calls remain
+fail-fast, as do invalid batch timing and failures outside the per-object update.
+DX11 separately reports wall/floor/surface synchronization errors and continues
+copying object presentation, so an unsupported map edit cannot freeze doors or
+particles. Presentation errors do not discard a successful core tick's world
+delta; scene time and effects continue. Runtime surface-selector changes rebuild
+only affected water batches, preserving static terrain buffers and registered
+instances. Flooded tiles use the configured native water height/reflection mode;
+water removal, slot changes and saved flooded geometry use the same conversion.
+
+### Runtime error policy
+
+[GameDiagnostics.h](../GameDiagnostics.h) provides `GAME_ERROR`, `GAME_ERROR_AND_RETURN` and
+`GAME_ERROR_AND_RETURN_VALUE`. Pass a typed standard exception, for example
+`GAME_ERROR_AND_RETURN(std::out_of_range("..."))`. Debug throws that exception;
+Release logs it and takes the explicit return/skip path. `GAME_ERROR` alone
+requires an explicit safe recovery action immediately afterward; it is never
+permission to continue indexing invalid storage.
+
+Use this policy for optional presentation (flashes, tracked animations, missing
+static model variants and initial-placement corrections). Retain authored
+state or omit the affected visual rather than inventing replacement data.
+Out-of-grid geometry-control markers are skipped; invalid river paths stop at
+their first bad tile, and conflicting variants retain the first prepared tile.
+File dimensions, payload sizes, save validation, required geometry, array
+bounds and nonterminating native algorithms remain hard rejections in Release.
+Behavior errors are contained at the existing per-object update boundary.
+Release attachment updates also report/skip individual failed attachments.
+DX11 independently contains tracked-texture and per-object presentation errors;
+failed visuals are hidden, their extras removed, and their state retried next
+frame without marking the presentation cache or behavior setup successful.
+
+Diagnostics are deduplicated by context/message, bounded to 256 distinct
+messages per process, and report when the limit is reached. The default sink is
+stderr; the DX11 game routes it to Windows debug output. Never remove error
+reporting in Release. `diagnostics-debug`/`diagnostics-release` exercise both
+macro policies regardless of the CMake build configuration; runtime/GPU tests
+also exercise real optional-feature and per-object failure recovery.
 Level-10 weather is implemented in `Scaffold/WeatherBehaviors.cpp`: context-owned
 wind, airborne/ground leaves, individual raindrops and splashes, and native
 lightning/thunder timing. `GetLightningFlashes()` exposes complete, unclipped

@@ -1,4 +1,5 @@
 #pragma once
+#include "../../GameDiagnostics.h"
 
 #include "ApplicationFlow.h"
 #include "GameEnums.h"
@@ -320,6 +321,9 @@ namespace Desperabis
         void SetPaused(bool paused);
         bool IsPaused() const;
         bool IsCutscenePlaying() const;
+        bool IsBossFallPlaying() const { return bossFall.has_value(); }
+        void BeginBossFall(int bossSlot, int trapSlot);
+        std::vector<RawGameObject> GetBossFallView() const;
         GameTickResult Tick(GameTickTiming timing, InputHandler& input);
         // Call every host frame, including zero-tick frames and modal/loading states.
         // Owns 33 Hz gameplay timing, input edges/repeat, and nonblocking page dispatch.
@@ -340,6 +344,9 @@ namespace Desperabis
         virtual void OnLightningShown(const LightningFlash& flash);
         virtual void OnLightningHidden();
         virtual void OnObjectDestroyed(int slot);
+        // Failed updates retain prior side effects and are retried next tick; this hook must not throw.
+        // The message is borrowed for this call. The default implementation reports to stderr.
+        virtual void OnObjectUpdateFailed(int slot, BehaviorType behavior, std::string_view message);
         // Immediate after clamping/depletion; both arguments are signed 16.16 life values.
         // Only actual changes through ApplyPlayerLifeDelta notify; do not mutate/reenter gameplay.
         virtual void OnPlayerHealthChanged(std::int32_t previousLife, std::int32_t currentLife);
@@ -482,6 +489,9 @@ namespace Desperabis
             std::int16_t x, std::int16_t y, std::int16_t z);
         void SpawnWaterImpact(std::int16_t x, std::int16_t z);
         void UpdateMeteor(RawGameObject& object);
+        void UpdateObjectPoseSequence(RawGameObject& object);
+        void UpdateEndingSequenceTrigger(RawGameObject& object);
+        void UpdateFloodingWater(RawGameObject& object);
         // Native offsetY + encoded height (pixel count minus one), before spriteScale / 64.
         virtual std::int16_t GetSpriteBottom(const RawGameObject& object) const;
         // Asset-derived world anchors, independent of visibility and renderer timing.
@@ -492,6 +502,7 @@ namespace Desperabis
         std::int16_t windX = 0; // DS:2B0E; owned by this level/context, not a process global.
         std::int16_t windZ = 0; // DS:2B10.
         bool skyEnabled = false; // Native DS:D4C4 > 0.
+        std::int16_t cinematicDepthShade = 0; // Ending behavior 171 overrides DS:2B0A depth attenuation.
         const std::vector<LightningFlash>& GetLightningFlashes() const { return lightningFlashes; }
         void ClearLightningFlashes();
         void GenerateLightningFlash(std::int16_t x, const RawGameObject* source = nullptr);
@@ -540,6 +551,9 @@ namespace Desperabis
         void SetBarrierCollisionMapAtWorldXZ(std::int16_t x, std::int16_t z,
             std::int16_t heading, std::uint8_t value);
         void ExtinguishLavaTile(std::int16_t x, std::int16_t z, std::uint8_t floorFrame);
+        void PatchCollisionMapFootprint(std::int16_t x, std::int16_t z,
+            std::int16_t left, std::int16_t top, std::int16_t right, std::int16_t bottom,
+            std::uint8_t mask, std::uint8_t expected, std::uint8_t replacement);
         // Original 10AC:B2C8: replace the whole surface byte when its low selector matches.
         bool ReplaceSurfaceSelector(std::int16_t x, std::int16_t z,
             std::uint8_t oldSelector, std::uint8_t replacement);
@@ -606,10 +620,23 @@ namespace Desperabis
         virtual void InitializeNewGame(std::int16_t chapter);
 
     private:
+        struct BossFall
+        {
+            int bossSlot, trapSlot, rootSlot;
+            int elapsed = 0;
+            double position = -100, velocity = 1;
+            double backgroundPosition = 0, backgroundVelocity = 4;
+        };
+        std::optional<BossFall> bossFall;
+        GameTickResult TickBossFall(GameTickTiming timing);
+        RawGameObject ResolveAttachedRenderState(RawGameObject object, const RawGameObject& parent) const;
         void BeginCutscene(bool restoringSave);
         GameTickResult TickCutscene(GameTickTiming timing);
         GameTickResult TickGameplay(GameTickTiming timing, InputHandler& input);
         bool cutscenePlaying = false;
+        std::vector<std::uint8_t> recordedCutscene;
+        std::size_t recordedCutsceneFrame = 0;
+        bool musicAmbientLoaded = false;
         void EnsureGameParts();
         const std::vector<std::uint8_t>& CurrentLevelOrder();
         std::optional<std::uint8_t> NextPlayableLevel(const std::vector<std::uint8_t>& order, std::size_t first);

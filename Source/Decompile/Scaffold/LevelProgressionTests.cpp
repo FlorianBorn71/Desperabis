@@ -131,8 +131,16 @@ namespace
             host.audioHandler = &audio;
             Ready(host, input, sequence[i]);
             const int destroyed = host.destructions;
+            if (sequence[i] == 26) { host.synchronous = false; }
             host.EndLevel();
-            if (sequence[i] == 50 || sequence[i] == 35 || sequence[i] == 26)
+            if (sequence[i] == 26)
+            {
+                Check(host.requests.size() == 2 && host.requests.back().levelNumber == 96 &&
+                    host.GetRuntimeState() == GameRuntimeState::Loading &&
+                    host.GetMenuPage() == MenuPage::Gameplay,
+                    "Completing the final playable level must request the recorded ending.");
+            }
+            else if (sequence[i] == 50 || sequence[i] == 35)
             {
                 Check(host.requests.size() == 1 && host.GetMenuPage() == MenuPage::MainMenu &&
                     host.GetRuntimeState() == GameRuntimeState::NoLevel && !host.CanResumeGame() &&

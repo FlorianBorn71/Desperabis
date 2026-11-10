@@ -158,7 +158,7 @@ namespace
         Check(audio.copies.front().sample == 46, "Non-special selectors must use the indoor recipe.");
         for (const auto selector : {100, 101, 102, 103, 150})
         {
-            Reject<std::runtime_error>([&] { core.CreateAmbientLoop(static_cast<std::uint8_t>(selector)); });
+            Reject<std::logic_error>([&] { core.CreateAmbientLoop(static_cast<std::uint8_t>(selector)); });
         }
         const auto original = audio.lengths[46];
         for (const std::size_t invalid : {std::size_t{0}, std::size_t{64001}, (std::numeric_limits<std::size_t>::max)()})

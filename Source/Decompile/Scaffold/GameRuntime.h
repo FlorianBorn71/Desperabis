@@ -41,7 +41,8 @@ namespace Desperabis
         UnimplementedHandler,
         NoSpecificCase,
         InactiveObject,
-        DispatchDisabled
+        DispatchDisabled,
+        Failed
     };
 
     struct DispatchResult

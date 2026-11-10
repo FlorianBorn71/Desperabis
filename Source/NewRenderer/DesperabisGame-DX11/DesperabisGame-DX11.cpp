@@ -4,6 +4,7 @@
 
 #include "pch.h"
 #include <GameContext.h>
+#include <BehaviorDispatch.h>
 #include <GameMath.h>
 #include "AudioPlayer.h"
 #include "ApplicationUi.h"
@@ -100,10 +101,25 @@ namespace
 	std::vector<byte> ReadGameFile(const std::wstring& filename);
 	std::filesystem::path SaveFilePath(std::uint8_t slot);
 	void ClearGameObjects();
+	void ReportGameCoreError(const char* context, const std::string& error);
 
 	class GameAppContext final : public Desperabis::GameContext
 	{
 	public:
+		void OnObjectUpdateFailed(int slot, Desperabis::BehaviorType behavior, std::string_view message) override
+		{
+			const auto* descriptor = Desperabis::FindBehavior(behavior);
+			const auto levelNumber = GetLoadedLevelNumber();
+			const std::string source = "object update failed [level " +
+				(levelNumber ? std::to_string(*levelNumber) : "none") +
+				", slot " + std::to_string(slot) + ", behavior " +
+				(descriptor ? descriptor->name : std::to_string(static_cast<unsigned int>(behavior))) + "]";
+			const std::string error(message);
+			ReportGameCoreError(source.c_str(), error);
+			const std::string title = "Desperabis (DX11) - " + source + ": " + error;
+			SetWindowTextA(g_hWnd, title.c_str());
+		}
+
 		void OnLightFlash(const Desperabis::LightFlash& flash) override
 		{
 			if (!g_scene) { throw std::logic_error("Light flash requires a scene."); }
@@ -168,6 +184,13 @@ namespace
 		{
 			auto settings = g_renderSettings;
 			settings.clearColorOverride = Vector4{0.015f,0.015f,0.015f,0.f};
+			if (IsCutscenePlaying() && cinematicDepthShade > 0 && g_scene)
+			{
+				FogParameters fog;
+				g_scene->GetFogParams(fog.color, fog.falloff);
+				fog.falloff *= 1.f + cinematicDepthShade / 7.f;
+				settings.fogOverride = fog;
+			}
 			if (m_underwaterView)
 			{
 				settings.fogOverride = FogParameters{
@@ -702,8 +725,7 @@ namespace
 
 	void ReportGameCoreError(const char* context, const std::string& error)
 	{
-		std::string msg = std::string("GameCore: ") + context + ": " + error + "\n";
-		OutputDebugStringA(msg.c_str());
+		Desperabis::Diagnostics::ReportOnce(context, error);
 	}
 
 	std::string DescribeInteraction(const Desperabis::InteractionResult& interaction)
@@ -782,23 +804,28 @@ namespace
 		Level* level = g_scene->m_level;
 		const auto* geometry = g_gameCore->GetLevel();
 		if (!geometry) { throw std::logic_error("World presentation requires loaded core geometry."); }
-		level->SynchronizeWallTiles(&geometry->wallTextures[0][0],
-		    Desperabis::Level::Width, Desperabis::Level::Height, Desperabis::Level::Width);
-		level->SynchronizeFloorTiles(&geometry->floorObjects[0][0],
-		    Desperabis::Level::Width, Desperabis::Level::Height, Desperabis::Level::Width);
-		level->SynchronizeSurfaceTiles(&geometry->surfaceFlags[0][0],
-		    Desperabis::Level::Width, Desperabis::Level::Height, Desperabis::Level::Width);
-		for (const auto& object : g_gameCore->GetWorldObjects())
+		ApplicationUi::SynchronizeLevelGeometry(*level, *geometry,
+			[](const char* operation, const char* message)
+			{
+				ReportGameCoreError(operation, message);
+				const std::string title = std::string("Desperabis (DX11) - ") + operation + ": " + message;
+				SetWindowTextA(g_hWnd, title.c_str());
+			});
+		ApplicationUi::SynchronizeObjectPresentations([&](int slot)
 		{
-			if (object.health <= 0) { continue; }
+			const auto& object = g_gameCore->GetWorldObjects()[slot];
+			if (object.health <= 0) { return; }
 			const bool meteor = object.behavior == Desperabis::BehaviorType::Meteor ||
 			    object.behavior == Desperabis::BehaviorType::MeteorImpact;
-			if (!meteor && object.behavior != Desperabis::BehaviorType::WitchMouthAnimation) { continue; }
+			if (!meteor && object.behavior != Desperabis::BehaviorType::WitchMouthAnimation) { return; }
 			const int target = meteor ? 15 : 12 + object.groupIndexOrLock;
 			const auto frame = geometry->trackedTextureFrames.at(target);
 			if (frame != 0) { g_scene->SetFireAnimationFrame(target, frame - 1); }
-		}
-		for (int slot = 2; slot <= 164; slot++)
+		}, [](int slot, const char* message)
+		{
+			ReportGameCoreError(("tracked texture update failed [slot " + std::to_string(slot) + "]").c_str(), message);
+		});
+		ApplicationUi::SynchronizeObjectPresentations([&](int slot)
 		{
 			RawGameObject& state = g_objectState[slot];
 			state.m_level = level;
@@ -808,11 +835,10 @@ namespace
 			state.m_rawBytes[49] = 0;
 			if (state == g_presentedState[slot])
 			{
-				continue;
+				return;
 			}
-			g_presentedState[slot] = state;
 
-			RenderableInstancePtr& inst = g_objectInst[slot];
+			auto inst = g_objectInst[slot];
 			const GamePlay::PropertyAccessorBase prop(state);
 			if (!prop.Isvalid())
 			{
@@ -820,9 +846,10 @@ namespace
 				if (inst != nullptr)
 				{
 					g_scene->RemoveRenderableInstance(inst);
-					inst.reset();
+					g_objectInst[slot].reset();
 				}
-				continue;
+				g_presentedState[slot] = state;
+				return;
 			}
 
 			const bool firstAssignment = inst == nullptr;
@@ -853,6 +880,7 @@ namespace
 			if (firstAssignment)
 			{
 				g_scene->AddRenderableInstance(inst);
+				g_objectInst[slot] = inst;
 				inst->UpdateGlobalBounds();
 			}
 			else { g_scene->AssignFireAnimations(*inst); }
@@ -861,12 +889,22 @@ namespace
 			// game object is not added to the scene, so it does not simulate anything itself.
 			if (!g_objectBehaviorCreated[slot] && behavior != GamePlay::BehaviorType::Moon)
 			{
-				g_objectBehaviorCreated[slot] = true;
 				LevelGameObject presentation(g_scene.get(), state);
 				presentation.m_renderInst = inst;
 				FORCE_WAIT(GamePlay::CreateObjectBehavior(*g_scene, presentation, state));
+				g_objectBehaviorCreated[slot] = true;
 			}
-		}
+			g_presentedState[slot] = state;
+		}, [](int slot, const char* message)
+		{
+			g_presentedState[slot] = {};
+			if (g_objectInst[slot]) { g_objectInst[slot]->SetVisible(false); }
+			g_scene->RemoveObjectPresentation(slot);
+			const auto context = "object presentation failed [slot " + std::to_string(slot) + "]";
+			ReportGameCoreError(context.c_str(), message);
+			const auto title = "Desperabis (DX11) - " + context + ": " + message;
+			SetWindowTextA(g_hWnd, title.c_str());
+		});
 	}
 
 	void ApplyPlayerCamera()
@@ -1067,10 +1105,18 @@ namespace
 		const auto* sceneBeforeUpdate = g_scene.get();
 		try
 		{
-			{
-				ProfilingScope _(g_profilingStats.m_duration_game);
-				application = g_gameCore->UpdateApplication(deltaTime, input);
-			}
+			ProfilingScope _(g_profilingStats.m_duration_game);
+			application = g_gameCore->UpdateApplication(deltaTime, input);
+		}
+		catch (const std::exception& error)
+		{
+			application = {};
+			ReportGameCoreError("application update failed", error.what());
+			const std::string title = std::string("Desperabis (DX11) - ") + error.what();
+			SetWindowTextA(g_hWnd, title.c_str());
+		}
+		try
+		{
 			if (g_scene.get() != sceneBeforeUpdate || g_gameCore->GetLoadedLevelNumber() != levelBeforeUpdate)
 			{
 				if (g_gameCore->GetRuntimeState() == Desperabis::GameRuntimeState::Ready)
@@ -1103,8 +1149,7 @@ namespace
 		}
 		catch (const std::exception& error)
 		{
-			application = {};
-			ReportGameCoreError("application update failed", error.what());
+			ReportGameCoreError("world presentation update failed", error.what());
 			const std::string title = std::string("Desperabis (DX11) - ") + error.what();
 			SetWindowTextA(g_hWnd, title.c_str());
 		}
@@ -1207,6 +1252,16 @@ namespace
 		Renderer::Instance().SetCamera(g_camera);
 		Renderer::Instance().SetCurrentTime(g_worldTime);
 		g_renderer.SetWeaponDraw({});
+		if (presentation.page == Desperabis::MenuPage::Gameplay && g_gameCore->IsBossFallPlaying())
+		{
+		    g_renderer.SetItemPreview(nullptr, false, {});
+		    g_applicationUi.DrawBossFall(g_gameCore->GetBossFallView(), g_renderer, *g_scene->m_level,
+		        g_renderSettings, g_profilingStats, g_viewport, g_d3dContext.Get(),
+		        g_renderTargetView.Get(), g_depthStencilView.Get());
+		    g_profilingStats.Update();
+		    g_swapChain->Present(1, 0);
+		    return;
+		}
 		if (presentation.page == Desperabis::MenuPage::Gameplay)
 		{
 			UpdateItemPreview();
@@ -1295,6 +1350,7 @@ namespace
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE, _In_ LPWSTR, _In_ int nCmdShow)
 {
+	Desperabis::Diagnostics::SetSink([](const char* message) { OutputDebugStringA(message); });
 	WNDCLASSEXW wcex = {};
 	wcex.cbSize = sizeof(WNDCLASSEX);
 	wcex.style = CS_HREDRAW | CS_VREDRAW;

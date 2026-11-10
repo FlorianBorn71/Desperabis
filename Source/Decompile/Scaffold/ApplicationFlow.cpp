@@ -42,7 +42,10 @@ namespace Desperabis
 
     void GameContext::FinishGamePart()
     {
+        bossFall.reset();
         cutscenePlaying = false;
+        recordedCutscene.clear();
+        musicAmbientLoaded = false;
         ResetUnderwater();
         StopAllSoundEffects();
         if (audioHandler && ambientPlaybackActive) { audioHandler->StopAmbientPlayback(); }
@@ -72,13 +75,22 @@ namespace Desperabis
         {
             throw std::logic_error("Ending a level requires ready gameplay.");
         }
+        if (*loadedLevelNumber == 95)
+        {
+            FinishGamePart();
+            return;
+        }
         const auto& order = CurrentLevelOrder();
         const auto current = std::find(order.begin(), order.end(), *loadedLevelNumber);
         const auto next = finishGamePart ? std::optional<std::uint8_t>{} :
             NextPlayableLevel(order, static_cast<std::size_t>(current - order.begin()) + 1);
         const bool completed = !next;
         PrepareLevelProgression(!completed);
-        if (completed)
+        if (completed && *loadedLevelNumber == 26 && activePartHasCredits)
+        {
+            StartLevel(96);
+        }
+        else if (completed)
         {
             FinishGamePart();
         }
@@ -232,6 +244,7 @@ namespace Desperabis
         switch (menuPage)
         {
         case MenuPage::Gameplay:
+            if (IsBossFallPlaying()) { break; }
             if (wasPressed(InputKey::MainMenuKey)) { SetMenuPage(MenuPage::MainMenu); }
             else if (wasPressed(InputKey::InventoryKey) && runtimeState == GameRuntimeState::Ready &&
                 !IsCutscenePlaying())

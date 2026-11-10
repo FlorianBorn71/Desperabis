@@ -164,7 +164,8 @@ namespace
         std::size_t specific = 0;
         for (const auto& entry : BehaviorCatalog())
         {
-            RawGameObject object;
+            GameContext context;
+            auto& object = context.worldObjects[3];
             object.behavior = entry.type;
             object.health = 1;
             object.posX = -100;
@@ -194,7 +195,6 @@ namespace
             }
             if (entry.type == BehaviorType::BuyItem) { object.itemValue = 2; }
             const auto before = ObjectBytes(object);
-            GameContext context;
             context.tickCount = 3;
             auto level = CreateDummyLevel();
             level.heightSurfaces[0] = Level::HeightSurface{ 0, 0 };
@@ -272,6 +272,14 @@ namespace
                 entry.type == BehaviorType::UnderwaterPlants || entry.type == BehaviorType::CurtainOpens ||
                 entry.type == BehaviorType::TrackFireAnimation || entry.type == BehaviorType::ForceWeaponSelection ||
                 entry.type == BehaviorType::WitchHead || entry.type == BehaviorType::BuyItem ||
+                entry.type == BehaviorType::BreakableStoneWallFloodingWater ||
+                entry.type == BehaviorType::TriggerDebris || entry.type == BehaviorType::EndBossHead ||
+                entry.type == BehaviorType::EndBossLeg || entry.type == BehaviorType::EndBossFeeler ||
+                entry.type == BehaviorType::EndBossBody || entry.type == BehaviorType::BreakableGround ||
+                entry.type == BehaviorType::FallingGroundFragment || entry.type == BehaviorType::BossPitTrap ||
+                entry.type == BehaviorType::EndingSequenceTrigger || entry.type == BehaviorType::FloodingWater ||
+                entry.type == BehaviorType::RandomAttachmentYaw || entry.type == BehaviorType::ObjectPoseSequence ||
+                entry.type == BehaviorType::CutSceneCloud ||
                 entry.type == BehaviorType::WitchMouthAnimation || entry.type == BehaviorType::DisabledSentinel;
             Check(result.status == (implemented ?
                 DispatchStatus::ExecutedCase : entry.hasSpecificCase ?
@@ -3419,15 +3427,14 @@ namespace
             }
             throw std::runtime_error("Selector interpreter exceeded its instruction bound.");
         };
-        GameContext context;
         auto level = CreateDummyLevel();
-        context.collisionMap = level.collisionMap.get();
-        context.level = &level;
-        context.worldObjects[1].spriteScale = 1;
         for (int behavior = 0; behavior <= 65535; ++behavior)
         {
-            // Each route needs a fresh active object; a previous handler can legitimately expire it.
-            RawGameObject object;
+            GameContext context;
+            context.collisionMap = level.collisionMap.get();
+            context.level = &level;
+            context.worldObjects[1].spriteScale = 1;
+            auto& object = context.worldObjects[3];
             object.health = 1;
             object.posX = 150;
             object.posZ = 4050;

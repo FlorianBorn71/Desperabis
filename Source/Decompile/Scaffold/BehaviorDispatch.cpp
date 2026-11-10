@@ -113,10 +113,22 @@ namespace Desperabis
         context.playerLadderMovement = false;
         context.ClearLightningFlashes();
         context.UpdateModelAttachments();
-        std::array<DispatchResult, 163> results;
+        std::array<DispatchResult, 163> results{};
         for (std::size_t slot = 2; slot <= 164; ++slot)
         {
-            results[slot - 2] = UpdateObject(context.worldObjects[slot], context);
+            const auto behavior = context.worldObjects[slot].behavior;
+            try
+            {
+                results[slot - 2] = UpdateObject(context.worldObjects[slot], context);
+            }
+            catch (const std::exception& error)
+            {
+                const auto* descriptor = FindBehavior(behavior);
+                results[slot - 2] = {DispatchStatus::Failed, behavior,
+                    descriptor ? descriptor->moduleOffset : std::uint16_t{0x5110}};
+                context.OnObjectUpdateFailed(static_cast<int>(slot), behavior, error.what());
+            }
+            if (context.IsBossFallPlaying()) { break; }
         }
         context.UpdateModelAttachments();
         return results;

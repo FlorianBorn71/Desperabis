@@ -1,4 +1,5 @@
 #pragma once
+#include "../../../GameDiagnostics.h"
 
 #include <vector>
 #include <mutex>

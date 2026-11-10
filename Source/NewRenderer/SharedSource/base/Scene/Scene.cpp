@@ -85,10 +85,17 @@ void Scene::RegisterUpdateFunction(SceneUpdateFunction fn)
 
 void Scene::AddRenderableInstance(RenderableInstancePtr inst)
 {
-    m_renderInstances.push_back(inst);
-
-    AssignFireAnimations(*inst.get());
-    inst->OnAddedToScene(this);
+    try
+    {
+        AssignFireAnimations(*inst.get());
+        inst->OnAddedToScene(this);
+        m_renderInstances.push_back(inst);
+    }
+    catch (const std::exception&)
+    {
+        RemoveRenderableInstance(inst);
+        throw;
+    }
 }
 
 
@@ -154,7 +161,7 @@ void Scene::AddFireAnimation(std::shared_ptr<TextureAnim> torchAnim, int targetS
     if (targetSlot < 0 || targetSlot >= 16 || !torchAnim || torchAnim->m_frames.empty() ||
         !std::isfinite(speed) || speed <= 0.f)
     {
-        throw std::invalid_argument("Fire animation requires a valid texture slot, nonempty frames and positive speed.");
+        GAME_ERROR_AND_RETURN(std::invalid_argument("Fire animation requires a valid texture slot, nonempty frames and positive speed."));
     }
     m_fireAnimations[targetSlot].m_torchAnim = torchAnim;
     m_fireAnimations[targetSlot].m_speed = speed;
@@ -171,16 +178,23 @@ void Scene::SetFireAnimationFrame(int targetSlot, int frame)
     if (targetSlot < 0 || targetSlot >= 16 || !m_fireAnimations[targetSlot].m_torchAnim ||
         frame < 0 || frame >= static_cast<int>(m_fireAnimations[targetSlot].m_torchAnim->m_frames.size()))
     {
-        throw std::out_of_range("Tracked texture frame requires a loaded animation and a valid frame.");
+        GAME_ERROR_AND_RETURN(std::out_of_range("Tracked texture frame requires a loaded animation and a valid frame."));
     }
     m_fireAnimations[targetSlot].m_frame = frame;
 }
 
 void Scene::AddFireAnimationInstance(RenderableInstance& instance, std::size_t materialIndex)
 {
-    auto& targetMaterial = instance.m_materialOverride.at(materialIndex);
+    if (materialIndex >= instance.m_materialOverride.size())
+    {
+        GAME_ERROR_AND_RETURN(std::out_of_range("Fire animation requires an existing material override."));
+    }
+    auto& targetMaterial = instance.m_materialOverride[materialIndex];
     const int slot = targetMaterial.m_textureSlot;
-    if (slot < 0 || slot >= 16) { throw std::out_of_range("Animated texture slot must be in 0..15."); }
+    if (slot < 0 || slot >= 16)
+    {
+        GAME_ERROR_AND_RETURN(std::out_of_range("Animated texture slot must be in 0..15."));
+    }
     if (m_fireAnimations[slot].m_additive) { targetMaterial.m_transparencyType = TransparencyMode::Additive; }
     for (auto& animation : m_fireAnimationInstances)
     {
@@ -262,7 +276,8 @@ void Scene::HandleFireAnimations(double elapsedTime)
             mat.m_textureSlot != anim.m_textureSlot) { continue; }
         if (mat.m_textureSlot < 0 || mat.m_textureSlot >= 16)
         {
-            throw std::out_of_range("Fire animation material references an invalid texture slot.");
+            GAME_ERROR(std::out_of_range("Fire animation material references an invalid texture slot."));
+            continue;
         }
         const FireAnimationSlot& slot = m_fireAnimations[mat.m_textureSlot];
         if (slot.m_torchAnim == nullptr)

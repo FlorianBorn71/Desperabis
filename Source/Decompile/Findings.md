@@ -6,6 +6,18 @@ For setup, naming, and evidence conventions, see [README.md](README.md).
 
 ## Scope and evidence
 
+The [final boss and ending](BehaviorRecovery.md#final-boss-collapsing-floor-and-ending)
+now recover original asset26's chase, collapsing slabs, pit defeat, dam/flood and
+falling debris, followed by magician rescue and the native **26 -> 96 -> 95**
+ending route. DEMO6 contains 498 six-byte X/Z/heading/action frames, not XYZ Euler
+poses; MUSIC1 starts non-looping in 96 and is preserved through 95's 630 ticks.
+[Native evidence](final-level-native-evidence.txt) and original-asset regressions
+separate recovered simulation from modern visibility and fog adaptations. The
+boss fall is a dedicated staged view (`1E48:B2FE`), using root 47 and its linked
+parts against the authored lava shaft. It freezes ordinary gameplay and defers
+boss destruction/rescue activation until playback finishes; it is not an explosion
+flash or a change to the actual player's camera.
+
 Recent movement recovery: [teleporters, ladders and collision-bypass volumes](BehaviorRecovery.md#teleporters-ladders-and-collision-bypass-volumes)
 now have verified native contracts and C++ implementations, with original level
 10/23/36 teleporter fixtures. DS:`D4FF` is activated-ladder vertical control;

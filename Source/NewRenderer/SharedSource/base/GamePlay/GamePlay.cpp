@@ -258,6 +258,8 @@ namespace GamePlay
         BT_ENUM2STRING(EndBossFeeler);
         BT_ENUM2STRING(EndBossLeg);
         BT_ENUM2STRING(BreakableGround);
+        BT_ENUM2STRING(FallingGroundFragment);
+        BT_ENUM2STRING(BossPitTrap);
         BT_ENUM2STRING(MummieGuard);
         BT_ENUM2STRING(GrasingCow);
         BT_ENUM2STRING(AttackingBull);
@@ -297,9 +299,9 @@ namespace GamePlay
         BT_ENUM2STRING(SkullInCutScene);
         BT_ENUM2STRING(CrystalBallTableInCutScene);
         BT_ENUM2STRING(LightningGenerator);
-        BT_ENUM2STRING(Behavior_170);
-        BT_ENUM2STRING(Behavior_111);
-        BT_ENUM2STRING(Behavior_161);
+        BT_ENUM2STRING(ObjectPoseSequence);
+        BT_ENUM2STRING(EndingSequenceTrigger);
+        BT_ENUM2STRING(RandomAttachmentYaw);
         BT_ENUM2STRING(Meteor);
         BT_ENUM2STRING(MeteorImpact);
         BT_ENUM2STRING(Behavior_255);
@@ -407,7 +409,7 @@ namespace GamePlay
         PT_ENUM2STRING(KnightShootsArrow);
         PT_ENUM2STRING(CurtainOpens);
         PT_ENUM2STRING(BuyItem);
-        PT_ENUM2STRING(CutSceneCloud);
+        PT_ENUM2STRING(RenderSuppressed);
         
         return ReturnUnknown((int)t);
     }
@@ -512,7 +514,8 @@ namespace GamePlay
             int targetTexSlot = rawGo.m_rawBytes[44] + 12;
             if (torchlightTexAnim < 1 || torchlightTexAnim > 7 || targetTexSlot < 13 || targetTexSlot > 15)
             {
-                throw std::invalid_argument("Flame marker requires animation 1..7 and reserved texture slot 13..15.");
+                GAME_ERROR(std::invalid_argument("Flame marker requires animation 1..7 and reserved texture slot 13..15."));
+                CO_RETURN;
             }
             std::wstringstream wss;
             wss << L"ANIMS\\FACKEL" << torchlightTexAnim << ".AN2";

@@ -44,6 +44,8 @@ protected:
 
     void InitLevelInfo(const LevelInfo& info);
     void CreateWallGeometry();
+    std::shared_ptr<Renderable> CreateWaterGeometry(byte island, WaterSlotIndex slot,
+        const byte* surfaces = nullptr, std::size_t rowStride = 0);
     RenderableInstancePtr AddStaticCellObject(int x, int y, byte rawVal, HeightLevel atHeight, bool correctInitialPlacement = true);
     static void ApplyFloorSurface(RenderableInstance& instance, byte surface);
     void CreateSkyGeometry();
@@ -78,6 +80,14 @@ protected:
 
     std::vector<std::shared_ptr<Renderable>> m_wallRenderables;
     std::vector<std::shared_ptr<RenderableInstance>> m_wallGeometry;
+    struct WaterSurface
+    {
+        byte island;
+        WaterSlotIndex slot;
+        std::shared_ptr<Renderable> geometry;
+        RenderableInstancePtr instance;
+    };
+    std::vector<WaterSurface> m_waterSurfaces;
     struct MutableWall
     {
         int column, row;

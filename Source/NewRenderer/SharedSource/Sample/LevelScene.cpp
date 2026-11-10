@@ -24,7 +24,13 @@ LevelScene::~LevelScene()
 
 void LevelScene::FlashLight(const Vector& position, const Color4& color, float fadeInSeconds, float fadeOutSeconds, float radius)
 {
-    if (!std::isfinite(radius) || radius <= 0.f) { throw std::invalid_argument("Flash radius must be finite and positive."); }
+    if (!std::isfinite(radius) || radius <= 0.f ||
+        !std::isfinite(fadeInSeconds) || !std::isfinite(fadeOutSeconds) ||
+        fadeInSeconds < 0.f || fadeOutSeconds < 0.f ||
+        !std::isfinite(fadeInSeconds + fadeOutSeconds) || fadeInSeconds + fadeOutSeconds <= 0.f)
+    {
+        GAME_ERROR_AND_RETURN(std::invalid_argument("Flash requires finite positive radius and duration, and nonnegative fade times."));
+    }
     auto light = std::make_shared<LightFlashSource>(this, fadeInSeconds, fadeOutSeconds);
     light->SetPosition(position);
     light->SetColor(color, 4.f);
@@ -83,7 +89,8 @@ void LevelScene::UpdateObjectPresentation(int slot, const RawGameObject& object,
 {
     GetObjectPresentation(slot);
     auto& context = m_objectPresentations.at(slot);
-    if (GamePlay::PropertyAccessorBase(object).GetHealth() <= 0)
+    const GamePlay::PropertyAccessorBase properties(object);
+    if (properties.GetHealth() <= 0 || properties.IsRenderSuppressed())
     {
         RemoveObjectPresentation(slot);
         return;
