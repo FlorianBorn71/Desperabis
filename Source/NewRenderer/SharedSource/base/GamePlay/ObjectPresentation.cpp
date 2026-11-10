@@ -45,6 +45,28 @@ namespace
                     (object.m_rawBytes[0] == 1 && object.m_rawShorts[17] == 7)));
     }
 
+    class FountainWaterContext final : public ObjectPresentationContext
+    {
+    public:
+        bool Matches(const RawGameObject& object) const override
+        {
+            return GamePlay::PropertyAccessorBase(object).GetCollisionType() == GamePlay::CollisionType::FountainWater;
+        }
+        void Update(const RawGameObject& object, RenderableInstance* instance) override
+        {
+            if (!instance || !instance->GetRenderable()) { return; }
+            const float opacity = 0.15f * GamePlay::PropertyAccessorBase(object).GetSpriteTransparency();
+            for (auto& material : instance->GetOrCreateMaterialOverrides())
+            {
+                material.m_transparencyType = TransparencyMode::AlphaBlended;
+                material.SetOpacity(opacity);
+                material.ComputeHash();
+            }
+            instance->ComputeTransparencyMask();
+        }
+        void Remove(Scene&) override {}
+    };
+
     class SparkCorona final : public LightSource
     {
     public:
@@ -211,6 +233,12 @@ std::shared_ptr<ObjectPresentationContext> GamePlay::CreateObjectPresentation(
     if (slot < 1 || slot > 165) { throw std::out_of_range("Object presentation slots must be in 1..165."); }
     const PropertyAccessorBase properties(object);
     if (properties.GetHealth() <= 0) { return {}; }
+    if (properties.GetCollisionType() == CollisionType::FountainWater)
+    {
+        auto context = std::make_shared<FountainWaterContext>();
+        context->Update(object, instance);
+        return context;
+    }
     if (IsFireParticle(object))
     {
         std::shared_ptr<LightSource> corona;

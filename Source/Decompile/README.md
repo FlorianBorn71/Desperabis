@@ -156,6 +156,10 @@ For the first explained case and shared collision-map pointer, see
 - `Scaffold/WeaponTests.cpp`: exhaustive phase-word tests, swing/recovery
   timelines, contact records, hand/registry selection, audio and live `Tick`
   pickup-to-hit integration. See [melee attack sequence](BehaviorRecovery.md#player-melee-attack-sequence).
+- `park-gameplay-evidence.txt`, `Scaffold/ParkTests.cpp`: original level-30
+  bull/cow AI, held bucket selection and water morph, fountain-drop refill,
+  pouring and all nine washable mud objects; Moon is deliberately excluded.
+  See [park gameplay](BehaviorRecovery.md#park-gameplay-level-30-excluding-moon).
 - `ranged-weapon-physics-evidence.txt`, `ranged-weapon-support-evidence.txt`,
   `ranged-weapon-support-tail-evidence.txt`, `weapon-projectile-routes-evidence.txt`,
   `weapon-resting-evidence.txt`, `weapon-effect-initialization-evidence.txt`,

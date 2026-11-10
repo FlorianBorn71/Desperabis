@@ -3045,11 +3045,6 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_128, 0x3987 };
     }
 
-    DispatchResult Function_AttackingBull(RawGameObject&, GameContext&)
-    {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::AttackingBull, 0x3A36 };
-    }
-
     DispatchResult Function_ExtinguishLava(RawGameObject& object, GameContext& context)
     {
         if (object.health == 1000)
@@ -3192,14 +3187,43 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Submarine, 0x4041 };
     }
 
-    DispatchResult Function_GrasingCow(RawGameObject&, GameContext&)
+    DispatchResult Function_GrasingCow(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::GrasingCow, 0x405C };
+        object.blendWeightOrSpriteOpacity = WrapSignedWord(50 +
+            static_cast<std::int32_t>((static_cast<std::int64_t>(Cosine(
+                WrapSignedWord(object.generalPurpose2))) * 50) >> 16));
+        if (context.Random(50) == 0) { object.velocityX = static_cast<std::int16_t>(context.Random(7) + 2); }
+        if (context.Random(100) == 0) { object.itemValue = static_cast<std::int16_t>(context.Random(2) * 256); }
+        const auto phase = WrapSignedWord(object.generalPurpose2);
+        object.generalPurpose2 = static_cast<std::uint16_t>(phase +
+            GetStepToward(phase, object.itemValue, WrapSignedWord(object.velocityX * context.tickCount)));
+        return { DispatchStatus::ExecutedCase, BehaviorType::GrasingCow, 0x405C };
     }
 
-    DispatchResult Function_Behavior_143(RawGameObject&, GameContext&)
+    DispatchResult Function_WashingWater(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_143, 0x40ED };
+        if ((context.GetCollisionMapPixelAtWorldXZ(object.posX, object.posZ) & 7) == 0)
+        {
+            context.SetObjectHealth(object, 0);
+        }
+        const auto rate = context.Random(static_cast<std::uint16_t>(object.velocityX + 1));
+        object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity +
+            context.Random(static_cast<std::uint16_t>(WrapSignedWord(rate * context.tickCount))));
+        if (object.blendWeightOrSpriteOpacity > 100) { context.SetObjectHealth(object, 0); }
+        object.collisionMask = 4;
+        const auto slot = context.FindCollidingObject(object);
+        if (slot != 0)
+        {
+            auto& target = context.worldObjects[slot];
+            if (target.collisionType == CollisionType::WashableMud)
+            {
+                target.behavior = BehaviorType::WashingWater;
+                target.animFrame = 1;
+            }
+            else { target.collisionMask = 1; }
+        }
+        object.collisionMask = 0;
+        return { DispatchStatus::ExecutedCase, BehaviorType::WashingWater, 0x40ED };
     }
 
     DispatchResult Function_CrackingSubmarineWindow(RawGameObject&, GameContext&)

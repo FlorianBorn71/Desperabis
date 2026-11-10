@@ -8,6 +8,7 @@ class Renderable;
 struct SubRenderable
 {
     Vector m_localPos, m_localOri;
+    int m_anchorVertex = -1;
     const Renderable* m_renderable = nullptr;
 };
 
@@ -29,6 +30,7 @@ public:
 
 public:
     std::vector<SubRenderable> m_subRenderables;
+    std::vector<VertexPosition> m_sourcePositions;
     std::shared_ptr<IGraphicsRuntimeObject> m_runtime;
     std::shared_ptr<PhysicsShape> m_physicsShape;
 
@@ -41,4 +43,3 @@ public:
 
     BoundingVolume m_localBounds;
 };
-

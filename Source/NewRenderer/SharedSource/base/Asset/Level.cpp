@@ -1617,9 +1617,9 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
 	GamePlay::DisplayType display = prop.GetDisplayType();
 	int modelId = prop.GetModelId();
     const Renderable* oldRenderable = inst->GetRenderable();
-    inst->SetRenderable(nullptr, nullptr);
     if (prop.IsRenderSuppressed())
     {
+        inst->SetRenderable(nullptr, nullptr);
         return;
     }
     bool assignLevelTextures = true;
@@ -1630,6 +1630,7 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
         auto anim3d = m_levelInfo.GetModelAnim(modelId - 30);
         if (anim3d == nullptr)
         {
+            inst->SetRenderable(nullptr, nullptr);
             return;
         }
 		int animNr = prop.GetModelAnim();
@@ -1638,6 +1639,7 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
 		Model* model = anim3d->GetModelSafe(animNr, frameNr);
 		if (model == nullptr || !model->IsValid())
 		{
+            inst->SetRenderable(nullptr, nullptr);
 			return;
 		}
 
@@ -1654,7 +1656,7 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
         }
         inst->SetRenderable(model, model2);
 
-		assert(model->m_drawCalls.size() > 0 && model->m_drawCalls.size() < 16);
+		assert(model->IsValid() && model->m_drawCalls.size() < 16);
 		inst->m_uniformScale = 1.f; // not scalable  rawGO.GetScale();
         auto transform = prop.GetTransform();
         if (prop.GetBehaviorType() == GamePlay::BehaviorType::ExtinguishLava)
@@ -1682,12 +1684,14 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
             auto texAnim = m_levelInfo.GetTextureAnim(modelId);
             if (texAnim == nullptr)
             {
+                inst->SetRenderable(nullptr, nullptr);
                 return;
             }
             int anim = prop.GetModelAnim();
             int frame = prop.GetModelFrame();
             if (!texAnim->IsValidFrame(anim, frame))
             {
+                inst->SetRenderable(nullptr, nullptr);
                 return;
             }
             const bool isDepthSprite = display == GamePlay::DisplayType::DepthSprite;
@@ -1711,6 +1715,8 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
 
         // TODO: Sprites are still not visible!
     }
+
+    else { inst->SetRenderable(nullptr, nullptr); }
 
     if (inst->GetRenderable() == nullptr)
     {

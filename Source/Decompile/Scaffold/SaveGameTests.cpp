@@ -38,6 +38,7 @@ namespace
     public:
         std::filesystem::path assets;
         bool deferred = false;
+        bool mapCheat = false;
         int created = 0, destroyed = 0, freshLoads = 0;
         explicit Host(std::filesystem::path path) : assets(std::move(path)) {}
         void OnObjectCreated(int) override { ++created; }
@@ -51,6 +52,7 @@ namespace
             LoadLevelObjects(request.levelNumber, data);
             InitializeLevelPlayerSpawn(data, { -256, 0, 0 });
             CompleteLevelLoad(request.id, std::move(data));
+            if (mapCheat && CanApplyMapCheat(request.levelNumber)) { hasMap = true; }
         }
     protected:
         std::vector<std::uint8_t> LoadFile(std::string_view filename) override { return Read(assets / filename); }
@@ -95,6 +97,88 @@ namespace
             "Rejecting corrupt saves must not destroy the currently active game.");
     }
 
+    void TestPartOneMapCheat(const std::filesystem::path& assets)
+    {
+        Host host(assets);
+        host.mapCheat = true;
+        host.StartNewGame(2);
+        const auto checkMap = [&]
+        {
+            const auto presentation = host.GetApplicationPresentation();
+            Check(host.hasMap && std::any_of(presentation.commands.begin(), presentation.commands.end(),
+                [](const UiDrawCommand& command)
+                {
+                    const auto* map = std::get_if<UiMap>(&command);
+                    return map && !map->overview;
+                }), "The part-1 cheat must emit the actual corner-map UI command.");
+        };
+        checkMap();
+        host.EndLevel();
+        Check(host.GetLoadedLevelNumber() == 31, "Progression must reach the next authored part-1 level.");
+        checkMap();
+        host.hasMap = false;
+        auto save = host.CaptureSaveGame("No collected map");
+        host.LoadGame(std::move(save));
+        checkMap();
+        host.StartNewGame(1);
+        Check(!host.hasMap, "Training must retain its normal map-pickup requirement.");
+        host.StartNewGame(3);
+        Check(!host.hasMap, "Part 2 must retain its normal map-pickup requirement.");
+    }
+
+    void TestPartOneKeys(const std::filesystem::path& assets)
+    {
+        Host host(assets);
+        host.StartNewGame(2);
+        Check(host.GetLoadedLevelNumber() == 30,
+            "Part 1 must skip its HERZ introduction and start in the park, not training.");
+        const auto originals = host.worldObjects;
+        int locks = 0;
+        for (std::size_t doorSlot = 2; doorSlot < originals.size(); ++doorSlot)
+        {
+            const auto& originalDoor = originals[doorSlot];
+            if (originalDoor.behavior != BehaviorType::Door ||
+                originalDoor.collisionType != CollisionType::Door || originalDoor.doorLockOrGroupBitmask <= 0)
+            {
+                continue;
+            }
+            const auto matching = std::find_if(originals.begin() + 2, originals.end(), [&](const RawGameObject& key)
+            {
+                return key.health > 0 && key.collisionType == CollisionType::Key &&
+                    key.itemValue == originalDoor.doorLockOrGroupBitmask;
+            });
+            Check(matching != originals.end(), "Every original park lock must have a matching authored key.");
+            const auto keySlot = static_cast<std::size_t>(matching - originals.begin());
+            for (std::size_t pocket = 0; pocket < host.inventory.size(); ++pocket)
+            {
+                host.worldObjects = originals;
+                for (auto& key : host.inventory)
+                {
+                    key = {};
+                    key.health = 1000;
+                    key.collisionType = CollisionType::Key;
+                    key.itemValue = 999;
+                }
+                host.inventory[pocket].health = 0;
+                const auto pickup = HandlePlayerObjectInteraction(host.worldObjects[keySlot], host);
+                Check(pickup.status == InteractionStatus::Applied && pickup.inventorySlot == pocket + 1,
+                    "The original key pickup must reach the requested hand/backpack slot.");
+                auto& door = host.worldObjects[doorSlot];
+                Check(HandleDoorInteraction(door, host).status == InteractionStatus::Applied &&
+                    door.doorLockOrGroupBitmask == 0 && door.generalPurpose2 == 3 &&
+                    host.inventory[pocket].health == 0,
+                    "Each original park key must unlock its door from either hand or any backpack slot.");
+                for (std::size_t other = 0; other < host.inventory.size(); ++other)
+                {
+                    Check(other == pocket || host.inventory[other].health == 1000,
+                        "Unlocking must not consume any of the nonmatching keys.");
+                }
+            }
+            ++locks;
+        }
+        Check(locks == 7, "The original park regression must exercise all seven keyed doors.");
+    }
+
     void TestNewGame(const std::filesystem::path& assets)
     {
         Host host(assets);
@@ -108,12 +192,15 @@ namespace
             {
                 Check(host.CanApplyWeaponCheatLoadout(level) == (part == 0 || part == 2),
                     "Weapon cheats must follow HERZ training/part-2 membership and exclude every part-1 level.");
+                Check(host.CanApplyMapCheat(level) == (part == 1),
+                    "The corner-map cheat must follow HERZ part-1 membership, not numeric level ranges.");
             }
         }
         Check(host.CanApplyWeaponCheatLoadout(50) && host.CanApplyWeaponCheatLoadout(10) &&
             host.CanApplyWeaponCheatLoadout(90) && !host.CanApplyWeaponCheatLoadout(30) &&
             !host.CanApplyWeaponCheatLoadout(36) && !host.CanApplyWeaponCheatLoadout(255),
             "Weapon cheat eligibility must cover training, part-2 shop, nonnumeric part-1 order and unknown levels.");
+        Check(!host.CanApplyMapCheat(255), "Unknown levels must not receive the part-1 map cheat.");
         host.StartNewGame(1);
         Check(host.freshLoads == 1, "A fresh level must run placement correction exactly once.");
         host.worldObjects[2].generalPurpose1 = 1234;
@@ -233,6 +320,8 @@ int main(int argc, char** argv)
             }
         }
         TestNewGame(argv[1]);
+        TestPartOneKeys(argv[1]);
+        TestPartOneMapCheat(argv[1]);
         TestCustomOrderAndGeometry(argv[1]);
         std::cout << "PASS: " << count << " original SPL/core byte-exact round trips, native 32-bit checksum, "
             "fresh/deferred restores, all world/inventory/meter/map state and malformed input.\n";

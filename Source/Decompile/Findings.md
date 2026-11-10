@@ -944,12 +944,14 @@ held-weapon drawing is still a presentation boundary. See
 shovel attacks are now implemented, including their native animation phases,
 ammo/energy handling, sound requests, contacts/projectile physics and shared
 damage. Placeable bear traps and metal poles also work; other ID-6 tools and
-extra IDs 9/23 remain explicitly unsupported. IDs 20/24 are now implemented
+extra ID 23 remains explicitly unsupported. Bucket (9) now supports fountain
+refilling and pouring/washing. IDs 20/24 are now implemented
 as Lentils/scythe, including native bridge reveal and hedge destruction.
 Their labels are identified below. Fireball expiry uses all
 ten original `SCHUSS1.AN2` frames. Stone floor contact uses original sprite
 offset/encoded-height metadata supplied by the asset owner. DX11 exposes
-inventory selection on keys 1..8.
+inventory selection on the original keys 1..9; bucket is 9, while Lentils
+and scythe are equipped through inventory rather than added 0/9 shortcuts.
 See [ranged weapons and placement](BehaviorRecovery.md#ranged-weapons-shovel-and-placement).
 
 ### Indexed item names and shop text: BEZEICH.TXT

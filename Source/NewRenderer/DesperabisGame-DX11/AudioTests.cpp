@@ -452,6 +452,12 @@ int main(int argc, char** argv)
                 Check(audio.IsChannelPlaying(channel), "Submitted samples must occupy their assigned channels.");
                 Reject<std::logic_error>([&] { audio.PlaySample(channel, 1, 0); });
             }
+            Reject<std::out_of_range>([&] { audio.StopSample(4); });
+            audio.StopSample(1);
+            Check(!audio.IsChannelPlaying(1) && audio.IsChannelPlaying(0) &&
+                audio.IsChannelPlaying(2) && audio.IsChannelPlaying(3),
+                "Individual sample cancellation must leave other channels playing.");
+            audio.PlaySample(1, 2, 0);
             audio.StopAllSamples();
             audio.StopAllSamples();
             for (std::size_t channel = 0; channel < Desperabis::SoundChannelCount; ++channel)

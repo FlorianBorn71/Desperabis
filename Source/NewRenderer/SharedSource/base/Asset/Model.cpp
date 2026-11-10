@@ -26,5 +26,6 @@ void Model::Read(AssetStream& s, ModelLoadingContext& context)
 
         vertices[m_vertexOfs + i] = rawV;
     }
+    m_sourcePositions.assign(vertices.begin() + m_vertexOfs, vertices.end());
     s.Read(context.m_polygons, m_numPolygons);
 }

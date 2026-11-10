@@ -292,6 +292,7 @@ namespace GamePlay
         SarcophagusWithBones = 121, // reveals bones to feed dogs
         BurnableOilPuddle = 125,
         CeilingConcreteSlabStake = 126, // level 23 - the wood that holds CeilingConcreteSlab
+        FountainWater = 130,
         CrackingSubmarineWindow = 144,
         PuzzleSpool = 149, // the ones with roman numbers in level 35
         GrandfatherClockItem = 155, // level 35

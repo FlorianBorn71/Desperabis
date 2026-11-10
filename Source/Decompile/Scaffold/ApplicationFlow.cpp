@@ -44,6 +44,7 @@ namespace Desperabis
     {
         bossFall.reset();
         cutscenePlaying = false;
+        cutsceneCameraSlot.reset();
         recordedCutscene.clear();
         musicAmbientLoaded = false;
         ResetUnderwater();
@@ -130,6 +131,15 @@ namespace Desperabis
         };
         return containsLevel(gameParts.at(0)) ||
             (gameParts.size() > 2 && containsLevel(gameParts[2]));
+    }
+
+    bool GameContext::CanApplyMapCheat(std::int16_t levelNumber)
+    {
+        if (levelNumber <= 0) { throw std::invalid_argument("Level numbers must be positive."); }
+        EnsureGameParts();
+        if (gameParts.size() < 2) { return false; }
+        const auto& levels = gameParts[1].levels;
+        return std::find(levels.begin(), levels.end(), levelNumber) != levels.end();
     }
 
     void GameContext::InitializeNewGame(std::int16_t chapter)

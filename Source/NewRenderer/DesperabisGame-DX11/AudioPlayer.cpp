@@ -111,6 +111,12 @@ void AudioPlayer::StopAllSamples()
     for (auto& voice : m_channels) { voice.reset(); }
 }
 
+void AudioPlayer::StopSample(std::size_t channel)
+{
+    GetChannel(channel);
+    m_channels[channel].reset();
+}
+
 void AudioPlayer::StartUnderwaterPlayback(std::uint8_t sample, std::uint8_t volume)
 {
     const auto& pcm = GetSamplePcm(sample);

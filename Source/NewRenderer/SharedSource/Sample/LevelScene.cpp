@@ -3,6 +3,8 @@
 
 #include <Asset/AssetManager.h>
 #include <Asset/Level.h>
+#include <Asset/Texture.h>
+#include <Renderer/Renderer.h>
 #include <Renderer/RenderableInstance.h>
 #include <Scene/GameObject.h>
 #include <GamePlay/GamePlay.h>
@@ -20,6 +22,60 @@ LevelScene::LevelScene(int levelIndex, std::shared_ptr<Level> loadedLevel)
 LevelScene::~LevelScene()
 {
     ClearObjectPresentations();
+}
+
+void LevelScene::CreateRevealSky()
+{
+    auto texture = std::make_shared<Texture>();
+    texture->CreatePlainColor({135,206,235,255});
+    ModelLoadingContext context;
+    ModelConversionContext conversion(context);
+    for (int z = -1; z <= 1; z += 2)
+        for (int y = -1; y <= 1; y += 2)
+            for (int x = -1; x <= 1; x += 2)
+            {
+                const auto index = static_cast<uint16_t>(context.m_vertexPos.size());
+                context.m_vertexPos.push_back({static_cast<float>(x), static_cast<float>(y), static_cast<float>(z), 1.f});
+                conversion.m_vertices.emplace_back().SetTextured(index, {255,255,255,0}, {0,0});
+            }
+    const uint16_t faces[][4]{{0,4,6,2}, {1,3,7,5}, {0,1,5,4},
+        {2,6,7,3}, {0,2,3,1}, {4,5,7,6}};
+    for (const auto& face : faces)
+    {
+        conversion.m_sortedIndices.insert(conversion.m_sortedIndices.end(),
+            {face[0], face[1], face[2], face[0], face[2], face[3]});
+    }
+    auto renderable = std::make_shared<Renderable>();
+    auto& draw = renderable->m_drawCalls.emplace_back();
+    draw.m_material.m_texture = texture.get();
+    draw.m_material.m_textureSlot = -1;
+    draw.m_material.m_applyLighting = false;
+    draw.m_material.m_useAlphaTest = false;
+    draw.m_material.m_transparencyType = TransparencyMode::SkyOpaque;
+    draw.m_material.m_opacity = 1.f;
+    draw.m_material.ComputeHash();
+    draw.m_firstIndex = 0;
+    draw.m_primitiveCount = static_cast<int>(conversion.m_sortedIndices.size() / 3);
+    renderable->m_runtime = Renderer::Instance().CreateModelBuffers(conversion);
+    conversion.GenerateBoundingVolume(renderable->m_localBounds);
+    auto instance = std::make_shared<RenderableInstance>(renderable.get(),
+        static_cast<uint32_t>(GamePlay::VisibilityFilter::Sky));
+    AddRenderableInstance(instance);
+    m_revealSkyTexture = std::move(texture);
+    m_revealSkyRenderable = std::move(renderable);
+    m_revealSkyInstance = std::move(instance);
+}
+
+void LevelScene::SetSkyEnabled(bool enabled)
+{
+    // The epilogue's native sky-off cue replaces the storm with an unobscured daytime background.
+    const bool reveal = !enabled && m_levelIndex == 95;
+    if (reveal && !m_revealSkyInstance) { CreateRevealSky(); }
+    for (const auto& instance : GetRenderableInstances())
+    {
+        if (instance->HasSkyMaterials()) { instance->SetVisible(instance == m_revealSkyInstance ? reveal : enabled); }
+    }
+    m_skyVisible = enabled || reveal;
 }
 
 void LevelScene::FlashLight(const Vector& position, const Color4& color, float fadeInSeconds, float fadeOutSeconds, float radius)
@@ -141,6 +197,10 @@ void LevelScene::ClearScene()
     m_playerLight.reset();
     m_lightFlashes.clear();
     m_electricityLight.reset();
+    m_revealSkyInstance.reset();
+    m_revealSkyRenderable.reset();
+    m_revealSkyTexture.reset();
+    m_skyVisible = true;
 }
 
 void LevelScene::Update(double elapsedTime)

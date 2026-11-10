@@ -116,6 +116,7 @@ namespace Desperabis
         bool useBitmapOffsetX = false, centerBitmapX = false, flipHorizontal = false;
         bool bindWeaponBitmap = false;
         float projectionCenterY = Height / 2;
+        float focalLength = 128;
     };
 
     // Copy only the native payload, never a renderer wrapper or an aliased struct.
@@ -274,6 +275,7 @@ namespace Desperabis
         SelectShovelKey,
         SelectScytheKey,
         SelectLentilsKey,
+        SelectBucketKey,
         LookUpKey,
         LookDownKey,
         CenterLookKey,
@@ -376,6 +378,7 @@ namespace Desperabis
         void SetGameParts(const std::uint8_t* bytes, std::size_t size);
         const std::vector<GamePart>& GetGameParts() const;
         bool CanApplyWeaponCheatLoadout(std::int16_t levelNumber);
+        bool CanApplyMapCheat(std::int16_t levelNumber);
         void LoadGame(std::vector<std::uint8_t> bytes);
         std::vector<std::uint8_t> CaptureSaveGame(std::string_view name);
         const std::vector<std::uint8_t>* GetPendingSaveGame() const;
@@ -419,6 +422,7 @@ namespace Desperabis
         std::array<SoundEffectDefinition, SoundEffectCount> soundEffects{};
         bool soundEffectsLoaded = false;
         std::array<std::int16_t, SoundChannelCount> soundChannelSources{};
+        std::array<std::uint8_t, SoundChannelCount> soundChannelSamples{};
         std::uint32_t randomSeed = 0; // Turbo Pascal RandSeed, DS:04C2.
         std::int16_t soundListenerX = 0; // DS:D4D2.
         std::int16_t soundListenerZ = 0; // DS:D4D6.
@@ -483,6 +487,7 @@ namespace Desperabis
         void DamageObject(RawGameObject& object, std::int16_t amount);
         void ActivateObjectGroup(std::int16_t group);
         void StopAllSoundEffects();
+        void StopSoundSample(std::uint8_t sample);
         // Recovered collision-type-30 branch of 10AC:10F5.
         void DamageSkeleton(RawGameObject& object, std::int16_t amount);
         void SpawnSkeletonFragment(const RawGameObject& source, std::uint16_t part,
@@ -631,9 +636,11 @@ namespace Desperabis
         GameTickResult TickBossFall(GameTickTiming timing);
         RawGameObject ResolveAttachedRenderState(RawGameObject object, const RawGameObject& parent) const;
         void BeginCutscene(bool restoringSave);
+        bool UpdateCutsceneCamera();
         GameTickResult TickCutscene(GameTickTiming timing);
         GameTickResult TickGameplay(GameTickTiming timing, InputHandler& input);
         bool cutscenePlaying = false;
+        std::optional<std::uint16_t> cutsceneCameraSlot;
         std::vector<std::uint8_t> recordedCutscene;
         std::size_t recordedCutsceneFrame = 0;
         bool musicAmbientLoaded = false;

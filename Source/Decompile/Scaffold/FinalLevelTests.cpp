@@ -36,10 +36,13 @@ namespace
         int creations = 0, starts = 0, stops = 0;
         bool looping = true;
         std::vector<std::uint8_t> music;
+        std::vector<std::pair<std::uint8_t, std::uint8_t>> samples;
+        int sampleStops = 0;
         std::uint16_t GetSampleCount() const override { return 129; }
         bool IsChannelPlaying(std::size_t) const override { return false; }
-        void PlaySample(std::size_t, std::uint8_t, std::uint8_t) override {}
-        void StopAllSamples() override {}
+        void PlaySample(std::size_t, std::uint8_t sample, std::uint8_t volume) override
+        { samples.emplace_back(sample, volume); }
+        void StopAllSamples() override { ++sampleStops; }
         void CreateMusicPlayback(const std::vector<std::uint8_t>& pcm, bool loop) override
         {
             music = pcm;
@@ -202,7 +205,13 @@ namespace
             CheckSupported(UpdateObjects(core));
         }
         const auto& boss = core.worldObjects[23];
+        Check(audio.sampleStops == 1 && !audio.samples.empty() &&
+            audio.samples.back() == std::make_pair(std::uint8_t{42}, std::uint8_t{255}),
+            "The native boss fall must stop existing effects and start sample 42 at full volume.");
+        const auto sampleCount = audio.samples.size();
         CompleteBossFall(core);
+        Check(audio.samples.size() == sampleCount,
+            "Pausing, zero ticks and advancing the staged fall must not restart its roar.");
         if (boss.health != 0)
         {
             throw std::runtime_error("Authored boss did not reach the weak floor: " +
@@ -336,6 +345,69 @@ namespace
             "A partial recorded camera frame must surface as a failed level load.");
     }
 
+    void TestVillageReveal(const std::filesystem::path& assets)
+    {
+        Host core(assets), batched(assets);
+        Input input;
+        core.StartLevel(95);
+        batched.StartLevel(95);
+        const auto initialCamera = core.GetPlayerCamera();
+        const auto marker = core.worldObjects[16];
+        const auto leftTemplate = core.worldObjects[3];
+        Check(initialCamera.position == std::array<std::int16_t, 3>{1450, -151, 3750} &&
+            marker.behavior == BehaviorType::EndingSequenceTrigger && marker.groupIndexOrLock == 230,
+            "The original epilogue must begin at its village spawn with a 230-tick camera trigger.");
+        for (int tick = 0; tick < 229; ++tick) { core.Tick({1,1}, input); }
+        Check(core.skyEnabled && core.GetPlayerCamera().position ==
+            std::array<std::int16_t, 3>{1515, -152, 3767} &&
+            core.GetPlayerCamera().direction == std::array<std::int16_t, 3>{-98,0,-21} &&
+            core.worldObjects[2].displayType == DisplayType::Hidden,
+            "The first native marker must frame the village storm until the reveal trigger fires.");
+        core.SetPaused(true);
+        core.Tick({20,20}, input);
+        core.SetPaused(false);
+        core.Tick({0,0}, input);
+        Check(core.worldObjects[16].groupIndexOrLock == 1,
+            "Pause and zero ticks must not advance the reveal trigger.");
+        core.Tick({1,1}, input);
+        batched.Tick({230,230}, input);
+        const std::array<std::int16_t, 3> revealPosition{950, -142, 3150};
+        const auto reveal = core.GetPlayerCamera();
+        Check(reveal.position == revealPosition && reveal.direction == std::array<std::int16_t, 3>{0,0,100} &&
+            !core.skyEnabled && core.soundListenerX == 950 && core.soundListenerZ == 3150,
+            "The trigger must immediately relocate the view/listener to the native marker and face the clouds.");
+        Check(batched.GetPlayerCamera().position == reveal.position &&
+            batched.GetPlayerCamera().direction == reveal.direction && !batched.skyEnabled,
+            "Batched epilogue playback must select the same reveal camera at the same tick.");
+        Check(core.worldObjects[25].modelId == 35 && core.worldObjects[26].modelId == 35 &&
+            core.worldObjects[25].collisionType == CollisionType::None &&
+            core.worldObjects[26].collisionType == CollisionType::None,
+            "Activation must copy the two suppressed cloud templates into drawable live actors.");
+        const auto closedSeparation = core.worldObjects[25].posX - core.worldObjects[26].posX;
+        const auto life = core.playerLife;
+        for (int tick = 230; tick < 629; ++tick)
+        {
+            const auto result = core.Tick({1,1}, input);
+            Check(result.status == GameTickStatus::Advanced && core.GetPlayerCamera().position == revealPosition &&
+                core.playerLife == life,
+                "The reveal view must remain anchored despite ordinary gravity, contacts and later animation.");
+        }
+        Check(core.worldObjects[2].displayType == DisplayType::VectorNormal &&
+            core.worldObjects[25].posX - core.worldObjects[26].posX > closedSeparation + 900 &&
+            core.cinematicDepthShade == 0,
+            "The sun must become drawable, the two cloud actors must open apart, and storm attenuation must clear.");
+        std::array<std::uint8_t, 54> original{}, current{};
+        EncodeGameObject(leftTemplate, original.data(), original.size());
+        EncodeGameObject(core.worldObjects[3], current.data(), current.size());
+        Check(original == current, "The reveal must retain its hidden source cloud templates.");
+        core.Tick({1,1}, input);
+        Check(core.GetRuntimeState() == GameRuntimeState::NoLevel,
+            "The camera anchor must not delay the native 630-tick ending completion.");
+        core.StartLevel(96);
+        Check(core.GetPlayerCamera().position != revealPosition,
+            "A later cutscene must not inherit the previous ending camera anchor.");
+    }
+
     void TestEnding(const std::filesystem::path& assets)
     {
         Host core(assets);
@@ -396,6 +468,7 @@ int main(int argc, char** argv)
         TestDamAndDebris(argv[1]);
         TestRecordedBatching(argv[1]);
         TestEndingInputs(argv[1]);
+        TestVillageReveal(argv[1]);
         TestEnding(argv[1]);
         std::cout << "Final boss, breakable floor, rescue, recorded ending and music passed.\n";
         return 0;

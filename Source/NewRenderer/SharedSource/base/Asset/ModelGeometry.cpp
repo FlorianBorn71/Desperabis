@@ -723,6 +723,7 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
                 if (const Model* refModel = model.m_owner->GetModelSafe(anim, frame))
                 {
                     SubRenderable& sub = model.m_subRenderables.emplace_back();
+                    sub.m_anchorVertex = p.i0 - 1;
                     Vector4 attachmentPos = context.m_input.m_vertexPos[model.m_positionOfs + p.i0 - 1];
 					sub.m_localPos.Set(attachmentPos.x, attachmentPos.y, attachmentPos.z);
                     sub.m_localOri.Set(0, 0, 0);

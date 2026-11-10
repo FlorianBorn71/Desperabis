@@ -108,6 +108,16 @@ namespace Desperabis
             tableModel({ {{ 10,35,32,-32,-60,0 }, { 15,25,32,-22,-70,0 }, { 0,25,32,-22,60,0 },
                 { 0,27,32,-30,70,0 }, { 15,35,32,-32,-60,0 }} }, 2, std::abs(pose), true, playerLookHeight);
             break;
+        case WeaponType::Bucket:
+            model(3, 1, { 0, bounce / 4 + 25 + weaponAnimationSpeed, 35,
+                -4 * weaponAnimationSpeed, 0, 0 });
+            view.object.modelId = 33;
+            view.object.modelFrame2 = 2;
+            view.object.blendWeightOrSpriteOpacity = WrapSignedWord(weaponAmounts[9] * 5);
+            view.bindWeaponBitmap = false;
+            view.projectionCenterY = static_cast<float>(playerLookHeight);
+            view.focalLength = 120;
+            break;
         case WeaponType::Electricity:
         {
             const int side = weaponHand == 1 ? 1 : -1;

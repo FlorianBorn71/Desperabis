@@ -659,6 +659,12 @@ namespace Desperabis
             std::int16_t negativeDirectionZ;
             GetDirectionDisplacement(directionX, negativeDirectionZ, playerHeading, 100);
             const auto directionZ = WrapSignedWord(-static_cast<int>(negativeDirectionZ));
+            if (UpdateCutsceneCamera())
+            {
+                UpdatePlayerUnderwater();
+                ++result.simulatedTicks;
+                continue;
+            }
             if (UpdateControlledLorry())
             {
                 player.velocityX = directionX;
@@ -697,6 +703,13 @@ namespace Desperabis
                     if (candidate.collisionType == CollisionType::RechargeElectricity)
                     {
                         HandleDamageObjectContact(candidate);
+                        continue;
+                    }
+                    if (candidate.collisionType == CollisionType::FountainWater &&
+                        selectedWeapon == WeaponType::Bucket)
+                    {
+                        candidate.collisionMask = 0;
+                        weaponAmounts[9] = WrapSignedWord(weaponAmounts[9] + 1);
                         continue;
                     }
                     if (candidate.collisionType == CollisionType::PushingEnemy && !DEBUG_noPlayerCollision)
@@ -991,6 +1004,7 @@ namespace Desperabis
         if (input.IsKeyPressed(InputKey::SelectShovelKey)) { SelectWeapon(WeaponType::Showel); }
         if (input.IsKeyPressed(InputKey::SelectScytheKey)) { SelectWeapon(WeaponType::Scythe); }
         if (input.IsKeyPressed(InputKey::SelectLentilsKey)) { SelectWeapon(WeaponType::Lentils); }
+        if (input.IsKeyPressed(InputKey::SelectBucketKey)) { SelectWeapon(WeaponType::Bucket); }
         if (input.IsKeyPressed(InputKey::AttackKey)) { weapon.attack = AttackWithSelectedWeapon(); }
         levelElapsedTicks = static_cast<std::int32_t>(
             static_cast<std::uint32_t>(levelElapsedTicks) + static_cast<std::uint32_t>(frameTickCount));
@@ -1628,6 +1642,19 @@ namespace Desperabis
     {
         if (audioHandler) { audioHandler->StopAllSamples(); }
         soundChannelSources.fill(0);
+        soundChannelSamples.fill(0);
+    }
+
+    void GameContext::StopSoundSample(std::uint8_t sample)
+    {
+        if (!audioHandler) { return; }
+        for (std::size_t channel = 0; channel < soundChannelSamples.size(); ++channel)
+        {
+            if (soundChannelSamples[channel] != sample) { continue; }
+            audioHandler->StopSample(channel);
+            soundChannelSamples[channel] = 0;
+            soundChannelSources[channel] = 0;
+        }
     }
 
     void GameContext::RefreshUnderwaterPresentation()
@@ -1906,7 +1933,7 @@ namespace Desperabis
             shot.animFrame = 1;
             shot.modelFrame2 = 2;
             shot.renderPlacementMode = 1;
-            shot.collisionType = static_cast<CollisionType>(130);
+            shot.collisionType = CollisionType::FountainWater;
             shot.collisionRadiusXZ = 22;
             shot.collisionRadiusY = 3;
             PlaySoundEffect(static_cast<SoundEffect>(86), GetSoundVolumeAt(shot.posX, shot.posZ), 500, 1);
@@ -2673,7 +2700,7 @@ namespace Desperabis
         if (index >= weaponAmounts.size()) { throw std::out_of_range("Invalid weapon selection ID."); }
         if (weaponAnimationSpeed != 0 || selectedWeapon == weapon ||
             weaponInventorySlots[index] == 0 ||
-            (weaponAmounts[index] <= 0 && weapon != WeaponType::Scythe))
+            (weaponAmounts[index] <= 0 && weapon != WeaponType::Scythe && weapon != WeaponType::Bucket))
         {
             return false;
         }
@@ -2732,6 +2759,7 @@ namespace Desperabis
             return WeaponActionStatus::NoEffect;
         }
         if (selectedWeapon > WeaponType::Showel &&
+            selectedWeapon != WeaponType::Bucket &&
             selectedWeapon != WeaponType::Lentils && selectedWeapon != WeaponType::Scythe)
         {
             return WeaponActionStatus::UnimplementedWeapon;
@@ -2761,6 +2789,39 @@ namespace Desperabis
             auto thrown = inventory[weaponHand - 1];
             thrown.animFrame = 2;
             GetSpriteBottom(thrown);
+        }
+        if (selectedWeapon == WeaponType::Bucket)
+        {
+            // Native A8F7 recursively pours the remaining units in the same input event.
+            do
+            {
+                weaponAmounts[9] = WrapSignedWord(weaponAmounts[9] - 1);
+                const auto slot = FindFreeOrLowestHealthObjectIndex();
+                auto& water = worldObjects[slot];
+                PlaySoundEffect(static_cast<SoundEffect>(92), GetSoundVolume(0), 501, 1);
+                water.modelId = 33;
+                water.modelAnim = 4;
+                water.animFrame = 1;
+                water.modelFrame2 = 2;
+                water.collisionMask = 4;
+                water.displayType = DisplayType::VectorNormal;
+                water.renderPlacementMode = 1;
+                water.health = 1000;
+                water.behavior = BehaviorType::WashingWater;
+                water.velocityX = static_cast<std::int16_t>(Random(3) + 2);
+                water.winY = static_cast<std::int16_t>(Random(512));
+                const auto camera = GetPlayerCamera();
+                water.posX = WrapSignedWord(RandomSigned(30) + camera.position[0] +
+                    ArithmeticShiftRight(worldObjects[1].velocityX, 2));
+                water.posZ = WrapSignedWord(RandomSigned(30) + camera.position[2] +
+                    ArithmeticShiftRight(worldObjects[1].velocityZ, 2));
+                water.posY = WrapSignedWord(GetTerrainFloorHeight(water.posX, 0, water.posZ) - 3);
+                NotifyObjectCreated(water);
+            } while (weaponAmounts[9] > 0);
+            weaponReady = false;
+            weaponAnimationSpeed = -3;
+            RefreshWeaponInventory();
+            return WeaponActionStatus::Applied;
         }
         const auto oldAmount = weaponAmounts[index];
         weaponAmounts[index] = WrapSignedWord(weaponAmounts[index] - 1);
@@ -3194,6 +3255,16 @@ namespace Desperabis
             decay();
             if (weaponAnimationSpeed == 0) { weaponAnimationPosition = 15; }
             weaponAmounts[7] = static_cast<std::int16_t>(std::clamp(static_cast<int>(weaponAmounts[7]), 0, 360));
+        }
+        else if (selectedWeapon == WeaponType::Bucket)
+        {
+            if (weaponAnimationSpeed >= -4 && weaponAnimationSpeed <= -1) { weaponAnimationSpeed = 30; }
+            weaponAnimationSpeed = WrapSignedWord(weaponAnimationSpeed +
+                GetStepToward(weaponAnimationSpeed, 0, ticks));
+            weaponAmounts[9] = static_cast<std::int16_t>(std::clamp<int>(weaponAmounts[9], 0, 20));
+            weaponReady = weaponAmounts[9] > 0;
+            weaponSpriteFrame = 1;
+            if (selectedWeapon != requestedWeapon) { CommitWeaponSelection(); }
         }
         else if (selectedWeapon == WeaponType::Showel || selectedWeapon == WeaponType::Scythe)
         {
@@ -3944,6 +4015,7 @@ namespace Desperabis
         if (AbsoluteWord(instanceLimit) <= sameSourceCount) { return SoundPlaybackStatus::SourceLimitReached; }
         audioHandler->PlaySample(freeChannel, sample, volume);
         soundChannelSources[freeChannel] = sourceId;
+        soundChannelSamples[freeChannel] = sample;
         return SoundPlaybackStatus::Started;
     }
 

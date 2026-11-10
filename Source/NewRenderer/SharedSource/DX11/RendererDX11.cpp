@@ -293,11 +293,51 @@ void RendererDX11::SetItemPreview(std::shared_ptr<const RenderableInstance> inst
     m_itemPreviewViewport.MaxDepth = 1.f;
 }
 
-void RendererDX11::RenderHudGeometry(const RenderingSettings& settings, ProfilingStats& stats)
+VisibilityResult::VisibleWaterLevel RendererDX11::PrepareWeaponReflection(
+    const VisibilityResult& world, float height, const RenderingSettings& settings, ProfilingStats& stats)
+{
+    VisibilityResult::VisibleWaterLevel water;
+    water.m_useReflection = true;
+    for (auto it = world.m_visibleWater.rbegin(); it != world.m_visibleWater.rend(); ++it)
+    {
+        if (!it->m_useReflection) { continue; }
+        water.m_waterHeight = it->m_waterHeight;
+        water.m_scrollParams1 = it->m_scrollParams1;
+        water.m_scrollParams2 = it->m_scrollParams2;
+        return water; // The shared mirror target contains the last reflected puddle plane.
+    }
+    if (!world.m_mainCamera || !world.m_scene)
+    {
+        throw std::invalid_argument("Held-water reflection requires a world camera and scene.");
+    }
+    water.m_waterHeight = height;
+    const float scale = 2.f * DespRelativeInvScaling;
+    water.m_scrollParams1 = { scale, scale * 1.7f, static_cast<float>(std::fmod(m_currentTime * 0.051, 1.0)),
+        static_cast<float>(std::fmod(m_currentTime * 0.0191, 1.0)) };
+    water.m_scrollParams2 = { scale * 1.31f, scale * 1.91f, static_cast<float>(std::fmod(m_currentTime * -0.0314, 1.0)),
+        static_cast<float>(std::fmod(m_currentTime * 0.04941, 1.0)) };
+    water.m_mirrorCamera.CreateMirrored(*world.m_mainCamera, height);
+    DefaultVisibilityContext visibility;
+    ConfigureVisibility(visibility);
+    VisibilityResult reflected;
+    visibility.ComputeResultFor(&water.m_mirrorCamera, world.m_scene, reflected, settings, VisibilitySettings{}, stats);
+    RenderContextDX11 context(*this, reflected, settings, stats);
+    context.BeginRendering();
+    context.BeginRenderTargetScope(RenderTargetPassType::Mirror, &water.m_mirrorCamera);
+    context.TrackGlobals();
+    RenderSky(context, reflected.m_visibleInstances);
+    RenderOpaqueGeometry(context, reflected.m_visibleInstances);
+    RenderTransparentGeometry(context, reflected.m_visibleInstances);
+    context.EndRenderTargetScope();
+    context.EndRendering();
+    return water;
+}
+
+void RendererDX11::RenderHudGeometry(const VisibilityResult& world, const RenderingSettings& settings, ProfilingStats& stats)
 {
     const auto weaponDraw = std::move(m_weaponDraw);
     m_weaponDraw = {};
-    if (weaponDraw) { weaponDraw(settings, stats); }
+    if (weaponDraw) { weaponDraw(world, settings, stats); }
     const auto item = std::move(m_itemPreview);
     if (item == nullptr) { return; }
     const auto& viewport = m_itemPreviewViewport;

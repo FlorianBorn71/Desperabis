@@ -150,7 +150,7 @@ namespace
         const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
         ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView,
         Texture* weaponTexture = nullptr, bool faceSwordCamera = false, Model* modelOverride = nullptr,
-        bool clearDepth = true)
+        bool clearDepth = true, const VisibilityResult::VisibleWaterLevel* water = nullptr)
     {
         Desperabis::RawGameObject object;
         object.health = 1000;
@@ -207,7 +207,8 @@ namespace
         }
         else { instance->SetTransform(centering * transform); }
         instance->PrepareSubInstancesForRendering();
-        const auto configureMaterials = [&command, weaponTexture](RenderableInstance& item)
+        const bool heldWater = command.cameraSpacePosition.has_value();
+        const auto configureMaterials = [&command, weaponTexture, heldWater](RenderableInstance& item)
         {
             item.m_tintColor = { command.color.r,command.color.g,command.color.b,item.m_tintColor.a };
             for (auto& material : item.GetOrCreateMaterialOverrides())
@@ -215,6 +216,12 @@ namespace
                 if (weaponTexture && material.m_textureSlot == 9)
                 {
                     material.m_texture = weaponTexture;
+                }
+                if (material.m_transparencyType == TransparencyMode::Water && !heldWater)
+                {
+                    // UI cameras have no world reflection pass; retain the polygon's authored tint.
+                    material.m_transparencyType = TransparencyMode::Opaque;
+                    material.m_reflectionType = WaterReflectionType::Disabled;
                 }
                 material.m_applyLighting = false;
                 material.ComputeHash();
@@ -261,6 +268,19 @@ namespace
         };
         draw(*instance);
         for (const auto& sub : instance->m_subInstances) { draw(sub); }
+        if (heldWater && instance->HasWaterMaterials())
+        {
+            VisibilityResult::VisibleWaterLevel refracted;
+            refracted.m_scrollParams1 = { 2,3.4f,0,0 };
+            refracted.m_scrollParams2 = { 2.62f,3.82f,0,0 };
+            if (!water) { context.PrepareRefraction(true); }
+            context.BeginWaterRendering();
+            context.SetGeometryPassType(GeometryPassType::MirrorReceiver);
+            context.SetBlendState(TransparencyMode::Water);
+            context.PrepareWaterRendering(water ? *water : refracted);
+            context.RenderInstance<GeometryPassType::MirrorReceiver>(instance.get(), TransparencyMode::Water);
+            context.EndWaterRendering();
+        }
         context.EndRenderTargetScope();
         context.EndRendering();
     }
@@ -455,7 +475,8 @@ void ApplicationUi::DrawBossFall(const std::vector<Desperabis::RawGameObject>& o
 
 void ApplicationUi::DrawWeapon(const Desperabis::WeaponView& view, RendererDX11& renderer, const Level& level,
     const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
-    ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView)
+    ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView,
+    const VisibilityResult* world)
 {
     using Desperabis::WeaponView;
     if (!m_weapons) { throw std::logic_error("First-person weapon assets have not been initialized."); }
@@ -470,6 +491,7 @@ void ApplicationUi::DrawWeapon(const Desperabis::WeaponView& view, RendererDX11&
             { object.winX,object.winY,object.winZ }, object.posZ };
         command.cameraSpacePosition = { object.posX,object.posY,object.posZ };
         command.projectionCenterY = view.projectionCenterY;
+        command.focalLength = view.focalLength;
         const bool faceSwordCamera = view.bindWeaponBitmap && object.modelAnim == 2 && object.animFrame == 1;
         if (faceSwordCamera) { (*command.cameraSpacePosition)[1] += 6; }
         const D3D11_VIEWPORT modelViewport{ viewport.TopLeftX + (viewport.Width - WeaponView::Width * scale) * 0.5f,
@@ -482,9 +504,20 @@ void ApplicationUi::DrawWeapon(const Desperabis::WeaponView& view, RendererDX11&
             if (!m_scytheModel) { throw std::logic_error("Scythe presentation requires its model asset."); }
             modelOverride = m_scytheModel->GetModelSafe(object.modelAnim - 1, object.animFrame - 1);
             if (!modelOverride) { throw std::runtime_error("Scythe presentation references an unavailable frame."); }
+            (*command.cameraSpacePosition)[1] += 8;
+        }
+        std::optional<VisibilityResult::VisibleWaterLevel> water;
+        if (view.object.modelId == 33 && view.object.modelAnim == 3 && !view.bindWeaponBitmap)
+        {
+            (*command.cameraSpacePosition)[1] += 10;
+            if (world)
+            {
+                water = renderer.PrepareWeaponReflection(*world,
+                    level.GetHeightAtPos(world->GetMainCamera()->GetCameraPosition()), settings, stats);
+            }
         }
         DrawModel(command, level, renderer, settings, stats, modelViewport, deviceContext, colorView, depthView,
-            weaponTexture, faceSwordCamera, modelOverride);
+            weaponTexture, faceSwordCamera, modelOverride, true, water ? &*water : nullptr);
         return;
     }
     const Texture* texture = nullptr;

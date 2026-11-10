@@ -17,6 +17,7 @@ public:
     bool IsChannelPlaying(std::size_t channel) const override;
     void PlaySample(std::size_t channel, std::uint8_t sample, std::uint8_t volume) override;
     void StopAllSamples() override;
+    void StopSample(std::size_t channel) override;
     std::size_t GetSampleLength(std::uint8_t sample) const override;
     void BeginAmbientLoopCreation(std::size_t capacityFrames) override;
     void CopyAmbient(std::uint8_t sample, std::size_t offsetFrames) override;

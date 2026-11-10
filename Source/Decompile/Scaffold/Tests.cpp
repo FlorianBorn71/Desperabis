@@ -209,6 +209,8 @@ namespace
             Check(FindBehavior(entry.type) == &entry && FindBehavior(entry.name) == &entry,
                 "Behavior enum/name lookup must reference the same descriptor.");
             const bool implemented = entry.type == BehaviorType::Pillar || entry.type == BehaviorType::LightSource ||
+                entry.type == BehaviorType::AttackingBull || entry.type == BehaviorType::GrasingCow ||
+                entry.type == BehaviorType::WashingWater ||
                 entry.type == BehaviorType::ShootArrows || entry.type == BehaviorType::FlyingArrow ||
                 entry.type == BehaviorType::SpearOnGroundTrap ||
                 entry.type == BehaviorType::Frog || entry.type == BehaviorType::Behavior_11 ||

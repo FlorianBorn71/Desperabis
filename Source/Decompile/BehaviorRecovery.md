@@ -6,6 +6,178 @@ each recovered case an editable, named home without hiding missing behavior.
 
 ## Game context and application flow
 
+### Park gameplay (level 30, excluding Moon)
+
+Evidence: [park native code](park-gameplay-evidence.txt),
+[bucket attack](weapon-trigger-evidence.txt) at `0000:B0F6`,
+and [bucket animation/model recipe](weapon-sequence-evidence.txt) at
+`0000:C376`.
+
+- **Bull (129), slot 45:** `0000:3A36` calls `10AC:C52E(slot,35)` once
+  per behavior tick. At health 1000, state -1 turns toward the nearby
+  listener (<800); state 0 checks the player sight line; state 1 commits
+  heading/speed 8; state 2 charges without retargeting. Charging uses
+  animation 2, blend/phase increments 31, a sine-based six-unit nod and
+  damage parameter 10. A blocking map pixel fifty units ahead resets
+  state -1, stops **sample** 89, and requests effect 93. Effects 90/89
+  are the probabilistic idle/charge sounds. The existing native collision-9
+  pushing/lethal-contact policy is retained, not replaced with invented
+  bull combat or a death sequence.
+- **Cows (142), slots 33/34/35/50/75:** `0000:405C` computes the
+  frame blend as `50 + highword(Cosine(generalPurpose2)*50)`. Random
+  targets 0/256 and rates 2..8 animate grazing without translating the
+  body. Unlike the bull, this is a once-per-dispatch random update with a
+  tick-scaled phase step, including the native zero-tick RNG behavior.
+- **Bucket selector 9, slot 53:** can be equipped even when empty. The
+  original **9** hotkey selects it from either hand/backpack; normal
+  inventory hand selection also works. Contents are the existing saved
+  `weaponAmounts[9]` (DS:`DD48`), clamped to 0..20. Negative animation
+  sentinels -4..-1 become phase 30 and approach zero by frame ticks.
+  The first-person model is level slot 3 / animation 3 / frames 1 and 2,
+  blend `contents*5`, position `(0,25+abs(bob)/4+phase,35)`, pitch
+  `-4*phase`, projection center = player look height, focal length 120.
+- **Spring:** the authored activation group 5 starts emitter slot 41
+  (`ShootArrows`, projectile selector 11) and applies slot 55's existing
+  collision-105 floor replacement. Its emitted **collision-130 water
+  drops**, not direct contact with the fountain model, fill one unit per
+  contact while the bucket is selected and clear their collision mask
+  to prevent repeated filling. This is native `0000:D5EE`; the
+  `DamageObject(WaterRecharge)` floor update remains a separate action.
+- **Pouring/washing (143):** `0000:B0F6` empties all remaining units in
+  one input event (native recursive attacks, represented by a bounded
+  per-unit loop), requests effect 92/source 501/limit 1, and allocates one
+  model-33/animation-4/frames-1-and-2 water object per unit, at terrain
+  floor -3. Random radius-30 offsets and facing-vector/4 place the spill
+  ahead of the player. `0000:40ED` randomly advances the morph using
+  velocity X as the rate; material 0 or blend >100 removes it through
+  lifecycle hooks. Mask-4 contact starts the same morph on `WashableMud`
+  and sets its primary frame to 1. This covers all nine authored mud
+  patches. `Behavior_143` was renamed **WashingWater** with user approval.
+
+**Presentation adaptations:**
+
+- The held bucket is lowered by ten DOS units relative to its native recipe,
+  cropping it at the bottom edge instead of displaying a floating bucket.
+  Its moving water surface uses the same mirror-receiver shader, normal maps
+  and reflection target as world puddles. When a reflected puddle is visible,
+  its plane and scrolling parameters are reused; otherwise the renderer
+  generates the reflection at the terrain height below the player. Ordinary
+  inventory model pictures retain the opaque vertex-tint approximation.
+- Spring drops (collision 130) use alpha blending at fifteen percent of their
+  authored sprite opacity. This is renderer-only and does not change refill
+  collisions or lifetime.
+- Cow heads are embedded polygon-type-10 models, separate from the
+  polygon-type-9 links to other world objects. Their anchor vertices now
+  interpolate with the parent morph, including parent scale and transform.
+  Target vertices are addressed by native vertex index, not child ordinal:
+  the tree's two morph frames have different attachment lists.
+- The tree exit door is embedded geometry with a level-texture binding.
+  Reapplying an unchanged primary frame preserves its child instances and
+  materials instead of discarding the door's texture overrides each update.
+- **F** toggles a gravity-free camera at the current view without moving the
+  player. **WASD** flies, **Q/E** moves down/up and **Shift** accelerates.
+  Pressing **F** again returns to the player camera; held weapons are hidden
+  while the free camera is active.
+
+`park-gameplay` tests the real park records, autonomous charging and wall
+recovery/audio isolation, batched bull ticks, all cows and mud patches,
+empty-bucket input, fountain-drop refill, capacity, pouring, pause and SPL
+persistence. Activating and stepping all authored park objects (including
+runtime fountain drops) leaves no failed/unimplemented handler except Moon.
+Existing original-key tests still exercise all seven locks from all fourteen
+inventory slots. WARP checks original bucket geometry, GPU morph weights and
+visibly different empty/raised/full water surfaces at three aspect ratios.
+Additional WARP checks cover bottom-edge cropping, actual reflection-texture
+sampling, reflection generation without a visible puddle, every cow's
+interpolated head transform, persistent tree-door textures and visible door
+pixels, fountain opacity across sprite recreation, and gravity-free movement.
+
+### Part-1 coverage audit and modern defaults
+
+The original `GRAFIK/HERZ.256` orders part 1 as **29, 30, 31, 32, 33,
+36, 34, 35**. Entry 29 is a presentation selector; the first playable map is
+**30**, the park. DX11 now starts through `StartNewGame(2)` rather than loading
+training map 50 directly. This uses the normal HERZ selection and fresh-game
+reset path. With the existing host cheat mode enabled, part-1 membership also
+grants the collected-map flag after fresh loads and save restores, making the
+normal corner map visible. Training/part 2 still require their map pickup;
+part-1 weapon cheats remain disabled.
+
+An audit of all original `OBJPOS` records for the seven playable maps,
+including inactive records, now finds these **33 unimplemented world-behavior
+handlers**. Names retain existing spellings and numeric placeholders; this
+is a coverage inventory, not a claim that the names fully describe recovered
+native logic.
+
+| ID | Handler | Maps |
+| --- | --- | --- |
+| 42 | MercuryLamp | 34 |
+| 55 | Behavior_55 | 32 |
+| 56 | Switch4 | 31, 32, 36 |
+| 58 | KeyInBucket | 33 |
+| 67 | DecoFish | 32 |
+| 84 | ItemHiddenInBox | 36 |
+| 100 | Moon | 30, 36 |
+| 141 | Submarine | 32 |
+| 144 | CrackingSubmarineWindow | 32 |
+| 145 | PuzzleGameTile | 35 |
+| 147 | PuzzleGameHandler | 35 |
+| 148 | Behavior_148 | 35 |
+| 149 | PuzzleSpool | 35 |
+| 153 | FlushingFishes | 31 |
+| 154 | SomethingWithTheFishes | 31 |
+| 155 | GrandfatherClock | 35 |
+| 156 | GrandfatherClockHand | 35 |
+| 157 | GrandfatherClockPendulum | 35 |
+| 159 | RotateKnightsInClock | 35 |
+| 162 | KnightsCrossbow | 33, 35 |
+| 165 | ActionObjectToGrab | 34 |
+| 166 | PaterNosterLift | 31 |
+| 167 | SqueezingMachine | 31 |
+| 169 | RoofTopThunderHandler1 | 36 |
+| 172 | CeilingBladesComingDown | 33 |
+| 173 | PortableCoffin | 33 |
+| 174 | BladesFromSide | 33 |
+| 175 | ExplodingMachine | 31 |
+| 177 | PressureIndicator | 31 |
+| 178 | Behavior_178 | 33 |
+| 180 | LargeFish | 31 |
+| 182 | DestroyableRoof | 36 |
+| 183 | RoofTopThunderHandler2 | 36 |
+
+`ShootArrows` (40) has an unimplemented fallback for other configurations, but
+park slot 41 uses supported `generalPurpose1=11`; it is not counted above.
+This list does not imply the remaining gameplay is complete: interactions,
+held-tool state machines, runtime-generated variants and renderer effects are
+separate coverage surfaces.
+
+The park's bull, cows and held bucket are now recovered; see below. Moon remains
+deliberately excluded. Additional confirmed part-1 gaps:
+
+- **KeyInBucket (58):** the separate world behavior in map 33 remains
+  unrecovered; it is not the park's now-supported held-bucket controller.
+- **Foil (attack selector 23):** map 35 slot 79 can be picked up but has no
+  supported held-tool/weapon-view state machine.
+- **Other tools:** selector-6 metal poles are supported; selector-6 bones and
+  the portable coffin still fail the supported placement-handler gate.
+- **Explicit interaction stubs:** `WheelToLiftRope` (58), `VaseToGrab` (92),
+  `MirrorToGrab` (93), `SarcophagusWithBones` (121), and `BookWithCode` (252).
+  Torchlight-specific pickup/use (56), the light-sensor puzzle (94), and
+  bucket washing/refilling have no corresponding player-contact/use path.
+- **Introduction:** HERZ entry 29 is still skipped rather than played.
+
+The park's seven ordinary locked doors use lock IDs **1..7**, and its authored
+keys have matching `itemValue` IDs **1..7**. Original-asset regressions exercise
+pickup and unlocking from each of fourteen inventory slots, with all other
+slots holding nonmatching keys. No key-ID matching defect was found; later
+keys can still be unreachable because their containing puzzle is unimplemented.
+
+The scythe's native poses and combat remain unchanged. DX11 lowers only its
+first-person model by **8 DOS units**, retaining the complete VEKT67 2/2 asset.
+GPU checks project the shaft's rear endpoint below the weapon viewport and
+keep the blade tip inside it for both idle poses, the lowest projection center,
+and walking-bob extrema.
+
 ### Native DS:D500 simulation gate: initialization and cutscene hypothesis
 
 `field_D500` is an unresolved physical-simulation gate, not a confirmed
@@ -3363,6 +3535,45 @@ including attached presentation effects, without changing simulation validity or
 template health. Collision type 110 is named `RenderSuppressed`; it is distinct
 from `BehaviorType::CutSceneCloud` (171).
 
+The village epilogue uses two authored camera markers, both behavior 111.
+Slot **56** selects the storm view on the first tick: working/view position
+**(1515, -152, 3767)**, heading **367**. Slot **16** selects the sun reveal
+at tick **230**: working/view position **(950, -142, 3150)**, heading **0**,
+disables the ordinary sky and activates health group **1001**. Native
+`349A..34DE` selects the marker via DS:`05CC`; movement `D65E..D680` copies
+its X/Z and adds body height to marker Y for working/view Y. The port retains
+this selection separately from transient player-contact selection, bypasses
+ordinary movement/gravity while anchored, and applies newly selected markers
+after each timed cutscene step. Beginning another scene or completing the ending clears the anchor.
+The host honors `skyEnabled` through `LevelScene` sky presentation. In level 95
+only, the sky-off cue hides the authored storm sky and shows an unlit,
+camera-centered cube with a procedural constant **RGB (135,206,235)** texture.
+This explicit modern daytime-blue choice is not a recovered DOS palette update.
+The opening clouds and sun remain ordinary foreground object meshes.
+
+The static background starts with `LEVELS.INF` record byte **94**,
+`clearColorIdx`, indexing `GRAFIK/BACKGR1.PAL`. Level 95 specifies index **214**
+(RGB **60,36,85** with the currently loaded default palette). `Level::PopulateScene`
+blends that color with its fog color; the DX11 application's
+`GetWorldRenderSettings` then overrides the clear color with **(0.015,0.015,0.015)**.
+That dark clear remains unchanged to mask ground cracks elsewhere. The blue
+skybox is drawn separately, independent of fog, lighting and clear-color policy,
+and does not re-enable the old storm texture or alter the core sky flag.
+
+The opening clouds are live pose actors **25/26**, copying model-35/bank-2
+templates **23 -> 27 -> 24** and **3 -> 22 -> 21**, respectively. Their
+positions/angles animate apart; slot **2**, model 35/bank 1, becomes drawable
+on the tick after activation. These are object meshes, not skybox animation.
+The missing reveal was a camera-location bug: the port applied marker yaw and
+group activation but omitted its XYZ selection, leaving the reveal behind the
+old village camera. Core regressions cover both marker transitions, pause,
+batched timing and a stable view through tick 629. Isolated WARP rendering from
+the native reveal camera, with homogeneous direction W=0, measures **5535**
+reference sun pixels, **2623** uncovered with closed clouds and **4751** after
+the original clouds open. A separate background-only check verifies exact blue
+in all **86400** pixels for each of six camera directions, storm restoration,
+scene cleanup and no blue fallback outside level 95.
+
 Music selector **101** decodes mono unsigned 8-bit, 11025-Hz `MUSIC1.WAV` as a
 non-looping track; selector **102** preserves it across 96 -> 95 without restart.
 The RIFF parser walks chunk lengths/padding (the original has an extended fmt
@@ -3386,6 +3597,11 @@ records, player position and player camera remain unchanged. Pause and zero tick
 freeze playback, and completion removes the live boss and linked emitters before
 opening the rescue route. Palette and near-plane rasterization remain modern
 renderer adaptations, not pixel-exact DOS reproduction.
+At modal entry, native `1E48:B359` stops the four effect channels (`D20C`);
+`B382..B390` starts effect **42**, distance **0** (volume **255**), source **-1**,
+instance limit **1**. The original effect table maps it directly to sample **42**.
+`BeginBossFall` performs the same one-shot stop/start, named `BossFallRoar`,
+without restarting it during pause, zero-tick frames or modal animation ticks.
 
 Other modern presentation adaptations remain explicit. The
 DOS projected-muzzle sentinel is replaced by model-anchor resolution, so attack
@@ -4529,6 +4745,31 @@ sample maps held Ctrl or left mouse to attack. Those physical attack bindings
 are sample choices, not a claim about the original configurable keyboard default
 (native attack binding byte is DS:323D).
 
+#### Original weapon-number bindings
+
+[Number-key dispatch](weapon-selection-evidence.txt) at `0000:CC97..CCA8`
+accepts ASCII `1` through `9`, subtracts `0x30`, and calls the selector
+routine at `0000:C91E`. That routine indexes the inventory registry at
+DS:`DD76` directly; the registry builder at `0000:793E..79C8` stores each
+weapon under its complete item ID, without masking or subtype aliases.
+
+| Key | Weapon ID | Weapon |
+| --- | --- | --- |
+| 1 | 1 | Dagger |
+| 2 | 2 | Sword |
+| 3 | 3 | Crossbow |
+| 4 | 4 | Fireball |
+| 5 | 5 | Stone |
+| 6 | 6 | Placeable tool (including bear trap / metal pole) |
+| 7 | 7 | Electricity |
+| 8 | 8 | Shovel |
+| 9 | 9 | Bucket |
+
+Lentils (20) and scythe (24) have no number-key binding in this dispatcher,
+nor aliases to 4 and 8: equip them through inventory hand selection.
+The DX11 host follows these original 1..9 bindings. Its former added
+9=scythe, 0=lentils and B=bucket shortcuts have been removed.
+
 `GameTickResult::weapon` exposes animation and attack statuses.
 The additional combat families are implemented below. Unnamed tool IDs and
 unrecovered placeable behaviors report `UnimplementedWeapon` before consuming
@@ -4794,8 +5035,9 @@ horizontal square; an invalid negative square-root domain throws explicitly.
 pose 17 creates the same 5-damage contact, with reach 55, Y offset -35,
 radii 15/6 and lifetime 10. The shared animation writes amount entry **8**,
 not 24, and sets readiness directly; the scythe's native zero-initialized
-amount entry is not a finite charge supply. The host's new scythe hotkey
-therefore permits an owned scythe even when that entry is nonpositive.
+amount entry is not a finite charge supply. The core's programmatic scythe
+selection therefore permits an owned scythe even when that entry is nonpositive.
+The original number-key dispatcher has no scythe shortcut; use inventory.
 There is no invented scythe-only hedge gate: native collision category 26
 uses the existing shared damage dispatcher.
 
@@ -5575,9 +5817,12 @@ report `AudioUnavailable` without attempting selection.
 The original ten-byte channel records begin at DS:`F37C`: sample at +0,
 volume at +2, active word at +4, a reset-to-zero playback field at +6, and
 source at +8. The host backend owns playback/completion state, exposed by
-`IsChannelPlaying`; the gameplay context retains just the source IDs needed
-for admission. It must own these four channels exclusively, report completion
-accurately, and throw on playback failures rather than silently dropping them.
+`IsChannelPlaying`; the gameplay context retains the source IDs needed
+for admission and the selected sample IDs needed for native `1E48:D03F`
+cancellation. `StopSoundSample` stops only matching channels through the
+backend's `StopSample(channel)`; unrelated effects continue. The backend must
+own these four channels exclusively, report completion accurately, and throw
+on playback failures rather than silently dropping them.
 
 **Distance is separate from playback:**
 

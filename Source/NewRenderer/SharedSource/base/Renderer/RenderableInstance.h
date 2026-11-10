@@ -96,7 +96,6 @@ protected:
     const Scene* m_ownerScene = nullptr;
     bool m_visible = true;
 	bool m_globalBoundsDirty = true;
-	bool m_subInstancesDirty = true;
 	uint32_t m_visibilityFilterMask = 0xffffffff;
     TransparencyModeMask m_usedTransparencies = TransparencyModeMask::None; // used transparencies across all draw calls
 	Vector m_localPos, m_localOri; // only relevant for sub instances

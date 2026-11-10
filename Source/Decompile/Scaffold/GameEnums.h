@@ -141,7 +141,7 @@ namespace Desperabis
         RotatingMachineCenter = 140, // e.g. level 22
         Submarine = 141,
         GrasingCow = 142,
-        Behavior_143 = 143,
+        WashingWater = 143,
         CrackingSubmarineWindow = 144,
         PuzzleGameTile = 145, // level 35
         Behavior_146 = 146,
@@ -272,6 +272,7 @@ namespace Desperabis
         SarcophagusWithBones = 121, // reveals bones to feed dogs
         BurnableOilPuddle = 125,
         CeilingConcreteSlabStake = 126, // level 23 - the wood that holds CeilingConcreteSlab
+        FountainWater = 130,
         Type_138 = 138, // Activation copies field_2E into the behavior.
         CrackingSubmarineWindow = 144,
         PuzzleSpool = 149, // the ones with roman numbers in level 35
@@ -347,6 +348,7 @@ namespace Desperabis
         TrapOrPole = 6,
         Electricity = 7,
         Showel = 8,
+        Bucket = 9,
         ShopGold = 10,
         Lentils = 20,
         Scythe = 24

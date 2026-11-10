@@ -144,6 +144,11 @@ void Texture::CreateAsAtlas(Texture* firstTexture, TextureLoadingContext* firstC
 
 void Texture::CreatePlainWhite()
 {
+    CreatePlainColor({255,255,255,255});
+}
+
+void Texture::CreatePlainColor(const Color4& color)
+{
     AssetManager::Instance().RegisterAsset(*this);
 
     m_width = m_height = 1; // pretend 1 pixel texture for the sprite corner generation:
@@ -151,12 +156,11 @@ void Texture::CreatePlainWhite()
 
     m_width = m_height = 4;
     TextureLoadingContext thisData;
-    thisData.m_rgbaData.resize(m_width * m_height);
-    Color4* dest = thisData.m_rgbaData.data();
-    for (int i = 0; i < (int)thisData.m_rgbaData.size(); i++)
-        dest[i] = { 255,255,255,255 };
+    thisData.m_rgbaData.assign(m_width * m_height, color);
+    m_hasAlpha = color.a < 255;
 
     Renderer::Instance().CreateTexture(*this, thisData);
+    m_runtimeHighres = m_runtime;
 }
 
 void Texture::CreatePointTexture()

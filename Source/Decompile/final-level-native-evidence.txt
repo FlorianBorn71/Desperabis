@@ -2,6 +2,23 @@ SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
 Bounded linear decoding; not proof of reachability or function boundaries.
 Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
 
+Boss-fall audio, native modal entry (nonzero staged-rig argument):
+1E48:B358  0E                       PUSH CS
+1E48:B359  E8 B0 1E                 CALL 1E48:D20C
+1E48:B35C  83 7E 06 00              CMP word ptr [BP + 0x6],0x0
+1E48:B360  75 20                    JNZ 1E48:B382
+1E48:B382  6A 2A                    PUSH 0x2a
+1E48:B384  6A 00                    PUSH 0x0
+1E48:B386  0E                       PUSH CS
+1E48:B387  E8 77 1C                 CALL 1E48:D001
+1E48:B38A  50                       PUSH AX
+1E48:B38B  6A FF                    PUSH -0x1
+1E48:B38D  6A 01                    PUSH 0x1
+1E48:B38F  0E                       PUSH CS
+1E48:B390  E8 C9 1D                 CALL 1E48:D15C
+- Stop all effects, then effect 42, volume attenuation at distance 0 = 255,
+  source -1, simultaneous source limit 1. S_TAB.PRB effect 42 is 01 2A 00 00 00.
+
 Ending pose-template draw exclusion, native object draw entry 1E48:A6D8:
 1E48:A6D8  C8 10 00 00              ENTER 0x10,0x0
 1E48:A6DC  6B 7E 12 36              IMUL DI,word ptr [BP + 0x12],0x36
@@ -19,6 +36,29 @@ Ending pose-template draw exclusion, native object draw entry 1E48:A6D8:
 - Collision 110 bypasses display-mode dispatch; health-1000 source templates
   remain available to ObjectPoseSequence (10AC:BCAE), which copies them to the
   live actor and resets collision type to 0.
+
+Village epilogue camera selection (OBJPOS95.DAT / native movement):
+- Behavior 111 at 0000:34B9..34DE stores the current world slot in DS:05CC,
+  optionally clears DS:D4C4 (sky), and copies marker yaw to DC4C/D4D0.
+- 0000:D612..D65E resolves the selected live object (complete range is in
+  player-special-movement-evidence.txt). Its view coordinates are then:
+0000:D65E  C4 BE BC FE              LES DI,[BP + 0xfebc]
+0000:D662  26 8B 45 0C              MOV AX,word ptr ES:[DI + 0xc]
+0000:D666  A3 D2 D4                 MOV [0xd4d2],AX
+0000:D669  C4 BE BC FE              LES DI,[BP + 0xfebc]
+0000:D66D  26 8B 45 10              MOV AX,word ptr ES:[DI + 0x10]
+0000:D671  A3 D6 D4                 MOV [0xd4d6],AX
+0000:D674  C4 BE BC FE              LES DI,[BP + 0xfebc]
+0000:D678  26 8B 45 0E              MOV AX,word ptr ES:[DI + 0xe]
+0000:D67C  03 06 B2 D4              ADD AX,word ptr [0xd4b2]
+0000:D680  A3 D4 D4                 MOV [0xd4d4],AX
+- Slot 56 has countdown 0, position (1515,-197,3767), yaw -145, group 2.
+  At standing body height 45 its view is (1515,-152,3767), heading 367.
+- Slot 16 has countdown 230, position (950,-187,3150), yaw -512, group 1,
+  byte 52 = 1 (clear sky). Its view is (950,-142,3150), heading 0.
+- Activated live slots 25/26 copy model-35/bank-2 templates into ordinary
+  collision-0 actors and move them apart. Slot 2 enables model-35/bank-1 drawing
+  on its next behavior-171 update. Source collision-110 records remain hidden.
 
 Curated modal fall recovery: 1E48:B2FE..B74C
 - Called with duration 300, staged root slot 47; preserves EC6E/D4D4 and drains input.

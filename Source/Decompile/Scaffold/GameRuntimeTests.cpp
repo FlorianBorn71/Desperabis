@@ -122,7 +122,7 @@ namespace
             }
             if (key == InputKey::AttackKey || key == InputKey::SelectDaggerKey || key == InputKey::SelectSwordKey ||
                 key == InputKey::LookUpKey || key == InputKey::LookDownKey || key == InputKey::CenterLookKey ||
-                (key >= InputKey::SelectCrossbowKey && key <= InputKey::SelectLentilsKey))
+                (key >= InputKey::SelectCrossbowKey && key <= InputKey::SelectBucketKey))
             {
                 return false;
             }

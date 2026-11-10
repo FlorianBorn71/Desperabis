@@ -34,7 +34,7 @@
 
 namespace
 {
-	constexpr int g_startLevelIndex = 50;
+	constexpr int g_startGamePart = 2;
 	bool g_cheatMode = true;
 
 	constexpr int g_numObjectSlots = static_cast<int>(std::tuple_size_v<decltype(Desperabis::GameContext::worldObjects)>);
@@ -183,6 +183,7 @@ namespace
 		RenderingSettings GetWorldRenderSettings() const
 		{
 			auto settings = g_renderSettings;
+			settings.renderSky = g_scene ? g_scene->IsSkyVisible() : skyEnabled;
 			settings.clearColorOverride = Vector4{0.015f,0.015f,0.015f,0.f};
 			if (IsCutscenePlaying() && cinematicDepthShade > 0 && g_scene)
 			{
@@ -450,6 +451,7 @@ namespace
 					std::chrono::steady_clock::now() - g_startTime).count();
 			}
 			CompleteLevelLoad(request.id, std::move(data));
+			if (g_cheatMode && CanApplyMapCheat(request.levelNumber)) { hasMap = true; }
 			ApplyPlayerLightMode();
 		}
 
@@ -513,8 +515,7 @@ namespace
 		bool lookDown = false;
 		bool centerLook = false;
 		std::array<bool, 6> selectOtherWeapons{};
-		bool selectScythe = false;
-		bool selectLentils = false;
+		bool selectBucket = false;
 		bool mainMenu = false;
 		bool inventory = false;
 		bool uiUp = false;
@@ -551,8 +552,9 @@ namespace
 			case Desperabis::InputKey::SelectPlaceableKey: return selectOtherWeapons[3];
 			case Desperabis::InputKey::SelectElectricityKey: return selectOtherWeapons[4];
 			case Desperabis::InputKey::SelectShovelKey: return selectOtherWeapons[5];
-			case Desperabis::InputKey::SelectScytheKey: return selectScythe;
-			case Desperabis::InputKey::SelectLentilsKey: return selectLentils;
+			case Desperabis::InputKey::SelectScytheKey:
+			case Desperabis::InputKey::SelectLentilsKey: return false;
+			case Desperabis::InputKey::SelectBucketKey: return selectBucket;
 			case Desperabis::InputKey::MainMenuKey: return mainMenu;
 			case Desperabis::InputKey::InventoryKey: return inventory;
 			case Desperabis::InputKey::UiUpKey: return uiUp;
@@ -801,6 +803,7 @@ namespace
 	// Copies the world state out of the game context and updates the renderables of changed slots.
 	void SyncGameObjects()
 	{
+		g_scene->SetSkyEnabled(g_gameCore->skyEnabled);
 		Level* level = g_scene->m_level;
 		const auto* geometry = g_gameCore->GetLevel();
 		if (!geometry) { throw std::logic_error("World presentation requires loaded core geometry."); }
@@ -953,8 +956,16 @@ namespace
 		g_useFreeCam = !g_useFreeCam;
 		if (g_useFreeCam)
 		{
-			g_freeCam->JumpTo(g_camera->GetCameraPosition());
+			g_freeCam->SetUseGravity(false);
+			g_freeCam->JumpTo(g_camera->GetCameraTransformMatrix(0));
+			POINT mouse;
+			if (GetCursorPos(&mouse) && ScreenToClient(g_hWnd, &mouse))
+			{
+				g_freeCam->SetWindowCenter(static_cast<float>(mouse.x), static_cast<float>(mouse.y));
+			}
 		}
+		g_gameCore->PromptUserMessage(g_useFreeCam ?
+			"Free camera: WASD, Q/E down/up, Shift fast, F return" : "Player camera", 120);
 	}
 
 	FUTURE(void) InitDesperabis()
@@ -1014,7 +1025,7 @@ namespace
 		g_camera = Renderer::Instance().GetOrCreateCamera();
 		UpdateProjection();
 
-		g_gameCore->StartLevel(g_startLevelIndex);
+		g_gameCore->StartNewGame(g_startGamePart);
 		SyncGameObjects();
 		g_gameCore->UpdateHealthBar();
 
@@ -1079,8 +1090,7 @@ namespace
 			input.attack = IsKeyPressed(VK_CONTROL) || IsKeyPressed(VK_LBUTTON);
 			input.selectDagger = IsKeyPressed('1');
 			input.selectSword = IsKeyPressed('2');
-			input.selectScythe = IsKeyPressed('9');
-			input.selectLentils = IsKeyPressed('0');
+			input.selectBucket = IsKeyPressed('9');
 			for (size_t weapon = 0; weapon < input.selectOtherWeapons.size(); ++weapon)
 			{
 				input.selectOtherWeapons[weapon] = IsKeyPressed('3' + static_cast<int>(weapon));
@@ -1178,6 +1188,7 @@ namespace
 		// free camera input
 		float forward = 0.f;
 		float sideways = 0.f;
+		float vertical = 0.f;
 		if (hasFocus)
 		{
 			POINT p;
@@ -1191,10 +1202,12 @@ namespace
 			if (IsKeyPressed('S')) forward -= speedMultiplier;
 			if (IsKeyPressed('A')) sideways -= speedMultiplier;
 			if (IsKeyPressed('D')) sideways += speedMultiplier;
+			if (IsKeyPressed('Q')) vertical -= speedMultiplier;
+			if (IsKeyPressed('E')) vertical += speedMultiplier;
 		}
 
 		Level* level = g_scene->IsReady() ? g_scene->m_level : nullptr;
-		g_freeCam->SetSpeed(forward, sideways);
+		g_freeCam->SetSpeed(forward, sideways, vertical);
 		g_freeCam->Update(application.worldDeltaSeconds, level);
 	}
 
@@ -1265,14 +1278,14 @@ namespace
 		if (presentation.page == Desperabis::MenuPage::Gameplay)
 		{
 			UpdateItemPreview();
-			if (g_scene->IsReady())
+			if (g_scene->IsReady() && !g_useFreeCam)
 			{
 				if (const auto weapon = g_gameCore->GetWeaponView())
 				{
-					g_renderer.SetWeaponDraw([view = *weapon](const RenderingSettings& settings, ProfilingStats& stats)
+					g_renderer.SetWeaponDraw([view = *weapon](const VisibilityResult& world, const RenderingSettings& settings, ProfilingStats& stats)
 					{
 						g_applicationUi.DrawWeapon(view, g_renderer, *g_scene->m_level, settings,
-							stats, g_viewport, g_d3dContext.Get(), g_renderTargetView.Get(), g_depthStencilView.Get());
+							stats, g_viewport, g_d3dContext.Get(), g_renderTargetView.Get(), g_depthStencilView.Get(), &world);
 					});
 				}
 			}

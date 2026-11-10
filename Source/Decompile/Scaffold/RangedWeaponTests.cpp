@@ -604,7 +604,7 @@ namespace
         Fixture f;
         for (const auto weapon : { WeaponType::Crossbow, WeaponType::Fireball, WeaponType::Stone,
             WeaponType::TrapOrPole, WeaponType::Electricity, WeaponType::Showel,
-            WeaponType::Scythe, WeaponType::Lentils })
+            WeaponType::Scythe, WeaponType::Lentils, WeaponType::Bucket })
         {
             f.Equip(weapon);
             f.context.inventory[1].behavior = BehaviorType::BearTrapAmmo;
@@ -614,7 +614,7 @@ namespace
                 "Underwater restrictions must precede ammunition use and allocation for every added weapon.");
             f.context.playerUnderwater = false;
         }
-        for (const int id : { 9, 23 })
+        for (const int id : { 23 })
         {
             f.Equip(static_cast<WeaponType>(id));
             const auto objects = f.context.worldObjects;

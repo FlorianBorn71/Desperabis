@@ -13,6 +13,7 @@ namespace Desperabis
         Drop = 5,
         DoorClosed = 8,
         RatAndSnake = 17,
+        BossFallRoar = 42,
         WaterEntry = 43,
         Bubble = 56,
         Underwater = 58,
@@ -40,6 +41,8 @@ namespace Desperabis
         virtual bool IsChannelPlaying(std::size_t channel) const = 0;
         virtual void PlaySample(std::size_t channel, std::uint8_t sample, std::uint8_t volume) = 0;
         virtual void StopAllSamples() = 0;
+        virtual void StopSample(std::size_t)
+        { throw std::logic_error("Individual sample cancellation is unsupported."); }
         // Frames are mono PCM samples, not sound-asset counts. Legacy effect-only hosts reject these calls.
         virtual std::size_t GetSampleLength(std::uint8_t) const { throw std::logic_error("Ambient audio is unsupported."); }
         virtual void BeginAmbientLoopCreation(std::size_t) { throw std::logic_error("Ambient audio is unsupported."); }

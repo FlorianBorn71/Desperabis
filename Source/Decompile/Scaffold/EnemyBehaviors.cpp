@@ -89,6 +89,84 @@ namespace Desperabis
         }
     }
 
+    DispatchResult Function_AttackingBull(RawGameObject& object, GameContext& context)
+    {
+        for (int tick = 0; tick < context.tickCount; ++tick)
+        {
+            if (object.health != 1000) { continue; }
+            int height = 35;
+            object.behaviorParameter = 0;
+            object.winX = 0;
+            object.modelAnim = 1;
+            const auto distance = context.GetSoundDistanceAt(object.posX, object.posZ);
+            const auto play = [&](int effect, int limit)
+            {
+                context.PlaySoundEffect(static_cast<SoundEffect>(effect),
+                    GameContext::GetPositionalSoundVolume(distance), object, static_cast<std::int16_t>(limit));
+            };
+            switch (object.itemValue)
+            {
+            case -1:
+                if (distance < 800)
+                {
+                    auto target = GetVectorAngle(
+                        static_cast<std::int16_t>(WrapSignedWord(context.soundListenerX - object.posX) / 20),
+                        static_cast<std::int16_t>(WrapSignedWord(context.soundListenerZ - object.posZ) / 20));
+                    NormalizeAnglePair(object.winY, target);
+                    const auto step = GetStepToward(object.winY, target,
+                        static_cast<std::int16_t>(context.Random(6) + 1));
+                    if (step != 0)
+                    {
+                        object.blendWeightOrSpriteOpacity = WrapSignedWord(
+                            object.blendWeightOrSpriteOpacity + context.Random(8) + 2);
+                    }
+                    else { object.itemValue = 0; }
+                    if (object.blendWeightOrSpriteOpacity < 50) { object.winY = WrapSignedWord(object.winY + step); }
+                }
+                break;
+            case 0:
+                if (context.Random(100) > 0 && context.HasClearPlayerLine(object.posX, object.posZ))
+                {
+                    object.itemValue = 1;
+                }
+                if (context.Random(200) == 0) { play(90, 1); }
+                break;
+            case 1:
+                object.itemValue = 2;
+                GetDirectionDisplacement(object.velocityX, object.velocityZ, object.winY, 8);
+                break;
+            case 2:
+                if (context.Random(15) == 0) { play(89, 2); }
+                object.behaviorParameter = 10;
+                object.modelAnim = 2;
+                object.posX = WrapSignedWord(object.posX + object.velocityX);
+                object.posZ = WrapSignedWord(object.posZ + object.velocityZ);
+                object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity + 31);
+                object.generalPurpose2 = static_cast<std::uint16_t>(object.generalPurpose2 + 31);
+                object.winX = SineDisplacement(object.generalPurpose2, 6);
+                height += std::abs(static_cast<int>(object.winX));
+                if ((context.GetCollisionMapPixelAtWorldXZ(
+                    WrapSignedWord(object.posX + SignWord(object.velocityX) * 50),
+                    WrapSignedWord(object.posZ + SignWord(object.velocityZ) * 50)) & 56) != 0)
+                {
+                    object.itemValue = -1;
+                    context.StopSoundSample(89);
+                    play(93, 1);
+                }
+                break;
+            }
+            while (object.blendWeightOrSpriteOpacity > 100)
+            {
+                object.blendWeightOrSpriteOpacity -= 100;
+                object.animFrame = static_cast<std::uint8_t>((object.animFrame & 3) + 1);
+                object.modelFrame2 = static_cast<std::uint8_t>((object.animFrame & 3) + 1);
+            }
+            object.posY = WrapSignedWord(
+                context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ) + height);
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::AttackingBull, 0x3A36 };
+    }
+
     DispatchResult Function_Dog(RawGameObject& object, GameContext& context)
     {
         for (int tick = 0; tick < context.tickCount; ++tick)

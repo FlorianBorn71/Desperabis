@@ -22,6 +22,8 @@ namespace Desperabis
             throw std::logic_error("Boss fall requires a live boss, staged model assembly and pit trigger.");
         }
         bossFall = BossFall{bossSlot, trapSlot, rootSlot};
+        StopAllSoundEffects();
+        PlaySoundEffect(SoundEffect::BossFallRoar, GetSoundVolume(0), -1, 1);
     }
 
     std::vector<RawGameObject> GameContext::GetBossFallView() const
@@ -113,6 +115,7 @@ namespace Desperabis
         bossFall.reset();
         recordedCutscene.clear();
         recordedCutsceneFrame = 0;
+        cutsceneCameraSlot.reset();
         cinematicDepthShade = 0;
         if (loadedLevelNumber == 96 && !restoringSave)
         {
@@ -158,6 +161,25 @@ namespace Desperabis
             return IsBossFallPlaying() ? TickBossFall(timing) : TickCutscene(timing);
         }
         return TickGameplay(timing, input);
+    }
+
+    bool GameContext::UpdateCutsceneCamera()
+    {
+        if (!cutscenePlaying || !cutsceneCameraSlot) { return false; }
+        const auto& anchor = worldObjects.at(*cutsceneCameraSlot);
+        if (anchor.health <= 0) { cutsceneCameraSlot.reset(); return false; }
+        // D65E..D680: the selected object supplies working/view XYZ, not player-center Y.
+        auto& player = worldObjects[1];
+        player.posX = anchor.posX;
+        player.posY = WrapSignedWord(anchor.posY + playerBodyHeight - player.collisionRadiusY - 2);
+        player.posZ = anchor.posZ;
+        std::int16_t negativeZ;
+        GetDirectionDisplacement(player.velocityX, negativeZ, playerHeading, 100);
+        player.velocityZ = WrapSignedWord(-static_cast<int>(negativeZ));
+        soundListenerX = player.posX;
+        soundListenerZ = player.posZ;
+        lightingCache.Reset(soundListenerX, soundListenerZ, lightingCache.activeRadius);
+        return true;
     }
 
     GameTickResult GameContext::TickCutscene(GameTickTiming timing)
@@ -209,6 +231,7 @@ namespace Desperabis
                 step * timing.behaviorTicks / timing.frameTicks);
             result = TickGameplay({ticks, 1}, input);
             if (result.status != GameTickStatus::Advanced || nextLoadRequestId != requestId) { return result; }
+            UpdateCutsceneCamera();
             if (result.playerMovement)
             {
                 movement.simulatedTicks += result.playerMovement->simulatedTicks;
@@ -283,6 +306,7 @@ namespace Desperabis
         if (object.groupIndexOrLock < 1)
         {
             playerCollisionSlot = static_cast<std::uint16_t>(FindWorldObjectSlot(object));
+            cutsceneCameraSlot = playerCollisionSlot;
             if (object.behaviorParameter > 0) { skyEnabled = false; }
             playerTargetHeading = playerHeading = object.winY;
             if (object.itemValue > 0) { HandleActivationTriggerContact(object); }

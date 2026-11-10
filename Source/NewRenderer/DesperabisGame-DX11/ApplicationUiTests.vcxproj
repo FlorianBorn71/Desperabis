@@ -42,6 +42,7 @@
     <ClCompile Include="ApplicationUi.cpp" />
     <ClCompile Include="LightningPresentation.cpp" />
     <ClCompile Include="..\SharedSource\Sample\LevelScene.cpp" />
+    <ClCompile Include="..\SharedSource\Sample\FreeCamera.cpp" />
     <ClCompile Include="..\SharedSource\DX11\BuiltInShaders_Release.cpp" />
     <ClCompile Include="..\SharedSource\DX11\NativeTextureDX11.cpp" />
     <ClCompile Include="..\SharedSource\DX11\RenderContextDX11.cpp" />

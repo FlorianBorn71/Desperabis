@@ -61,7 +61,7 @@ The following initial-record counts include every record, regardless of health.
 | 103 | `Bubble` | Factory `10AC:056C`, store `10AC:061F` | 0 |
 | 106 | `Behavior_106` | Allocation inside `10AC:A467`, store `10AC:A862` | 0 |
 | 114 | `RainDrop` | Shared initializer `10AC:D682`, store `10AC:D6F4` | 0 |
-| 143 | `Behavior_143` | `0000:A8F7`, store `0000:B154` | 0 |
+| 143 | `WashingWater` | `0000:A8F7`, store `0000:B154` | 0 |
 
 This supports investigating the low-numbered unknowns as runtime object
 behaviors, but does **not** establish that they all mean projectiles.

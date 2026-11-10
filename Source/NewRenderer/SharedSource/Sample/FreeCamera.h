@@ -10,12 +10,13 @@ public:
     ~FreeCamera() = default;
 
     void SetMousePos(float x, float y);
-    void SetSpeed(float forward, float sideways);
+    void SetSpeed(float forward, float sideways, float vertical = 0.f);
     void SetWindowCenter(float x, float y) { m_centerX = x; m_centerY = y;}
     void SetUseGravity(bool status) { m_enableGravity = status; }
     void Update(double timeDelta, Level* level = nullptr);
 
     void JumpTo(const Vector& newPos);
+    void JumpTo(const Matrix4& transform);
     Vector GetPosition() const;
     Vector GetDirection() const;
 private:
@@ -24,6 +25,7 @@ private:
     float m_pitch = 0.f;
 
     float m_speedX = 0.f;
+    float m_speedY = 0.f;
     float m_speedZ = 0.f;
 
     float m_centerX = 1000.f;

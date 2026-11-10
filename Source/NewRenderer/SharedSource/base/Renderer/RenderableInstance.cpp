@@ -76,6 +76,13 @@ void RenderableInstance::UpdateGlobalBounds()
         if (m_renderable != nullptr && m_renderable->m_localBounds.IsValid())
         {
              m_renderable->m_localBounds.GetTransformed(m_globalBounds, m_transform, m_uniformScale);
+             if (m_blendToRenderable && m_blendToRenderable->m_localBounds.IsValid())
+             {
+                 BoundingVolume target;
+                 m_blendToRenderable->m_localBounds.GetTransformed(target, m_transform, m_uniformScale);
+                 m_globalBounds.Add(target);
+                 m_globalBounds.OnUpdated();
+             }
              if (m_ownerScene != nullptr)
              {
                  if (const auto* grid = m_ownerScene->GetGrid())
@@ -98,28 +105,24 @@ void RenderableInstance::SetTranslation(const Vector& pos)
 {
 	m_transform.SetTranslation(pos);
 	m_globalBoundsDirty = true;
-	m_subInstancesDirty = true;
 }
 
 void RenderableInstance::SetTransform(const Vector& pos, const Vector& eulerRot, float scale)
 {
     m_transform.Create(pos, eulerRot, scale);
 	m_globalBoundsDirty = true;
-	m_subInstancesDirty = true;
 }
 
 void RenderableInstance::SetTransform(const Matrix4& transform)
 {
 	m_transform = transform;
 	m_globalBoundsDirty = true;
-	m_subInstancesDirty = true;
 }
 
 void RenderableInstance::SetTransformAndUpdate(const Matrix4& transform)
 {
     m_transform = transform;
     m_globalBoundsDirty = true;
-    m_subInstancesDirty = true;
     UpdateGlobalBounds();
 }
 
@@ -131,9 +134,11 @@ void RenderableInstance::SetRenderable(const Renderable* renderable, const Rende
         return;
     }
 
+    const bool primaryChanged = m_renderable != renderable;
     m_renderable = renderable;
     m_blendToRenderable = blendTarget;
 	m_globalBoundsDirty = true;
+    if (!primaryChanged) { return; }
 
     m_subInstances.clear();
     if (m_renderable != nullptr && m_renderable->m_subRenderables.size() > 0)
@@ -154,18 +159,24 @@ void RenderableInstance::SetRenderable(const Renderable* renderable, const Rende
 
 void RenderableInstance::PrepareSubInstancesForRendering()
 {
-    if (m_subInstancesDirty)
+    for (std::size_t i = 0; i < m_subInstances.size(); ++i)
     {
-		for (RenderableInstance& subInst : m_subInstances)
-		{
-            // local mat -> global
-            subInst.m_transform.Create(subInst.m_localPos, subInst.m_localOri, 1.0f);
-            subInst.m_transform = subInst.m_transform * m_transform;
-		}
-
-		m_subInstancesDirty = false;
+        auto& sub = m_subInstances[i];
+        auto position = sub.m_localPos;
+        const int vertex = m_renderable->m_subRenderables[i].m_anchorVertex;
+        if (m_blendToRenderable && m_blendWeight != 0.f && vertex >= 0)
+        {
+            const auto& target = m_blendToRenderable->m_sourcePositions.at(vertex);
+            auto delta = Vector(target.x, target.y, target.z) - position;
+            delta *= m_blendWeight;
+            position += delta;
+        }
+        Matrix4 local;
+        position *= m_uniformScale;
+        local.Create(position, sub.m_localOri, 1.f);
+        sub.m_uniformScale = m_uniformScale;
+        sub.SetTransformAndUpdate(local * m_transform);
     }
-
 }
 
 bool RenderableInstance::RetrieveWaterProperties(bool& useReflection, float& waterHeight, int drawCallIndex) const

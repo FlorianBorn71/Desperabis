@@ -1,8 +1,8 @@
 bugs P0:
-- windmill entry door missing - covered by wall polygon
+- windmill entry door missing - covered by wall polygon. 
+   - same for "Astloch" in big tree
+   - Machine in level 31 (pressure window)
 - island visibility (graveyard)
-- Skythe model missing tip when 1st person model
-- Concrete block that falls over in mine level: Sticks in ground because of mismatching YPR?
 - skybox not high engough in general
 
 bugs P1:
@@ -13,9 +13,9 @@ bugs P1:
 improvements:
 - graveyard moon blending
 - look through ceiling when sliding down in cathedral
-- black clear color (burning forest)
 
 missing
+- electric bolt
 - cutscenes
 - strave keys
 - book text
@@ -25,3 +25,6 @@ missing
 Fixed:
 - witch head pointing down
 - key in windmill level not reachable
+- black clear color (burning forest)
+- Skythe model missing tip when 1st person model
+- Concrete block that falls over in mine level: Sticks in ground because of mismatching YPR?

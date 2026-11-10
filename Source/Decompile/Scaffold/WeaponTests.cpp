@@ -278,7 +278,7 @@ namespace
         Check(context.AttackWithSelectedWeapon() == WeaponActionStatus::NoEffect &&
             context.weaponAmounts[2] == 9, "Underwater sword input must not consume resources or allocate.");
         context.playerUnderwater = false;
-        context.selectedWeapon = static_cast<WeaponType>(9);
+        context.selectedWeapon = static_cast<WeaponType>(23);
         const auto objects = context.worldObjects;
         Check(context.AttackWithSelectedWeapon() == WeaponActionStatus::UnimplementedWeapon &&
             context.UpdateWeaponAnimation(1) == WeaponActionStatus::UnimplementedWeapon &&

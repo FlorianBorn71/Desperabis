@@ -29,6 +29,7 @@ public:
     void SetDefaultParams();
     void CreateAsAtlas(Texture* firstTexture, TextureLoadingContext* firstContext, int numTextures, int texStructStride = sizeof(Texture));
     void CreatePlainWhite();
+    void CreatePlainColor(const Color4& color);
     void CreatePointTexture();
     void CreateCoronaTexture();
 
@@ -59,4 +60,3 @@ class D_IMPEXP TextureTGA : public Texture
 public:
 	virtual void Read(AssetStream& stream) override;
 };
-

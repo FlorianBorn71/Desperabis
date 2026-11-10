@@ -17,6 +17,7 @@
 #include <Renderer/LightSource.h>
 #include <Scene/Scene.h>
 #include <Sample/LevelScene.h>
+#include <Sample/FreeCamera.h>
 #include <d3d11sdklayers.h>
 #include <cmath>
 #include <cstring>
@@ -383,7 +384,7 @@ namespace
             Check(pixelAt(dryPreview, size.first / 2, size.second / 2) ==
                 pixelAt(submergedPreview, size.first / 2, size.second / 2),
                 "Pickup model previews must not inherit the world's fog override.");
-            renderer.SetWeaponDraw([&](const RenderingSettings& drawSettings, ProfilingStats& drawStats)
+            renderer.SetWeaponDraw([&](const VisibilityResult&, const RenderingSettings& drawSettings, ProfilingStats& drawStats)
             {
                 RenderContextDX11 weapon(renderer, visible, drawSettings, drawStats);
                 weapon.BeginRendering();
@@ -2008,6 +2009,150 @@ namespace
             "Slime dissolve must forward the native blend weight.");
     }
 
+    void CheckParkAttachments(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        auto* park = FORCE_GET(AssetManager::Instance().LoadLevel(30));
+        const auto records = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS30.DAT")));
+        const auto record = [&](int slot)
+        {
+            ::RawGameObject object{};
+            std::memcpy(object.m_rawBytes, records.data() + (slot - 2) * sizeof(object.m_rawBytes), sizeof(object.m_rawBytes));
+            return object;
+        };
+        for (const int slot : {33,34,35,50,75,65})
+        {
+            auto raw = record(slot);
+            auto instance = std::make_shared<RenderableInstance>();
+            for (const int weight : {0,25,50,100,50,0})
+            {
+                raw.m_rawShorts[21] = static_cast<short>(weight);
+                park->ApplyRenderProperties(instance, raw);
+                instance->PrepareSubInstancesForRendering();
+                const auto* primary = instance->GetRenderable();
+                const auto* target = instance->GetBlendTargetRenderable();
+                Check(primary && target && !instance->m_subInstances.empty(),
+                    "Real cow bodies and the tree door must preserve their embedded mesh attachments.");
+                for (std::size_t i = 0; i < instance->m_subInstances.size(); ++i)
+                {
+                    const auto& attachment = primary->m_subRenderables[i];
+                    const auto& from = primary->m_sourcePositions.at(attachment.m_anchorVertex);
+                    const auto& to = target->m_sourcePositions.at(attachment.m_anchorVertex);
+                    const float blend = weight * 0.01f;
+                    const Vector local(from.x + (to.x - from.x) * blend,
+                        from.y + (to.y - from.y) * blend, from.z + (to.z - from.z) * blend);
+                    const auto& child = instance->m_subInstances[i];
+                    Check((child.GetTransform().GetTranslation() -
+                        instance->GetTransform().TransformPosition(local)).GetLength() < 0.00001f &&
+                        child.GetGlobalBounds().IsValid(),
+                        "Embedded heads and doors must follow the actual morphed parent vertex, with valid world bounds.");
+                    for (std::size_t draw = 0; draw < child.GetRenderable()->m_drawCalls.size(); ++draw)
+                    {
+                        const auto& overrides = child.GetMaterialOverrides();
+                        const auto& material = draw < overrides.size() ? overrides[draw] :
+                            child.GetRenderable()->m_drawCalls[draw].m_material;
+                        Check(material.m_texture != nullptr,
+                            "Repeated same-frame updates must retain level textures on embedded door meshes.");
+                    }
+                }
+            }
+        }
+
+        auto raw = record(65);
+        auto tree = std::make_shared<RenderableInstance>();
+        park->ApplyRenderProperties(tree, raw);
+        park->ApplyRenderProperties(tree, raw);
+        tree->PrepareSubInstancesForRendering();
+        const auto* door = &tree->m_subInstances.at(1);
+        class MeshScene final : public Scene
+        {
+        public:
+            FUTURE(void) CreateScene() override { m_sceneReady = true; CO_RETURN; }
+        } scene;
+        FORCE_WAIT(scene.CreateScene());
+        scene.AddRenderableInstance(tree);
+        Target image(device, 360, 240);
+        renderer.ReInitialize(image.colorView.Get(), image.depthView.Get(), image.viewport);
+        Camera camera;
+        Matrix4 projection, transform;
+        projection.CreateProjection(1.5f, Math::Pi / 3.f, 0.001f, 10.f);
+        camera.SetProjectionMatrix(projection);
+        auto direction = tree->GetTransform().GetDirection();
+        auto right = tree->GetTransform().GetRightDir();
+        direction *= -1.f; right *= -1.f;
+        auto distance = direction; distance *= 0.15f;
+        const auto cameraPosition = door->GetGlobalBounds().GetCenter() + distance;
+        transform.Create(Vector(cameraPosition.GetX(), cameraPosition.GetY(), cameraPosition.GetZ()), right,
+            tree->GetTransform().GetUpDir(), direction);
+        camera.SetCameraTransformMatrix(transform);
+        RenderingSettings settings;
+        settings.fullbrightRendering = true;
+        ProfilingStats stats;
+        VisibilityResult visible;
+        DefaultVisibilityContext visibility;
+        visibility.ComputeResultFor(&camera, &scene, visible, settings, VisibilitySettings{}, stats);
+        const float black[]{0,0,0,1};
+        const auto render = [&]
+        {
+            context->ClearRenderTargetView(image.colorView.Get(), black);
+            context->ClearDepthStencilView(image.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            return image.Pixels(device, context);
+        };
+        const auto withDoor = render();
+        auto& opaque = visible.m_visibleInstances.m_opaqueInstances;
+        const auto count = opaque.size();
+        opaque.erase(std::remove_if(opaque.begin(), opaque.end(),
+            [door](const auto& entry) { return entry.m_instance == door; }), opaque.end());
+        Check(opaque.size() + 1 == count, "The real tree door must enter the visible opaque mesh list.");
+        const auto withoutDoor = render();
+        int changed = 0;
+        for (std::size_t i = 0; i < withDoor.size(); ++i) { changed += withDoor[i] != withoutDoor[i]; }
+        Check(changed > 100, "The actual tree-door geometry must contribute visible pixels, not just exist in a child list.");
+
+        LevelScene waterScene(30);
+        Desperabis::RawGameObject drop{};
+        drop.health = 1000;
+        drop.modelId = 2; drop.modelAnim = 2; drop.animFrame = 1; drop.spriteScale = 64;
+        drop.displayType = Desperabis::DisplayType::SpriteNormal;
+        drop.collisionType = Desperabis::CollisionType::FountainWater;
+        ::RawGameObject water{};
+        Desperabis::EncodeGameObject(drop, water.m_rawBytes, sizeof(water.m_rawBytes));
+        auto particle = std::make_shared<RenderableInstance>();
+        for (int tick = 0; tick < 3; ++tick)
+        {
+            park->ApplyRenderProperties(particle, water);
+            waterScene.UpdateObjectPresentation(100, water, particle.get());
+            Check(particle->GetVisible() && std::abs(particle->GetMaterialOverrides().at(0).m_opacity -
+                    0.15f * GamePlay::PropertyAccessorBase(water).GetSpriteTransparency()) < 0.00001f &&
+                particle->GetUsedTransparencyMask() == TransparencyModeMask::AlphaBlendedBit,
+                "Fountain drops must retain 15 percent of authored opacity after repeated sprite updates.");
+        }
+
+        const auto playerCamera = renderer.GetOrCreateCamera();
+        const auto saved = playerCamera->GetCameraTransformMatrix(0);
+        transform.Create(Vector(1,2,3), Vector(0.7f,-0.3f,0));
+        FreeCamera free;
+        free.SetUseGravity(false);
+        free.JumpTo(transform);
+        free.SetWindowCenter(120,80);
+        free.SetMousePos(120,80);
+        free.Update(0, park);
+        Check((playerCamera->GetCameraTransformMatrix(0).GetDirection() - transform.GetDirection()).GetLength() < 0.00001f,
+            "Entering free camera must preserve the player camera's heading and pitch.");
+        free.SetSpeed(0,0,1);
+        free.Update(0.5, park);
+        Check(std::abs(free.GetPosition().GetY() - 3.5f) < 0.00001f,
+            "Free-camera elevation must be independent of the actual park terrain.");
+        free.JumpTo(transform);
+        free.Update(0.5, park);
+        Check((free.GetPosition() - transform.GetTranslation()).GetLength() < 0.00001f,
+            "Re-entering free camera must clear stale movement and preserve the player location.");
+        playerCamera->SetCameraTransformMatrix(saved);
+        std::cout << "Park: five morphed cow heads, textured tree door (" << changed <<
+            " pixels), transparent fountain and free flight.\n";
+    }
+
     void CheckFinalLevelRuntimePresentation(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
         class Host final : public Desperabis::GameContext
@@ -2356,6 +2501,166 @@ namespace
             "Ending presentation must not mutate cached authored records.");
         std::cout << "Ending visibility: 11 hidden templates, initial population, hide/show, sprite overrides, "
             "presentation lights and 1000 live pose-chain ticks passed.\n";
+    }
+
+    void CheckVillageCloudReveal(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        class Host final : public Desperabis::GameContext
+        {
+            std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+            {
+                return FORCE_GET(FileManager::Instance().ReadDataFuture(FileManager::Instance().FilenameToNative(
+                    std::wstring(filename.begin(), filename.end()))));
+            }
+            void LoadLevel(const Desperabis::LevelLoadRequest& request) override
+            {
+                Desperabis::LevelLoadData data;
+                LoadLevelGeometry(request.levelNumber, data);
+                LoadLevelObjects(request.levelNumber, data);
+                InitializeLevelPlayerSpawn(data, {0,0,100});
+                CompleteLevelLoad(request.id, std::move(data));
+            }
+        } core;
+        class Input final : public Desperabis::InputHandler
+        {
+            bool IsKeyPressed(Desperabis::InputKey) override { return false; }
+        } input;
+        core.StartLevel(95);
+        auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(95));
+        LevelScene scene(95);
+        scene.m_createGameObjects = false;
+        scene.m_createMapIcons = false;
+        FORCE_WAIT(scene.CreateScene());
+        std::vector<RenderableInstancePtr> stormSky;
+        for (const auto& instance : scene.GetRenderableInstances())
+        {
+            if (instance->HasSkyMaterials()) { stormSky.push_back(instance); }
+            else { instance->SetVisible(false); }
+        }
+        Check(!stormSky.empty(), "The village must initially provide its authored storm sky.");
+        scene.SetSkyEnabled(true);
+        Check(scene.IsSkyVisible() && stormSky.front()->GetVisible(),
+            "The original storm sky must remain visible before the reveal cue.");
+        std::array<RenderableInstancePtr, 3> instances;
+        const int slots[]{2, 25, 26};
+        for (auto& instance : instances) { instance = std::make_shared<RenderableInstance>(); }
+        const auto synchronize = [&]
+        {
+            for (std::size_t index = 0; index < instances.size(); ++index)
+            {
+                RawGameObject raw{};
+                raw.m_level = level;
+                Desperabis::EncodeGameObject(core.GetObjectRenderState(slots[index]), raw.m_rawBytes, 54);
+                level->ApplyRenderProperties(instances[index], raw);
+                instances[index]->UpdateGlobalBounds();
+                Check(instances[index]->GetVisible() && instances[index]->IsValid(),
+                    "The native reveal must provide a visible sun and two drawable cloud actors.");
+            }
+        };
+        for (int tick = 0; tick < 231; ++tick) { core.Tick({1,1}, input); }
+        synchronize();
+        const auto view = core.GetPlayerCamera();
+        const auto position = Level::DespToPos(view.position[0], view.position[1], view.position[2]);
+        Vector forward(-static_cast<float>(view.direction[0]),
+            static_cast<float>(view.direction[1]) + (110.f - view.lookHeight), static_cast<float>(view.direction[2]), 0.f);
+        forward.Normalize();
+        Vector up(0,1,0,0);
+        auto right = up.GetCross(forward);
+        right.Normalize();
+        up = forward.GetCross(right);
+        Matrix4 transform, projection;
+        transform.Create(position, right, up, forward);
+        projection.CreateProjection(1.5f, 70.f * Math::Pi / 180.f, 0.05f, 100.f);
+        Camera camera;
+        camera.SetProjectionMatrix(projection);
+        camera.SetCameraTransformMatrix(transform);
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        RenderingSettings settings;
+        Check(!core.skyEnabled, "The native reveal must disable the authored storm sky.");
+        scene.SetSkyEnabled(core.skyEnabled);
+        settings.renderSky = scene.IsSkyVisible();
+        Check(settings.renderSky && !stormSky.front()->GetVisible(),
+            "The reveal cue must replace the storm sky, rather than disable all sky rendering.");
+        VisibilitySettings visibilitySettings;
+        DefaultVisibilityContext visibility;
+        ProfilingStats stats;
+        const auto render = [&](bool clouds)
+        {
+            instances[1]->SetVisible(clouds);
+            instances[2]->SetVisible(clouds);
+            VisibilityResult visible;
+            visibility.ComputeResultFor(&camera, &scene, visible, settings, visibilitySettings, stats);
+            Check(visible.HasResults() && !visible.m_visibleInstances.m_skyInstances.empty(),
+                "The reveal sky must reach the renderer's sky visibility bucket.");
+            visible.m_ambientColor = {1,1,1};
+            visible.m_ambientNrmlContribution = 0;
+            visible.m_fogColor = {0,0,0};
+            visible.m_fogFalloff = 0;
+            visible.m_lightmap = AssetManager::Instance().GetPlainWhiteTexture();
+            const float black[]{0,0,0,1};
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            return target.Pixels(device, context);
+        };
+        constexpr std::uint32_t skyBlue = 0xebce87;
+        const Vector directions[]{Vector(1,0,0,0), Vector(-1,0,0,0), Vector(0,1,0,0),
+            Vector(0,-1,0,0), Vector(0,0,1,0), Vector(0,0,-1,0)};
+        for (auto direction : directions)
+        {
+            Vector skyUp = std::abs(direction.GetY()) > 0.9f ? Vector(0,0,1,0) : Vector(0,1,0,0);
+            auto skyRight = skyUp.GetCross(direction);
+            skyUp = direction.GetCross(skyRight);
+            Matrix4 skyTransform;
+            skyTransform.Create(Vector(43,27,-19), skyRight, skyUp, direction);
+            camera.SetCameraTransformMatrix(skyTransform);
+            const auto background = render(false);
+            Check(std::all_of(background.begin(), background.end(),
+                [skyBlue](std::uint32_t pixel) { return (pixel & 0xffffff) == skyBlue; }),
+                ("The procedural skybox must cover every pixel with constant blue in all six view directions; " +
+                    std::to_string(direction.GetX()) + "," + std::to_string(direction.GetY()) + "," +
+                    std::to_string(direction.GetZ()) + ", first pixel " + std::to_string(background.front() & 0xffffff) +
+                    ", draw calls " + std::to_string(stats.m_numDrawCalls) +
+                    ", triangles " + std::to_string(stats.m_numTriangles) +
+                    ", blue pixels " + std::to_string(std::count_if(background.begin(), background.end(),
+                        [skyBlue](std::uint32_t pixel) { return (pixel & 0xffffff) == skyBlue; }))).c_str());
+        }
+        scene.SetSkyEnabled(true);
+        Check(stormSky.front()->GetVisible(), "Restoring the original sky must restore storm visibility.");
+        scene.SetSkyEnabled(false);
+        Check(!stormSky.front()->GetVisible(), "Returning to the reveal must hide the original storm again.");
+        camera.SetCameraTransformMatrix(transform);
+        for (const auto& instance : instances) { scene.AddRenderableInstance(instance); }
+        const auto sun = render(false);
+        const auto closed = render(true);
+        int sunPixels = 0, closedSunPixels = 0;
+        for (std::size_t pixel = 0; pixel < sun.size(); ++pixel)
+        {
+            if ((sun[pixel] & 0xffffff) == skyBlue) { continue; }
+            ++sunPixels;
+            if (sun[pixel] == closed[pixel]) { ++closedSunPixels; }
+        }
+        Check(sunPixels > 200, "The original sun must project visible pixels from the selected native camera.");
+        for (int tick = 231; tick < 629; ++tick) { core.Tick({1,1}, input); }
+        synchronize();
+        const auto open = render(true);
+        int openSunPixels = 0;
+        for (std::size_t pixel = 0; pixel < sun.size(); ++pixel)
+        {
+            if ((sun[pixel] & 0xffffff) != skyBlue && sun[pixel] == open[pixel]) { ++openSunPixels; }
+        }
+        std::cout << "Village reveal: " << sunPixels << " sun pixels, " << closedSunPixels <<
+            " visible with closed clouds, " << openSunPixels << " after opening.\n";
+        Check(openSunPixels > closedSunPixels + 200 && openSunPixels > sunPixels / 2,
+            "Opening the original cloud actors must visibly uncover the sun from the native reveal camera.");
+        scene.ClearScene();
+        Check(scene.GetRenderableInstances().empty() && scene.IsSkyVisible(),
+            "Clearing the scene must release the reveal sky and reset its presentation state.");
+        LevelScene ordinaryScene(26);
+        ordinaryScene.SetSkyEnabled(false);
+        Check(!ordinaryScene.IsSkyVisible() && ordinaryScene.GetRenderableInstances().empty(),
+            "Disabling sky outside the epilogue must not introduce a blue background over the dark clear color.");
     }
 
     void CheckFinalLevelMorphs(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
@@ -6109,8 +6414,10 @@ int main(int argc, char* argv[])
         CheckEnemyModels();
         CheckPresentationRecovery();
         CheckEndingActorVisibility();
+        CheckVillageCloudReveal(renderer, device.Get(), context.Get());
         CheckFinalLevelMorphs(renderer, device.Get(), context.Get());
         CheckFinalLevelRuntimePresentation(renderer, device.Get(), context.Get());
+        CheckParkAttachments(renderer, device.Get(), context.Get());
         CheckMummyFade(renderer, device.Get(), context.Get());
         CheckDragon(renderer, device.Get(), context.Get());
         CheckRainSprites(renderer, device.Get(), context.Get());
@@ -6756,7 +7063,7 @@ int main(int argc, char* argv[])
                 weaponCore.weaponAnimationPosition = 60;
                 weaponCore.playerWalkPhase = 128;
                 int weaponCalls = 0;
-                renderer.SetWeaponDraw([&](const RenderingSettings& drawSettings, ProfilingStats& drawStats)
+                renderer.SetWeaponDraw([&](const VisibilityResult&, const RenderingSettings& drawSettings, ProfilingStats& drawStats)
                 {
                     ++weaponCalls;
                     ui.DrawWeapon(*weaponCore.GetWeaponView(), renderer, *level, drawSettings, drawStats, target.viewport,
@@ -6785,18 +7092,154 @@ int main(int argc, char* argv[])
             core.selectedWeapon = Desperabis::WeaponType::Scythe;
             core.weaponHand = 2;
             core.weaponSpriteFrame = 1;
-            core.weaponAnimationPosition = 10;
-            const auto view = core.GetWeaponView();
-            const float black[]{0,0,0,1};
-            context->ClearRenderTargetView(target.colorView.Get(), black);
-            ui.DrawWeapon(*view, renderer, *scytheLevel, settings, stats, target.viewport,
-                context.Get(), target.colorView.Get(), target.depthView.Get());
-            ComPtr<ID3D11Buffer> boundPositions;
-            context->VSGetConstantBuffers(2, 1, &boundPositions);
-            const auto pixels = target.Pixels(device.Get(), context.Get());
-            Check(boundPositions.Get() == scytheModel->GetNativeRuntimeObj<NativeModelMeshObjectDX11>()->m_positionBuffer.Get() &&
-                std::count_if(pixels.begin(), pixels.end(), [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; }) > 100,
-                "The second-chapter scythe bank must retain the same complete, visible blade as the first-chapter override.");
+            for (const int pose : {10,11})
+            for (const int look : {95,110})
+            for (const int phase : {0,128,256,384})
+            {
+                core.weaponAnimationPosition = static_cast<std::int16_t>(pose);
+                core.playerLookHeight = static_cast<std::int16_t>(look);
+                core.playerWalkPhase = static_cast<std::int16_t>(phase);
+                const auto view = core.GetWeaponView();
+                const float black[]{0,0,0,1};
+                context->ClearRenderTargetView(target.colorView.Get(), black);
+                ui.DrawWeapon(*view, renderer, *scytheLevel, settings, stats, target.viewport,
+                    context.Get(), target.colorView.Get(), target.depthView.Get());
+                ComPtr<ID3D11Buffer> boundPositions;
+                context->VSGetConstantBuffers(2, 1, &boundPositions);
+                const auto pixels = target.Pixels(device.Get(), context.Get());
+                Check(boundPositions.Get() == scytheModel->GetNativeRuntimeObj<NativeModelMeshObjectDX11>()->m_positionBuffer.Get() &&
+                    std::count_if(pixels.begin(), pixels.end(), [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; }) > 100,
+                    "The first-part scythe must retain its complete, visibly rendered blade.");
+                const auto positions = ReadBuffer<VertexPosition>(device.Get(), context.Get(), boundPositions.Get());
+                ComPtr<ID3D11Buffer> instanceBuffer;
+                context->VSGetConstantBuffers(1, 1, &instanceBuffer);
+                const auto transformData = ReadBuffer<float>(device.Get(), context.Get(), instanceBuffer.Get());
+                Matrix4 rendered;
+                rendered.Load(transformData.data());
+                rendered = rendered.GetTransposed();
+                RawGameObject raw;
+                Desperabis::EncodeGameObject(view->object, raw.m_rawBytes, sizeof(raw.m_rawBytes));
+                auto native = GamePlay::PropertyAccessorBase(raw).GetTransform();
+                native.SetTranslation(Vector(view->object.posX * DespToFloat,
+                    -(view->object.posY + 8) * DespToFloat, -view->object.posZ * DespToFloat));
+                Check((rendered.GetTranslation() - native.GetTranslation()).GetLength() < 0.000001f &&
+                    (rendered.GetDirection() - native.GetDirection()).GetLength() < 0.00001f,
+                    "Scythe framing must only lower the rendered model by eight units, preserving native poses.");
+                const auto project = [&](int vertex)
+                {
+                    const auto& position = positions.at(scytheModel->m_vertexOfs + vertex);
+                    const auto point = rendered.TransformPosition(Vector(position.x, position.y, position.z));
+                    Check(point.GetZ() < 0, "The scythe must remain in front of its first-person camera.");
+                    return Vector2{ Desperabis::WeaponView::Width / 2 + 128.f * point.GetX() / -point.GetZ(),
+                        view->projectionCenterY - 128.f * point.GetY() / -point.GetZ() };
+                };
+                Check(project(0).y > Desperabis::WeaponView::Height,
+                    "The shaft's rear endpoint must stay below the viewport throughout idle walking bob.");
+                const auto bladeTip = project(9);
+                Check(bladeTip.x > 0 && bladeTip.x < Desperabis::WeaponView::Width &&
+                    bladeTip.y > 0 && bladeTip.y < Desperabis::WeaponView::Height,
+                    "Lowering the scythe must not clip its blade tip out of the first-person view.");
+            }
+        }
+        {
+            const auto* park = FORCE_GET(AssetManager::Instance().LoadLevel(30));
+            const auto* bucket = park->GetLevelInfo().GetModelAnim(3)->GetModel(2, 0);
+            class ReflectionScene final : public Scene
+            {
+            public:
+                FUTURE(void) CreateScene() override { m_sceneReady = true; CO_RETURN; }
+            } reflectionScene;
+            FORCE_WAIT(reflectionScene.CreateScene());
+            for (const auto size : {std::pair<UINT, UINT>{360,240}, {1280,720}, {480,800}})
+            {
+                Target target(device.Get(), size.first, size.second);
+                renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+                Desperabis::GameContext core;
+                core.SetMenuPage(Desperabis::MenuPage::Gameplay);
+                core.selectedWeapon = core.requestedWeapon = Desperabis::WeaponType::Bucket;
+                core.weaponHand = 2;
+                core.weaponSpriteFrame = 1;
+                std::vector<std::uint32_t> previous;
+                for (const int amount : {0,15,20})
+                {
+                    core.weaponAmounts[9] = static_cast<std::int16_t>(amount);
+                    const auto view = core.GetWeaponView();
+                    Check(view && view->object.modelFrame2 == 2 &&
+                        view->object.blendWeightOrSpriteOpacity == amount * 5,
+                        "Bucket recipes must retain the actual empty/partial/full water morph.");
+                    const float black[]{0,0,0,1};
+                    context->ClearRenderTargetView(target.colorView.Get(), black);
+                    ui.DrawWeapon(*view, renderer, *park, settings, stats, target.viewport,
+                        context.Get(), target.colorView.Get(), target.depthView.Get());
+                    ComPtr<ID3D11Buffer> positions;
+                    context->VSGetConstantBuffers(2, 1, &positions);
+                    const auto pixels = target.Pixels(device.Get(), context.Get());
+                    std::size_t firstRow = size.second;
+                    for (std::size_t i = 0; i < pixels.size(); ++i)
+                    {
+                        if ((pixels[i] & 0xffffff) != 0) { firstRow = (std::min)(firstRow, i / size.first); }
+                    }
+                    Check(firstRow > size.second * 0.75f &&
+                        std::count_if(pixels.end() - size.first, pixels.end(),
+                            [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; }) > 3,
+                        "The held bucket must enter through the bottom edge, not float fully visible above it.");
+                    Check(positions.Get() == bucket->GetNativeRuntimeObj<NativeModelMeshObjectDX11>()->m_positionBuffer.Get() &&
+                        std::count_if(pixels.begin(), pixels.end(),
+                            [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; }) > 100,
+                        "The held park bucket must render original level-model geometry and textures.");
+                    ComPtr<ID3D11Buffer> instance;
+                    context->VSGetConstantBuffers(1, 1, &instance);
+                    const auto constants = ReadBuffer<float>(device.Get(), context.Get(), instance.Get());
+                    Check(constants.size() > 19 && std::abs(constants[19] - amount / 20.f) < 0.00001f,
+                        "Bucket fill must reach the actual GPU morph constant.");
+                    std::cout << "Bucket at " << size.first << "x" << size.second << ", amount " << amount
+                        << ", vertices " << bucket->m_numPositions << ", pixels "
+                        << std::count_if(pixels.begin(), pixels.end(),
+                            [](std::uint32_t pixel) { return (pixel & 0xffffff) != 0; }) << '\n';
+                    Check(previous.empty() || pixels != previous,
+                        "Empty, partial and full bucket water levels must produce distinct rendered images.");
+                    previous = pixels;
+                }
+                Camera worldCamera;
+                Matrix4 worldTransform;
+                worldTransform.SetTranslation(Vector(0,1,0));
+                worldCamera.SetCameraTransformMatrix(worldTransform);
+                VisibilityResult world;
+                world.m_mainCamera = &worldCamera;
+                world.m_scene = &reflectionScene;
+                auto& cached = world.m_visibleWater.emplace_back();
+                cached.m_useReflection = true;
+                cached.m_waterHeight = -0.2f;
+                cached.m_scrollParams1 = cached.m_scrollParams2 = {0,0,0,0};
+                previous.clear();
+                for (const auto color : {std::array<float,4>{1,0,0,1}, {0,0,1,1}})
+                {
+                    RenderContextDX11 mirror(renderer, world, settings, stats);
+                    mirror.BeginRendering();
+                    mirror.BeginRenderTargetScope(RenderTargetPassType::Mirror, &worldCamera);
+                    mirror.TrackGlobals();
+                    ComPtr<ID3D11RenderTargetView> mirrorTarget;
+                    context->OMGetRenderTargets(1, &mirrorTarget, nullptr);
+                    context->ClearRenderTargetView(mirrorTarget.Get(), color.data());
+                    mirror.EndRenderTargetScope();
+                    mirror.EndRendering();
+                    const float black[]{0,0,0,1};
+                    context->ClearRenderTargetView(target.colorView.Get(), black);
+                    ui.DrawWeapon(*core.GetWeaponView(), renderer, *park, settings, stats, target.viewport,
+                        context.Get(), target.colorView.Get(), target.depthView.Get(), &world);
+                    const auto pixels = target.Pixels(device.Get(), context.Get());
+                    if (!previous.empty())
+                    {
+                        int changed = 0;
+                        for (std::size_t i = 0; i < pixels.size(); ++i) { changed += pixels[i] != previous[i]; }
+                        Check(changed > 20, "Held bucket water must sample the shared puddle reflection target, not a white fallback.");
+                    }
+                    previous = pixels;
+                }
+                world.m_visibleWater.clear();
+                ui.DrawWeapon(*core.GetWeaponView(), renderer, *park, settings, stats, target.viewport,
+                    context.Get(), target.colorView.Get(), target.depthView.Get(), &world);
+            }
         }
         const auto messageCount = info->GetNumStoredMessages();
         for (UINT64 i = 0; i < messageCount; ++i)

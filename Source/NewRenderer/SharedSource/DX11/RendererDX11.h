@@ -29,7 +29,9 @@ public:
     // Retained for one render; nullptr hides the preview. World depth is discarded after post-effects.
     void SetItemPreview(std::shared_ptr<const RenderableInstance> instance, bool isSprite, const D3D11_VIEWPORT& viewport);
     // One-shot camera-space presentation after world effects, before pickup preview and HUD text.
-    void SetWeaponDraw(std::function<void(const RenderingSettings&, ProfilingStats&)> draw) { m_weaponDraw = std::move(draw); }
+    void SetWeaponDraw(std::function<void(const VisibilityResult&, const RenderingSettings&, ProfilingStats&)> draw) { m_weaponDraw = std::move(draw); }
+    VisibilityResult::VisibleWaterLevel PrepareWeaponReflection(const VisibilityResult& world, float height,
+        const RenderingSettings& settings, ProfilingStats& stats);
 
 	virtual void RenderSceneElements(const VisibilityResult& elements, const RenderingSettings& renderSettings, ProfilingStats& stats) override final;
 
@@ -40,7 +42,7 @@ public:
 private:
     friend class RenderContextDX11;
 
-    void RenderHudGeometry(const RenderingSettings& settings, ProfilingStats& stats);
+    void RenderHudGeometry(const VisibilityResult& world, const RenderingSettings& settings, ProfilingStats& stats);
     virtual void ConfigureVisibility(IVisibilityContext& visContext) override final;
     void CreateAtlasDataCB(Texture& tex, NativeTextureObjectDX11& runtime);
 #ifdef ENABLE_ADVANCED_RENDERING
@@ -95,7 +97,7 @@ private:
     std::atomic_int32_t m_runtimeIdCounter = 0;
     bool m_isStereo = false;
     std::shared_ptr<const RenderableInstance> m_itemPreview;
-    std::function<void(const RenderingSettings&, ProfilingStats&)> m_weaponDraw;
+    std::function<void(const VisibilityResult&, const RenderingSettings&, ProfilingStats&)> m_weaponDraw;
     bool m_itemPreviewIsSprite = false;
     D3D11_VIEWPORT m_itemPreviewViewport = {};
 };
