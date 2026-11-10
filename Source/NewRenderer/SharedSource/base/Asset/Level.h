@@ -29,6 +29,7 @@ public:
     std::size_t SynchronizeWallTiles(const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride);
     std::size_t SynchronizeFloorTiles(const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride);
     std::size_t SynchronizeSurfaceTiles(const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride);
+    void SynchronizeWaterHeight(WaterSlotIndex slot, float height);
 	float GetHeightAtPos(const Vector& pos) const 
     {
         return m_cellArray.GetHeightAtPos(pos);
@@ -84,6 +85,7 @@ protected:
     {
         byte island;
         WaterSlotIndex slot;
+        float geometryHeight;
         std::shared_ptr<Renderable> geometry;
         RenderableInstancePtr instance;
     };

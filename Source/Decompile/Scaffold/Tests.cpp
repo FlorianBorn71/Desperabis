@@ -211,6 +211,11 @@ namespace
             const bool implemented = entry.type == BehaviorType::Pillar || entry.type == BehaviorType::LightSource ||
                 entry.type == BehaviorType::AttackingBull || entry.type == BehaviorType::GrasingCow ||
                 entry.type == BehaviorType::WashingWater ||
+                entry.type == BehaviorType::RotatingSwitch || entry.type == BehaviorType::FlushingFishes ||
+                entry.type == BehaviorType::SomethingWithTheFishes || entry.type == BehaviorType::PaterNosterLift ||
+                entry.type == BehaviorType::SqueezingMachine || entry.type == BehaviorType::ExplodingMachine ||
+                entry.type == BehaviorType::ExplodedMachineFade || entry.type == BehaviorType::PressureIndicator ||
+                entry.type == BehaviorType::LargeFish || entry.type == BehaviorType::StrandedFish ||
                 entry.type == BehaviorType::ShootArrows || entry.type == BehaviorType::FlyingArrow ||
                 entry.type == BehaviorType::SpearOnGroundTrap ||
                 entry.type == BehaviorType::Frog || entry.type == BehaviorType::Behavior_11 ||

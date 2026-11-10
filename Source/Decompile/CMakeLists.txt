@@ -50,6 +50,10 @@ foreach(target Continuous Experimental Nightly NightlyMemoryCheck)
     endif()
 endforeach()
 if(BUILD_TESTING)
+    add_executable(machine-level-tests Scaffold/MachineLevelTests.cpp)
+    target_link_libraries(machine-level-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME machine-level-gameplay COMMAND machine-level-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original")
     add_executable(park-tests Scaffold/ParkTests.cpp)
     target_link_libraries(park-tests PRIVATE Desperabis::GameCore)
     add_test(NAME park-gameplay COMMAND park-tests

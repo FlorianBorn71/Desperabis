@@ -61,7 +61,7 @@ namespace Desperabis
         Switch3 = 53, // The one that rotates in swamp level 24
         UnderwaterPlants = 54, // is this a switch?!
         Behavior_55 = 55,
-        Switch4 = 56, // The one that rotates in level 31
+        RotatingSwitch = 56,
         MetalPole = 57, // the one to open door in submarine level 32. Also used for the torchlight that you can carry.
         KeyInBucket = 58, // level 33
         Dragon = 60, // only level 15?
@@ -173,11 +173,11 @@ namespace Desperabis
         PortableCoffin = 173, // In level 33
         BladesFromSide = 174, // level 33
         ExplodingMachine = 175,  // level 31
-        Behavior_176 = 176,
+        ExplodedMachineFade = 176,
         PressureIndicator = 177, // Used in level 31 for the exploding machine
         Behavior_178 = 178, // the barrel in the staircase, probably manages the staircase up/down teleport
         LargeFish = 180, // in level 31
-        Behavior_181 = 181,
+        StrandedFish = 181,
         DestroyableRoof = 182, // roof part that is destroyed by lightning in level 36
         RoofTopThunderHandler2 = 183, // not sure what this does
         RoofTopThunderHandler3 = 184, // not sure what this does

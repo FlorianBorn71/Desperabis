@@ -46,6 +46,21 @@ bool ApplicationUi::SynchronizeLevelGeometry(Level& level, const Desperabis::Lev
     };
     synchronize("wall synchronization failed", &Level::SynchronizeWallTiles, geometry.wallTextures);
     synchronize("floor synchronization failed", &Level::SynchronizeFloorTiles, geometry.floorObjects);
+    try
+    {
+        for (std::size_t slot = 0; slot < geometry.heightSurfaces.size(); ++slot)
+        {
+            if (const auto& surface = geometry.heightSurfaces[slot])
+            {
+                level.SynchronizeWaterHeight(static_cast<WaterSlotIndex>(slot + 1), -surface->depth * DespToFloat);
+            }
+        }
+    }
+    catch (const std::exception& error)
+    {
+        succeeded = false;
+        reportError("water height synchronization failed", error.what());
+    }
     synchronize("surface synchronization failed", &Level::SynchronizeSurfaceTiles, geometry.surfaceFlags);
     return succeeded;
 }

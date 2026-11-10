@@ -6,6 +6,61 @@ each recovered case an editable, named home without hiding missing behavior.
 
 ## Game context and application flow
 
+### Machinery and fish puzzle (level 31)
+
+Evidence: [native dispatch](level31-dispatch-evidence.txt),
+[machinery/drainage helpers](level31-helpers-evidence.txt),
+[fish movement and stranded continuation](level31-fish-evidence.txt),
+and [explosion support](level31-explosion-support-evidence.txt).
+Particle selectors 7/8 reuse the native emitter recipes in
+[projectile initialization](level-fifteen-trap-spawn-evidence.txt).
+
+All eight previously missing authored behavior types are implemented:
+
+| ID | Behavior | Native slots | Recovered operation |
+| --- | --- | --- | --- |
+| 56 | RotatingSwitch (formerly Switch4) | 29, 78, 108, 112 | Adds signed rate times ticks to roll, copies the phase before clamping, reverses at the authored limit, stops at zero, and supports the byte-52 latch. Uses ordinary switch activation. |
+| 153 | FlushingFishes | 101 | Publishes velocity Z as surface-1 depth, then probabilistically advances it toward word 36. Authored depth 430 drains to 478; dormant state restores the controller's initial value 430. |
+| 154 | SomethingWithTheFishes | 103, 104 | Once activated, replaces the tile's matching low-five-bit surface selector with word 36's low byte, then clears its behavior. Both original gates remove selector 1. |
+| 166 | PaterNosterLift | 2..7, 11, 12 | Shared `10AC:C7C5` oscillator writes Y = velocity Y + sine(phase) times signed amplitude. |
+| 167 | SqueezingMachine | 66, 68..74 | The same oscillator writes X instead; phase advances modulo 512 by velocity X times ticks. |
+| 175 | ExplodingMachine | 75 | Counts down word 44, plays warning effect 94 below 80, and on the next dispatch after expiry activates group 51, stops sounds, plays effect 32 and spawns twenty selector-7/8 particles. |
+| 177 | PressureIndicator | 107 | At health 1000, approaches its velocity-Z roll target by the behavior tick count. |
+| 180 | LargeFish | 105, 106 | Uses the same per-tick wandering helper as the anaconda head, then clamps below surface 1 by twenty units. If the drained surface puts it below terrain+5, enters stranded animation 2. |
+
+Both oscillator cases run only at health 1000, play the configured positional
+sound, and select supporting collision 47 when object Y+20 is strictly below
+the player eye; otherwise they use collision 9. Native mode word 46 = 1 narrows
+the horizontal radius to twenty. Existing player support, contact damage,
+door activation and collision-map helpers remain authoritative.
+
+The required runtime continuations are also implemented and renamed with author
+approval: **ExplodedMachineFade (176)** approaches blend zero by eight units per
+tick without deleting the wreck; **StrandedFish (181)** clears the collision
+mask, probabilistically resets its flopping timer/rate, approaches roll 50 by
+one unit per dispatch and retains signed modulo-200 morph cycling.
+
+The drain writes native DS:D494 before advancing its controller, preserving the
+one-dispatch publication delay and RNG ordering, including zero-tick updates.
+Its additional DS:2DE7 zero write has no executable readers. Save records retain
+the controller depth and continuation states; the active controller republishes
+the water height after restore. Core surface metadata drives the visible water
+plane through the host's normal geometry synchronization. Existing GPU buffers
+are translated rather than regenerated every depth step; culling bounds and
+mirror planes follow. Removing a water gate can rebuild its affected batch at
+the current depth without applying that translation twice.
+
+As with meteor impact, the DOS render-table-16 explosion request also uses the
+renderer-independent light-flash hook (warm light, 0.75-second fade, radius 400)
+instead of relying on the unsupported DOS palette-table visual effect.
+
+`machine-level-gameplay` covers original-record activation groups, switch
+overshoot/latches, every lift/press, player support and lethal side contact,
+pressure/countdown/explosion particles and lifecycle hooks, physical drainage,
+both water gates, swimming/stranded fish, native saves, pause and a sixty-frame
+all-objects coverage run. WARP checks the original level-31 water batches,
+unchanged GPU buffers, lowered bounds/mirror heights and post-drain gate removal.
+
 ### Park gameplay (level 30, excluding Moon)
 
 Evidence: [park native code](park-gameplay-evidence.txt),
@@ -104,7 +159,7 @@ normal corner map visible. Training/part 2 still require their map pickup;
 part-1 weapon cheats remain disabled.
 
 An audit of all original `OBJPOS` records for the seven playable maps,
-including inactive records, now finds these **33 unimplemented world-behavior
+including inactive records, now finds these **25 unimplemented world-behavior
 handlers**. Names retain existing spellings and numeric placeholders; this
 is a coverage inventory, not a claim that the names fully describe recovered
 native logic.
@@ -113,7 +168,6 @@ native logic.
 | --- | --- | --- |
 | 42 | MercuryLamp | 34 |
 | 55 | Behavior_55 | 32 |
-| 56 | Switch4 | 31, 32, 36 |
 | 58 | KeyInBucket | 33 |
 | 67 | DecoFish | 32 |
 | 84 | ItemHiddenInBox | 36 |
@@ -124,24 +178,17 @@ native logic.
 | 147 | PuzzleGameHandler | 35 |
 | 148 | Behavior_148 | 35 |
 | 149 | PuzzleSpool | 35 |
-| 153 | FlushingFishes | 31 |
-| 154 | SomethingWithTheFishes | 31 |
 | 155 | GrandfatherClock | 35 |
 | 156 | GrandfatherClockHand | 35 |
 | 157 | GrandfatherClockPendulum | 35 |
 | 159 | RotateKnightsInClock | 35 |
 | 162 | KnightsCrossbow | 33, 35 |
 | 165 | ActionObjectToGrab | 34 |
-| 166 | PaterNosterLift | 31 |
-| 167 | SqueezingMachine | 31 |
 | 169 | RoofTopThunderHandler1 | 36 |
 | 172 | CeilingBladesComingDown | 33 |
 | 173 | PortableCoffin | 33 |
 | 174 | BladesFromSide | 33 |
-| 175 | ExplodingMachine | 31 |
-| 177 | PressureIndicator | 31 |
 | 178 | Behavior_178 | 33 |
-| 180 | LargeFish | 31 |
 | 182 | DestroyableRoof | 36 |
 | 183 | RoofTopThunderHandler2 | 36 |
 
@@ -3179,7 +3226,7 @@ level-11 switch-to-door animation using original OBJPOS records.
 **Other variants:** `RopeSwitch` (52) generates a periodic phase through
 `1E48:0051`, with a special object-slot comparison against DS:`DC60`;
 `Switch3` (53) moves `winY` toward `velocityY` through `GetStepToward` and
-disables its collision/behavior on arrival; `Switch4` (56) updates rotation
+disables its collision/behavior on arrival; `RotatingSwitch` (56) updates rotation
 word `winZ`, copies it to phase before clamping, returns at its configured
 limit in `velocityZ`, and also supports the offset-52 latch flag. These cases
 do not by themselves establish the entire corresponding interaction paths.

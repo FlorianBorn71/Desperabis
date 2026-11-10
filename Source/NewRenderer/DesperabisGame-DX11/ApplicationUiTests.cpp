@@ -4130,6 +4130,101 @@ namespace
             << changedPixels << " changed pixels).\n";
     }
 
+    void CheckMachineWaterHeight()
+    {
+        class Host final : public Desperabis::GameContext
+        {
+            std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+            {
+                return FORCE_GET(FileManager::Instance().ReadDataFuture(FileManager::Instance().FilenameToNative(
+                    std::wstring(filename.begin(), filename.end()))));
+            }
+            void LoadLevel(const Desperabis::LevelLoadRequest& request) override
+            {
+                Desperabis::LevelLoadData data;
+                LoadLevelGeometry(request.levelNumber, data);
+                LoadLevelObjects(request.levelNumber, data);
+                InitializeLevelPlayerSpawn(data, {0, 0, 100});
+                CompleteLevelLoad(request.id, std::move(data));
+            }
+        } core;
+        core.StartLevel(31);
+        LevelScene scene(31);
+        scene.m_createGameObjects = false;
+        FORCE_WAIT(scene.CreateScene());
+        std::vector<RenderableInstancePtr> water;
+        std::vector<std::shared_ptr<IGraphicsRuntimeObject>> buffers;
+        for (const auto& instance : scene.GetRenderableInstances())
+        {
+            bool reflection;
+            float height;
+            if (instance->HasOpaqueMaterials() || !instance->RetrieveWaterProperties(reflection, height) ||
+                std::abs(height + 430.f * DespToFloat) > 0.00001f) { continue; }
+            water.push_back(instance);
+            buffers.push_back(instance->GetRenderable()->m_runtime);
+        }
+        Check(!water.empty(), "Original level 31 must contain flat water receivers.");
+        const auto report = [](const char* operation, const char* message)
+        {
+            throw std::runtime_error(std::string(operation) + ": " + message);
+        };
+        core.ActivateObjectGroup(52);
+        core.tickCount = 10;
+        for (int step = 0; step < 49; ++step)
+        {
+            Desperabis::DispatchObjectCase(core.worldObjects[101], core);
+            Check(ApplicationUi::SynchronizeLevelGeometry(*scene.m_level, *core.level, report),
+                "The normal host bridge must synchronize every native drainage height.");
+            for (std::size_t index = 0; index < water.size(); ++index)
+            {
+                bool reflection;
+                float height;
+                Check(water[index]->GetRenderable()->m_runtime == buffers[index] &&
+                    water[index]->RetrieveWaterProperties(reflection, height) &&
+                    water[index]->GetGlobalBounds().IsValid(),
+                    "Drainage must preserve GPU geometry and valid culling bounds.");
+                // Other authored slots share the initial height but do not drain.
+                Check(std::abs(height + core.GetHeightSurfaceDepth(1) * DespToFloat) < 0.00001f ||
+                    std::abs(height + 430.f * DespToFloat) < 0.00001f,
+                    "Water receivers must follow their own slot's current physical plane.");
+            }
+        }
+        int lowered = 0;
+        for (const auto& instance : water)
+        {
+            bool reflection;
+            float height;
+            instance->RetrieveWaterProperties(reflection, height);
+            if (std::abs(height + 478.f * DespToFloat) < 0.00001f)
+            {
+                ++lowered;
+                Check(std::abs(instance->GetGlobalBounds().m_box.m_min.GetY() - height) < 0.00001f &&
+                    std::abs(instance->GetGlobalBounds().m_box.m_max.GetY() - height) < 0.00001f,
+                    "Lowered water bounds and reflection planes must agree exactly.");
+            }
+        }
+        Check(lowered > 0, "The original first water slot must visibly move from -430 to -478.");
+        const auto& gate = core.worldObjects[103];
+        Desperabis::DispatchObjectCase(core.worldObjects[103], core);
+        Check(ApplicationUi::SynchronizeLevelGeometry(*scene.m_level, *core.level, report),
+            "Removing a gate after drainage must rebuild its water mesh without applying the height offset twice.");
+        const int column = gate.posX / 100 - 1, row = 40 - gate.posZ / 100;
+        Check(!scene.m_level->GetCellArray().GetCell(column, row).IsWaterSurface(),
+            "The original fish gate must remove its water tile in renderer collision metadata.");
+        for (const auto& instance : water)
+        {
+            if (!instance->GetVisible()) { continue; }
+            bool reflection;
+            float height;
+            if (instance->RetrieveWaterProperties(reflection, height))
+            {
+                Check(std::abs(height + 478.f * DespToFloat) < 0.00001f ||
+                    std::abs(height + 430.f * DespToFloat) < 0.00001f,
+                    "Rebuilt water geometry must retain its drained plane.");
+            }
+        }
+    }
+
     void CheckWaterSurfaceDefinitions()
     {
         class SurfaceLevel final : public Level
@@ -6411,6 +6506,7 @@ int main(int argc, char* argv[])
         CheckWitchMouth(renderer, device.Get(), context.Get());
         CheckMutableWalls(renderer, device.Get(), context.Get());
         CheckWaterSurfaceDefinitions();
+        CheckMachineWaterHeight();
         CheckEnemyModels();
         CheckPresentationRecovery();
         CheckEndingActorVisibility();

@@ -1189,7 +1189,8 @@ void Level::CreateWallGeometry()
                 bounds.m_visibilityIsland = static_cast<byte>(island);
             }
             m_wallGeometry.push_back(instance);
-            m_waterSurfaces.push_back({ static_cast<byte>(island), waterSlot, std::move(geometry), instance });
+            m_waterSurfaces.push_back({ static_cast<byte>(island), waterSlot,
+                m_cellArray.m_waterHeights[static_cast<int>(waterSlot) - 1], std::move(geometry), instance });
         }
     }
 }
@@ -1300,6 +1301,29 @@ std::size_t Level::SynchronizeFloorTiles(
 }
 
 
+void Level::SynchronizeWaterHeight(WaterSlotIndex slot, float height)
+{
+    const int index = static_cast<int>(slot) - 1;
+    if (index < 0 || index >= 4 || !std::isfinite(height))
+    {
+        throw std::invalid_argument("Water height synchronization requires a slot in 1..4 and a finite height.");
+    }
+    if (m_cellArray.m_waterHeights[index] == height) { return; }
+    m_cellArray.m_waterHeights[index] = height;
+    for (auto& water : m_waterSurfaces)
+    {
+        if (water.slot != slot) { continue; }
+        water.instance->SetTranslation(Vector(0, height - water.geometryHeight, 0));
+        water.instance->UpdateGlobalBounds();
+        if (water.instance->GetVisible())
+        {
+            auto& bounds = water.instance->ModifyGlobalBounds();
+            m_cellArray.GetTileAssignment(water.instance->GetTransform().GetTranslation(), bounds);
+            bounds.m_visibilityIsland = water.island;
+        }
+    }
+}
+
 std::size_t Level::SynchronizeSurfaceTiles(
     const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride)
 {
@@ -1360,6 +1384,8 @@ std::size_t Level::SynchronizeSurfaceTiles(
             auto& water = *replacement.first;
             water.instance->SetRenderable(replacement.second.get());
             water.geometry = std::move(replacement.second);
+            water.geometryHeight = m_cellArray.m_waterHeights[static_cast<int>(water.slot) - 1];
+            water.instance->SetTranslation(Vector(0, 0, 0));
             water.instance->ComputeTransparencyMask();
             water.instance->SetVisible(water.geometry->IsValid());
             water.instance->UpdateGlobalBounds();

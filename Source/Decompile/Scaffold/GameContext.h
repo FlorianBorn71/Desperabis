@@ -473,7 +473,7 @@ namespace Desperabis
         InteractionResult HandleDamageObjectContact(const RawGameObject& object);
         // Native 10AC:2124: one damage application until the behavior resets generalPurpose2.
         void ApplyLatchedPlayerContactDamage(RawGameObject& object);
-        // Native 10AC:4106 selectors 1/11, used by the original arrow and fountain emitters.
+        // Native 10AC:4106 selectors 1/7/8/9/11: arrows, explosion particles and fountain water.
         std::uint16_t SpawnEmitterProjectile(const RawGameObject& source);
         InteractionResult HandleTeleporterContact(RawGameObject& object, bool interactionPressed);
         InteractionResult HandleLevelEndContact(RawGameObject& object, bool interactionPressed);

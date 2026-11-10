@@ -82,6 +82,12 @@ For the first explained case and shared collision-map pointer, see
 - `Scaffold/GameContext.h/.cpp`: context class with all member definitions in
   one implementation file: application flow/page hooks, object allocation,
   sound/random numbers, collision/height queries, and prompts.
+- `level31-dispatch-evidence.txt`, `level31-helpers-evidence.txt`,
+  `level31-fish-evidence.txt`, `level31-explosion-support-evidence.txt`:
+  recovered machinery-level switches, lifts/presses, explosion and fish/drainage
+  puzzle, including runtime continuations and renderer water-height updates.
+  Original-record regressions are in `Scaffold/MachineLevelTests.cpp`; see
+  [level-31 recovery](BehaviorRecovery.md#machinery-and-fish-puzzle-level-31).
 - `Scaffold/ApplicationFlow.h`: native-valued menu enums; outer page dispatch
   is implemented in `GameContext.cpp`. Page loops and loading remain
   explicit throwing hooks, not rendering or a playable application.

@@ -1869,7 +1869,7 @@ namespace Desperabis
     std::uint16_t GameContext::SpawnEmitterProjectile(const RawGameObject& source)
     {
         if (source.generalPurpose1 != 1 && source.generalPurpose1 != 11 &&
-            source.generalPurpose1 != 7 && source.generalPurpose1 != 9)
+            source.generalPurpose1 != 7 && source.generalPurpose1 != 8 && source.generalPurpose1 != 9)
         {
             throw std::invalid_argument("Unrecovered emitter projectile selector.");
         }
@@ -1883,7 +1883,7 @@ namespace Desperabis
         shot.collisionType = CollisionType::FlyingArrow;
         shot.posX = emitter.posX; shot.posY = emitter.posY; shot.posZ = emitter.posZ;
         GetClampedDirectionDisplacement(shot.velocityX, shot.velocityZ,
-            emitter.winY & 511, (emitter.generalPurpose1 == 7 || emitter.generalPurpose1 == 9) ?
+            emitter.winY & 511, (emitter.generalPurpose1 >= 7 && emitter.generalPurpose1 <= 9) ?
                 emitter.behaviorParameter : emitter.doorLockOrGroupBitmask);
         shot.modelAnim = 1;
         shot.displayType = DisplayType::VectorNormal;
@@ -1895,6 +1895,22 @@ namespace Desperabis
             shot.behaviorParameter = 140;
             shot.collisionRadiusXZ = 10;
             shot.collisionRadiusY = 8;
+        }
+        else if (emitter.generalPurpose1 == 8)
+        {
+            shot.modelId = 1;
+            shot.modelAnim = 5;
+            shot.animFrame = static_cast<std::uint8_t>(Random(2) + 1);
+            shot.displayType = DisplayType::SpriteTransparent;
+            shot.velocityY = static_cast<std::int16_t>(Random(6));
+            shot.itemValue = 6;
+            shot.behaviorParameter = 70;
+            shot.collisionRadiusXZ = 55;
+            shot.collisionRadiusY = 25;
+            shot.spriteScale = static_cast<std::uint8_t>(Random(20) + 40);
+            shot.health = static_cast<std::int16_t>(Random(10) + 25);
+            shot.renderPlacementMode = 3;
+            shot.blendWeightOrSpriteOpacity = 20;
         }
         else if (emitter.generalPurpose1 == 7 || emitter.generalPurpose1 == 9)
         {

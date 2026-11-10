@@ -859,7 +859,7 @@ The render-list postprocessing and general activation limitations still apply.
 | `VerticalConcreteSlab` (27) | `0000:1B77` / `10AC:8FCA` | Accelerates a tipping-angle progression, changes its collision-map footprint, stops its behavior and plays the configured effect when fully tipped | Port oriented footprint helper `10AC:8ED4`, rectangle writer `10AC:016D`, and span writer `10AC:00DE`; all use the existing collision map |
 | `BonesToGrab` (83) | `0000:299A` | Sets its collision mask, snaps to terrain, and on contact with a Dog collision object configures that object's idle animation and disables its own behavior/collisions | Expose the already-decoded terrain-only helper `1E48:18CF`, and use the existing object array and overlap query |
 | `Switch3` (53) | `0000:20D7` | Moves its angle toward its target; clears collision type and behavior when reached | Existing signed-step helper and object fields only |
-| `Switch4` (56) | `0000:22E6` | Advances and clamps its angle, reverses or stops its rate according to object fields | Object fields and tick count only |
+| `RotatingSwitch` (56), formerly Switch4 | `0000:22E6` | Advances and clamps its angle, reverses or stops its rate according to object fields; now implemented | Object fields and tick count only |
 | `PressureIndicator` (177) | `0000:4D0C` | For health 1000, moves its angle toward its stored target | Existing signed-step helper and object fields only |
 
 The slab's map path has been followed all the way through its span fill:

@@ -264,7 +264,7 @@ namespace GamePlay
         BT_ENUM2STRING(GrasingCow);
         BT_ENUM2STRING(AttackingBull);
         BT_ENUM2STRING(PaterNosterLift);
-        BT_ENUM2STRING(Switch4);
+        BT_ENUM2STRING(RotatingSwitch);
         BT_ENUM2STRING(SqueezingMachine);
         BT_ENUM2STRING(ExplodingMachine);
         BT_ENUM2STRING(LargeFish);
