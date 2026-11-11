@@ -820,6 +820,168 @@ Evidence: four complete instruction ranges in
 [object-render-list-evidence.txt](object-render-list-evidence.txt), plus the
 placement/culling suffix in [object-update-evidence.txt](object-update-evidence.txt).
 
+### Per-primitive painter sorting bias
+
+The high nibble of the first byte in each six-byte model primitive is a
+**sorting-priority field**, not a brightness modifier. The current renderer
+retains it in `ModelPolygon::typeAndSortingPriority`, exposed through
+`GetSortingPriority()` (formerly the speculative `BrightnessModifier()`).
+
+The native helper `1E48:999C` builds four-byte entries containing a signed
+16-bit sort key and the original one-based primitive index. At
+`1E48:9A17..9A2C` it computes:
+
+```text
+priority = primitive.byte0 >> 4          // unsigned 0..15
+bias = (7 - priority) * 25
+sortKey = primitiveAverageDepth + bias  // signed word arithmetic
+```
+
+The input depths are transformed per-vertex depth values stored in the
+parent renderer's stack array at BP:`F83A` (written at `1E48:A2C6`).
+These are DOS **world units**, not raw model-vertex units. At
+`1E48:A27E..A294`, the rotated model depth is multiplied by the fixed-point
+value DS:`0304` before its integer part is stored for sorting. Startup at
+`2CE4:0000` loads DS from module segment `2E9E`; the original executable bytes
+at file offset `0x31A24` (DS:`0304`) are `99 19 00 00`, or signed 16.16
+`6553/65536 = 0.0999908447265625`. Thus raw model vertices are scaled by
+approximately 0.1 before the unscaled 25-unit sorting adjustment is added.
+The key uses the average of two vertices for primitive types 2/7 (lines),
+three for type 3 (triangles), four for types 4/6 (textured walls/quads),
+and the first vertex for the remaining types. Type 8 (DarkenVertex) is an
+exception: it receives the constant key 30000 and ignores the computed bias.
+The sums and final additions wrap as native words; two/four-vertex averages
+use arithmetic shifts, while the triangle average uses signed division.
+
+At `1E48:9B89..9C61`, a nested comparison/exchange loop orders entries by
+**descending signed key**. It swaps when the current key is less than a later
+key, leaving equal comparisons unswapped; this does not establish a stable
+sort for ties. Both drawing paths (`1E48:7FAE` and `1E48:90B3`) traverse
+entries from 1 through the primitive count and recover the primitive index
+from the sorted entry. The parent renderer calls the sorter at `1E48:A46D`
+before selecting either drawing path.
+
+Consequently, a larger priority makes a primitive sort nearer and draw later:
+
+| High nibble | Added sort-depth bias | Relative effect at equal geometric depth |
+| --- | --- | --- |
+| 0 | +175 | Earlier / behind |
+| 1 | +150 | 25 units nearer than priority 0 |
+| 7 | 0 | Native zero-bias midpoint |
+| 13 | -150 | Later / in front |
+| 15 | -200 | Latest of these priorities |
+
+Values 13 and 15 are therefore not signed-nibble encodings of -3 and -1.
+The 25-unit step applies to the native transformed-depth key, not directly
+to normalized GPU depth. A depth-buffer adaptation must preserve the direction
+and account for projection; a constant hardware depth-buffer offset is not
+numerically equivalent to this painter-sort adjustment. The original bias
+only changes primitive ordering within a model invocation, not the underlying
+vertex positions or the separate world-object sorting key.
+
+The modern renderer carries the priority as a per-render-vertex
+`SortingDepthOffset`, preserving it across batching, vertex splits and morph
+position lookup. Priority zero stays at geometric depth; each priority step
+adds `25 * model.m_sortingDepthBiasScale * DespToFloat` toward the camera.
+The model scale defaults to **0.002**, deliberately limiting ordinary geometry
+to **0.05 DOS world units per priority step**, still enough to separate
+coplanar surfaces without substantially displacing nearby geometry. Using the full native strength
+globally (and an earlier experimental 1.5 multiplier) made geometry show
+through unrelated walls, including neighboring rooms. Native painter keys
+only affected within-model ordering, so their magnitude is not a suitable
+global depth-buffer displacement for every model.
+
+The per-model overrides in `ModelAnim::Read` are applied before conversion
+and GPU upload, using the logical asset filename carried by `AssetStream`
+in both Debug and Release. Animation/frame numbers below are one-based:
+
+| Asset | Animation | Frames | Scale | DOS units per priority step |
+|---|---|---|---|---|
+| Default | Any | Any | 0.002 | 0.05 |
+| `VEKT20.3DA` (smaller windmill bodies) | 1 | 1..4 only | 0.5 | 12.5 |
+| `VEKT20.3DA` (larger windmill bodies) | 3 | All five | 2.0 | 50 |
+| `VEKT60.3DA` (knothole) | 3 | 2 only | 1.0 | 25 |
+| `VEKT68.3DA` (witch head) | 1 | All head poses | 0.02 | 0.5 |
+
+Other models in those same banks retain the low default; notably the
+`VEKT63.3DA` well uses 0.05-unit steps, with a maximum offset of 0.2 DOS
+units at its authored priority 4. Set a model's scale before conversion
+to tune it; zero disables its primitive bias, and negative/nonfinite scales
+are rejected. The separate priority-zero knothole backing keeps its local
+presentation fix.
+The witch-head-only profile retains enough separation for its recessed mouth;
+the subtler global default alone leaves it mostly occluded. Other animations
+in the witch bank retain the ordinary default.
+Level 24 contains **19 smaller-windmill tiles** using animation 1 and
+**16 larger-windmill tiles** using animation 3. An earlier profile covered
+only animation 3, leaving most swamp windmills, including their recessed
+priority-2 door in animation 1/frame 3, at the tiny default bias.
+Animation 1/frame 5 is not one of those body tiles and remains at default.
+The smaller bodies use one quarter of the larger windmills' bias: applying
+the same 50-unit steps to them exposed windows on the far side of the building.
+
+The initial implementation incorrectly used `DespVertToFloat` to convert
+native units. The current attenuation is deliberate and independently
+configurable, not that unit-conversion mistake.
+The corrected world-unit conversion removes the common native
++175 sort-key baseline, which had no effect on within-model ordering, rather
+than displacing all ordinary geometry behind its physical depth.
+The offset is not scaled with instances: the native 25-unit adjustment is
+also applied after the vertex transformations.
+
+The shared DX11 vertex shader adds this to the existing material depth offset,
+projects the adjusted view-space Z, and replaces only clip-space Z while
+retaining the original clip W and XY. Fog, shading, reflection coordinates
+and geometry bounds remain unchanged. It clamps adjusted depth at the near/far
+limits (including offsets passing the eye) instead of letting it flip behind
+the camera. Near-plane clipping uses the **original geometric clip Z** through
+`SV_ClipDistance0`, not the clamped biased Z: otherwise even a tiny bias can
+keep vertices behind the near plane visible and move a crossing triangle's
+clipped edge. Mirror receivers and flame vertices copy this clip distance too.
+Standard geometry and mirror receivers share this path, including
+stereo projection. The OpenGL standard shader carries the same vertex input
+and depth-only adjustment, with `gl_ClipDistance[0]` enabled and set to the
+original clip Z + W for its -1..1 depth range. No pixel-shader `SV_Depth`
+output is needed. Generated level walls and heightmaps (including caves)
+have exactly zero primitive and material offset; they do not inherit model
+sorting priorities.
+This is a depth-buffer adaptation, not a reconstruction of painter sorting:
+depth interpolation remains per-pixel, and the resulting depth also tests
+against other objects.
+
+WARP regressions verify actual GPU depth values for priorities 1/7/13/15,
+a 0.02-DOS-unit separation, a one-unit recess that must stay hidden
+at default priority 1, and a two-unit wall that must still hide default
+priority 15. Explicit windmill scale-two overrides reveal a thirty-unit recess, while
+zero and invalid scales are also tested. GPU-buffer checks cover every
+windmill body variant, the knothole, the well's 0.2-unit maximum, and isolation
+from other models in the same banks. Tests cover
+both windmill families in the original level-24 floor map and render its actual
+smaller-windmill door at two authored rotations and two viewing distances,
+reproducing the occlusion when only the bias is reduced to default.
+Tests also cover
+both primitive orders within a single batch and both orders of separate draw
+calls, proving the adjusted depth is written as well as tested. They also
+check unchanged screen footprints at
+multiple distances under orthographic/perspective projection, material-offset
+composition, fully clipped geometry and exact footprints for triangles crossing
+the geometric near plane under perspective and orthographic projection.
+Original cave wall/heightmap GPU vertices and wall materials must have zero
+offset. The original witch mouth now
+works from authored priority alone; removing only that GPU vertex attribute
+reproduces its old occlusion. The animation-specific mouth offset is removed.
+The park's separate knothole is a different case: its dark backing has priority
+zero and cannot benefit from a stronger multiplier. Its presentation and the
+enclosed key share a local material offset, verified against the actual trunk;
+see [park presentation](BehaviorRecovery.md#park-gameplay-level-30-excluding-moon).
+
+A read-only scan of all 72 original `VEKT*.3DA` files found high-nibble values
+0..7, 13 and 15, with 14,330 primitive records at zero and 5,998 at nonzero
+values (including all animation frames).
+
+Evidence: [polygon-sort-bias-evidence.txt](polygon-sort-bias-evidence.txt) and
+[native depth units](polygon-depth-units-evidence.txt).
+
 ### Sound effects and playback admission
 
 The author confirms effect **5 = Drop**. `10AC:202A` actually consumes only

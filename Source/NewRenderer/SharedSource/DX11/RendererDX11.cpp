@@ -162,6 +162,7 @@ FUTURE(void) RendererDX11::Initialize(ID3D11Device3* device, ID3D11DeviceContext
         { "TEXCOORD", 0, DXGI_FORMAT_R16G16B16A16_UINT, 0,  offsetof(ModelVertex,PositionIndex), D3D11_INPUT_PER_VERTEX_DATA, 0 },   // 4x uint16
         { "TEXCOORD", 1, DXGI_FORMAT_R32G32_FLOAT, 0,       offsetof(ModelVertex,TexCoord), D3D11_INPUT_PER_VERTEX_DATA, 0 },   // float2 TexCoord
         { "TEXCOORD", 2, DXGI_FORMAT_R32G32_FLOAT, 0,       offsetof(ModelVertex,StretchParams), D3D11_INPUT_PER_VERTEX_DATA, 0 },   // float2 StretchParams
+        { "TEXCOORD", 3, DXGI_FORMAT_R32_FLOAT, 0,          offsetof(ModelVertex,SortingDepthOffset), D3D11_INPUT_PER_VERTEX_DATA, 0 },
     };
 
     ThrowIfFailed(device->CreateInputLayout(vertexDesc, ARRAYSIZE(vertexDesc), &vsData[0], vsData.size(), &m_inputLayout));

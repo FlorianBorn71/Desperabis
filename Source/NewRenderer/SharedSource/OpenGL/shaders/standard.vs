@@ -7,6 +7,7 @@ layout(location = 0) in vec4 vertex_color;
 layout(location = 1) in uvec4 vertex_positionIndexAndMode;
 layout(location = 2) in vec2 vertex_uv;
 layout(location = 3) in vec2 vertex_stretchParams;
+layout(location = 4) in float vertex_sortingDepthOffset;
 
 // Output data
 out vec2 UV;
@@ -83,6 +84,14 @@ void main()
 
         worldSpacePos = ViewWorldMat * viewPos;
         gl_Position = ProjMat * viewPos;
+    }
+
+    gl_ClipDistance[0] = gl_Position.z + gl_Position.w;
+    if (vertex_sortingDepthOffset != 0)
+    {
+        vec4 depthPosition = ProjMat * vec4(viewPos.xy, viewPos.z + vertex_sortingDepthOffset, viewPos.w);
+        float depth = depthPosition.w > 0 ? clamp(depthPosition.z / depthPosition.w, -1, 1) : -1;
+        gl_Position.z = depth * gl_Position.w;
     }
 
 	UV = vertex_uv.xy * textureAtlasData.xy + textureAtlasData.zw;

@@ -268,6 +268,439 @@ namespace
         }
     };
 
+    void CheckPrimitiveSortingDepth(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        Check(Model{}.m_sortingDepthBiasScale == 0.002f,
+            "Unconfigured models must use a subtle 0.05 DOS units per priority step.");
+        const float step = 0.05f * DespToFloat;
+        const float recess = 0.02f * DespToFloat;
+        const auto makeModel = [&](byte priority, float separation, bool wall, bool overlay,
+            bool overlayFirst = false, float scale = 0.002f)
+        {
+            ModelLoadingContext input;
+            input.m_vertexPos = {
+                {-0.3f,-0.25f,0,1}, {0.3f,-0.25f,0,1}, {0,0.3f,0,1},
+                {-0.3f,-0.25f,-separation,1}, {0.3f,-0.25f,-separation,1}, {0,0.3f,-separation,1}
+            };
+            const ModelPolygon overlayPolygon{static_cast<byte>((priority << 4) | 3), 32, 4, 5, 6, 0};
+            Check(overlayPolygon.GetSortingPriority() == priority &&
+                overlayPolygon.GetPolyType() == PolygonType::SolidColorTriangle,
+                "Sorting priority must decode unsigned high bits without changing the primitive type.");
+            if (overlay && overlayFirst) { input.m_polygons.push_back(overlayPolygon); }
+            if (wall) { input.m_polygons.push_back({3, 64, 1, 2, 3, 0}); }
+            if (overlay && !overlayFirst) { input.m_polygons.push_back(overlayPolygon); }
+            auto model = std::make_shared<Model>();
+            model->m_sortingDepthBiasScale = scale;
+            model->m_numPositions = static_cast<uint16_t>(input.m_vertexPos.size());
+            model->m_numPolygons = static_cast<uint16_t>(input.m_polygons.size());
+            ModelConversionContext converted(input);
+            GeometryUtils::Convert(*model, converted);
+            Check(model->m_drawCalls.size() == 1,
+                "Different primitive priorities must remain batchable in the same draw call.");
+            for (auto& vertex : converted.m_vertices)
+            {
+                Check(std::abs(vertex.SortingDepthOffset -
+                    (vertex.PositionIndex < 3 ? 0.f : priority * 25.f * scale * DespToFloat)) < 0.000001f,
+                    "Every emitted render corner must retain its primitive's depth bias after normal generation.");
+                vertex.Color = vertex.PositionIndex < 3 ? Color4{200,20,20,0} : Color4{20,200,20,0};
+            }
+            model->m_runtime = renderer.CreateModelBuffers(converted);
+            return model;
+        };
+        for (const float invalidScale : {-1.f, std::numeric_limits<float>::infinity(),
+            std::numeric_limits<float>::quiet_NaN()})
+        {
+            bool rejected = false;
+            try { makeModel(1, recess, true, true, false, invalidScale); }
+            catch (const std::invalid_argument&) { rejected = true; }
+            Check(rejected, "Invalid per-model depth-bias scales must be rejected before creating GPU buffers.");
+        }
+        Texture lightmap;
+        lightmap.CreatePlainWhite();
+        lightmap.m_atlasData = {0,0,0.5f,0.5f};
+        Target target(device, 240, 160);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        Camera camera;
+        VisibilityResult visible;
+        visible.m_mainCamera = &camera;
+        visible.m_ambientColor = {1,1,1};
+        visible.m_fogColor = {0,0,0};
+        visible.m_fogFalloff = 0;
+        visible.m_lightmap = &lightmap;
+        RenderingSettings settings;
+        settings.fullbrightRendering = true;
+        ProfilingStats stats;
+        const auto render = [&](const std::shared_ptr<Model>& model, float materialOffset = 0.f,
+            const std::shared_ptr<Model>& second = nullptr)
+        {
+            RenderableInstance instance(model.get());
+            instance.UpdateGlobalBounds();
+            for (auto& material : instance.GetOrCreateMaterialOverrides())
+            {
+                material.m_depthOffset = materialOffset;
+                material.ComputeHash();
+            }
+            instance.ComputeTransparencyMask();
+            visible.m_visibleInstances.m_opaqueInstances = {{&instance, ~uint32_t{0}}};
+            visible.m_visibleInstances.m_visibleTransparencyTypes = instance.GetUsedTransparencyMask();
+            RenderableInstance secondInstance(second.get());
+            if (second)
+            {
+                secondInstance.UpdateGlobalBounds();
+                secondInstance.ComputeTransparencyMask();
+                visible.m_visibleInstances.m_opaqueInstances.push_back({&secondInstance, 0});
+                visible.m_visibleInstances.m_visibleTransparencyTypes |= secondInstance.GetUsedTransparencyMask();
+            }
+            const float black[]{0,0,0,1};
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            Check(stats.m_numDrawCalls > 0, "Priority fixtures must submit actual GPU draw calls.");
+            return target.Pixels(device, context);
+        };
+        const auto centerDepth = [&]
+        {
+            D3D11_TEXTURE2D_DESC desc{};
+            target.depth->GetDesc(&desc);
+            desc.BindFlags = 0;
+            desc.Usage = D3D11_USAGE_STAGING;
+            desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            ComPtr<ID3D11Texture2D> staging;
+            CheckHr(device->CreateTexture2D(&desc, nullptr, &staging));
+            context->CopyResource(staging.Get(), target.depth.Get());
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            CheckHr(context->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped));
+            const auto* row = reinterpret_cast<const float*>(
+                static_cast<const byte*>(mapped.pData) + target.height / 2 * mapped.RowPitch);
+            const float depth = row[target.width / 2];
+            context->Unmap(staging.Get(), 0);
+            return depth;
+        };
+        const auto configureCamera = [&](bool perspective, float distance)
+        {
+            Matrix4 projection, transform;
+            if (perspective) { projection.CreateProjection(1.5f, Math::Pi / 3.f, 0.01f, 50.f); }
+            else { projection.CreateOrthographic(0.9f, 0.6f, 0.01f, 50.f); }
+            transform.SetTranslation(Vector(0,0,distance));
+            camera.SetProjectionMatrix(projection);
+            camera.SetCameraTransformMatrix(transform);
+        };
+        const auto expectedDepth = [](bool perspective, float distance)
+        {
+            if (distance <= 0.01f) { return 0.f; }
+            return perspective ? 50.f / 49.99f - 0.5f / (49.99f * distance) :
+                (distance - 0.01f) / 49.99f;
+        };
+        const auto wall = makeModel(0, recess, true, false);
+        const auto overlay = makeModel(0, recess, false, true);
+        const auto unbiased = makeModel(0, recess, true, true);
+        for (const bool perspective : {false,true})
+        {
+            for (const float distance : {1.f,2.f})
+            {
+                configureCamera(perspective, distance);
+                const auto wallPixels = render(wall);
+                const auto overlayPixels = render(overlay);
+                std::cout << "Priority projection " << perspective << ", distance " << distance
+                    << ": wall " << std::count_if(wallPixels.begin(), wallPixels.end(),
+                        [](auto pixel) { return (pixel & 0xffffff) != 0; })
+                    << ", overlay " << std::count_if(overlayPixels.begin(), overlayPixels.end(),
+                        [](auto pixel) { return (pixel & 0xffffff) != 0; }) << " pixels.\n";
+                Check(wallPixels != overlayPixels &&
+                    std::count_if(overlayPixels.begin(), overlayPixels.end(),
+                        [](auto pixel) { return (pixel & 0xffffff) != 0; }) > 20,
+                    "Priority tests must render distinct, visible overlapping primitive colors.");
+                Check(render(unbiased) == wallPixels,
+                    "Without priority, a physically recessed primitive must remain hidden by the front wall.");
+                for (const bool overlayFirst : {false,true})
+                {
+                    Check(render(makeModel(1, 1.f * DespToFloat, true, true, overlayFirst)) == wallPixels,
+                        "A default 0.05-unit priority step must not expose a one-unit recess.");
+                    Check(render(makeModel(15, 2.f * DespToFloat, true, true, overlayFirst)) == wallPixels,
+                        "Even priority 15 must not pull default geometry through a wall two DOS units ahead.");
+                    Check(render(makeModel(15, recess, true, true, overlayFirst, 0.f)) == wallPixels,
+                        "A zero model scale must disable authored depth bias without altering geometry.");
+                }
+                auto expectedPixels = wallPixels;
+                for (std::size_t pixel = 0; pixel < overlayPixels.size(); ++pixel)
+                {
+                    if ((overlayPixels[pixel] & 0xffffff) != 0) { expectedPixels[pixel] = overlayPixels[pixel]; }
+                }
+                const byte priorities[]{1,7,13,15};
+                for (const byte priority : priorities)
+                {
+                    for (const bool overlayFirst : {false,true})
+                    {
+                        Check(render(makeModel(priority, recess, true, true, overlayFirst)) == expectedPixels,
+                            "Subtle priority must still separate nearly coplanar surfaces in either primitive order.");
+                        Check(std::abs(centerDepth() - expectedDepth(perspective, distance + recess - priority * step)) < 0.000002f,
+                            "Written GPU depth must match the default 0.05-DOS-world-unit priority step.");
+                    }
+                }
+                const auto prioritizedOverlay = makeModel(1, recess, false, true);
+                Check(render(prioritizedOverlay, 0.f, wall) == expectedPixels &&
+                    render(wall, 0.f, prioritizedOverlay) == expectedPixels,
+                    "Biased depth must be both written and tested across separate draw calls in either order.");
+                Check(render(makeModel(1, recess, true, true), step) == expectedPixels,
+                    "Combining material and primitive depth offsets must preserve their screen footprints.");
+                Check(std::abs(centerDepth() - expectedDepth(perspective, distance + recess - 2.f * step)) < 0.000002f,
+                    "Per-primitive priority and the existing per-material depth offset must add together.");
+                for (const bool overlayFirst : {false,true})
+                {
+                    const float deepRecess = 30.f * DespToFloat;
+                    const auto deepOverlay = render(makeModel(0, deepRecess, false, true));
+                    auto deepExpected = wallPixels;
+                    for (std::size_t pixel = 0; pixel < deepOverlay.size(); ++pixel)
+                    {
+                        if ((deepOverlay[pixel] & 0xffffff) != 0) { deepExpected[pixel] = deepOverlay[pixel]; }
+                    }
+                    Check(render(makeModel(1, deepRecess, true, true, overlayFirst, 2.f)) == deepExpected &&
+                        std::abs(centerDepth() - expectedDepth(perspective,
+                            distance + deepRecess - 50.f * DespToFloat)) < 0.000002f,
+                        "The windmill scale of two must reveal a recess deeper than the old 25-unit step.");
+                }
+            }
+        }
+        configureCamera(true, 0.05f);
+        const auto closeReference = render(overlay);
+        Check(render(makeModel(15, recess, false, true, false, 2.f)) == closeReference && centerDepth() == 0.f,
+            "Large priorities near the camera must clamp to near depth without disappearing or flipping behind it.");
+        for (const bool perspective : {false,true})
+        {
+            configureCamera(perspective, 0.005f);
+            const auto clipped = render(makeModel(0, 0.f, false, true));
+            Check(std::all_of(clipped.begin(), clipped.end(), [](auto pixel) { return (pixel & 0xffffff) == 0; }) &&
+                render(makeModel(15, 0.f, false, true, false, 2.f)) == clipped,
+                "Biased geometry physically behind the near plane must remain fully clipped.");
+            Matrix4 transform;
+            transform.Create(Vector(0,-0.1f,0.01f), Vector(0,Math::Pi * 0.25f,0));
+            camera.SetCameraTransformMatrix(transform);
+            const auto partial = render(makeModel(0, 0.f, false, true));
+            const auto covered = std::count_if(partial.begin(), partial.end(),
+                [](auto pixel) { return (pixel & 0xffffff) != 0; });
+            const auto biasedPartial = render(makeModel(15, 0.f, false, true, false, 2.f));
+            std::size_t changed = 0;
+            for (std::size_t pixel = 0; pixel < partial.size(); ++pixel)
+                changed += partial[pixel] != biasedPartial[pixel];
+            std::cout << "Near clipping (" << (perspective ? "perspective" : "orthographic") << "): "
+                << covered << "/" << partial.size() << " covered, " << changed << " changed pixels.\n";
+            Check(covered > 100 && static_cast<std::size_t>(covered) < partial.size() &&
+                biasedPartial == partial,
+                "A triangle crossing the near plane must keep its original clipped footprint despite strong bias.");
+        }
+        std::cout << "Primitive priority: default 0.05-unit steps, windmill 50-unit override, neighbor-wall occlusion, zero/invalid scales, both primitive/draw-call orders, "
+            "unsigned 13/15, projected depth and unchanged perspective/orthographic near clipping passed.\n";
+    }
+
+    void CheckModelSortingDepthOverrides(ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        const auto checkGpuOffsets = [&](const Model& model, float scale, byte maximumPriority)
+        {
+            Check(model.m_sortingDepthBiasScale == scale,
+                "Original model overrides must be applied before geometry conversion, including in Release.");
+            const auto* runtime = model.GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
+            const auto vertices = ReadBuffer<ModelVertex>(device, context, runtime->m_vertexBuffer.Get());
+            const auto indices = ReadBuffer<uint16_t>(device, context, runtime->m_indexBuffer.Get());
+            const float step = 25.f * scale * DespToFloat;
+            float maximumOffset = 0.f;
+            int corners = 0;
+            for (const auto& draw : model.m_drawCalls)
+            {
+                for (int corner = 0; corner < draw.m_primitiveCount * 3; ++corner)
+                {
+                    const auto& vertex = vertices.at(indices.at(draw.m_firstIndex + corner));
+                    const float offset = vertex.SortingDepthOffset;
+                    Check(std::isfinite(offset) && offset >= 0.f &&
+                        std::abs(offset / step - std::round(offset / step)) < 0.00001f,
+                        "Actual model GPU corners must retain integral priority steps at their model-specific scale.");
+                    maximumOffset = (std::max)(maximumOffset, offset);
+                    ++corners;
+                }
+            }
+            Check(corners > 0 && std::abs(maximumOffset - maximumPriority * step) < 0.000001f,
+                "The original model's highest authored priority must have the expected scaled GPU offset.");
+        };
+        auto& assets = AssetManager::Instance();
+        const auto windmill = FORCE_GET(assets.LoadAsset<ModelAnim>(L"VEKT\\VEKT20.3DA"));
+        constexpr byte smallWindmillPriorities[]{3,3,3,1};
+        for (int frame = 0; frame < 4; ++frame)
+        {
+            checkGpuOffsets(*windmill->GetModel(0, frame), 0.5f, smallWindmillPriorities[frame]);
+        }
+        for (int frame = 0; frame < windmill->m_numFrames; ++frame)
+        {
+            checkGpuOffsets(*windmill->GetModel(2, frame), 2.f, 5);
+        }
+        Check(windmill->GetModel(0, 4)->m_sortingDepthBiasScale == 0.002f &&
+            windmill->GetModel(1, 0)->m_sortingDepthBiasScale == 0.002f &&
+            windmill->GetModel(3, 0)->m_sortingDepthBiasScale == 0.002f,
+            "The windmill override must not increase unrelated models in the same asset bank.");
+        const auto park = FORCE_GET(assets.LoadAsset<ModelAnim>(L"VEKT\\VEKT60.3DA"));
+        checkGpuOffsets(*park->GetModel(2, 1), 1.f, 2);
+        Check(park->GetModel(2, 0)->m_sortingDepthBiasScale == 0.002f &&
+            park->GetModel(2, 2)->m_sortingDepthBiasScale == 0.002f,
+            "The knothole override must be limited to its own model frame.");
+        const auto well = FORCE_GET(assets.LoadAsset<ModelAnim>(L"VEKT\\VEKT63.3DA"));
+        checkGpuOffsets(*well->GetModel(2, 0), 0.002f, 4);
+        const auto witch = FORCE_GET(assets.LoadAsset<ModelAnim>(L"VEKT\\VEKT68.3DA"));
+        for (int frame = 0; frame < witch->m_numFrames; ++frame)
+        {
+            Check(witch->GetModel(0, frame)->m_sortingDepthBiasScale == 0.02f,
+                "The witch head's mouth priority must survive every head pose.");
+        }
+        Check(witch->GetModel(1, 0)->m_sortingDepthBiasScale == 0.002f,
+            "The mouth profile must not increase unrelated witch geometry.");
+        std::cout << "Model depth scales: smaller windmills use 12.5-unit steps, larger windmills 50, knothole 25; "
+            "the well uses 0.05-unit steps (0.2-unit maximum), and adjacent models remain subtle.\n";
+    }
+
+    void CheckLevel24WindmillDoors(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        LevelScene scene(24);
+        scene.m_createGameObjects = false;
+        scene.m_createMapIcons = false;
+        FORCE_WAIT(scene.CreateScene());
+        const auto& info = scene.m_level->GetLevelInfo();
+        Check(info.m_loadedModelSlots[3] == 20,
+            "The original swamp must use VEKT20 for its second static-model bank.");
+        const auto bank = info.GetModelAnim(3);
+        std::array<int, 2> tileCounts{};
+        const auto& cells = scene.m_level->GetCellArray();
+        for (int row = 0; row < GridCellArray::Height; ++row)
+            for (int column = 0; column < GridCellArray::Width; ++column)
+            {
+                const byte code = cells.GetCell(column, row).m_floor;
+                const int animation = (code & 31) / 5;
+                if (code < 160 || (animation != 0 && animation != 2)) { continue; }
+                const int frame = (code & 31) % 5;
+                Check(bank->GetModel(animation, frame)->m_sortingDepthBiasScale == (animation == 0 ? 0.5f : 2.f),
+                    "Every windmill body referenced by the original level-24 floor must receive the override.");
+                ++tileCounts[animation / 2];
+            }
+        Check(tileCounts[0] == 19 && tileCounts[1] == 16,
+            "The swamp regression must cover both original windmill families, not just the large southern ones.");
+
+        const Model& original = *bank->GetModel(0, 2);
+        Model colored = original;
+        auto* source = original.GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
+        auto runtime = std::make_shared<NativeModelMeshObjectDX11>(*source);
+        colored.m_runtime = runtime;
+        auto vertices = ReadBuffer<ModelVertex>(device, context, source->m_vertexBuffer.Get());
+        const auto indices = ReadBuffer<uint16_t>(device, context, source->m_indexBuffer.Get());
+        const float step = 25.f * original.m_sortingDepthBiasScale * DespToFloat;
+        for (auto& vertex : vertices)
+        {
+            vertex.Color = {255,0,0,0};
+        }
+        for (const auto& draw : original.m_drawCalls)
+        {
+            if (draw.m_material.m_textureSlot != 9) { continue; }
+            for (int corner = 0; corner < draw.m_primitiveCount * 3; ++corner)
+            {
+                auto& vertex = vertices.at(indices.at(draw.m_firstIndex + corner));
+                if (std::abs(vertex.SortingDepthOffset - 2.f * step) < 0.000001f)
+                {
+                    vertex.Color = {0,255,0,0};
+                }
+            }
+        }
+        D3D11_BUFFER_DESC desc{};
+        source->m_vertexBuffer->GetDesc(&desc);
+        const auto upload = [&]
+        {
+            D3D11_SUBRESOURCE_DATA data{};
+            data.pSysMem = vertices.data();
+            CheckHr(device->CreateBuffer(&desc, &data, &runtime->m_vertexBuffer));
+        };
+        upload();
+        const auto correctedBuffer = runtime->m_vertexBuffer;
+        for (auto& vertex : vertices)
+        {
+            vertex.SortingDepthOffset *= 0.002f / original.m_sortingDepthBiasScale;
+        }
+        upload();
+        const auto defaultBuffer = runtime->m_vertexBuffer;
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        Camera camera;
+        Matrix4 projection;
+        projection.CreateProjection(1.5f, Math::Pi / 3.f, 0.01f, 50.f);
+        camera.SetProjectionMatrix(projection);
+        Texture lightmap;
+        lightmap.CreatePlainWhite();
+        lightmap.m_atlasData = {0,0,0.5f,0.5f};
+        RenderingSettings settings;
+        settings.fullbrightRendering = true;
+        ProfilingStats stats;
+        for (const auto& cell : {std::pair{17,3}, std::pair{9,6}})
+        {
+            const auto found = std::find_if(scene.GetRenderableInstances().begin(), scene.GetRenderableInstances().end(),
+                [&](const auto& instance)
+                {
+                    const auto& range = instance->GetGlobalBounds().m_tileRange;
+                    return instance->GetRenderable() == &original &&
+                        range.m_minX == cell.first && range.m_minZ == cell.second;
+                });
+            Check(found != scene.GetRenderableInstances().end(),
+                "The door test must use original level-24 windmill instances at two authored rotations.");
+            RenderableInstance instance(&colored);
+            instance.SetTransform((*found)->GetTransform());
+            instance.UpdateGlobalBounds();
+            for (auto& material : instance.GetOrCreateMaterialOverrides())
+            {
+                material.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
+                material.m_transparencyType = TransparencyMode::Opaque;
+                material.m_applyLighting = false;
+                material.ComputeHash();
+            }
+            instance.ComputeTransparencyMask();
+            Vector center(0,0,0);
+            for (const int index : {32,33,34,35})
+            {
+                const auto& position = original.m_sourcePositions.at(index);
+                center += Vector(position.x, position.y, position.z);
+            }
+            center *= 0.25f;
+            center = instance.GetTransform().TransformPosition(center);
+            const auto direction = instance.GetTransform().TransformDirection(Vector(0,0,-1));
+            const auto right = instance.GetTransform().TransformDirection(Vector(-1,0,0));
+            for (const float distance : {0.6f,1.2f})
+            {
+                auto displacement = direction;
+                displacement *= distance;
+                Matrix4 transform;
+                transform.Create(center + displacement, right, instance.GetTransform().GetUpDir(), direction);
+                camera.SetCameraTransformMatrix(transform);
+                VisibilityResult visible;
+                visible.m_mainCamera = &camera;
+                visible.m_ambientColor = {1,1,1};
+                visible.m_fogFalloff = 0.f;
+                visible.m_lightmap = &lightmap;
+                visible.m_visibleInstances.m_opaqueInstances = {{&instance, ~uint32_t{0}}};
+                visible.m_visibleInstances.m_visibleTransparencyTypes = instance.GetUsedTransparencyMask();
+                const auto doorPixels = [&](const ComPtr<ID3D11Buffer>& buffer)
+                {
+                    runtime->m_vertexBuffer = buffer;
+                    const float black[]{0,0,0,1};
+                    context->ClearRenderTargetView(target.colorView.Get(), black);
+                    context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+                    renderer.RenderSceneElements(visible, settings, stats);
+                    const auto pixels = target.Pixels(device, context);
+                    const auto isDoor = [](auto pixel) { return ((pixel >> 8) & 255) > (pixel & 255); };
+                    return std::pair{std::count_if(pixels.begin(), pixels.end(), isDoor),
+                        isDoor(pixels.at(target.height / 2 * target.width + target.width / 2))};
+                };
+                const auto corrected = doorPixels(correctedBuffer);
+                const auto uncorrected = doorPixels(defaultBuffer);
+                std::cout << "Swamp windmill door (" << cell.first << "," << cell.second << ") at "
+                    << distance << ": " << corrected.first << " corrected, " << uncorrected.first
+                    << " default-bias pixels; center " << corrected.second << "/" << uncorrected.second << ".\n";
+                Check(corrected.first > uncorrected.first + 100 && corrected.second && !uncorrected.second,
+                    "The actual small windmill door backing must cover the front wall at its center; default bias must reproduce occlusion.");
+            }
+        }
+    }
+
     class FlameScene final : public Scene
     {
     public:
@@ -2009,6 +2442,146 @@ namespace
             "Slime dissolve must forward the native blend weight.");
     }
 
+    void CheckParkKnothole(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        LevelScene scene(30);
+        scene.m_createGameObjects = false;
+        scene.m_createMapIcons = false;
+        FORCE_WAIT(scene.CreateScene());
+        const auto records = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS30.DAT")));
+        std::array<RawGameObject, 2> objects{};
+        std::array<RenderableInstancePtr, 2> instances{};
+        for (int i = 0; i < 2; ++i)
+        {
+            const int slot = 19 + i;
+            auto& object = objects[i];
+            std::memcpy(object.m_rawBytes, records.data() + (slot - 2) * sizeof(object.m_rawBytes),
+                sizeof(object.m_rawBytes));
+            const auto original = object;
+            instances[i] = std::make_shared<RenderableInstance>();
+            for (int tick = 0; tick < 3; ++tick)
+            {
+                scene.m_level->ApplyRenderProperties(instances[i], object);
+                scene.UpdateObjectPresentation(slot, object, instances[i].get());
+                Check(scene.GetObjectPresentation(slot) != nullptr,
+                    "The original elevated key and knothole must get their targeted presentation contexts.");
+                for (const auto& material : instances[i]->GetMaterialOverrides())
+                {
+                    Check(std::abs(material.m_depthOffset - 25.f * DespToFloat) < 0.000001f,
+                        "Key and knothole must retain the same nonaccumulating depth offset across updates.");
+                }
+            }
+            Check(std::memcmp(original.m_rawBytes, object.m_rawBytes, sizeof(object.m_rawBytes)) == 0,
+                "Knothole presentation must not move native gameplay or saved object coordinates.");
+            scene.AddRenderableInstance(instances[i]);
+        }
+        const auto& knothole = instances[1];
+        Target image(device, 720, 480);
+        renderer.ReInitialize(image.colorView.Get(), image.depthView.Get(), image.viewport);
+        Camera camera;
+        Matrix4 projection, transform;
+        projection.CreateProjection(1.5f, Math::Pi / 3.f, 0.001f, 10.f);
+        camera.SetProjectionMatrix(projection);
+        RenderingSettings settings;
+        settings.fullbrightRendering = true;
+        DefaultVisibilityContext visibility;
+        ProfilingStats stats;
+        const float background[]{1,0,1,1};
+        int visibleKeyPixels = 0;
+        for (const float distance : {0.4f,0.8f})
+        {
+            auto direction = knothole->GetTransform().GetDirection();
+            auto right = knothole->GetTransform().GetRightDir();
+            direction *= -1.f; right *= -1.f;
+            auto displacement = direction; displacement *= distance;
+            const auto position = knothole->GetGlobalBounds().GetCenter() + displacement;
+            transform.Create(Vector(position.GetX(), position.GetY(), position.GetZ()), right,
+                knothole->GetTransform().GetUpDir(), direction);
+            camera.SetCameraTransformMatrix(transform);
+            VisibilityResult visible;
+            visibility.ComputeResultFor(&camera, &scene, visible, settings, VisibilitySettings{}, stats);
+            visible.m_fogFalloff = 0.f;
+            visible.m_visibleInstances.m_skyInstances.clear();
+            const auto render = [&]
+            {
+                context->ClearRenderTargetView(image.colorView.Get(), background);
+                context->ClearDepthStencilView(image.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+                renderer.RenderSceneElements(visible, settings, stats);
+                return image.Pixels(device, context);
+            };
+            const auto fullGeometry = visible.m_visibleInstances.m_opaqueInstances;
+            auto& opaque = visible.m_visibleInstances.m_opaqueInstances;
+            opaque.erase(std::remove_if(opaque.begin(), opaque.end(), [&](const auto& entry)
+            {
+                return entry.m_instance != instances[0].get() && entry.m_instance != knothole.get();
+            }), opaque.end());
+            Check(opaque.size() == 2, "The original high key and knothole must both be in the GPU visibility list.");
+            const auto reference = render();
+            opaque.erase(std::remove_if(opaque.begin(), opaque.end(), [&](const auto& entry)
+            {
+                return entry.m_instance == instances[0].get();
+            }), opaque.end());
+            const auto withoutKey = render();
+            int keyPixels = 0;
+            for (std::size_t pixel = 0; pixel < reference.size(); ++pixel)
+            {
+                keyPixels += reference[pixel] != withoutKey[pixel];
+            }
+            visibleKeyPixels += keyPixels;
+            const auto mismatchCount = [&](const std::vector<uint32_t>& pixels)
+            {
+                int mismatches = 0;
+                for (std::size_t pixel = 0; pixel < pixels.size(); ++pixel)
+                {
+                    if ((reference[pixel] & 0xffffff) != 0xff00ff && reference[pixel] != pixels[pixel])
+                    {
+                        ++mismatches;
+                    }
+                }
+                return mismatches;
+            };
+            Check(std::count_if(reference.begin(), reference.end(),
+                [](auto pixel) { return (pixel & 0xffffff) == 0; }) > 100,
+                "The real knothole reference must include its dark zero-priority backing polygons.");
+            opaque = fullGeometry;
+            const int corrected = mismatchCount(render());
+            for (auto& instance : instances)
+            {
+                for (auto& material : instance->GetOrCreateMaterialOverrides())
+                {
+                    material.m_depthOffset = 0.f;
+                    material.ComputeHash();
+                }
+            }
+            const int occluded = mismatchCount(render());
+            for (int i = 0; i < 2; ++i) { scene.UpdateObjectPresentation(19 + i, objects[i], instances[i].get()); }
+            std::cout << "Park knothole at " << distance << ": corrected " << corrected <<
+                ", unadjusted " << occluded << " occluded pixels; key " << keyPixels << " visible pixels.\n";
+            Check(corrected == 0 && occluded > 100,
+                "The actual knothole backing and key must remain visible against the trunk; removing only their offset must reproduce occlusion.");
+        }
+        Check(visibleKeyPixels > 0,
+            "The adjusted key must still be visible from within the recess, not permanently hidden by its backing.");
+        LevelScene otherLevel(10);
+        for (int i = 0; i < 2; ++i)
+        {
+            auto instance = std::make_shared<RenderableInstance>();
+            scene.m_level->ApplyRenderProperties(instance, objects[i]);
+            otherLevel.UpdateObjectPresentation(19 + i, objects[i], instance.get());
+            Check(!otherLevel.GetObjectPresentation(19 + i),
+                "The park knothole adjustment must not affect matching slots in other levels.");
+            scene.UpdateObjectPresentation(21 + i, objects[i], instance.get());
+            Check(!scene.GetObjectPresentation(21 + i),
+                "The knothole adjustment must not affect other objects using the same model.");
+            auto replacement = objects[i];
+            replacement.m_rawBytes[1] = 2;
+            scene.UpdateObjectPresentation(19 + i, replacement);
+            Check(!scene.GetObjectPresentation(19 + i),
+                "Replacing a knothole/key slot with another model must remove its targeted context.");
+        }
+    }
+
     void CheckParkAttachments(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
         auto* park = FORCE_GET(AssetManager::Instance().LoadLevel(30));
@@ -3147,6 +3720,11 @@ namespace
             int changed = 0, wallCorners = 0;
             for (const auto& renderable : cave.GeneratedWalls())
             {
+                for (const auto& draw : renderable->m_drawCalls)
+                {
+                    Check(draw.m_material.m_depthOffset == 0.f,
+                        "Generated cave walls must have no material depth offset.");
+                }
                 const auto* mesh = renderable->GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
                 auto* buffer = mesh->m_vertexBuffer.Get();
                 if (std::find(inspected.begin(), inspected.end(), buffer) != inspected.end()) { continue; }
@@ -3156,6 +3734,8 @@ namespace
                 const auto indices = ReadBuffer<uint16_t>(device, context, mesh->m_indexBuffer.Get());
                 for (const auto& vertex : vertices)
                 {
+                    Check(vertex.SortingDepthOffset == 0.f,
+                        "Generated cave wall and heightmap vertices must remain exactly depth-neutral.");
                     if (vertex.StretchMode != (uint16_t)VertexStretchMode::None) { continue; }
                     const Vector normal(vertex.Normal.x, vertex.Normal.y, vertex.Normal.z);
                     const float length = normal.GetLength();
@@ -6395,21 +6975,33 @@ namespace
         const auto mouthOverride = std::find_if(objects[5]->m_materialOverride.begin(), objects[5]->m_materialOverride.end(),
             [](const DrawCallMaterial& material) { return material.m_textureSlot == 13; });
         Check(mouthOverride != objects[5]->m_materialOverride.end(), "The real scene must retain the mouth override.");
-        auto& mouthMaterial = *mouthOverride;
+        Check(mouthOverride->m_depthOffset == 0.f,
+            "The original mouth must use authored primitive priority, not an animation-specific material offset.");
+        auto* headRuntime = objects[5]->GetRenderable()->GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
+        auto headVertices = ReadBuffer<ModelVertex>(device, context, headRuntime->m_vertexBuffer.Get());
+        Check(std::any_of(headVertices.begin(), headVertices.end(),
+            [](const auto& vertex) { return vertex.SortingDepthOffset > 0.f; }),
+            "The original witch head must carry authored primitive priorities into its GPU vertex buffer.");
+        for (auto& vertex : headVertices) { vertex.SortingDepthOffset = 0.f; }
+        D3D11_BUFFER_DESC headDesc{};
+        headRuntime->m_vertexBuffer->GetDesc(&headDesc);
+        D3D11_SUBRESOURCE_DATA unprioritizedData{};
+        unprioritizedData.pSysMem = headVertices.data();
+        ComPtr<ID3D11Buffer> unprioritizedBuffer;
+        CheckHr(device->CreateBuffer(&headDesc, &unprioritizedData, &unprioritizedBuffer));
+        const auto prioritizedBuffer = headRuntime->m_vertexBuffer;
+        headRuntime->m_vertexBuffer = unprioritizedBuffer;
         room.SetFireAnimationFrame(13, 0);
         room.HandleFireAnimations(0);
-        mouthMaterial.m_depthOffset = 0;
-        mouthMaterial.ComputeHash();
         const auto unoffsetClosed = renderRoom();
         room.SetFireAnimationFrame(13, 4);
         room.HandleFireAnimations(0);
-        mouthMaterial.m_depthOffset = 0;
-        mouthMaterial.ComputeHash();
         const auto unoffsetTalking = renderRoom();
+        headRuntime->m_vertexBuffer = prioritizedBuffer;
         int unoffsetPixels = 0;
         for (std::size_t i = 0; i < talking.size(); ++i) { unoffsetPixels += unoffsetClosed[i] != unoffsetTalking[i]; }
-        std::cout << "Witch mouth without overlay offset: " << unoffsetPixels << " changed pixels.\n";
-        Check(unoffsetPixels == 0, "The original base-face quad must reproduce the missing-mouth depth occlusion.");
+        std::cout << "Witch mouth without primitive priority: " << unoffsetPixels << " changed pixels.\n";
+        Check(unoffsetPixels == 0, "Removing authored primitive priority must reproduce the missing-mouth depth occlusion.");
         room.HandleFireAnimations(0);
         for (const int slot : {14, 15})
         {
@@ -6497,6 +7089,9 @@ int main(int argc, char* argv[])
         const auto items = OriginalItems();
         CheckTextControls(font);
         CheckSmoothPolygonNormals(renderer, device.Get(), context.Get());
+        CheckPrimitiveSortingDepth(renderer, device.Get(), context.Get());
+        CheckModelSortingDepthOverrides(device.Get(), context.Get());
+        CheckLevel24WindmillDoors(renderer, device.Get(), context.Get());
         CheckTutorialFlames();
         CheckStaticFireTracking();
         CheckFreshObjectPlacement();
@@ -6514,6 +7109,7 @@ int main(int argc, char* argv[])
         CheckFinalLevelMorphs(renderer, device.Get(), context.Get());
         CheckFinalLevelRuntimePresentation(renderer, device.Get(), context.Get());
         CheckParkAttachments(renderer, device.Get(), context.Get());
+        CheckParkKnothole(renderer, device.Get(), context.Get());
         CheckMummyFade(renderer, device.Get(), context.Get());
         CheckDragon(renderer, device.Get(), context.Get());
         CheckRainSprites(renderer, device.Get(), context.Get());

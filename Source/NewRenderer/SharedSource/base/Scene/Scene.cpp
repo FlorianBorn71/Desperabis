@@ -290,8 +290,6 @@ void Scene::HandleFireAnimations(double elapsedTime)
         {
             mat.m_transparencyType = slot.m_additive ? TransparencyMode::Additive : TransparencyMode::Opaque;
             mat.m_texture = &slot.m_torchAnim->m_frames[slot.m_frame];
-            // The native painter overlays the mouth on a face quad that otherwise hides it with depth testing.
-            mat.m_depthOffset = slot.m_additive ? 0.f : 0.5f * DespToFloat;
             mat.ComputeHash();
             anim.m_targetInstance->ComputeTransparencyMask();
             continue;

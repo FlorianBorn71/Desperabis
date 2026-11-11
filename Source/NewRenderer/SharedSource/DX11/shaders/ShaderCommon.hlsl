@@ -91,6 +91,7 @@ struct VertexShaderInput
     uint4 positionIndexAndMode : TEXCOORD0;
     float2 uv0 : TEXCOORD1;
     float2 stretchParams : TEXCOORD2;
+    float sortingDepthOffset : TEXCOORD3;
     uint instId  : SV_InstanceID;
 };
 
@@ -111,6 +112,7 @@ struct PixelShaderInput
     // The render target array index is set here in the vertex shader.
 #ifdef IS_VERTEX_SHADER
     uint viewId  : SV_RenderTargetArrayIndex;
+    float nearClipDistance : SV_ClipDistance0;
 #endif
 };
 
@@ -133,6 +135,7 @@ struct PixelShaderInput_Mirror
     // The render target array index is set here in the vertex shader.
 #ifdef IS_VERTEX_SHADER
     uint viewId  : SV_RenderTargetArrayIndex;
+    float nearClipDistance : SV_ClipDistance0;
 #endif
 };
 
@@ -170,6 +173,9 @@ struct PixelShaderInput_Flames
     // The render target array index is set here in the vertex shader.
 #if defined (IS_VERTEX_SHADER) || defined (IS_GEOMETRY_SHADER)
     uint viewId  : SV_RenderTargetArrayIndex;
+#endif
+#ifdef IS_VERTEX_SHADER
+    float nearClipDistance : SV_ClipDistance0;
 #endif
 };
 
@@ -336,10 +342,15 @@ PixelShaderInput vs_main(VertexShaderInput In)
     Out.cameraId = idx;
 #endif 
 
-    if (DepthOffset != 0)
+    // Clip against geometric near depth, not the biased/clamped depth-buffer value.
+    Out.nearClipDistance = Out.position.z;
+    float depthOffset = DepthOffset + In.sortingDepthOffset;
+    if (depthOffset != 0)
     {
-        float4 depthPosition = mul(float4(viewPos.xy, viewPos.z + DepthOffset, viewPos.w), ProjMat);
-        Out.position.z = depthPosition.z * Out.position.w / depthPosition.w;
+        // Change only depth, preserving screen placement, fog and lighting coordinates.
+        float4 depthPosition = mul(float4(viewPos.xy, viewPos.z + depthOffset, viewPos.w), ProjMat);
+        float depth = depthPosition.w > 0 ? saturate(depthPosition.z / depthPosition.w) : 0;
+        Out.position.z = depth * Out.position.w;
     }
 
     Out.color.rgb = In.color.rgb * ObjectTint.rgb;
@@ -371,6 +382,7 @@ PixelShaderInput_Mirror vs_main_receiver(VertexShaderInput In)
     PixelShaderInput Out1 = vs_main(In);
 
     Out.position = Out1.position;
+    Out.nearClipDistance = Out1.nearClipDistance;
     Out.color = Out1.color;
     // In this case we want the vertex alpha in here:
     Out.color.a *= In.color.a;
@@ -447,6 +459,7 @@ PixelShaderInput_Flames vs_main_flames(VertexShaderInput In)
     PixelShaderInput temp = vs_main(In);
     PixelShaderInput_Flames Out;
     Out.position = temp.position;
+    Out.nearClipDistance = temp.nearClipDistance;
     Out.uv0.xy = temp.uv0.xy;
     Out.intensity = saturate(Transparency+0.5);
     Out.viewId = temp.viewId;

@@ -4,13 +4,15 @@
 class AssetStream
 {
 public:
-    AssetStream(const std::vector<byte>& buffer, std::shared_ptr<const Palette> palette = nullptr)
-        : m_rawBuffer(buffer), m_palette(std::move(palette))
+    AssetStream(const std::vector<byte>& buffer, std::shared_ptr<const Palette> palette = nullptr,
+        std::wstring_view sourceFilename = {})
+        : m_rawBuffer(buffer), m_palette(std::move(palette)), m_sourceFilename(sourceFilename)
     {
 
     }
 
     const Palette* GetPalette() const { return m_palette.get(); }
+    std::wstring_view GetSourceFilename() const { return m_sourceFilename; }
     size_t GetRemainingSize() const { return m_rawBuffer.size() - static_cast<size_t>(m_currentPos); }
 
     int Read(char* dest, int count);
@@ -50,6 +52,7 @@ private:
     int m_currentPos = 0;
     const std::vector<byte>& m_rawBuffer;
     std::shared_ptr<const Palette> m_palette;
+    std::wstring_view m_sourceFilename;
 };
 
 class D_IMPEXP AssetBase
@@ -84,4 +87,3 @@ protected:
     std::wstring m_debugName;
 #endif
 };
-

@@ -129,6 +129,18 @@ and [bucket animation/model recipe](weapon-sequence-evidence.txt) at
 - The tree exit door is embedded geometry with a level-texture binding.
   Reapplying an unchanged primary frame preserves its child instances and
   materials instead of discarding the door's texture overrides each update.
+- The high key's separate knothole is object 20 (`VEKT60`, animation 3,
+  frame 2), beside key object 19. Its six recessed side quads use priority 1,
+  the six rim quads priority 2, but the two dark backing quads (primitives
+  14/15) use priority zero. Increasing the global priority multiplier therefore
+  cannot reveal its backing through the uncut tree wall. This model explicitly
+  retains scale 1.0 (25 DOS units per priority step); ordinary models now
+  default to scale 0.002 (0.05-unit steps). A level-30,
+  slot-and-model-guarded presentation context adds 25 DOS world units of
+  material depth offset to both the knothole and its key, preserving their
+  relative depths, authored priority differences and native gameplay/save
+  coordinates. WARP checks the actual pair against the original level's static
+  trunk at two distances; removing only the local offset reproduces occlusion.
 - **F** toggles a gravity-free camera at the current view without moving the
   player. **WASD** flies, **Q/E** moves down/up and **Shift** accelerates.
   Pressing **F** again returns to the player camera; held weapons are hidden
@@ -801,9 +813,12 @@ implementations. Evidence:
   this resolved state, so parent-only movement refreshes children too.
 - The mouth quad lies slightly **behind** the base face. Native painter
   ordering overlays it; modern depth testing previously hid it despite
-  a correctly bound texture. Non-additive tracked mouth materials now
-  receive a half-DOS-unit view-depth offset, leaving projected XY and
-  every ordinary/fire material unchanged. Regenerate embedded DX11
+  a correctly bound texture. The general authored per-primitive sorting
+  priority now supplies its depth bias, with a head-only `VEKT68.3DA`
+  animation-1 profile of 0.5 DOS units per priority step; the temporary half-DOS-unit mouth
+  material offset is no longer needed. See
+  [primitive priority recovery](Findings.md#per-primitive-painter-sorting-bias).
+  Regenerate embedded DX11
   shader bytecode after changing the shader, as described in
   [the generator instructions](../NewRenderer/GenerateBuiltInCpps/readme.md).
 - `CurtainOpens` (134) interpolates word 42 toward signed word 36, stepping
@@ -823,7 +838,7 @@ tracks selected mouth frames and remains opaque through pose refreshes.
 They also render the complete room with normal visibility/depth: removing
 the resolved arm or dog changes over 1,700 pixels each, both morphs visibly
 animate, and switching mouth frames in the speaking head pose changes 35
-pixels. Disabling only its depth offset reproduces zero changed mouth
+pixels. Disabling only its authored GPU primitive priority reproduces zero changed mouth
 pixels. Core tests check linkage, parent transforms/movement, dead-parent
 suppression, and unchanged native save bytes after pose resolution.
 

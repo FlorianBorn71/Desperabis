@@ -19,4 +19,6 @@ public:
     int m_frameNr = 0;
     int m_numUnsupportedPrimitives = 0;
     NormalGenerationSettings m_normalGeneration;
+    // Applied during geometry conversion, before GPU buffers are created.
+    float m_sortingDepthBiasScale = 0.002f;
 };

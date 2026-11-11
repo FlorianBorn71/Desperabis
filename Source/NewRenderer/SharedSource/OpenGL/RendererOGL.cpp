@@ -22,6 +22,7 @@ FUTURE(void) RendererOGL::Initialize(int width, int height)
 
     // some setup that does not change per context/mode
     glEnable(GL_CULL_FACE);
+    glEnable(GL_CLIP_DISTANCE0);
     glCullFace(GL_FRONT); // why?
 
     CO_RETURN;

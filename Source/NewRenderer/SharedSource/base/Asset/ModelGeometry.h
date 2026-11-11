@@ -168,6 +168,7 @@ struct ModelVertex
 
     Vector2 TexCoord;
     Vector2 StretchParams;
+    float SortingDepthOffset = 0.f;
 #ifdef ENABLE_ADVANCED_RENDERING
     Vector3 Normal;
 #endif
@@ -207,13 +208,13 @@ enum class TextureLightingMode : uint8_t
 
 struct ModelPolygon
 {
-    uint8_t something1;
+    uint8_t typeAndSortingPriority;
     uint8_t something2;
     uint8_t i0, i1, i2, i3;
 
     PolygonType GetPolyType() const
     {
-        return (PolygonType)(something1 & 15);
+        return (PolygonType)(typeAndSortingPriority & 15);
     }
 
     uint8_t GetTextureIndex() const
@@ -249,10 +250,9 @@ struct ModelPolygon
         return (something2 & 127) > 32; 
     }
 
-    // ?
-    int BrightnessModifier() const 
+    uint8_t GetSortingPriority() const
     {
-        return (int)something1 >> 4; // 0..15
+        return typeAndSortingPriority >> 4;
     }
 
     // cannot find any of these

@@ -1,0 +1,59 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding; not proof of reachability or function boundaries.
+Addresses below are module-relative; instruction operands use Ghidra analysis addresses.
+
+Initialized data checked directly against the same executable:
+  Startup 2CE4:0000 loads DS = module segment 2E9E.
+  MZ load-module file offset = 0x2D40.
+  DS:0304 maps to file offset 0x2D40 + 0x2E9E0 + 0x0304 = 0x31A24.
+  Bytes at 0x31A24: 99 19 00 00.
+  Signed 16.16 value = 0x00001999 / 65536 = 0.0999908447265625.
+  This scales raw model depth before its integer part is stored for sorting.
+  The (7 - priority) * 25 adjustment is added afterward, in DOS world units.
+
+Range 2CE4:0000:0007
+2CE4:0000  BA 9E 3E                 MOV DX,0x3e9e
+2CE4:0003  8E DA                    MOV DS,DX
+STOP: instruction crosses requested range end.
+
+Range 1E48:A27E:004C
+1E48:A27E  FF 36 06 03              PUSH word ptr [0x306]
+1E48:A282  FF 36 04 03              PUSH word ptr [0x304]
+1E48:A286  66 59                    POP ECX
+1E48:A288  66 58                    POP EAX
+1E48:A28A  66 F7 E9                 IMUL ECX
+1E48:A28D  66 C1 E8 10              SHR EAX,0x10
+1E48:A291  89 46 B0                 MOV word ptr [BP + -0x50],AX
+1E48:A294  89 56 B2                 MOV word ptr [BP + -0x4e],DX
+1E48:A297  FF 76 BA                 PUSH word ptr [BP + -0x46]
+1E48:A29A  FF 76 B8                 PUSH word ptr [BP + -0x48]
+1E48:A29D  58                       POP AX
+1E48:A29E  58                       POP AX
+1E48:A29F  8B 7E FC                 MOV DI,word ptr [BP + -0x4]
+1E48:A2A2  D1 E7                    SHL DI,0x1
+1E48:A2A4  89 83 CA F9              MOV word ptr [BP + DI + 0xf9ca],AX
+1E48:A2A8  FF 76 B6                 PUSH word ptr [BP + -0x4a]
+1E48:A2AB  FF 76 B4                 PUSH word ptr [BP + -0x4c]
+1E48:A2AE  58                       POP AX
+1E48:A2AF  58                       POP AX
+1E48:A2B0  8B 7E FC                 MOV DI,word ptr [BP + -0x4]
+1E48:A2B3  D1 E7                    SHL DI,0x1
+1E48:A2B5  89 83 02 F9              MOV word ptr [BP + DI + 0xf902],AX
+1E48:A2B9  FF 76 B2                 PUSH word ptr [BP + -0x4e]
+1E48:A2BC  FF 76 B0                 PUSH word ptr [BP + -0x50]
+1E48:A2BF  58                       POP AX
+1E48:A2C0  58                       POP AX
+1E48:A2C1  8B 7E FC                 MOV DI,word ptr [BP + -0x4]
+1E48:A2C4  D1 E7                    SHL DI,0x1
+1E48:A2C6  89 83 3A F8              MOV word ptr [BP + DI + 0xf83a],AX
+
+Range 1E48:9A17:0018
+1E48:9A17  C4 7E EA                 LES DI,[BP + -0x16]
+1E48:9A1A  26 8A 05                 MOV AL,byte ptr ES:[DI]
+1E48:9A1D  30 E4                    XOR AH,AH
+1E48:9A1F  C1 E8 04                 SHR AX,0x4
+1E48:9A22  8B D0                    MOV DX,AX
+1E48:9A24  B8 07 00                 MOV AX,0x7
+1E48:9A27  2B C2                    SUB AX,DX
+1E48:9A29  6B C0 19                 IMUL AX,AX,0x19
+1E48:9A2C  89 46 F8                 MOV word ptr [BP + -0x8],AX

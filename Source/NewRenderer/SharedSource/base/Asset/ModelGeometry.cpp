@@ -7,6 +7,7 @@
 #include <Asset/DebugGeometry.h>
 #include <Renderer/DrawCall.h>
 #include <unordered_map>
+#include <cmath>
 
 constexpr const bool g_performanceOptimizationsEnabled = true;
 
@@ -492,6 +493,10 @@ namespace
 
 void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& context, std::vector<DrawCall>& drawcalls)
 {
+    if (!std::isfinite(model.m_sortingDepthBiasScale) || model.m_sortingDepthBiasScale < 0.f)
+    {
+        throw std::invalid_argument("Model sorting-depth bias scale must be finite and nonnegative.");
+    }
     const Palette& palette = AssetManager::Instance().GetDefaultPalette();
     std::vector<float> vertexBrightness(model.m_numPositions, -1.f);
     for (int i = 0; i < model.m_numPolygons; ++i)
@@ -751,6 +756,8 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
         for (std::size_t vertex = firstVertex; vertex < vertices.size(); ++vertex)
         {
             auto& v = vertices[vertex];
+            // Native world-unit steps are deliberately attenuated per model; priority zero stays unbiased.
+            v.SortingDepthOffset = p.GetSortingPriority() * 25.f * model.m_sortingDepthBiasScale * DespToFloat;
             float brightness = vertexBrightness[v.GetPositionIndex1()];
             if (brightness < 0.f)
             {

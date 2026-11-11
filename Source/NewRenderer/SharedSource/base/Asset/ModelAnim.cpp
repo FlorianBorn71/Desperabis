@@ -17,6 +17,21 @@ ModelAnim::ModelAnim()
 
 void ModelAnim::Read(AssetStream& s)
 {
+    static constexpr struct
+    {
+        std::wstring_view filename;
+        int animation, frame; // One-based; frame zero selects the whole animation.
+        float scale;
+    } depthBiasOverrides[]{
+        {L"VEKT\\VEKT20.3DA", 1, 1, 0.5f}, // Smaller windmill body variants.
+        {L"VEKT\\VEKT20.3DA", 1, 2, 0.5f},
+        {L"VEKT\\VEKT20.3DA", 1, 3, 0.5f},
+        {L"VEKT\\VEKT20.3DA", 1, 4, 0.5f},
+        {L"VEKT\\VEKT20.3DA", 3, 0, 2.f}, // Windmill body variants.
+        {L"VEKT\\VEKT60.3DA", 3, 2, 1.f}, // Recessed knothole.
+        {L"VEKT\\VEKT68.3DA", 1, 0, 0.02f}, // Witch head's recessed mouth.
+    };
+
     m_textureUsedMask = s.Read<uint16_t>();
 
     TextureLoadingContext textureData[16];
@@ -45,6 +60,14 @@ void ModelAnim::Read(AssetStream& s)
         for (int frame = 0; frame < m_numFrames; frame++)
         {
             Model& m(m_model[anim][frame]);
+            for (const auto& override : depthBiasOverrides)
+            {
+                if (s.GetSourceFilename() == override.filename && anim + 1 == override.animation &&
+                    (override.frame == 0 || frame + 1 == override.frame))
+                {
+                    m.m_sortingDepthBiasScale = override.scale;
+                }
+            }
             m.m_positionOfs = (uint16_t)context.m_vertexPos.size();
             m.m_polygonOfs = (uint16_t)context.m_polygons.size();
 			conversion.m_modelPositionOfs = m.m_positionOfs;

@@ -67,6 +67,32 @@ namespace
         void Remove(Scene&) override {}
     };
 
+    class KnotholeDepthContext final : public ObjectPresentationContext
+    {
+    public:
+        explicit KnotholeDepthContext(bool key) : m_key(key) {}
+        bool Matches(const RawGameObject& object) const override
+        {
+            const GamePlay::PropertyAccessorBase properties(object);
+            return properties.GetModelId() == (m_key ? 39 : 32) &&
+                properties.GetModelAnim() == (m_key ? 0 : 2) &&
+                properties.GetModelFrame() == (m_key ? 0 : 1);
+        }
+        void Update(const RawGameObject&, RenderableInstance* instance) override
+        {
+            if (!instance || !instance->GetRenderable()) { return; }
+            for (auto& material : instance->GetOrCreateMaterialOverrides())
+            {
+                // The backing has priority zero; pull the recess and its key ahead of the uncut trunk together.
+                material.m_depthOffset = 25.f * DespToFloat;
+                material.ComputeHash();
+            }
+        }
+        void Remove(Scene&) override {}
+    private:
+        bool m_key;
+    };
+
     class SparkCorona final : public LightSource
     {
     public:
@@ -233,6 +259,15 @@ std::shared_ptr<ObjectPresentationContext> GamePlay::CreateObjectPresentation(
     if (slot < 1 || slot > 165) { throw std::out_of_range("Object presentation slots must be in 1..165."); }
     const PropertyAccessorBase properties(object);
     if (properties.GetHealth() <= 0) { return {}; }
+    if (levelIndex == 30 && (slot == 19 || slot == 20))
+    {
+        auto context = std::make_shared<KnotholeDepthContext>(slot == 19);
+        if (context->Matches(object))
+        {
+            context->Update(object, instance);
+            return context;
+        }
+    }
     if (properties.GetCollisionType() == CollisionType::FountainWater)
     {
         auto context = std::make_shared<FountainWaterContext>();
