@@ -215,7 +215,7 @@ namespace GamePlay
         Behavior_148 = 148, // something I could not locate in level 35
         RandomAttachmentYaw = 161,
         ObjectPoseSequence = 170,
-        Behavior_178 = 178, // the barrel in the staircase, probably manages the staircase up/down teleport
+        DistanceSkyToggle = 178,
         Behavior_201 = 201, // could be thunder or leaf particles gen (assigned once to decoration in level 10)
         ForceWeaponSelection = 206,
         WitchMouthAnimation = 209,

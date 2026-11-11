@@ -23,8 +23,9 @@ now have verified native contracts and C++ implementations, with original level
 10/23/36 teleporter fixtures. DS:`D4FF` is activated-ladder vertical control;
 it is not swimming. The author confirms underwater walking/crouching along
 the bottom. Behavior 184's old thunder-handler name hides a wall-collision
-bypass volume; behavior 178 controls a DOS viewport region, with a possible
-foil connection still unproven. Teleport render-table/lighting state is
+bypass volume; behavior 178 is now recovered as `DistanceSkyToggle`, a DOS sky-region
+optimization deliberately omitted from modern rendering. It does not control foil.
+Teleport render-table/lighting state is
 preserved but its modern presentation, vehicle drivers, several contacts,
 oxygen and underwater effects remain incomplete.
 

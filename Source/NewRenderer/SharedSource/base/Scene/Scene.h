@@ -50,6 +50,7 @@ public:
     void SetFireAnimationFrame(int targetSlot, int frame);
     void AddFireAnimationInstance(RenderableInstance& instance, std::size_t materialIndex);
     void AssignFireAnimations(RenderableInstance& inst);
+    void ApplyFireAnimationFrames(RenderableInstance& instance) const;
     void HandleFireAnimations(double elapsedTime);
 
     inline double GetSceneTime() const 

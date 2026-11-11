@@ -265,6 +265,24 @@ void Scene::AssignFireAnimations(RenderableInstance& inst)
     inst.ComputeTransparencyMask();
 }
 
+void Scene::ApplyFireAnimationFrames(RenderableInstance& instance) const
+{
+    for (auto& material : instance.GetOrCreateMaterialOverrides())
+    {
+        const int index = material.m_textureSlot;
+        if (material.m_textureSlotSource != TextureSlotSource::Model || index < 0 || index >= 16) { continue; }
+        const auto& slot = m_fireAnimations[index];
+        if (!slot.m_torchAnim) { continue; }
+        const auto frame = slot.m_frame >= 0 ? static_cast<std::size_t>(slot.m_frame) :
+            static_cast<std::size_t>(std::fmod(GetSceneTime() * slot.m_speed, slot.m_torchAnim->m_frames.size()));
+        material.m_texture = &slot.m_torchAnim->m_frames.at(frame);
+        material.m_transparencyType = slot.m_additive ? TransparencyMode::Additive : TransparencyMode::Opaque;
+        material.ComputeHash();
+    }
+    for (auto& child : instance.m_subInstances) { ApplyFireAnimationFrames(child); }
+    instance.ComputeTransparencyMask();
+}
+
 void Scene::HandleFireAnimations(double elapsedTime)
 {
     float dt = (float)elapsedTime;

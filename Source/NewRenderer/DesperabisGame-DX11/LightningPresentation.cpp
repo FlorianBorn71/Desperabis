@@ -105,9 +105,8 @@ void LightningPresentation::Show(Scene& scene, const Desperabis::LightningFlash&
         [](const auto& a, const auto& b) { return a.y2 < b.y2; });
     auto light = std::make_shared<LightSource>(&scene);
     light->SetPosition(toWorld.TransformPosition(toView(flash.lines.front().x1, lowest->y2)));
-    // Concentrate the flash around the distant bolt, outside the player's immediate radius.
-    light->SetRadius(1700.f * DespToFloat);
-    light->SetColor({210, 230, 255, 255}, 80.f);
+    light->SetRadius(3000.f * DespToFloat);
+    light->SetColor({210, 230, 255, 255}, 60.f);
     light->SetCoronaSize(0.f);
     m_scene = &scene;
     m_models.insert(m_models.end(), models.begin(), models.end());

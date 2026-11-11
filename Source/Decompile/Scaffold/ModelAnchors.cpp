@@ -171,6 +171,17 @@ namespace Desperabis
         return object;
     }
 
+    RawGameObject GameContext::GetObjectCollisionState(std::size_t slot) const
+    {
+        const auto& object = worldObjects.at(slot);
+        if (object.behavior != BehaviorType::KeyInBucket) { return object; }
+        auto spatial = GetObjectRenderState(slot);
+        // The authored pickup proxy is inside the window; only its height follows the bucket outside.
+        spatial.posX = object.posX;
+        spatial.posZ = object.posZ;
+        return spatial;
+    }
+
     void GameContext::UpdateModelAttachments()
     {
         for (std::size_t index = 0; index < worldObjects.size(); ++index)

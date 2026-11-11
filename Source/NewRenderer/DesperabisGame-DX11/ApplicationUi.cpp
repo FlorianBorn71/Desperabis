@@ -201,7 +201,8 @@ namespace
         const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
         ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView,
         Texture* weaponTexture = nullptr, bool faceSwordCamera = false, Model* modelOverride = nullptr,
-        bool clearDepth = true, const VisibilityResult::VisibleWaterLevel* water = nullptr)
+        bool clearDepth = true, const VisibilityResult::VisibleWaterLevel* water = nullptr,
+        const Scene* animationScene = nullptr)
     {
         Desperabis::RawGameObject object;
         object.health = 1000;
@@ -280,6 +281,7 @@ namespace
         };
         configureMaterials(*instance);
         for (auto& sub : instance->m_subInstances) { configureMaterials(sub); }
+        if (animationScene) { animationScene->ApplyFireAnimationFrames(*instance); }
         instance->ComputeTransparencyMask();
         Camera camera;
         Matrix4 projection;
@@ -456,31 +458,51 @@ FUTURE(void) ApplicationUi::Initialize()
     CO_RETURN;
 }
 
-Vector ApplicationUi::ElectricityTipWorld(const Desperabis::WeaponView& view,
-    const Desperabis::ModelAnchorGeometry& geometry, const Camera& camera, const D3D11_VIEWPORT& viewport)
+namespace
+{
+Vector WeaponPointWorld(const Desperabis::WeaponView& view, const Vector& point,
+    const Camera& camera, const D3D11_VIEWPORT& viewport)
 {
     const auto& object = view.object;
-    // Native electricity bolts branch from vertex 3, unchanged in both animated firing frames.
-    const auto& vertex = geometry.animations.at(object.modelAnim - 1).at(object.animFrame - 1).vertices.at(2);
     ::RawGameObject raw{};
     Desperabis::EncodeGameObject(object, raw.m_rawBytes, sizeof(raw.m_rawBytes));
     auto transform = GamePlay::PropertyAccessorBase(raw).GetTransform();
     transform.SetTranslation(Vector(object.posX * DespToFloat, -object.posY * DespToFloat, -object.posZ * DespToFloat));
-    const auto tip = transform.TransformPosition(Vector(-vertex[0] * DespVertToFloat,
-        -vertex[1] * DespVertToFloat, vertex[2] * DespVertToFloat));
+    const auto tip = transform.TransformPosition(point);
     if (tip.GetZ() >= 0.f || viewport.Width <= 0.f || viewport.Height <= 0.f)
     {
-        throw std::invalid_argument("Electricity tip requires a visible weapon and positive viewport.");
+        throw std::invalid_argument("Weapon tip requires a visible weapon and positive viewport.");
     }
     const float scale = (std::min)(viewport.Width / Desperabis::WeaponView::Width,
         viewport.Height / Desperabis::WeaponView::Height);
-    const float px = viewport.Width * 0.5f + 128.f * tip.GetX() / -tip.GetZ() * scale;
+    const float px = viewport.Width * 0.5f + view.focalLength * tip.GetX() / -tip.GetZ() * scale;
     const float py = viewport.Height - Desperabis::WeaponView::Height * scale +
-        (view.projectionCenterY - 128.f * tip.GetY() / -tip.GetZ()) * scale;
+        (view.projectionCenterY - view.focalLength * tip.GetY() / -tip.GetZ()) * scale;
     auto ray = camera.GetProjectionMatrix(0).GetInverse().TransformPosition(
         Vector(px / viewport.Width * 2.f - 1.f, 1.f - py / viewport.Height * 2.f, 0.5f));
     ray *= -tip.GetZ() / std::fabs(ray.GetZ());
     return camera.GetCameraTransformMatrix(0).TransformPosition(ray);
+}
+}
+
+Vector ApplicationUi::ElectricityTipWorld(const Desperabis::WeaponView& view,
+    const Desperabis::ModelAnchorGeometry& geometry, const Camera& camera, const D3D11_VIEWPORT& viewport)
+{
+    // Native electricity bolts branch from vertex 3 in both firing frames.
+    const auto& vertex = geometry.animations.at(view.object.modelAnim - 1).at(view.object.animFrame - 1).vertices.at(2);
+    return WeaponPointWorld(view, Vector(-vertex[0] * DespVertToFloat,
+        -vertex[1] * DespVertToFloat, vertex[2] * DespVertToFloat), camera, viewport);
+}
+
+Vector ApplicationUi::HeldTorchTipWorld(const Desperabis::WeaponView& view,
+    const Level& level, const Camera& camera, const D3D11_VIEWPORT& viewport)
+{
+    const auto animation = level.GetLevelInfo().GetModelAnim(view.object.modelId - 30);
+    const auto* model = animation ? animation->GetModelSafe(view.object.modelAnim - 1, view.object.animFrame - 1) : nullptr;
+    if (!model) { throw std::runtime_error("Held torch requires its original model geometry."); }
+    // VEKT54 4/5 vertex 24 anchors the largest of the four authored flame sprites.
+    const auto& vertex = model->m_sourcePositions.at(23);
+    return WeaponPointWorld(view, Vector(vertex.x, vertex.y, vertex.z), camera, viewport);
 }
 
 void ApplicationUi::DrawBossFall(const std::vector<Desperabis::RawGameObject>& objects,
@@ -527,7 +549,7 @@ void ApplicationUi::DrawBossFall(const std::vector<Desperabis::RawGameObject>& o
 void ApplicationUi::DrawWeapon(const Desperabis::WeaponView& view, RendererDX11& renderer, const Level& level,
     const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
     ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView,
-    const VisibilityResult* world)
+    const VisibilityResult* world, const Scene* animationScene)
 {
     using Desperabis::WeaponView;
     if (!m_weapons) { throw std::logic_error("First-person weapon assets have not been initialized."); }
@@ -568,7 +590,7 @@ void ApplicationUi::DrawWeapon(const Desperabis::WeaponView& view, RendererDX11&
             }
         }
         DrawModel(command, level, renderer, settings, stats, modelViewport, deviceContext, colorView, depthView,
-            weaponTexture, faceSwordCamera, modelOverride, true, water ? &*water : nullptr);
+            weaponTexture, faceSwordCamera, modelOverride, true, water ? &*water : nullptr, animationScene);
         return;
     }
     const Texture* texture = nullptr;

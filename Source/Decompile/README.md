@@ -46,6 +46,13 @@ For the first explained case and shared collision-map pointer, see
   independently hideable ranges sharing the static island GPU buffers; the host
   synchronizes their visibility from GameCore's authoritative wall tiles.
   See [destructible wall presentation](BehaviorRecovery.md#destructible-wall-presentation).
+- `level33-dispatch-evidence.txt`, `level33-helper-evidence.txt`: mansion
+  traps, portable coffin, one-shot knight crossbow, bucket key and native sky
+  switch. `Scaffold/MansionTests.cpp` exercises the original level records,
+  torch ignition, sewer-oil ignition and extinguishing, and moving-key pickup.
+  The held burning stick reuses original FACKEL sprites and adds flickering
+  specular light; the recovered distance-based DOS sky switch is intentionally
+  a no-op. See [level 33 recovery](BehaviorRecovery.md#mansion-sewer-oil-and-tower-bucket-level-33).
 - `map-presentation-evidence.txt`: native map ownership gate, corner-map
   heading, PictureMap's page-11 transition and modal map dispatch.
   The corner map uses a lazily uploaded, palette-converted collision texture;

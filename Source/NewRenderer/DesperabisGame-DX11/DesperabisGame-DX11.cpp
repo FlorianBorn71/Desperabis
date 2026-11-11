@@ -1180,9 +1180,16 @@ namespace
 				tip = ApplicationUi::ElectricityTipWorld(*view, *level->modelAnchors[1], *g_camera, g_viewport);
 			}
 			g_scene->SetElectricityLight(firing, tip);
+			const bool burning = view && view->object.health == 1000 &&
+				g_gameCore->selectedWeapon == Desperabis::WeaponType::TrapOrPole &&
+				view->object.behavior == Desperabis::BehaviorType::MetalPole &&
+				view->object.doorLockOrGroupBitmask == 21;
+			g_scene->SetHeldTorchLight(burning, burning ?
+				ApplicationUi::HeldTorchTipWorld(*view, *g_scene->m_level, *g_camera, g_viewport) : Vector(0,0,0));
 			return;
 		}
 		g_scene->SetElectricityLight(false, Vector(0,0,0));
+		g_scene->SetHeldTorchLight(false, Vector(0,0,0));
 		if (application.worldDeltaSeconds == 0) { return; }
 
 		// free camera input
@@ -1289,7 +1296,7 @@ namespace
 					g_renderer.SetWeaponDraw([view = *weapon](const VisibilityResult& world, const RenderingSettings& settings, ProfilingStats& stats)
 					{
 						g_applicationUi.DrawWeapon(view, g_renderer, *g_scene->m_level, settings,
-							stats, g_viewport, g_d3dContext.Get(), g_renderTargetView.Get(), g_depthStencilView.Get(), &world);
+							stats, g_viewport, g_d3dContext.Get(), g_renderTargetView.Get(), g_depthStencilView.Get(), &world, g_scene.get());
 					});
 				}
 			}

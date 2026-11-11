@@ -247,8 +247,31 @@ namespace Desperabis
             state.SetObjectHealth(object, 0);
             return result;
         }
-        case CollisionType::BookWithCode:
         case CollisionType::WheelToLiftRope:
+        {
+            if (object.velocityZ == 0) { object.velocityZ = WrapSignedWord(object.generalPurpose1); }
+            const auto step = GetStepToward(object.velocityZ, WrapSignedWord(object.generalPurpose1), object.itemValue);
+            if (step == 0)
+            {
+                object.generalPurpose1 = static_cast<std::uint16_t>(-WrapSignedWord(object.generalPurpose1));
+                object.generalPurpose3 = static_cast<std::uint16_t>(-WrapSignedWord(object.generalPurpose3));
+                return { InteractionStatus::Applied };
+            }
+            object.winZ = WrapSignedWord(object.winZ - step);
+            object.velocityZ = WrapSignedWord(object.velocityZ + step);
+            state.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+                state.GetSoundVolumeAt(object.posX, object.posZ), object, 1);
+            if (object.doorLockOrGroupBitmask > 0)
+            {
+                if (object.doorLockOrGroupBitmask >= state.worldObjects.size())
+                {
+                    throw std::out_of_range("Rope wheel requires a linked world-object slot in 1..165.");
+                }
+                state.DamageObject(state.worldObjects[object.doorLockOrGroupBitmask], WrapSignedWord(object.generalPurpose3));
+            }
+            return { InteractionStatus::Applied };
+        }
+        case CollisionType::BookWithCode:
         case CollisionType::VaseToGrab:
         case CollisionType::MirrorToGrab:
         case CollisionType::SarcophagusWithBones:

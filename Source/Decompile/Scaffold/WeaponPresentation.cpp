@@ -12,7 +12,9 @@ namespace Desperabis
         if (GetMenuPage() != MenuPage::Gameplay || IsCutscenePlaying() || worldObjects[1].itemValue > 0 ||
             weaponAnimationSpeed == -2 || weaponAnimationSpeed == -4 ||
             (selectedWeapon == WeaponType::None && !field_D500) ||
-            selectedWeapon == WeaponType::ShopGold || weaponSpriteFrame == 0)
+            selectedWeapon == WeaponType::ShopGold ||
+            (weaponSpriteFrame == 0 && selectedWeapon != WeaponType::TrapOrPole &&
+                selectedWeapon != WeaponType::Bucket && selectedWeapon != WeaponType::Stone))
         {
             return std::nullopt;
         }
@@ -140,11 +142,13 @@ namespace Desperabis
             {
                 throw std::logic_error("Placeable weapon requires an inventory hand in 1..14.");
             }
+            if (inventory[weaponHand - 1].health != 1000) { return std::nullopt; }
             view.kind = WeaponView::Kind::Model;
             view.object = inventory[weaponHand - 1];
             view.object.posX = 0;
             view.object.posY = WrapSignedWord(220 / 10 + pose);
-            view.object.posZ = WrapSignedWord(35 + bounce / 2);
+            view.object.posZ = WrapSignedWord(
+                (view.object.behavior == BehaviorType::PortableCoffin ? 10 : 35) + bounce / 2);
             view.object.winX = 10; view.object.winY = 30; view.object.winZ = 0;
             view.object.modelFrame2 = 0;
             view.object.blendWeightOrSpriteOpacity = 0;
@@ -154,6 +158,7 @@ namespace Desperabis
             {
                 throw std::logic_error("Stone weapon requires an inventory hand in 1..14.");
             }
+            if (inventory[weaponHand - 1].health != 1000) { return std::nullopt; }
             view.kind = WeaponView::Kind::HeldBitmap;
             view.object = inventory[weaponHand - 1];
             view.anchorX = weaponHand == 1 ? 0.125f : 0.875f;

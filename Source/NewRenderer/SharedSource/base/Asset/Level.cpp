@@ -1470,7 +1470,7 @@ bool Level::CreateObjectRenderInstance(Scene& scene, std::shared_ptr<LevelGameOb
         int animNr = prop.GetModelAnim();
         int frameNr = prop.GetModelFrame();
         Model* model = anim3d->GetModelSafe(animNr, frameNr);
-        if (model == nullptr || !model->IsValid())
+        if (model == nullptr || (!model->IsValid() && !(fireIntensity > 0.f && model->m_numPositions > 0)))
         {
             return false;
         }
@@ -1707,7 +1707,7 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
 		int frameNr = prop.GetModelFrame();
 
 		Model* model = anim3d->GetModelSafe(animNr, frameNr);
-		if (model == nullptr || !model->IsValid())
+		if (model == nullptr || (!model->IsValid() && !(inst->m_fireIntensity > 0.f && model->m_numPositions > 0)))
 		{
             inst->SetRenderable(nullptr, nullptr);
 			return;
@@ -1726,7 +1726,7 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
         }
         inst->SetRenderable(model, model2);
 
-		assert(model->IsValid() && model->m_drawCalls.size() < 16);
+		assert(model->m_drawCalls.size() < 16);
 		inst->m_uniformScale = 1.f; // not scalable  rawGO.GetScale();
         auto transform = prop.GetTransform();
         if (prop.GetBehaviorType() == GamePlay::BehaviorType::ExtinguishLava)

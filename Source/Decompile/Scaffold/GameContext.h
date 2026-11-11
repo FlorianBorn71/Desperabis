@@ -512,7 +512,7 @@ namespace Desperabis
         void UpdateModelAttachments();
         std::int16_t frameTickCount = 1; // DS:D4CA; burning uses this rather than the behavior argument.
         std::int32_t levelElapsedTicks = 0; // DS:D504; signed level timer used by delayed rock slopes.
-        std::int16_t windX = 0; // DS:2B0E; also submarine hull stress, shared with the cracking window.
+        std::int16_t windX = 0; // DS:2B0E; also submarine hull stress and coffin/blade obstruction.
         std::int16_t windZ = 0; // DS:2B10.
         bool skyEnabled = false; // Native DS:D4C4 > 0.
         std::int16_t cinematicDepthShade = 0; // Ending behavior 171 overrides DS:2B0A depth attenuation.
@@ -643,6 +643,7 @@ namespace Desperabis
         std::optional<BossFall> bossFall;
         GameTickResult TickBossFall(GameTickTiming timing);
         RawGameObject ResolveAttachedRenderState(RawGameObject object, const RawGameObject& parent) const;
+        RawGameObject GetObjectCollisionState(std::size_t slot) const;
         void BeginCutscene(bool restoringSave);
         bool UpdateCutsceneCamera();
         GameTickResult TickCutscene(GameTickTiming timing);

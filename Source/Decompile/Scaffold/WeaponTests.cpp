@@ -576,6 +576,14 @@ void TestWeaponPresentation()
         Check(!context.GetWeaponView(), "Selection commits must hide the stale weapon until its draw animation begins.");
     }
     Check(context.randomSeed == seed, "Presentation must not consume gameplay RNG.");
+    context.weaponSpriteFrame = 0;
+    for (const auto type : {WeaponType::TrapOrPole, WeaponType::Bucket, WeaponType::Stone})
+    {
+        context.selectedWeapon = type;
+        context.weaponAnimationSpeed = 0;
+        Check(context.GetWeaponView().has_value(), "Held-object geometry must not depend on the unrelated weapon sprite frame.");
+    }
+    context.weaponSpriteFrame = 1;
     context.selectedWeapon = WeaponType::Electricity;
     context.requestedWeapon = WeaponType::Electricity;
     context.weaponAnimationSpeed = -3;

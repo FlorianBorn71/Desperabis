@@ -28,6 +28,7 @@ public:
     void FlashLight(const Vector& position, const Color4& color, float fadeInSeconds, float fadeOutSeconds, float radius);
     void FireEmitted(int slot, const RawGameObject& object, const Vector& position);
     void SetElectricityLight(bool firing, const Vector& tip);
+    void SetHeldTorchLight(bool burning, const Vector& tip);
     void SetSkyEnabled(bool enabled);
     bool IsSkyVisible() const { return m_skyVisible; }
 
@@ -47,4 +48,5 @@ private:
     std::array<std::shared_ptr<ObjectPresentationContext>, ObjectSlotCount> m_objectPresentations{};
     std::vector<std::shared_ptr<class LightFlashSource>> m_lightFlashes;
     std::shared_ptr<LightSource> m_electricityLight;
+    std::shared_ptr<LightSource> m_heldTorchLight;
 };

@@ -175,7 +175,7 @@ namespace Desperabis
         ExplodingMachine = 175,  // level 31
         ExplodedMachineFade = 176,
         PressureIndicator = 177, // Used in level 31 for the exploding machine
-        Behavior_178 = 178, // the barrel in the staircase, probably manages the staircase up/down teleport
+        DistanceSkyToggle = 178,
         LargeFish = 180, // in level 31
         StrandedFish = 181,
         DestroyableRoof = 182, // roof part that is destroyed by lightning in level 36

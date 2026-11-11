@@ -120,6 +120,25 @@ void LevelScene::SetElectricityLight(bool firing, const Vector& tip)
     m_electricityLight->SetPosition(tip);
 }
 
+void LevelScene::SetHeldTorchLight(bool burning, const Vector& tip)
+{
+    if (!burning)
+    {
+        if (m_heldTorchLight) { RemoveLightSource(m_heldTorchLight); m_heldTorchLight.reset(); }
+        return;
+    }
+    if (!m_heldTorchLight)
+    {
+        m_heldTorchLight = std::make_shared<FlickeringLight>(this);
+        m_heldTorchLight->SetColor({255,160,50}, 3.f);
+        m_heldTorchLight->SetRadius(180.f * DespToFloat);
+        m_heldTorchLight->SetSpecularAmount(1.f);
+        m_heldTorchLight->SetCoronaSize(0.f);
+        AddLightSource(m_heldTorchLight);
+    }
+    m_heldTorchLight->SetPosition(tip);
+}
+
 const std::shared_ptr<ObjectPresentationContext>& LevelScene::GetObjectPresentation(int slot) const
 {
     if (slot < 1 || slot >= static_cast<int>(ObjectSlotCount))
@@ -197,6 +216,7 @@ void LevelScene::ClearScene()
     m_playerLight.reset();
     m_lightFlashes.clear();
     m_electricityLight.reset();
+    m_heldTorchLight.reset();
     m_revealSkyInstance.reset();
     m_revealSkyRenderable.reset();
     m_revealSkyTexture.reset();

@@ -2935,7 +2935,8 @@ namespace Desperabis
         }
         if (selectedWeapon == WeaponType::TrapOrPole &&
             inventory[weaponHand - 1].behavior != BehaviorType::BearTrapAmmo &&
-            inventory[weaponHand - 1].behavior != BehaviorType::MetalPole)
+            inventory[weaponHand - 1].behavior != BehaviorType::MetalPole &&
+            inventory[weaponHand - 1].behavior != BehaviorType::PortableCoffin)
         {
             return WeaponActionStatus::UnimplementedWeapon;
         }
@@ -3090,6 +3091,7 @@ namespace Desperabis
                     object.velocityY = -10;
                     object.winX = object.winZ = object.blendWeightOrSpriteOpacity = 0;
                     object.generalPurpose1 = 0;
+                    object.generalPurpose3 = 0;
                 }
             }
         }
@@ -3877,10 +3879,13 @@ namespace Desperabis
     std::uint16_t GameContext::FindCollidingObject(const RawGameObject& source) const
     {
         if (!objectCollisionsEnabled) { return 0; }
+        const auto sourceSlot = FindWorldObjectSlot(source);
+        const auto spatialSource = sourceSlot >= 0 ? GetObjectCollisionState(sourceSlot) : source;
         for (std::uint16_t slot = 2; slot <= 164; ++slot)
         {
             const auto& candidate = worldObjects[slot];
-            if (&candidate != &source && candidate.health > 0 && ObjectsOverlap(source, candidate))
+            const auto spatialCandidate = GetObjectCollisionState(slot);
+            if (&candidate != &source && spatialCandidate.health > 0 && ObjectsOverlap(spatialSource, spatialCandidate))
             {
                 return slot;
             }
@@ -3890,17 +3895,22 @@ namespace Desperabis
 
     bool GameContext::OverlapsPlayer(const RawGameObject& source) const
     {
-        return objectCollisionsEnabled && ObjectsOverlap(source, worldObjects[1]);
+        if (!objectCollisionsEnabled) { return false; }
+        const auto slot = FindWorldObjectSlot(source);
+        return ObjectsOverlap(slot >= 0 ? GetObjectCollisionState(slot) : source, worldObjects[1]);
     }
 
     std::vector<std::uint16_t> GameContext::FindCollidingObjects(const RawGameObject& source) const
     {
         std::vector<std::uint16_t> contacts;
         if (!field_D500) { return contacts; }
+        const auto sourceSlot = FindWorldObjectSlot(source);
+        const auto spatialSource = sourceSlot >= 0 ? GetObjectCollisionState(sourceSlot) : source;
         for (std::uint16_t slot = 2; slot <= 165; ++slot)
         {
             const auto& candidate = worldObjects[slot];
-            if (&candidate != &source && candidate.health > 0 && ObjectsOverlap(source, candidate))
+            const auto spatialCandidate = GetObjectCollisionState(slot);
+            if (&candidate != &source && spatialCandidate.health > 0 && ObjectsOverlap(spatialSource, spatialCandidate))
             {
                 contacts.push_back(slot);
             }
@@ -3921,7 +3931,7 @@ namespace Desperabis
             ++slot;
             const auto& candidate = worldObjects[slot];
             if (candidate.health > 999 && candidate.pickupType != PickupType::None &&
-                ObjectsOverlap(worldObjects[1], candidate))
+                ObjectsOverlap(worldObjects[1], GetObjectCollisionState(slot)))
             {
                 return slot;
             }

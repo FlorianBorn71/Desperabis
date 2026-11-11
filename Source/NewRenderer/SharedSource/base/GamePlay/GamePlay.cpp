@@ -277,7 +277,7 @@ namespace GamePlay
         BT_ENUM2STRING(MetalPole);
         BT_ENUM2STRING(CrackingSubmarineWindow);
         BT_ENUM2STRING(PortableCoffin);
-        BT_ENUM2STRING(Behavior_178);
+        BT_ENUM2STRING(DistanceSkyToggle);
         BT_ENUM2STRING(CeilingBladesComingDown);
         BT_ENUM2STRING(BladesFromSide);
         BT_ENUM2STRING(KnightsCrossbow);

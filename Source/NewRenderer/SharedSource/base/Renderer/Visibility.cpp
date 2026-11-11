@@ -140,6 +140,7 @@ void DefaultVisibilityContext::DetermineVisibleInstances(VisibilityResult& resul
 		}
 		if (inst->m_fireIntensity > 0.f)
 		{
+            bucket.m_visibleTransparencyTypes |= TransparencyModeMask::AdditiveBit;
 			VisibilityResult::InstanceAndHash& entry = bucket.m_burningInstances.emplace_back();
 			entry.m_instance = inst;
 			entry.m_sortingHash = inst->ComputeOpaqueSortingHash(); // since flames are all additively rendered, we can as well sort by renderstate
@@ -194,7 +195,8 @@ void DefaultVisibilityContext::DetermineVisibleInstances(VisibilityResult& resul
 
         // instance is visible...add itself and the sub instances (without further checks)
 
-        if (inst->GetRenderable()->HasOwnDrawcalls())
+        if (inst->GetRenderable()->HasOwnDrawcalls() ||
+            (inst->m_fireIntensity > 0.f && inst->GetRenderable()->m_numPositions > 0))
         {
             AddInstanceToBuckets(inst.get(), bucket);
         }

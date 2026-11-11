@@ -834,6 +834,14 @@ void GeometryUtils::Convert(Model& model, ModelConversionContext& context)
     GeometryUtils::SmoothNormals(context, model.m_drawCalls, model.m_positionOfs, model.m_numPositions,
         model.m_normalGeneration, referencePositionOfs);
 
+    if (model.m_numPolygons == 0)
+    {
+        // Native flame clouds contain positions without surface primitives.
+        for (int i = 0; i < model.m_numPositions; ++i)
+        {
+            context.AddToBounds(context.m_input.m_vertexPos[model.m_vertexOfs + i], 0.f);
+        }
+    }
     context.GenerateBoundingVolume(model.m_localBounds);
 
     TriangularShapeDesc triMesh;

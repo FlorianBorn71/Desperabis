@@ -6,6 +6,85 @@ each recovered case an editable, named home without hiding missing behavior.
 
 ## Game context and application flow
 
+### Mansion, sewer oil and tower bucket (level 33)
+
+Evidence: [native behavior dispatch](level33-dispatch-evidence.txt),
+[ceiling-blade, sliding-blade and projectile helpers](level33-helper-evidence.txt),
+and [player contact and wheel interaction](player-collision-evidence.txt).
+
+All six previously missing authored behavior types now have recovered contracts:
+
+| ID | Behavior | Native slots | Operation |
+| --- | --- | --- | --- |
+| 58 | KeyInBucket | 129 | Enables collision only at inclusive Y intervals 60..80, -140..-120 and -340..-320, beside the tower windows. |
+| 162 | KnightsCrossbow | 83 | Activation fires one original arrow using item selector 1 and speed word 46, clears behavior, and selects secondary frame 3. |
+| 172 | CeilingBladesComingDown | 43..45, 49..65, 68..72 | Moves down in signed 8-bit-fraction increments, requests forced crouching on player contact, stops against the coffin, and becomes harmless at the terrain floor. |
+| 173 | PortableCoffin | 32 | Rests at terrain plus half its height, tips toward angle 128, and supplies the shared DS:2B0E obstruction signal when touching descending blades. It can be picked up, held and placed again. |
+| 174 | BladesFromSide | 78, 79, 81, 82 | Slides along its authored fixed-point direction with gravity/bouncing. A blocking map pixel enters harmless falling state 2000, eventually becoming a stationary Pillar. |
+| 178 | DistanceSkyToggle | 36 | Recovered and renamed; deliberately empty in the modern implementation, as approved by the author. |
+
+Wheel 139 uses collision 58: each interaction turns toward its signed limit by
+at most seven units and moves linked rope 140 by two Y units. Reaching a limit
+reverses both signs on the next interaction. Key 129 attaches to rope polygon
+23. Its window gate uses the resolved attachment Y. Collision retains the
+authored window-side X/Z pickup proxy (852, 3875), following only the bucket's
+height: the rendered bucket anchor is outside the wall near Z=3944 and cannot
+be reached by the player's body. Native save coordinates are not rewritten.
+This collision resolution is restricted to bucket keys; other placement-20
+presentation extras retain their previous collision behavior. Tests stand on
+the actual window floor rather than teleporting into the exterior bucket.
+
+The coffin's first-person Z offset is 10 rather than the other placeables'
+35 native units, pulling it twenty-five units toward the player without changing
+its world pose or trap-blocking dimensions. Knight 83 is a one-shot floor
+trap, not an approaching-player AI: original trigger 124 at (450, -121, 1974)
+activates group 35. A public gameplay tick from the actual floor position
+now verifies trigger consumption, arrow creation and the spent frame.
+
+Touching either knight torch (119/120, collision 56) changes a live held item's
+word 46 from 20 to 21 and selects frame 5, without requiring the interaction
+key. The original wooden stick is VEKT54 animation 4, frame 1/5. Its burning
+frame already contains four FACKEL sprites; transient first-person materials
+now use the scene's existing animated texture bank, without registering
+short-lived instances in the scene. The largest sprite's authored vertex 24
+anchors a warm, flickering, 180-DOS-unit light with specularity and no duplicate
+corona. Hiding or dropping the held stick removes this light immediately.
+
+Dropped burning sticks ignite intersecting oil before becoming unlit frame 1,
+word 46 = 20, and emitting smoke. **Author-requested difference:** DOS only
+extinguished the world stick when the collision-map material's low three bits
+were nonzero; the modern game extinguishes it on any ground, including dry
+floor. All overlapping oil contacts are checked, so an earlier unrelated
+collision does not swallow ignition. Grounded poles query terrain from their
+own Y instead of the player's eye + 40; changing player height can otherwise
+make a dropped stick jump between repeated storeys.
+
+The sewer's original VEKT54 animation 5 frames 1/2 contain thirteen positions
+and **zero polygons**: they are flame-emitter clouds, not visible puddle
+surfaces. The ordinary surface-validity check previously discarded them.
+Burning vertex-only models now retain position-derived bounds and enter the
+existing generic additive flame pass and light collection without fabricated
+triangles or an oil-specific renderer workaround. WARP covers the actual host
+floor-correction path, original stick placement, normal visibility collection,
+and visible flame pixels, not just the display-state flag.
+
+Behavior 178 compares horizontal distance with 400 and restores DS:D4C4 from
+DS:D4C6 nearby, otherwise zeroing it. The saved value originates from the loaded
+sky image height (`0000:0905`, `0D26..0D29`); the frame loop conditionally calls
+the sky updater at `E73D..E744`. This confirms a sky-region switch, not stairs,
+teleportation or foil effects. Avoiding sky work away from the windowed tower
+is consistent with an optimization, though the author's original motive cannot
+be proven from that flag alone. Modern sky precedes opaque geometry and is
+occluded by walls, so the distance optimization is not reproduced.
+
+`mansion-gameplay` covers original-record wheel reversal, all three window
+height bands, moving-key collision/pickup, coffin pickup/placement and blade
+blocking, blade landing/sliding/wall impact, the one-shot knight, torch contact,
+oil ignition/extinguishing, the sky no-op, and dormant/activated full-level
+dispatch. WARP checks original burning/unlit geometry and distinct FACKEL
+frames at landscape, widescreen and portrait sizes, quarter-pixel light-anchor
+alignment, flicker, packed specularity and light removal.
+
 ### Machinery and fish puzzle (level 31)
 
 Evidence: [native dispatch](level31-dispatch-evidence.txt),
@@ -81,6 +160,12 @@ All four previously missing authored behavior types are now implemented, on 25 o
 Other authored types already have handlers: None, Pillar, Door, IdleAnimation,
 RollingRock, Switch1, RopeSwitch, UnderwaterPlants, RotatingSwitch, MetalPole,
 Crab and AnancondaHead.
+
+The original pole at slot 49 now appears in first person after pickup. Native
+selector 6 draws the inventory model directly (`0000:BEE5..BF5C`); it never
+sets the unrelated weapon sprite frame. Held-object recipes therefore bypass
+that sprite-frame gate, while sprite-backed weapons retain it. Consumed or
+dropped inventory objects no longer leave stale geometry in the hand.
 
 Evidence: [dispatch](level32-dispatch-evidence.txt),
 [fish helper](level32-helper-evidence.txt),
@@ -266,7 +351,7 @@ normal corner map visible. Training/part 2 still require their map pickup;
 part-1 weapon cheats remain disabled.
 
 An audit of all original `OBJPOS` records for the seven playable maps,
-including inactive records, now finds these **21 unimplemented world-behavior
+including inactive records, now finds these **15 unimplemented world-behavior
 handlers**. Names retain existing spellings and numeric placeholders; this
 is a coverage inventory, not a claim that the names fully describe recovered
 native logic.
@@ -274,7 +359,6 @@ native logic.
 | ID | Handler | Maps |
 | --- | --- | --- |
 | 42 | MercuryLamp | 34 |
-| 58 | KeyInBucket | 33 |
 | 84 | ItemHiddenInBox | 36 |
 | 100 | Moon | 30, 36 |
 | 145 | PuzzleGameTile | 35 |
@@ -285,13 +369,8 @@ native logic.
 | 156 | GrandfatherClockHand | 35 |
 | 157 | GrandfatherClockPendulum | 35 |
 | 159 | RotateKnightsInClock | 35 |
-| 162 | KnightsCrossbow | 33, 35 |
 | 165 | ActionObjectToGrab | 34 |
 | 169 | RoofTopThunderHandler1 | 36 |
-| 172 | CeilingBladesComingDown | 33 |
-| 173 | PortableCoffin | 33 |
-| 174 | BladesFromSide | 33 |
-| 178 | Behavior_178 | 33 |
 | 182 | DestroyableRoof | 36 |
 | 183 | RoofTopThunderHandler2 | 36 |
 
@@ -304,15 +383,13 @@ separate coverage surfaces.
 The park's bull, cows and held bucket are now recovered; see below. Moon remains
 deliberately excluded. Additional confirmed part-1 gaps:
 
-- **KeyInBucket (58):** the separate world behavior in map 33 remains
-  unrecovered; it is not the park's now-supported held-bucket controller.
 - **Foil (attack selector 23):** map 35 slot 79 can be picked up but has no
   supported held-tool/weapon-view state machine.
-- **Other tools:** selector-6 metal poles are supported; selector-6 bones and
-  the portable coffin still fail the supported placement-handler gate.
-- **Explicit interaction stubs:** `WheelToLiftRope` (58), `VaseToGrab` (92),
+- **Other tools:** selector-6 metal poles and the portable coffin are supported;
+  selector-6 bones still fail the supported placement-handler gate.
+- **Explicit interaction stubs:** `VaseToGrab` (92),
   `MirrorToGrab` (93), `SarcophagusWithBones` (121), and `BookWithCode` (252).
-  Torchlight-specific pickup/use (56), the light-sensor puzzle (94), and
+  The light-sensor puzzle (94) and
   bucket washing/refilling have no corresponding player-contact/use path.
 - **Introduction:** HERZ entry 29 is still skipped rather than played.
 
@@ -2123,7 +2200,8 @@ this does not claim to reproduce its palette-table treatment.
 The native sky gate is loaded from the sky bitmap (height plus one); normal
 successful asset loading is represented by `Level::hasSky` from `LEVELS.INF`
 byte 96. Level 10 selects `GRAFIK\TUR60.256`. `GameContext::skyEnabled`
-owns the gate. The unrelated distance-based sky toggle (178) remains unrecovered.
+owns the gate. The unrelated distance-based sky toggle (178) is recovered above
+and intentionally omitted from the modern renderer.
 No sky freezes selector 102's timer and RNG. A player-tile ceiling suppresses
 flash geometry after the native admission draw.
 
@@ -2179,12 +2257,12 @@ draws or altered native endpoints/branch ordering are introduced.
 The host projects these lines into a camera-oriented plane 1800 native units
 away, using existing `SetTexturedLine` vertex stretching, an additive glow
 texture, and 128-segment chunks to respect byte-addressed second vertices.
-A radius-1700, intensity-80 cool-white light at the bolt's distant lower region
-brightens remote surfaces while excluding the immediate foreground. This
+A radius-3000, intensity-60 cool-white light at the bolt's distant lower region
+brightens remote surfaces and reaches the player. This
 placement is an artistic approximation, not recovered world-space lightning.
 Models and lights are removed in hide, including loading, unload and shutdown;
 only the reusable glow texture remains cached. WARP tests verify visible strips,
-actual distant illumination versus dark foreground, chunk completeness and
+actual distant and foreground illumination, chunk completeness and
 multi-flash cleanup.
 
 ### Locked building entrance and validation
@@ -3092,10 +3170,9 @@ the vehicle and level-32 recovery sections rather than treating boarding as
 merely copying vehicle position.
 **Remaining boundaries:** Radial contact separation, several other
 contact/hazard responses remain unported. Oxygen depletion, bubbles and
-underwater audio are now implemented below. Behavior **178** compares horizontal player distance with
-`itemValue` and switches a DOS viewport-region height; it does not move the
-player. A connection to foil-revealed fire particles is the author's
-hypothesis, **not yet established**; keep `Behavior_178` unchanged.
+underwater audio are now implemented below. Behavior **178**, now
+`DistanceSkyToggle`, switches the DOS sky region by distance; it does not
+move the player. Its modern handler is intentionally empty; see level 33 above.
 
 #### Jumping, crouching and water-forced posture
 

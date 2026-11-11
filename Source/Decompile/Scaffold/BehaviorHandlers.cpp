@@ -1929,8 +1929,7 @@ namespace Desperabis
     {
         if (object.winX == 0)
         {
-            object.posY = context.GetTerrainFloorHeight(object.posX,
-                WrapSignedWord(context.GetPlayerCamera().position[1] + 40), object.posZ);
+            object.posY = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
         }
         const auto slot = context.FindCollidingObject(object);
         if (slot != 0)
@@ -1945,14 +1944,20 @@ namespace Desperabis
                 }
                 target.collisionType = CollisionType::Switch; target.animFrame = 2; context.SetObjectHealth(object, 0);
             }
-            else if (target.collisionType == CollisionType::BurnableOilPuddle && object.doorLockOrGroupBitmask == 21)
-            {
-                context.DamageObject(target, 0);
-            }
         }
-        if (object.doorLockOrGroupBitmask == 21 &&
-            (context.GetCollisionMapPixelAtWorldXZ(object.posX, object.posZ) & 7) != 0)
+        if (object.doorLockOrGroupBitmask == 21)
         {
+            if (context.objectCollisionsEnabled && object.health > 0)
+            {
+                for (const auto contact : context.FindCollidingObjects(object))
+                {
+                    auto& target = context.worldObjects[contact];
+                    if (target.collisionType == CollisionType::BurnableOilPuddle)
+                    {
+                        context.DamageObject(target, 0);
+                    }
+                }
+            }
             object.doorLockOrGroupBitmask = 20; object.animFrame = 1;
             context.InitializeSmokeParticle(context.worldObjects[context.FindFreeOrLowestHealthObjectIndex()],
                 object.posX, object.posY, object.posZ, 0, 1, 1);
@@ -1960,9 +1965,13 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::MetalPole, 0x237D };
     }
 
-    DispatchResult Function_KeyInBucket(RawGameObject&, GameContext&)
+    DispatchResult Function_KeyInBucket(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::KeyInBucket, 0x2484 };
+        const auto slot = context.FindWorldObjectSlot(object);
+        const auto y = slot >= 0 ? context.GetObjectRenderState(slot).posY : object.posY;
+        object.collisionMask = (y >= 60 && y <= 80) || (y >= -140 && y <= -120) ||
+            (y >= -340 && y <= -320) ? 1 : 0;
+        return { DispatchStatus::ExecutedCase, BehaviorType::KeyInBucket, 0x2484 };
     }
 
     DispatchResult Function_DiggableGround(RawGameObject& object, GameContext& context)
@@ -3451,9 +3460,19 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::RandomAttachmentYaw, 0x4816 };
     }
 
-    DispatchResult Function_KnightsCrossbow(RawGameObject&, GameContext&)
+    DispatchResult Function_KnightsCrossbow(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::KnightsCrossbow, 0x482D };
+        if (object.health == 1000)
+        {
+            context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+                context.GetSoundVolumeAt(object.posX, object.posZ), object, 1);
+            auto emitter = object;
+            emitter.generalPurpose1 = static_cast<std::uint16_t>(object.itemValue);
+            context.SpawnEmitterProjectile(emitter);
+            object.behavior = BehaviorType::None;
+            if (object.modelFrame2 > 0) { object.animFrame = object.modelFrame2; }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::KnightsCrossbow, 0x482D };
     }
 
     DispatchResult Function_Behavior_163(RawGameObject&, GameContext&)
@@ -3540,19 +3559,105 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::CutSceneCloud, 0x4B9F };
     }
 
-    DispatchResult Function_CeilingBladesComingDown(RawGameObject&, GameContext&)
+    DispatchResult Function_CeilingBladesComingDown(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::CeilingBladesComingDown, 0x4BDC };
+        if (object.health == 1000)
+        {
+            const auto volume = context.GetSoundVolumeAt(object.posX, object.posZ);
+            context.PlaySoundEffect(static_cast<SoundEffect>(68), volume, 401, 1);
+            auto fraction = WrapSignedWord(object.generalPurpose2);
+            AddFixedPoint8(object.posY, fraction, WrapSignedWord(context.tickCount * object.velocityY));
+            object.generalPurpose2 = static_cast<std::uint16_t>(fraction);
+            const auto floor = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
+            if (context.OverlapsPlayer(object))
+            {
+                context.playerPostureDelta = -6;
+                context.worldObjects[1].velocityY = std::min<std::int16_t>(context.worldObjects[1].velocityY, 0);
+            }
+            if (context.windX > 0) { object.behavior = BehaviorType::None; }
+            else if (object.posY < floor)
+            {
+                context.StopSoundSample(68);
+                context.PlaySoundEffect(static_cast<SoundEffect>(39), volume, 402, 2);
+                object.posY = floor;
+                object.behavior = BehaviorType::None;
+                object.behaviorParameter = 0;
+                object.collisionType = CollisionType::DamageObj;
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::CeilingBladesComingDown, 0x4BDC };
     }
 
-    DispatchResult Function_PortableCoffin(RawGameObject&, GameContext&)
+    DispatchResult Function_PortableCoffin(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::PortableCoffin, 0x4BFD };
+        object.posY = WrapSignedWord(context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ) +
+            ArithmeticShiftRight(object.collisionRadiusY, 1));
+        context.windX = 0;
+        if (object.winX >= 0) { object.winX = WrapSignedWord(object.winX + GetStepToward(object.winX, 128, 12)); }
+        const auto slot = context.FindCollidingObject(object);
+        if (slot > 0 && context.worldObjects[slot].behavior == BehaviorType::CeilingBladesComingDown)
+        {
+            context.windX = 1;
+            object.collisionMask = 4;
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::PortableCoffin, 0x4BFD };
     }
 
-    DispatchResult Function_BladesFromSide(RawGameObject&, GameContext&)
+    DispatchResult Function_BladesFromSide(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::BladesFromSide, 0x4C87 };
+        for (int tick = 0; tick < context.tickCount; ++tick)
+        {
+            if (object.health == 1000)
+            {
+                object.collisionType = CollisionType::DamageObj;
+                object.winX = static_cast<std::int16_t>((object.winX - ArithmeticShiftRight(object.itemValue, 7)) & 511);
+                object.winZ = static_cast<std::int16_t>((object.winZ -
+                    ArithmeticShiftRight(WrapSignedWord(object.generalPurpose1), 7)) & 511);
+                object.posY = WrapSignedWord(object.posY + object.velocityY / 2);
+                object.velocityY = WrapSignedWord(object.velocityY - 1);
+                AddFixedPoint8(object.posX, object.velocityX, object.itemValue);
+                AddFixedPoint8(object.posZ, object.velocityZ, WrapSignedWord(object.generalPurpose1));
+                const auto probeX = WrapSignedWord(object.posX + SignWord(object.itemValue) * object.collisionRadiusXZ);
+                const auto probeZ = WrapSignedWord(object.posZ +
+                    SignWord(WrapSignedWord(object.generalPurpose1)) * object.collisionRadiusXZ);
+                if ((context.GetCollisionMapPixelAtWorldXZ(probeX, probeZ) & 8) != 0)
+                {
+                    context.SetObjectHealth(object, 2000);
+                    object.collisionMask = 0;
+                    object.collisionType = CollisionType::None;
+                }
+                const auto target = context.FindCollidingObject(object);
+                if (target > 0 && object.behaviorParameter > 0) { context.DamageObject(context.worldObjects[target], 100); }
+                const auto floor = WrapSignedWord(context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ) +
+                    object.collisionRadiusY);
+                if (object.posY < floor)
+                {
+                    object.posY = floor;
+                    object.velocityY = static_cast<std::int16_t>(std::abs(static_cast<int>(object.velocityY)) / 2);
+                    if (object.velocityY > 2)
+                    {
+                        context.PlaySoundEffect(static_cast<SoundEffect>(37),
+                            context.GetSoundVolumeAt(object.posX, object.posZ), object, 2);
+                    }
+                }
+            }
+            else if (object.health == 2000)
+            {
+                object.velocityY = WrapSignedWord(object.velocityY - 1);
+                object.posY = WrapSignedWord(object.posY + object.velocityY);
+                const auto floor = WrapSignedWord(context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ) +
+                    object.collisionRadiusY);
+                if (object.posY < floor)
+                {
+                    object.posY = floor;
+                    object.velocityY = 0;
+                    object.renderPlacementMode = 0;
+                    if (context.FindCollidingObject(object) == 0) { object.behavior = BehaviorType::Pillar; }
+                }
+            }
+        }
+        object.winX = object.winZ = 0;
+        return { DispatchStatus::ExecutedCase, BehaviorType::BladesFromSide, 0x4C87 };
     }
 
     DispatchResult Function_ExplodingMachine(RawGameObject& object, GameContext& context)
@@ -3615,9 +3720,9 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::PressureIndicator, 0x4D0C };
     }
 
-    DispatchResult Function_Behavior_178(RawGameObject&, GameContext&)
+    DispatchResult Function_DistanceSkyToggle(RawGameObject&, GameContext&)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_178, 0x4D3C };
+        return { DispatchStatus::ExecutedCase, BehaviorType::DistanceSkyToggle, 0x4D3C };
     }
 
     DispatchResult Function_LargeFish(RawGameObject& object, GameContext& context)

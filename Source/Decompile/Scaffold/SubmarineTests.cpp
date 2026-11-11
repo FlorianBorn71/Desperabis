@@ -305,6 +305,28 @@ namespace
             "Reaching the authored threshold exactly must also shatter the pane.");
     }
 
+    void TestHeldPole(const std::filesystem::path& assets)
+    {
+        Host host(assets);
+        auto& pole = host.worldObjects[49];
+        Check(pole.behavior == BehaviorType::MetalPole && pole.modelId == 37 &&
+            pole.modelAnim == 1 && pole.animFrame == 3, "The original underwater pole must retain its authored model.");
+        host.inventory.fill({});
+        host.RefreshWeaponInventory();
+        const auto pickup = HandlePlayerObjectInteraction(pole, host);
+        Check(pickup.status == InteractionStatus::Applied, "The underwater pole must enter the player's inventory.");
+        Input input;
+        for (int tick = 0; tick < 60; ++tick)
+        {
+            host.Tick({1, 1}, input);
+        }
+        const auto view = host.GetWeaponView();
+        Check(host.selectedWeapon == WeaponType::TrapOrPole && host.weaponSpriteFrame == 0 &&
+            view && view->kind == WeaponView::Kind::Model && view->object.modelId == 37 &&
+            view->object.modelAnim == 1 && view->object.animFrame == 3 && !view->bindWeaponBitmap,
+            "Picking up the actual level-32 pole must show its first-person model without a weapon sprite frame.");
+    }
+
     void TestCoverage(const std::filesystem::path& assets)
     {
         Host host(assets);
@@ -334,6 +356,7 @@ int main(int argc, char** argv)
         TestVehicle(assets);
         TestStressAndExit(assets);
         TestWindow(assets);
+        TestHeldPole(assets);
         TestCoverage(assets);
         std::cout << "Submarine level 32 tests passed.\n";
         return 0;

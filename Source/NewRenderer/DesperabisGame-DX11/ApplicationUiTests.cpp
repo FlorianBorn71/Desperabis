@@ -716,12 +716,262 @@ namespace
         }
     }
 
+    class FlameScene final : public Scene
+    {
+    public:
+        FUTURE(void) CreateScene() override { m_sceneReady = true; CO_RETURN; }
+        std::size_t BindingCount() const { return m_fireAnimationInstances.size(); }
+        bool HasFlameSlot(int slot) const { return m_fireAnimations[slot].m_torchAnim != nullptr; }
+    };
+
+    void CheckHeldTorch(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        LevelScene scene(33);
+        scene.m_createGameObjects = false;
+        scene.m_createMapIcons = false;
+        FORCE_WAIT(scene.CreateScene());
+        const auto objects = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS33.DAT")));
+        ::RawGameObject marker{};
+        std::memcpy(marker.m_rawBytes, objects.data() + (30 - 2) * 54, 54);
+        marker.m_level = scene.m_level;
+        LevelGameObject controller(&scene, marker);
+        FORCE_WAIT(GamePlay::CreateObjectBehavior(scene, controller, marker));
+        ApplicationUi ui;
+        FORCE_WAIT(ui.Initialize());
+        class MansionHost final : public Desperabis::GameContext
+        {
+        public:
+            explicit MansionHost(Level& level) : m_level(level) {}
+        private:
+            Level& m_level;
+            std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+            {
+                return FORCE_GET(FileManager::Instance().ReadDataFuture(FileManager::Instance().FilenameToNative(
+                    std::wstring(filename.begin(), filename.end()))));
+            }
+            void LoadLevel(const Desperabis::LevelLoadRequest& request) override
+            {
+                Desperabis::LevelLoadData data;
+                LoadLevelGeometry(request.levelNumber, data);
+                LoadLevelObjects(request.levelNumber, data);
+                InitializeLevelPlayerSpawn(data, {0,0,100});
+                CompleteLevelLoad(request.id, std::move(data));
+            }
+            void OnFreshLevelLoaded() override
+            {
+                for (std::size_t slot = 2; slot <= 164; ++slot)
+                {
+                    ::RawGameObject raw{};
+                    Desperabis::EncodeGameObject(worldObjects[slot], raw.m_rawBytes, sizeof(raw.m_rawBytes));
+                    m_level.CorrectInitialObjectPlacement(raw);
+                    worldObjects[slot].posX = raw.m_rawShorts[6];
+                    worldObjects[slot].posY = raw.m_rawShorts[7];
+                    worldObjects[slot].posZ = raw.m_rawShorts[8];
+                }
+            }
+        } core(*scene.m_level);
+        core.StartLevel(33);
+        core.SetMenuPage(Desperabis::MenuPage::Gameplay);
+        core.selectedWeapon = Desperabis::WeaponType::TrapOrPole;
+        core.weaponHand = 2;
+        core.weaponAnimationPosition = 20;
+        auto& stick = core.inventory[1];
+        stick = Desperabis::DecodeGameObject(objects.data() + (39 - 2) * 54, 54);
+        stick.animFrame = 5;
+        stick.doorLockOrGroupBitmask = 21;
+        const auto lit = *core.GetWeaponView();
+        const auto* model = scene.m_level->GetLevelInfo().GetModelAnim(2)->GetModel(3, 4);
+        Check(model->m_sourcePositions.size() == 24,
+            "The original burning stick must retain all twenty-four authored positions.");
+        int animated = 0;
+        for (const auto& draw : model->m_drawCalls) { if (draw.m_material.m_textureSlot == 13) { ++animated; } }
+        Check(animated > 0, "The original burning frame must contain FACKEL flame geometry.");
+        for (const auto size : {std::pair<UINT,UINT>{360,240}, {1280,720}, {480,800}})
+        {
+            Target target(device, size.first, size.second);
+            renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+            RenderingSettings settings;
+            ProfilingStats stats;
+            const auto render = [&](const Desperabis::WeaponView& view)
+            {
+                const float black[]{0,0,0,1};
+                context->ClearRenderTargetView(target.colorView.Get(), black);
+                context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 0.f, 0);
+                ui.DrawWeapon(view, renderer, *scene.m_level, settings, stats, target.viewport,
+                    context, target.colorView.Get(), target.depthView.Get(), nullptr, &scene);
+                return target.Pixels(device, context);
+            };
+            scene.SetFireAnimationFrame(13, 0);
+            const auto first = render(lit);
+            scene.SetFireAnimationFrame(13, 1);
+            const auto second = render(lit);
+            Check(first != second, "The held flame must render different original animation frames on the GPU.");
+            stick.animFrame = 1; stick.doorLockOrGroupBitmask = 20;
+            const auto unlit = render(*core.GetWeaponView());
+            Check(first != unlit && second != unlit,
+                "The burning stick must show additional flame pixels, even behind fully occluding world depth.");
+            stick.animFrame = 5; stick.doorLockOrGroupBitmask = 21;
+            const auto savedStick = stick;
+            stick = Desperabis::DecodeGameObject(objects.data() + (32 - 2) * 54, 54);
+            const auto coffin = *core.GetWeaponView();
+            const auto coffinPixels = render(coffin);
+            Check(coffin.object.posZ < 35 && std::count_if(coffinPixels.begin(), coffinPixels.end(),
+                [](auto pixel) { return (pixel & 0xffffff) != 0; }) > 20,
+                "The coffin must remain visible in first person after being pulled twenty-five native units closer.");
+            stick = savedStick;
+            Camera camera;
+            Matrix4 projection;
+            projection.CreateProjection(target.viewport.Width / target.viewport.Height, 1.1f, 0.001f, 100.f);
+            camera.SetProjectionMatrix(projection);
+            const auto tip = ApplicationUi::HeldTorchTipWorld(lit, *scene.m_level, camera, target.viewport);
+            ComPtr<ID3D11Buffer> instanceBuffer, globalsBuffer;
+            render(lit);
+            context->VSGetConstantBuffers(1, 1, &instanceBuffer);
+            context->VSGetConstantBuffers(0, 1, &globalsBuffer);
+            const auto instanceData = ReadBuffer<float>(device, context, instanceBuffer.Get());
+            const auto globals = ReadBuffer<float>(device, context, globalsBuffer.Get());
+            Matrix4 actualModel, actualProjection;
+            actualModel.Load(instanceData.data()); actualModel = actualModel.GetTransposed();
+            actualProjection.Load(globals.data() + 64); actualProjection = actualProjection.GetTransposed();
+            const auto& vertex = model->m_sourcePositions.at(23);
+            const auto gpu = (actualModel * actualProjection).TransformPosition(Vector(vertex.x, vertex.y, vertex.z));
+            const auto world = (camera.GetViewMatrix(0) * projection).TransformPosition(tip);
+            const float scale = (std::min)(target.viewport.Width / Desperabis::WeaponView::Width,
+                target.viewport.Height / Desperabis::WeaponView::Height);
+            const float expectedX = target.viewport.Width * 0.5f + gpu.GetX() * Desperabis::WeaponView::Width * scale * 0.5f;
+            const float expectedY = target.viewport.Height - (gpu.GetY() + 1.f) * Desperabis::WeaponView::Height * scale * 0.5f;
+            Check(std::abs((world.GetX() + 1.f) * target.viewport.Width * 0.5f - expectedX) < 0.25f &&
+                std::abs((1.f - world.GetY()) * target.viewport.Height * 0.5f - expectedY) < 0.25f,
+                "The torch light must align with its actual GPU flame anchor within a quarter pixel.");
+            const auto count = scene.GetLightSources().size();
+            scene.SetHeldTorchLight(true, tip);
+            Check(scene.GetLightSources().size() == count + 1, "A held torch must add one local light.");
+            const auto light = scene.GetLightSources().back();
+            PackedLightSourceParams before{}, after{};
+            light->FillLightParams(before);
+            Check(light->GetSpecularAmount() == 1.f && before.ColorAndPadding.w == 1.f &&
+                light->GetRadius() == 180.f * DespToFloat && light->GetCoronaSize() == 0.f,
+                "The held torch must pack warm, specular local lighting without a duplicate corona.");
+            scene.SetHeldTorchLight(true, tip);
+            Check(scene.GetLightSources().size() == count + 1 && scene.GetLightSources().back() == light,
+                "Synchronizing a held torch must preserve its flicker phase rather than recreating the light.");
+            scene.Update(0.37);
+            light->FillLightParams(after);
+            Check(before.ColorAndPadding.x != after.ColorAndPadding.x,
+                "A burning held torch must actually flicker.");
+            scene.SetHeldTorchLight(false, Vector(0,0,0));
+            Check(scene.GetLightSources().size() == count, "Dropping or hiding the held torch must remove its light.");
+        }
+        auto& oil = core.worldObjects[84];
+        const auto originalOil = Desperabis::DecodeGameObject(objects.data() + (84 - 2) * 54, 54);
+        std::cout << "Sewer oil Y: authored " << originalOil.posY << ", corrected " << oil.posY << ".\n";
+        Check(std::abs(oil.posY - originalOil.posY) <= 4,
+            "Fresh renderer placement must preserve the sewer oil's authored storey.");
+        auto& player = core.worldObjects[1];
+        player.posX = oil.posX; player.posZ = oil.posZ;
+        player.posY = core.GetTerrainFloorHeight(oil.posX, oil.posY, oil.posZ) +
+            core.playerBodyHeight - player.collisionRadiusY - 2;
+        core.weaponAnimationSpeed = 0;
+        core.weaponAmounts[6] = 1;
+        core.weaponReady = true;
+        Check(core.AttackWithSelectedWeapon() == Desperabis::WeaponActionStatus::Applied,
+            "The original burning stick must be placeable on the actual sewer floor.");
+        for (auto& object : core.worldObjects)
+        {
+            if (object.health > 0 && object.behavior == Desperabis::BehaviorType::MetalPole &&
+                object.doorLockOrGroupBitmask == 21)
+            {
+                Desperabis::Function_MetalPole(object, core);
+            }
+        }
+        Check(oil.displayType == Desperabis::DisplayType::LastVectorBurning,
+            "The host's corrected oil records must actually ignite when the burning stick is placed.");
+        ::RawGameObject rawOil{};
+        Desperabis::EncodeGameObject(oil, rawOil.m_rawBytes, sizeof(rawOil.m_rawBytes));
+        auto burning = std::make_shared<RenderableInstance>();
+        scene.m_level->ApplyRenderProperties(burning, rawOil);
+        Check(burning->IsValid() && burning->m_fireIntensity > 0.f,
+            "Ignited original sewer oil must enter the renderer's burning-instance path.");
+        Target flameTarget(device, 360, 240);
+        renderer.ReInitialize(flameTarget.colorView.Get(), flameTarget.depthView.Get(), flameTarget.viewport);
+        Camera camera;
+        Matrix4 projection, transform;
+        projection.CreateProjection(1.5f, Math::Pi / 3.f, 0.001f, 50.f);
+        const auto oilPosition = Level::DespToPos(oil.posX, oil.posY, oil.posZ);
+        transform.SetTranslation(Vector(oilPosition.GetX(), oilPosition.GetY() + 30.f * DespToFloat,
+            oilPosition.GetZ() + 100.f * DespToFloat));
+        camera.SetProjectionMatrix(projection);
+        camera.SetCameraTransformMatrix(transform);
+        FlameScene flameScene;
+        FORCE_WAIT(flameScene.CreateScene());
+        flameScene.AddRenderableInstance(burning);
+        VisibilityResult visible;
+        RenderingSettings settings;
+        ProfilingStats stats;
+        DefaultVisibilityContext visibility;
+        visibility.ComputeResultFor(&camera, &flameScene, visible, settings, VisibilitySettings{}, stats);
+        const auto cloudCenter = camera.GetViewMatrix(0).TransformPosition(burning->GetGlobalBounds().GetCenter());
+        std::cout << "Sewer flame cloud: ready " << flameScene.IsReady() << ", radius "
+            << burning->GetGlobalBounds().GetSphereRadius() << ", view " << cloudCenter.GetX() << ","
+            << cloudCenter.GetY() << "," << cloudCenter.GetZ() << ", mask "
+            << static_cast<int>(visible.m_visibleInstances.m_visibleTransparencyTypes) << ", burning "
+            << visible.m_visibleInstances.m_burningInstances.size() << ", surfaces "
+            << visible.m_visibleInstances.m_opaqueInstances.size() << "/"
+            << visible.m_visibleInstances.m_transparentInstances.size() << ".\n";
+        Check(visible.HasResults() && visible.m_visibleInstances.m_burningInstances.size() == 1 &&
+            visible.m_visibleInstances.m_opaqueInstances.empty() &&
+            visible.m_visibleInstances.m_transparentInstances.empty(),
+            "A vertex-only burning cloud must survive ordinary bounds, visibility and pass collection without surface draw calls.");
+        visible.m_fogFalloff = 0.f;
+        visible.m_lightmap = AssetManager::Instance().GetPlainWhiteTexture();
+        const float black[]{0,0,0,1};
+        context->ClearRenderTargetView(flameTarget.colorView.Get(), black);
+        context->ClearDepthStencilView(flameTarget.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+        renderer.RenderSceneElements(visible, settings, stats);
+        const auto flamePixels = flameTarget.Pixels(device, context);
+        Check(std::count_if(flamePixels.begin(), flamePixels.end(),
+            [](auto pixel) { return (pixel & 0xffffff) != 0; }) > 100,
+            "Ignited original sewer oil must draw visible flame pixels, not just carry a burning-state flag.");
+        ui.Deinitialize();
+        scene.ClearScene();
+    }
+
     void CheckSubmarinePortholeGlass(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
         LevelScene scene(32);
         scene.m_createGameObjects = false;
         scene.m_createMapIcons = false;
         FORCE_WAIT(scene.CreateScene());
+        const auto objects = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS32.DAT")));
+        Desperabis::GameContext poleCore;
+        poleCore.SetMenuPage(Desperabis::MenuPage::Gameplay);
+        poleCore.selectedWeapon = Desperabis::WeaponType::TrapOrPole;
+        poleCore.weaponHand = 2;
+        poleCore.weaponAnimationPosition = 20;
+        poleCore.inventory[1] = Desperabis::DecodeGameObject(objects.data() + (49 - 2) * 54, 54);
+        Check(poleCore.weaponSpriteFrame == 0 && poleCore.GetWeaponView().has_value(),
+            "The original underwater pole must have a first-person model without a weapon sprite frame.");
+        ApplicationUi ui;
+        FORCE_WAIT(ui.Initialize());
+        for (const auto size : {std::pair<UINT,UINT>{360,240}, {1280,720}, {480,800}})
+        {
+            Target poleTarget(device, size.first, size.second);
+            renderer.ReInitialize(poleTarget.colorView.Get(), poleTarget.depthView.Get(), poleTarget.viewport);
+            const float black[]{0,0,0,1};
+            context->ClearRenderTargetView(poleTarget.colorView.Get(), black);
+            context->ClearDepthStencilView(poleTarget.depthView.Get(), D3D11_CLEAR_DEPTH, 0.f, 0);
+            RenderingSettings poleSettings;
+            ProfilingStats poleStats;
+            ui.DrawWeapon(*poleCore.GetWeaponView(), renderer, *scene.m_level, poleSettings, poleStats,
+                poleTarget.viewport, context, poleTarget.colorView.Get(), poleTarget.depthView.Get());
+            const auto pixels = poleTarget.Pixels(device, context);
+            Check(std::count_if(pixels.begin(), pixels.end(),
+                [](auto pixel) { return (pixel & 0xffffff) != 0; }) > 20,
+                "The picked-up underwater pole must draw visible first-person geometry over occluding world depth.");
+        }
+        ui.Deinitialize();
         const Model& model = *scene.m_level->GetLevelInfo().GetModelAnim(2)->GetModel(1, 0);
         const auto glass = std::find_if(model.m_drawCalls.begin(), model.m_drawCalls.end(),
             [](const auto& draw) { return draw.m_material.m_transparencyType == TransparencyMode::AlphaBlended; });
@@ -1054,14 +1304,6 @@ namespace
             << changed << " scene pixels tinted, maximum channel change " << maximumDelta
             << "/255; native crack prefixes and shattering verified; original underwater noise pixels uploaded without polluting cached textures.\n";
     }
-
-    class FlameScene final : public Scene
-    {
-    public:
-        FUTURE(void) CreateScene() override { m_sceneReady = true; CO_RETURN; }
-        std::size_t BindingCount() const { return m_fireAnimationInstances.size(); }
-        bool HasFlameSlot(int slot) const { return m_fireAnimations[slot].m_torchAnim != nullptr; }
-    };
 
     void CheckForegroundDepth(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
@@ -2064,14 +2306,14 @@ namespace
         Check(!scene.GetRenderableInstances().empty() && scene.GetLightSources().size() == 1,
             "Lightning show must register a dynamic model and distant light.");
         const auto light = scene.GetLightSources().front();
-        Check(light->GetPosition().GetLength() > light->GetRadius() && light->GetRadius() > 0.f,
-            "Lightning light must concentrate illumination in the distance, not at the player.");
+        Check(light->GetPosition().GetLength() < light->GetRadius(),
+            "The distant lightning light must also reach the player.");
         PackedLightSourceParams packed;
         Check(light->FillLightParams(packed) && packed.ColorAndPadding.x > 1.f && light->GetCoronaSize() == 0.f,
             "Lightning must use a bright, cool dynamic light without an unrelated corona.");
-        Check(std::fabs(light->GetRadius() - 1700.f * DespToFloat) < 0.0001f &&
-            std::fabs(packed.ColorAndPadding.x - 80.f * 210.f / 255.f) < 0.0001f,
-            "Lightning must use the exaggerated 80x multiplier and increased 1700-unit radius.");
+        Check(std::fabs(light->GetRadius() - 3000.f * DespToFloat) < 0.0001f &&
+            std::fabs(packed.ColorAndPadding.x - 60.f * 210.f / 255.f) < 0.0001f,
+            "Lightning must use the reduced 60x multiplier and expanded 3000-unit radius.");
         Target target(device, 360, 240);
         renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
         VisibilityResult visible;
@@ -2133,8 +2375,8 @@ namespace
         const auto nearCount = litPixels(Vector(0.f, 0.f, -0.5f), true);
         std::cout << "Lightning receiver pixels: baseline " << unlitCount << ", distant "
             << distantCount << ", foreground " << nearCount << ".\n";
-        Check(unlitCount == 0 && distantCount >= 100 && nearCount == 0,
-            "The lightning light must illuminate distant surfaces while leaving the immediate foreground dark.");
+        Check(unlitCount == 0 && distantCount >= 100 && nearCount >= 100,
+            "The lightning light must illuminate distant surfaces and the player's immediate foreground.");
         std::weak_ptr<RenderableInstance> instance = scene.GetRenderableInstances().front();
         presentation.Show(scene, flash, camera);
         Check(scene.GetLightSources().size() == 2, "Multiple flashes in a batch must retain their own lights.");
@@ -7662,6 +7904,7 @@ int main(int argc, char* argv[])
         CheckPrimitiveSortingDepth(renderer, device.Get(), context.Get());
         CheckModelSortingDepthOverrides(device.Get(), context.Get());
         CheckLevel24WindmillDoors(renderer, device.Get(), context.Get());
+        CheckHeldTorch(renderer, device.Get(), context.Get());
         CheckSubmarinePortholeGlass(renderer, device.Get(), context.Get());
         CheckForegroundDepth(renderer, device.Get(), context.Get());
         CheckTutorialFlames();

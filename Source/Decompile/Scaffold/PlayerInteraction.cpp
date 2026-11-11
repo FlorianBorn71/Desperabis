@@ -1,6 +1,8 @@
 #include "BehaviorDispatch.h"
 #include "GameMath.h"
 
+#include <stdexcept>
+
 namespace Desperabis
 {
     InteractionResult UpdatePlayerInteraction(GameContext& context, InputHandler& input)
@@ -11,6 +13,19 @@ namespace Desperabis
             return { InteractionStatus::NoEffect };
         }
         auto& object = context.worldObjects[context.playerCollisionSlot];
+        if (object.collisionType == CollisionType::PickableTorchlight)
+        {
+            if (context.weaponHand > context.inventory.size())
+            {
+                throw std::out_of_range("Torch contact requires an inventory hand in 0..14.");
+            }
+            if (context.weaponHand == 0) { return {InteractionStatus::NoEffect}; }
+            auto& held = context.inventory[context.weaponHand - 1];
+            if (held.health != 1000 || held.doorLockOrGroupBitmask != 20) { return {InteractionStatus::NoEffect}; }
+            held.animFrame = 5;
+            held.doorLockOrGroupBitmask = 21;
+            return {InteractionStatus::Applied};
+        }
         if (object.collisionType == CollisionType::CurtainOpens)
         {
             object.collisionMask = 0;

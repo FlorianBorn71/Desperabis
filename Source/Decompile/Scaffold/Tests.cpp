@@ -171,7 +171,8 @@ namespace
             object.posX = -100;
             if (entry.type == BehaviorType::WaterDrop || entry.type == BehaviorType::FloatingDebris ||
                 entry.type == BehaviorType::SinkingObject || entry.type == BehaviorType::MetalPole ||
-                entry.type == BehaviorType::BearTrapAmmo || entry.type == BehaviorType::Mummie ||
+                entry.type == BehaviorType::BearTrapAmmo || entry.type == BehaviorType::PortableCoffin ||
+                entry.type == BehaviorType::Mummie ||
                 entry.type == BehaviorType::MummieGuard || entry.type == BehaviorType::Gorilla ||
                 entry.type == BehaviorType::AirborneLeaf || entry.type == BehaviorType::GroundLeaf ||
                 entry.type == BehaviorType::RainDrop || entry.type == BehaviorType::FlyingArrow ||
@@ -209,6 +210,9 @@ namespace
             Check(FindBehavior(entry.type) == &entry && FindBehavior(entry.name) == &entry,
                 "Behavior enum/name lookup must reference the same descriptor.");
             const bool implemented = entry.type == BehaviorType::Pillar || entry.type == BehaviorType::LightSource ||
+                entry.type == BehaviorType::KeyInBucket || entry.type == BehaviorType::KnightsCrossbow ||
+                entry.type == BehaviorType::CeilingBladesComingDown || entry.type == BehaviorType::PortableCoffin ||
+                entry.type == BehaviorType::BladesFromSide || entry.type == BehaviorType::DistanceSkyToggle ||
                 entry.type == BehaviorType::AttackingBull || entry.type == BehaviorType::GrasingCow ||
                 entry.type == BehaviorType::WashingWater ||
                 entry.type == BehaviorType::RotatingSwitch || entry.type == BehaviorType::FlushingFishes ||
@@ -2096,7 +2100,7 @@ namespace
         Check(HandlePlayerObjectInteraction(key, state).status == InteractionStatus::InactiveObject,
             "Host interaction requests must reject inactive selected objects.");
         for (const auto type : { CollisionType::BookWithCode,
-            CollisionType::WheelToLiftRope, CollisionType::VaseToGrab, CollisionType::MirrorToGrab,
+            CollisionType::VaseToGrab, CollisionType::MirrorToGrab,
             CollisionType::SarcophagusWithBones })
         {
             auto unsupported = pickup(type);
