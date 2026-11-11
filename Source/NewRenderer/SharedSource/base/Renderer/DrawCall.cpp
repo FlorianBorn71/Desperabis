@@ -1,6 +1,15 @@
 #include "pch.h"
 #include <Renderer/DrawCall.h>
 #include <Asset/Texture.h>
+#include <algorithm>
+
+int DrawCall::GetPrimitiveCountForPrefix(int sourcePrimitiveCount) const
+{
+    if (sourcePrimitiveCount <= 0) { return 0; }
+    if (m_sourcePrimitiveEnds.empty()) { return m_primitiveCount; }
+    return static_cast<int>(std::upper_bound(m_sourcePrimitiveEnds.begin(), m_sourcePrimitiveEnds.end(),
+        sourcePrimitiveCount) - m_sourcePrimitiveEnds.begin());
+}
 
 bool DrawCall::IsBatchableWith(const DrawCall& other) const
 {

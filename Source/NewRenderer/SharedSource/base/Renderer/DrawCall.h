@@ -94,6 +94,7 @@ struct DrawCallMaterial
     TextureSlotSource m_textureSlotSource = TextureSlotSource::Model;
     float m_opacity = 1.0f;
     float m_depthOffset = 0.f;
+    int m_primitiveCountOverride = -1; // GPU triangles; negative means the complete draw call.
     float m_mirrorHeight = 0.f; // for mirror objects
     Texture* m_texture = nullptr;
 
@@ -104,7 +105,10 @@ struct DrawCall
 {
     int m_firstIndex = 0, m_primitiveCount = 0;
     DrawCallMaterial m_material;
+    // One one-based authored primitive index per GPU triangle, in draw order.
+    std::vector<uint16_t> m_sourcePrimitiveEnds;
 
+    int GetPrimitiveCountForPrefix(int sourcePrimitiveCount) const;
     bool IsBatchableWith(const DrawCall& other) const;
     uint64_t ComputeBatchingKey() const;
 };

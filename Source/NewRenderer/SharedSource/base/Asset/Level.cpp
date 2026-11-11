@@ -258,6 +258,8 @@ void Level::ReadLevelData(const byte* rawData, int dataSize, bool readSize)
 
 void Level::ReadGameObjects(const byte* rawData, int dataSize)
 {
+    m_mutableTextureSlots = {};
+    m_texturePixelRevisions = {};
 #ifdef _DEBUG
     std::string str0 = ByteArrayToStr(rawData, 54); // DEBUG
 #endif
@@ -275,9 +277,49 @@ void Level::ReadGameObjects(const byte* rawData, int dataSize)
 
 //        ((byte*)rawData)[8] = 0; // turn off behavior in savegame
         memcpy(go->m_rawBytes, rawData, objSize);
+        const GamePlay::PropertyAccessorBase properties(*go);
+        if (properties.GetHealth() > 0 && properties.GetBehaviorType() == GamePlay::BehaviorType::UnderwaterTextureNoise)
+        {
+            const int slot = go->m_rawShorts[17];
+            const auto texture = m_levelInfo.GetLevelTexture(slot);
+            if (!texture) { throw std::invalid_argument("Texture-noise target requires a loaded level texture."); }
+            if (!m_mutableTextureSlots.at(slot))
+            {
+                auto local = std::make_shared<Texture>(*texture);
+                AssetManager::Instance().RegisterAsset(*local);
+                m_levelInfo.m_loadedTexture[slot] = std::move(local);
+                m_mutableTextureSlots[slot] = true;
+            }
+        }
     }
 }
 
+
+bool Level::SynchronizeTexturePixels(std::size_t slot, std::uint16_t width, std::uint16_t height,
+    const std::vector<byte>& pixels, std::uint64_t revision)
+{
+    if (slot >= m_mutableTextureSlots.size() || !m_mutableTextureSlots[slot] ||
+        width == 0 || height == 0 || pixels.size() != static_cast<std::size_t>(width) * height)
+    {
+        throw std::invalid_argument("Texture synchronization requires an authored mutable slot and complete pixels.");
+    }
+    if (m_texturePixelRevisions[slot] == revision) { return false; }
+    auto texture = m_levelInfo.GetLevelTexture(static_cast<int>(slot));
+    if (!texture || texture->m_width != width || texture->m_height != height)
+    {
+        throw std::invalid_argument("Mutable texture dimensions must match the loaded level asset.");
+    }
+    TextureLoadingContext data;
+    const auto& palette = AssetManager::Instance().GetDefaultPalette();
+    data.m_rgbaData.reserve(pixels.size());
+    for (const byte index : pixels) { data.m_rgbaData.push_back(palette.GetEntry(index)); }
+    Texture uploaded(*texture);
+    Renderer::Instance().CreateTexture(uploaded, data);
+    texture->m_runtime = std::move(uploaded.m_runtime);
+    texture->m_runtimeHighres.reset();
+    m_texturePixelRevisions[slot] = revision;
+    return true;
+}
 
 void Level::ReadCollisionMap(const byte* rawData, int dataSize)
 {
@@ -1450,6 +1492,7 @@ bool Level::CreateObjectRenderInstance(Scene& scene, std::shared_ptr<LevelGameOb
             inst->m_blendWeight = prop.GetAnimBlendWeight();
         }
         inst->SetRenderable(model, model2);
+        inst->SetSourcePrimitiveCount(rawGO.m_rawBytes[2] == 255 ? (std::max)(0, static_cast<int>(rawGO.m_rawShorts[21])) : -1);
 
         // register renderable
         scene.AddRenderableInstance(go->m_renderInst);
@@ -1651,7 +1694,8 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
     bool assignLevelTextures = true;
 
 	// model & animation:
-    if (GamePlay::IsVectorDisplayType(display, inst->m_tintColor, inst->m_fireIntensity))
+    const bool vectorModel = GamePlay::IsVectorDisplayType(display, inst->m_tintColor, inst->m_fireIntensity);
+    if (vectorModel)
     {
         auto anim3d = m_levelInfo.GetModelAnim(modelId - 30);
         if (anim3d == nullptr)
@@ -1762,7 +1806,8 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
         inst->ComputeTransparencyMask();
     }
     // TODO: fire animations...
-
+    inst->SetSourcePrimitiveCount(vectorModel && rawGO.m_rawBytes[2] == 255 ?
+        (std::max)(0, static_cast<int>(rawGO.m_rawShorts[21])) : -1);
 }
 
 RenderableInstancePtr Level::CreatePlayerObject()

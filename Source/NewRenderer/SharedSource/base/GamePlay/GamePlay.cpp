@@ -273,6 +273,7 @@ namespace GamePlay
         BT_ENUM2STRING(DecoFish);
         BT_ENUM2STRING(Submarine);
         BT_ENUM2STRING(UnderwaterPlants);
+        BT_ENUM2STRING(UnderwaterTextureNoise);
         BT_ENUM2STRING(MetalPole);
         BT_ENUM2STRING(CrackingSubmarineWindow);
         BT_ENUM2STRING(PortableCoffin);

@@ -175,8 +175,16 @@ namespace Desperabis
         std::vector<std::string> objectDescriptions;
         std::array<std::uint16_t, 8> trackedTextureFrameCounts{};
         std::array<std::uint16_t, 16> trackedTextureFrames{};
+        struct PalettedTexture
+        {
+            std::uint16_t width = 0, height = 0;
+            std::vector<std::uint8_t> pixels;
+            std::uint64_t revision = 0;
+        };
+        std::array<PalettedTexture, 16> texturePixels;
 
         void LoadTextureMessages(std::size_t slot, const std::uint8_t* data, std::size_t size);
+        void LoadTexturePixels(std::size_t slot, const std::uint8_t* data, std::size_t size);
         void LoadObjectDescriptions(const std::uint8_t* data, std::size_t size);
 
         void LoadGeometry(const std::uint8_t* data, std::size_t size);
@@ -413,7 +421,7 @@ namespace Desperabis
         bool DEBUG_noPlayerCollision = false; // Host cheat: bypass player walls and suppress negative life deltas.
         bool discardBlockedObjects = false; // DS:D501; false exposes the native WC-Error diagnostic path.
         std::uint16_t playerCollisionSlot = 0;
-        std::uint16_t controlledVehicleSlot = 0; // DS:05CC; rebuilt from active lorry records on load.
+        std::uint16_t controlledVehicleSlot = 0; // DS:05CC; rebuilt from active lorry/submarine records on load.
         Level* level = nullptr;
         std::int16_t floorSurfaceValue = -1; // DS:D4CC, meaning not fully established.
         std::int16_t floorRepeatHeight = 0; // DS:D4CE, in raw heightfield units.
@@ -504,7 +512,7 @@ namespace Desperabis
         void UpdateModelAttachments();
         std::int16_t frameTickCount = 1; // DS:D4CA; burning uses this rather than the behavior argument.
         std::int32_t levelElapsedTicks = 0; // DS:D504; signed level timer used by delayed rock slopes.
-        std::int16_t windX = 0; // DS:2B0E; owned by this level/context, not a process global.
+        std::int16_t windX = 0; // DS:2B0E; also submarine hull stress, shared with the cracking window.
         std::int16_t windZ = 0; // DS:2B10.
         bool skyEnabled = false; // Native DS:D4C4 > 0.
         std::int16_t cinematicDepthShade = 0; // Ending behavior 171 overrides DS:2B0A depth attenuation.
@@ -691,7 +699,8 @@ namespace Desperabis
         void PrepareLevelProgression(bool changingLevel);
         void FinishGamePart();
         BasicPlayerMovementResult UpdateBasicPlayerMovement(InputHandler& input);
-        bool UpdateControlledLorry();
+        bool UpdateControlledVehicle();
+        void UpdateControlledSubmarine(RawGameObject& submarine);
         void UpdatePlayerDeathCamera();
         void UpdatePlayerUnderwater();
         void RefreshUnderwaterPresentation();

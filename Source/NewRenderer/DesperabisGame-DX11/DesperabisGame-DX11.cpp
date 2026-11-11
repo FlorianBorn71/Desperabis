@@ -78,7 +78,7 @@ namespace
 	bool g_initialized = false;
 
 	// presentation of the game world, indexed by native slot
-	RenderableInstancePtr g_objectInst[g_numObjectSlots];
+	std::array<RenderableInstancePtr, g_numObjectSlots> g_objectInst{};
 	RawGameObject g_objectState[g_numObjectSlots] = {};
 	RawGameObject g_presentedState[g_numObjectSlots] = {};
 	bool g_objectBehaviorCreated[g_numObjectSlots] = {};
@@ -1277,6 +1277,10 @@ namespace
 		}
 		if (presentation.page == Desperabis::MenuPage::Gameplay)
 		{
+            if (g_scene->IsReady())
+            {
+                ApplicationUi::SynchronizeSubmarineView(*g_gameCore, *g_scene, g_objectInst, !g_useFreeCam);
+            }
 			UpdateItemPreview();
 			if (g_scene->IsReady() && !g_useFreeCam)
 			{

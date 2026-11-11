@@ -11,6 +11,7 @@
 class RendererDX11;
 class ModelAnim;
 class RenderableInstance;
+class LevelScene;
 
 // Executes the core's drawing recipe; owns no page/input/inventory decisions.
 class ApplicationUi
@@ -32,6 +33,8 @@ public:
         const std::function<void(const char*, const char*)>& reportError);
     static void SynchronizeObjectPresentations(const std::function<void(int)>& update,
         const std::function<void(int, const char*)>& reportError);
+    static void SynchronizeSubmarineView(const Desperabis::GameContext& core, LevelScene& scene,
+        const std::array<std::shared_ptr<RenderableInstance>, 166>& instances, bool firstPerson);
     void ApplyMapMaterial(RenderableInstance& instance, const ModelAnim& model, Renderer& renderer);
     const Texture* GetGeometryMapTexture() const { return m_geometryMap.get(); }
     static std::vector<std::shared_ptr<TextMeshInstance>> CreateVitalMeters(

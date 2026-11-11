@@ -41,6 +41,36 @@ uint32_t RenderableInstance::ComputeOpaqueSortingHash() const
     return hash;
 }
 
+void RenderableInstance::SetSourcePrimitiveCount(int count)
+{
+    if (!m_renderable) { return; }
+    bool changed = false;
+    if (count >= 0)
+    {
+        auto& materials = GetOrCreateMaterialOverrides();
+        for (std::size_t i = 0; i < m_renderable->m_drawCalls.size(); ++i)
+        {
+            const int triangles = m_renderable->m_drawCalls[i].GetPrimitiveCountForPrefix(count);
+            changed |= materials[i].m_primitiveCountOverride != triangles;
+            materials[i].m_primitiveCountOverride = triangles;
+        }
+    }
+    else
+    {
+        for (auto& material : m_materialOverride)
+        {
+            changed |= material.m_primitiveCountOverride != -1;
+            material.m_primitiveCountOverride = -1;
+        }
+    }
+    for (std::size_t i = 0; i < m_subInstances.size(); ++i)
+    {
+        const int sourceIndex = m_renderable->m_subRenderables[i].m_sourcePrimitiveIndex;
+        m_subInstances[i].SetSourcePrimitiveCount(count >= 0 && (count == 0 || sourceIndex >= count) ? 0 : -1);
+    }
+    if (changed) { ComputeTransparencyMask(); }
+}
+
 
 uint32_t RenderableInstance::ComputeTransparentSortingHash(const Vector& cameraPos) const
 {
@@ -64,6 +94,7 @@ void RenderableInstance::ComputeTransparencyMask()
         for (int i = 0; i < (int)m_renderable->m_drawCalls.size(); i++)
         {
             const DrawCallMaterial& material = i < m_materialOverride.size() ? m_materialOverride[i] : m_renderable->m_drawCalls[i].m_material;
+            if (material.m_primitiveCountOverride == 0) { continue; }
             m_usedTransparencies |= (TransparencyModeMask)(1 << (int)material.m_transparencyType);
         }
     }
@@ -189,6 +220,7 @@ bool RenderableInstance::RetrieveWaterProperties(bool& useReflection, float& wat
         if (drawCallIndex >= 0 && i != drawCallIndex) { continue; }
         const DrawCallMaterial& material = i < m_materialOverride.size() ? m_materialOverride[i] : m_renderable->m_drawCalls[i].m_material;
         if (material.m_transparencyType != TransparencyMode::Water ||
+            material.m_primitiveCountOverride == 0 ||
             material.m_reflectionType == WaterReflectionType::Disabled)
             continue;
         useReflection = (material.m_reflectionType & WaterReflectionType::ReflectionBit) != 0;

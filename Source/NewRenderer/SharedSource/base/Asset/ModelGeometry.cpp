@@ -552,6 +552,7 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
 
         const ModelPolygon& p = context.m_input.m_polygons[model.m_polygonOfs + i];
         const std::size_t firstVertex = vertices.size();
+        const bool glass = p.GetPolyType() == PolygonType::TexturedWall && (p.something2 & 127) == 36;
         const bool textured = p.GetPolyType() == PolygonType::TexturedWall ||
             p.GetPolyType() == PolygonType::TexturedQuad || p.GetPolyType() == PolygonType::TexturedLine;
 
@@ -565,6 +566,7 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
             }
             */
             if (textured) { dc.m_material.m_applyLighting = p.GetTextureLightingMode() != TextureLightingMode::Fullbright; }
+            dc.m_sourcePrimitiveEnds.assign(dc.m_primitiveCount, static_cast<uint16_t>(i + 1));
             drawcalls.push_back(dc);
         };
 
@@ -648,7 +650,13 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
             if (p.IsTransparent())
             {
                 dc.m_material.m_textureSlot = -1;
-                dc.m_material.m_texture = AssetManager::Instance().GetPointTexture();
+                dc.m_material.m_texture = glass ? AssetManager::Instance().GetPlainWhiteTexture() :
+                    AssetManager::Instance().GetPointTexture();
+                if (glass)
+                {
+                    dc.m_material.m_transparencyType = TransparencyMode::AlphaBlended;
+                    dc.m_material.m_opacity = 0.05f;
+                }
             }
             else
             {
@@ -656,7 +664,7 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
                 dc.m_material.m_texture = tex != nullptr ? &model.m_owner->m_textureAtlas : nullptr;
             }
             dc.m_firstIndex = (int)indices.size();
-            dc.m_material.m_useAlphaTest = true;
+            dc.m_material.m_useAlphaTest = !glass;
             dc.m_material.m_applyLighting = true;
             AddTexturedQuad(context, p.i0, p.i1, p.i3, p.i2, textureAtlas, p.IsTextureFlipped(), true);
             dc.m_primitiveCount = ((int)indices.size() - dc.m_firstIndex) / 3;
@@ -729,6 +737,7 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
                 {
                     SubRenderable& sub = model.m_subRenderables.emplace_back();
                     sub.m_anchorVertex = p.i0 - 1;
+                    sub.m_sourcePrimitiveIndex = i;
                     Vector4 attachmentPos = context.m_input.m_vertexPos[model.m_positionOfs + p.i0 - 1];
 					sub.m_localPos.Set(attachmentPos.x, attachmentPos.y, attachmentPos.z);
                     sub.m_localOri.Set(0, 0, 0);
@@ -756,6 +765,7 @@ void GeometryUtils::ConvertPolygons(class Model& model, ModelConversionContext& 
         for (std::size_t vertex = firstVertex; vertex < vertices.size(); ++vertex)
         {
             auto& v = vertices[vertex];
+            if (glass) { v.Color = {180,220,255,0}; }
             // Native world-unit steps are deliberately attenuated per model; priority zero stays unbiased.
             v.SortingDepthOffset = p.GetSortingPriority() * 25.f * model.m_sortingDepthBiasScale * DespToFloat;
             float brightness = vertexBrightness[v.GetPositionIndex1()];
@@ -851,7 +861,7 @@ void GeometryUtils::OptimizeDrawCalls(std::vector<DrawCall>& newDrawCalls, std::
         sortedList.push_back(sdc);
     }
 
-    std::sort(sortedList.begin(), sortedList.end(), [](SortedDrawCall const& a, SortedDrawCall const& b) -> bool { return a.batchingKey < b.batchingKey; });
+    std::stable_sort(sortedList.begin(), sortedList.end(), [](SortedDrawCall const& a, SortedDrawCall const& b) -> bool { return a.batchingKey < b.batchingKey; });
 
     uint64_t previousKey = 0;
     DrawCall mergedDrawCall = {};
@@ -868,6 +878,7 @@ void GeometryUtils::OptimizeDrawCalls(std::vector<DrawCall>& newDrawCalls, std::
             previousKey = sortedList[i].batchingKey;
             mergedDrawCall = drawCalls[sortedList[i].dc_index];
             mergedDrawCall.m_primitiveCount = 0;
+            mergedDrawCall.m_sourcePrimitiveEnds.clear();
             mergedDrawCall.m_firstIndex = (int)newIndices.size();
         }
 
@@ -879,6 +890,8 @@ void GeometryUtils::OptimizeDrawCalls(std::vector<DrawCall>& newDrawCalls, std::
             assert(!"hash key collision");
         }
         mergedDrawCall.m_primitiveCount += dc.m_primitiveCount;
+        mergedDrawCall.m_sourcePrimitiveEnds.insert(mergedDrawCall.m_sourcePrimitiveEnds.end(),
+            dc.m_sourcePrimitiveEnds.begin(), dc.m_sourcePrimitiveEnds.end());
         for (int j = 0; j < dc.m_primitiveCount; j++)
         {
             // also flip winding

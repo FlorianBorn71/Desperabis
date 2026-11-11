@@ -50,6 +50,10 @@ foreach(target Continuous Experimental Nightly NightlyMemoryCheck)
     endif()
 endforeach()
 if(BUILD_TESTING)
+    add_executable(submarine-tests Scaffold/SubmarineTests.cpp)
+    target_link_libraries(submarine-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME submarine-gameplay COMMAND submarine-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original")
     add_executable(machine-level-tests Scaffold/MachineLevelTests.cpp)
     target_link_libraries(machine-level-tests PRIVATE Desperabis::GameCore)
     add_test(NAME machine-level-gameplay COMMAND machine-level-tests

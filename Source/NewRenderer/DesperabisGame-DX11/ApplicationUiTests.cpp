@@ -511,7 +511,8 @@ namespace
                     const auto& vertex = vertices.at(indices.at(draw.m_firstIndex + corner));
                     const float offset = vertex.SortingDepthOffset;
                     Check(std::isfinite(offset) && offset >= 0.f &&
-                        std::abs(offset / step - std::round(offset / step)) < 0.00001f,
+                        (step == 0.f ? offset == 0.f :
+                            std::abs(offset / step - std::round(offset / step)) < 0.00001f),
                         "Actual model GPU corners must retain integral priority steps at their model-specific scale.");
                     maximumOffset = (std::max)(maximumOffset, offset);
                     ++corners;
@@ -550,6 +551,20 @@ namespace
         }
         Check(witch->GetModel(1, 0)->m_sortingDepthBiasScale == 0.002f,
             "The mouth profile must not increase unrelated witch geometry.");
+        const auto machine = FORCE_GET(assets.LoadAsset<ModelAnim>(L"VEKT\\VEKT66.3DA"));
+        for (const int frame : {0,1,3,4}) { checkGpuOffsets(*machine->GetModel(2, frame), 0.f, 0); }
+        checkGpuOffsets(*machine->GetModel(2, 2), 0.002f, 1);
+        for (int frame = 0; frame < 5; ++frame)
+        {
+            const float expected = frame == 2 ? 2.f * DespToFloat : frame == 4 ? 4.f * DespToFloat : 0.f;
+            const auto& draws = machine->GetModel(2, frame)->m_drawCalls;
+            Check(!draws.empty() && std::all_of(draws.begin(), draws.end(),
+                [&](const auto& draw) { return draw.m_material.m_depthOffset == expected; }),
+                "Only the complete pressure display and pointer may have material depth offsets; all machine housing stays neutral.");
+        }
+        Check(machine->GetModel(1, 0)->m_sortingDepthBiasScale == 0.002f &&
+            machine->GetModel(3, 0)->m_sortingDepthBiasScale == 0.002f,
+            "The machine profiles must not change unrelated models in VEKT66.");
         std::cout << "Model depth scales: smaller windmills use 12.5-unit steps, larger windmills 50, knothole 25; "
             "the well uses 0.05-unit steps (0.2-unit maximum), and adjacent models remain subtle.\n";
     }
@@ -701,6 +716,345 @@ namespace
         }
     }
 
+    void CheckSubmarinePortholeGlass(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        LevelScene scene(32);
+        scene.m_createGameObjects = false;
+        scene.m_createMapIcons = false;
+        FORCE_WAIT(scene.CreateScene());
+        const Model& model = *scene.m_level->GetLevelInfo().GetModelAnim(2)->GetModel(1, 0);
+        const auto glass = std::find_if(model.m_drawCalls.begin(), model.m_drawCalls.end(),
+            [](const auto& draw) { return draw.m_material.m_transparencyType == TransparencyMode::AlphaBlended; });
+        Check(glass != model.m_drawCalls.end() && glass->m_material.m_opacity == 0.05f &&
+            !glass->m_material.m_applyLighting && !glass->m_material.m_useAlphaTest &&
+            glass->m_material.m_texture == AssetManager::Instance().GetPlainWhiteTexture(),
+            "The original porthole pane must be unlit pale-blue glass at five-percent opacity, not an opaque point texture.");
+        const auto glassIndex = static_cast<int>(glass - model.m_drawCalls.begin());
+        const auto* runtime = model.GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
+        const auto vertices = ReadBuffer<ModelVertex>(device, context, runtime->m_vertexBuffer.Get());
+        const auto indices = ReadBuffer<uint16_t>(device, context, runtime->m_indexBuffer.Get());
+        for (int corner = 0; corner < glass->m_primitiveCount * 3; ++corner)
+        {
+            const auto color = vertices.at(indices.at(glass->m_firstIndex + corner)).Color;
+            Check(color.r == 180 && color.g == 220 && color.b == 255 && color.a == 0,
+                "Glass GPU corners must retain the pale-blue tint without an emissive white contribution.");
+        }
+        std::vector<RenderableInstancePtr> windows;
+        for (const auto& instance : scene.GetRenderableInstances())
+        {
+            if (instance->GetRenderable() != &model) { continue; }
+            const auto& materials = instance->GetOrCreateMaterialOverrides();
+            Check(materials.at(glassIndex).m_transparencyType == TransparencyMode::AlphaBlended &&
+                materials.at(glassIndex).m_opacity == 0.05f,
+                "Level texture assignment must preserve porthole glass blending.");
+            for (std::size_t draw = 0; draw < materials.size(); ++draw)
+            {
+                if (static_cast<int>(draw) == glassIndex) { continue; }
+                Check(materials[draw].m_transparencyType == TransparencyMode::Opaque && materials[draw].m_opacity == 1.f,
+                    "The porthole's wall, metal rim and reveal must remain fully opaque.");
+            }
+            windows.push_back(instance);
+        }
+        Check(windows.size() == 12, "The original level-32 starting room must contain all twelve porthole wall tiles.");
+        const auto& window = windows.front();
+        Vector center(0,0,0);
+        for (const int index : {31,32,33,34})
+        {
+            const auto& position = model.m_sourcePositions.at(index);
+            center += Vector(position.x, position.y, position.z);
+        }
+        center *= 0.25f;
+        center = window->GetTransform().TransformPosition(center);
+        auto direction = window->GetTransform().TransformDirection(Vector(0,0,-1));
+        const auto right = window->GetTransform().TransformDirection(Vector(-1,0,0));
+        direction *= 0.4f;
+        const auto position = center + direction;
+        Matrix4 transform, projection;
+        transform.Create(Vector(position.GetX(), position.GetY(), position.GetZ()), right,
+            window->GetTransform().GetUpDir(), window->GetTransform().TransformDirection(Vector(0,0,-1)));
+        projection.CreateProjection(1.5f, Math::Pi / 3.f, 0.01f, 50.f);
+        Camera camera;
+        camera.SetProjectionMatrix(projection);
+        camera.SetCameraTransformMatrix(transform);
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        Texture lightmap;
+        lightmap.CreatePlainWhite();
+        lightmap.m_atlasData = {0,0,0.5f,0.5f};
+        RenderingSettings settings;
+        settings.fullbrightRendering = true;
+        ProfilingStats stats;
+        const auto render = [&](const VisibilityResult& visible, const float* background)
+        {
+            context->ClearRenderTargetView(target.colorView.Get(), background);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            return target.Pixels(device, context);
+        };
+        VisibilityResult isolated;
+        isolated.m_mainCamera = &camera;
+        isolated.m_ambientColor = {1,1,1};
+        isolated.m_fogFalloff = 0.f;
+        isolated.m_lightmap = &lightmap;
+        isolated.m_visibleInstances.m_transparentInstances.push_back({window.get(), 0, glassIndex});
+        isolated.m_visibleInstances.m_visibleTransparencyTypes = TransparencyModeMask::AlphaBlendedBit;
+        for (const auto background : {Color4{20,60,100,255}, Color4{160,100,40,255}})
+        {
+            const float clear[]{background.r / 255.f, background.g / 255.f, background.b / 255.f, 1.f};
+            const auto pixels = render(isolated, clear);
+            const auto pixel = pixels.at(target.height / 2 * target.width + target.width / 2);
+            for (const int channel : {0,1,2})
+            {
+                const byte tint[]{180,220,255};
+                const byte backdrop[]{background.r,background.g,background.b};
+                const float expected = tint[channel] * 0.05f + backdrop[channel] * 0.95f;
+                Check(std::abs(static_cast<float>((pixel >> (8 * channel)) & 255) - expected) <= 1.f,
+                    "Actual porthole pixels must transmit 95 percent of either background and add only five percent blue glass.");
+            }
+        }
+        DefaultVisibilityContext visibility;
+        VisibilityResult visible;
+        visibility.ComputeResultFor(&camera, &scene, visible, settings, VisibilitySettings{}, stats);
+        visible.m_fogFalloff = 0.f;
+        const float black[]{0,0,0,1};
+        const auto glazed = render(visible, black);
+        auto& transparent = visible.m_visibleInstances.m_transparentInstances;
+        const auto count = transparent.size();
+        transparent.erase(std::remove_if(transparent.begin(), transparent.end(),
+            [&](const auto& entry) { return entry.m_instance == window.get(); }), transparent.end());
+        Check(transparent.size() < count, "The starting-room visibility pass must actually include the glass pane.");
+        const auto clear = render(visible, black);
+        std::size_t changed = 0;
+        int maximumDelta = 0;
+        for (std::size_t pixel = 0; pixel < clear.size(); ++pixel)
+        {
+            if ((clear[pixel] & 0xffffff) == (glazed[pixel] & 0xffffff)) { continue; }
+            ++changed;
+            for (const int channel : {0,1,2})
+            {
+                const int delta = std::abs(static_cast<int>((clear[pixel] >> (8 * channel)) & 255) -
+                    static_cast<int>((glazed[pixel] >> (8 * channel)) & 255));
+                maximumDelta = (std::max)(maximumDelta, delta);
+            }
+        }
+        Check(changed > 100 && maximumDelta <= 13,
+            "The real underwater scenery must remain visible through the porthole with at most a five-percent glass tint.");
+        class Host final : public Desperabis::GameContext
+        {
+            std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+            {
+                return FORCE_GET(FileManager::Instance().ReadDataFuture(FileManager::Instance().FilenameToNative(
+                    std::wstring(filename.begin(), filename.end()))));
+            }
+            void LoadLevel(const Desperabis::LevelLoadRequest& request) override
+            {
+                Desperabis::LevelLoadData data;
+                LoadLevelGeometry(request.levelNumber, data);
+                LoadLevelObjects(request.levelNumber, data);
+                InitializeLevelPlayerSpawn(data, {0,0,100});
+                CompleteLevelLoad(request.id, std::move(data));
+            }
+        } core;
+        core.StartLevel(32);
+        auto* cracks = scene.m_level->GetLevelInfo().GetModelAnim(2)->GetModel(2, 0);
+        Check(cracks->m_numPolygons == 54, "The original growing-crack frame must contain fifty-four authored lines.");
+        const auto modelBytes = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"VEKT\\VEKT52.3DA")));
+        AssetStream originalStream(modelBytes);
+        const auto textureMask = originalStream.Read<uint16_t>();
+        for (int slot = 0; slot < 16; ++slot)
+        {
+            if ((textureMask & (1 << slot)) == 0) { continue; }
+            Texture texture;
+            TextureLoadingContext textureData;
+            texture.Read(originalStream, textureData);
+        }
+        Check(originalStream.Read<byte>() > 2, "The original asset must contain the cracking-window animation.");
+        const int frameCount = originalStream.Read<byte>();
+        ModelLoadingContext originalCracks;
+        for (int frame = 0; frame <= 2 * frameCount; ++frame)
+        {
+            originalCracks = {};
+            Model originalFrame;
+            originalFrame.Read(originalStream, originalCracks);
+        }
+        Check(originalCracks.m_polygons.size() == 54, "Independent asset decoding must find the original fifty-four crack primitives.");
+        const auto* crackMesh = cracks->GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
+        const auto crackVertices = ReadBuffer<ModelVertex>(device, context, crackMesh->m_vertexBuffer.Get());
+        const auto crackIndices = ReadBuffer<uint16_t>(device, context, crackMesh->m_indexBuffer.Get());
+        const auto crackRuntime = cracks->m_runtime;
+        ModelLoadingContext mixedInput;
+        mixedInput.m_vertexPos = cracks->m_sourcePositions;
+        mixedInput.m_polygons = {
+            {static_cast<byte>(PolygonType::Points),254,1,0,0,0},
+            {static_cast<byte>(PolygonType::Lines),197,1,2,0,0},
+            {static_cast<byte>(PolygonType::Points),197,3,0,0,0},
+            {static_cast<byte>(PolygonType::SolidColorTriangle),197,1,3,4,0},
+            {static_cast<byte>(PolygonType::Points),254,1,0,0,0},
+            {static_cast<byte>(PolygonType::Lines),197,3,4,0,0},
+            {static_cast<byte>(PolygonType::Attachment3DModel),1,1,0,0,0}};
+        Model mixedModel;
+        mixedModel.m_owner = cracks->m_owner;
+        mixedModel.m_numPositions = cracks->m_numPositions;
+        mixedModel.m_numPolygons = static_cast<uint16_t>(mixedInput.m_polygons.size());
+        ModelConversionContext mixedConversion(mixedInput);
+        GeometryUtils::Convert(mixedModel, mixedConversion);
+        Check(mixedModel.m_drawCalls.size() == 2 && mixedModel.m_subRenderables.size() == 1,
+            "The primitive-limit fixture must interleave two material batches, skipped markers and an attached model.");
+        RenderableInstance mixedInstance(&mixedModel);
+        const int expectedCounts[]{0,0,2,4,6,6,8,8};
+        for (int limit = 0; limit <= 7; ++limit)
+        {
+            mixedInstance.SetSourcePrimitiveCount(limit);
+            int triangleCount = 0;
+            for (std::size_t draw = 0; draw < mixedModel.m_drawCalls.size(); ++draw)
+            {
+                const auto& source = mixedModel.m_drawCalls[draw];
+                Check(std::is_sorted(source.m_sourcePrimitiveEnds.begin(), source.m_sourcePrimitiveEnds.end()),
+                    "Batching must retain authored order inside each material's GPU index range.");
+                triangleCount += mixedInstance.GetMaterialOverrides()[draw].m_primitiveCountOverride;
+            }
+            Check(triangleCount == expectedCounts[limit] &&
+                (mixedInstance.m_subInstances[0].GetUsedTransparencyMask() != TransparencyModeMask::None) == (limit == 7),
+                ("Native primitive limit " + std::to_string(limit) + " produced " + std::to_string(triangleCount) +
+                    " triangles; attachment visible " + std::to_string(mixedInstance.m_subInstances[0].GetUsedTransparencyMask() != TransparencyModeMask::None)).c_str());
+        }
+        RawGameObject crackState;
+        crackState.m_level = scene.m_level;
+        auto crackInstance = std::make_shared<RenderableInstance>(nullptr, 0);
+        std::array<RenderableInstancePtr, 166> vehicleInstances{};
+        vehicleInstances[16] = std::make_shared<RenderableInstance>();
+        vehicleInstances[60] = crackInstance;
+        vehicleInstances[9] = std::make_shared<RenderableInstance>();
+        core.controlledVehicleSlot = 16;
+        core.worldObjects[16].doorLockOrGroupBitmask = 1;
+        core.playerUnderwater = true;
+        ApplicationUi::SynchronizeSubmarineView(core, scene, vehicleInstances, true);
+        Check(vehicleInstances[16]->m_foreground && vehicleInstances[60]->m_foreground &&
+            !vehicleInstances[9]->m_foreground && scene.GetPlayerLight()->GetMode() == PlayerLight::Mode::Submarine,
+            "Only the occupied submarine and its attached window must become first-person foreground geometry.");
+        PackedLightSourceParams submarineLight;
+        Check(scene.GetPlayerLight()->FillLightParams(submarineLight) &&
+            std::abs(submarineLight.PositionAndRadius.w - 1600.f * DespToFloat) < 0.00001f &&
+            std::abs(submarineLight.ColorAndPadding.z - 4.5f) < 0.00001f && submarineLight.ColorAndPadding.w == 1.f,
+            "The submarine light must retain blue specularity with multiplier 4.5 and radius 1600 DOS units.");
+        scene.GetPlayerLight()->Update(1.5);
+        ApplicationUi::SynchronizeSubmarineView(core, scene, vehicleInstances, true);
+        Check(scene.GetPlayerLight()->FillLightParams(submarineLight) &&
+            std::abs(submarineLight.ColorAndPadding.z - 5.85f) < 0.00001f,
+            "Synchronizing an occupied submarine must not restart its six-second light pulse.");
+        ApplicationUi::SynchronizeSubmarineView(core, scene, vehicleInstances, false);
+        Check(!vehicleInstances[16]->m_foreground && !vehicleInstances[60]->m_foreground &&
+            scene.GetPlayerLight()->GetMode() == PlayerLight::Mode::Blue &&
+            scene.GetPlayerLight()->GetRadius() == 220.f * DespToFloat,
+            "Free-camera inspection must restore normal world depth and the ordinary underwater light.");
+        core.worldObjects[16].behavior = Desperabis::BehaviorType::Lorry;
+        ApplicationUi::SynchronizeSubmarineView(core, scene, vehicleInstances, true);
+        Check(!vehicleInstances[16]->m_foreground && scene.GetPlayerLight()->GetMode() == PlayerLight::Mode::Blue,
+            "Other controlled vehicles must not acquire submarine presentation.");
+        core.worldObjects[16].behavior = Desperabis::BehaviorType::Submarine;
+        ApplicationUi::SynchronizeSubmarineView(core, scene, vehicleInstances, true);
+        core.controlledVehicleSlot = 0;
+        core.worldObjects[16].doorLockOrGroupBitmask = 0;
+        core.playerUnderwater = false;
+        ApplicationUi::SynchronizeSubmarineView(core, scene, vehicleInstances, true);
+        Check(!vehicleInstances[16]->m_foreground && !vehicleInstances[60]->m_foreground &&
+            scene.GetPlayerLight()->GetMode() == PlayerLight::Mode::Normal &&
+            scene.GetPlayerLight()->GetRadius() == 600.f * DespToFloat,
+            "Leaving the submarine must restore world rendering and the unchanged above-water player light.");
+        for (const int count : {-1,0,1,7,27,53,54,100,1,0,54})
+        {
+            core.worldObjects[60].blendWeightOrSpriteOpacity = static_cast<std::int16_t>(count);
+            Desperabis::EncodeGameObject(core.GetObjectRenderState(60), crackState.m_rawBytes, sizeof(crackState.m_rawBytes));
+            scene.m_level->ApplyRenderProperties(crackInstance, crackState);
+            int triangles = 0;
+            std::vector<std::pair<int, int>> expectedLines, actualLines;
+            for (std::size_t drawIndex = 0; drawIndex < cracks->m_drawCalls.size(); ++drawIndex)
+            {
+                const auto& draw = cracks->m_drawCalls[drawIndex];
+                const int triangleCount = crackInstance->GetMaterialOverrides().at(drawIndex).m_primitiveCountOverride;
+                Check(triangleCount >= 0 && triangleCount <= draw.m_primitiveCount, "Each material must cap its original GPU triangle range.");
+                triangles += triangleCount;
+                for (int index = draw.m_firstIndex; index < draw.m_firstIndex + triangleCount * 3; ++index)
+                {
+                    const auto& vertex = crackVertices.at(crackIndices.at(index));
+                    const int a = vertex.GetPositionIndex1(), b = vertex.GetPositionIndex2();
+                    actualLines.emplace_back((std::min)(a, b), (std::max)(a, b));
+                }
+            }
+            const int limit = (std::clamp)(count, 0, 54);
+            Check(triangles == 2 * limit && crackInstance->GetRenderable() == cracks && cracks->m_runtime == crackRuntime &&
+                crackInstance->GetBlendTargetRenderable() == nullptr,
+                "Every crack phase must change only material draw counts, reusing the original non-morphing model and GPU buffers.");
+            for (int line = 0; line < limit; ++line)
+            {
+                const int a = originalCracks.m_polygons[line].i0 - 1;
+                const int b = originalCracks.m_polygons[line].i1 - 1;
+                for (int index = 0; index < 6; ++index) { expectedLines.emplace_back((std::min)(a, b), (std::max)(a, b)); }
+            }
+            std::sort(expectedLines.begin(), expectedLines.end());
+            std::sort(actualLines.begin(), actualLines.end());
+            Check(actualLines == expectedLines, "Partial crack GPU buffers must contain exactly the authored prefix lines despite batching.");
+        }
+        core.worldObjects[60].modelFrame2 = 0;
+        Desperabis::EncodeGameObject(core.GetObjectRenderState(60), crackState.m_rawBytes, sizeof(crackState.m_rawBytes));
+        scene.m_level->ApplyRenderProperties(crackInstance, crackState);
+        Check(crackInstance->GetRenderable() == cracks &&
+            std::all_of(crackInstance->GetMaterialOverrides().begin(), crackInstance->GetMaterialOverrides().end(),
+                [](const auto& material) { return material.m_primitiveCountOverride == -1; }),
+            "Leaving frame-255 mode on the same primary model must restore unlimited draw counts.");
+        core.worldObjects[60].modelFrame2 = 255;
+        core.worldObjects[60].blendWeightOrSpriteOpacity = 0;
+        core.windX = 101;
+        core.tickCount = 0;
+        Desperabis::DispatchObjectCase(core.worldObjects[60], core);
+        Desperabis::EncodeGameObject(core.GetObjectRenderState(60), crackState.m_rawBytes, sizeof(crackState.m_rawBytes));
+        scene.m_level->ApplyRenderProperties(crackInstance, crackState);
+        Check(crackInstance->GetRenderable() == scene.m_level->GetLevelInfo().GetModelAnim(2)->GetModel(2, 1),
+            "Shattering must replace the growing prefix with the complete original broken-window frame.");
+        const auto cached = FORCE_GET(AssetManager::Instance().LoadAsset<Texture>(L"GRAFIK\\TUR28.256"));
+        const auto local = scene.m_level->GetLevelInfo().GetLevelTexture(8);
+        Check(local && local != cached && local->m_runtime == cached->m_runtime,
+            "The noise target must have a level-local texture identity while initially sharing immutable cached GPU data.");
+        const auto cachedRuntime = cached->m_runtime;
+        core.playerUnderwater = true;
+        core.tickCount = 7;
+        Desperabis::DispatchObjectCase(core.worldObjects[36], core);
+        auto& noise = core.level->texturePixels[8];
+        int failures = 0;
+        Check(ApplicationUi::SynchronizeLevelGeometry(*scene.m_level, *core.GetLevel(),
+            [&](const char*, const char*) { ++failures; }) && failures == 0 &&
+            local->m_runtime != cachedRuntime && cached->m_runtime == cachedRuntime,
+            "Core texture changes must upload to the level-local GPU texture without modifying cached assets.");
+        Target noiseTarget(device, noise.width, noise.height);
+        context->CopyResource(noiseTarget.color.Get(), local->GetNativeRuntimeObj<NativeTextureObjectDX11>()->m_nativeTex.Get());
+        const auto noisePixels = noiseTarget.Pixels(device, context);
+        const auto& palette = AssetManager::Instance().GetDefaultPalette();
+        for (std::size_t pixel = 0; pixel < noise.pixels.size(); ++pixel)
+        {
+            const auto color = palette.GetEntry(noise.pixels[pixel]);
+            const auto expected = static_cast<std::uint32_t>(color.r) | (static_cast<std::uint32_t>(color.g) << 8) |
+                (static_cast<std::uint32_t>(color.b) << 16) | (static_cast<std::uint32_t>(color.a) << 24);
+            Check(noisePixels[pixel] == expected, "Every noise GPU texel must match the core's palette-indexed mutation.");
+        }
+        const auto uploaded = local->m_runtime;
+        Check(!scene.m_level->SynchronizeTexturePixels(8, noise.width, noise.height, noise.pixels, noise.revision) &&
+            local->m_runtime == uploaded, "An unchanged texture revision must not recreate its GPU resource.");
+        const auto lastPixel = noise.pixels.back();
+        noise.pixels.pop_back();
+        ++noise.revision;
+        Check(!ApplicationUi::SynchronizeLevelGeometry(*scene.m_level, *core.GetLevel(),
+            [&](const char*, const char*) { ++failures; }) && failures == 1 && local->m_runtime == uploaded,
+            "A failed texture upload must report the affected slot and preserve the last valid texture.");
+        noise.pixels.push_back(lastPixel);
+        Check(ApplicationUi::SynchronizeLevelGeometry(*scene.m_level, *core.GetLevel(),
+            [&](const char*, const char*) { ++failures; }) && local->m_runtime != uploaded,
+            "The failed revision must remain retryable after valid pixels are supplied.");
+        std::cout << "Submarine portholes: twelve original wall tiles, five-percent pale-blue GPU blending over two backgrounds; "
+            << changed << " scene pixels tinted, maximum channel change " << maximumDelta
+            << "/255; native crack prefixes and shattering verified; original underwater noise pixels uploaded without polluting cached textures.\n";
+    }
+
     class FlameScene final : public Scene
     {
     public:
@@ -708,6 +1062,89 @@ namespace
         std::size_t BindingCount() const { return m_fireAnimationInstances.size(); }
         bool HasFlameSlot(int slot) const { return m_fireAnimations[slot].m_torchAnim != nullptr; }
     };
+
+    void CheckForegroundDepth(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        FlameScene scene;
+        FORCE_WAIT(scene.CreateScene());
+        auto lightmap = std::make_shared<Texture>();
+        lightmap->CreatePlainWhite();
+        scene.SetLightmap(lightmap);
+        auto wallMesh = GeometryUtils::CreateCameraBillboardQuadMesh(4.f, 4.f, {10,20,220,0});
+        auto hullMesh = GeometryUtils::CreateCameraBillboardQuadMesh(1.2f, 1.2f, {220,20,10,0});
+        auto windowMesh = GeometryUtils::CreateCameraBillboardQuadMesh(0.3f, 0.3f, {10,220,20,0});
+        auto wall = std::make_shared<RenderableInstance>(wallMesh.get());
+        auto hull = std::make_shared<RenderableInstance>(hullMesh.get());
+        auto window = std::make_shared<RenderableInstance>(windowMesh.get());
+        wall->SetTranslation(Vector(0,0,-1));
+        hull->SetTranslation(Vector(0,0,-3));
+        window->SetTranslation(Vector(0,0,-2.5f));
+        scene.AddRenderableInstance(wall);
+        scene.AddRenderableInstance(window);
+        scene.AddRenderableInstance(hull);
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        Camera camera;
+        Matrix4 projection;
+        projection.CreateProjection(1.5f, Math::Pi / 3.f, 0.01f, 50.f);
+        camera.SetProjectionMatrix(projection);
+        DefaultVisibilityContext visibility;
+        VisibilityResult visible;
+        RenderingSettings settings;
+        Check(visible.m_fogColor.x == 0.f && visible.m_fogColor.y == 0.f && visible.m_fogColor.z == 0.f,
+            "Default visibility must initialize fog color; zero falloff must not combine uninitialized NaNs into scene pixels.");
+        settings.fullbrightRendering = true;
+        ProfilingStats stats;
+        const auto render = [&]
+        {
+            visibility.ComputeResultFor(&camera, &scene, visible, settings, {}, stats);
+            visible.m_fogFalloff = 0.f;
+            const float black[]{0,0,0,1};
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            return target.Pixels(device, context);
+        };
+        const auto ordinary = render();
+        const auto center = target.height / 2 * target.width + target.width / 2;
+        Check(((ordinary[center] >> 16) & 255) > (ordinary[center] & 255),
+            "The nearby world wall must normally occlude the farther interior meshes.");
+        hull->m_foreground = window->m_foreground = true;
+        const auto protectedPixels = render();
+        Check(visible.m_foregroundInstances.m_opaqueInstances.size() == 2 &&
+            visible.m_visibleInstances.m_opaqueInstances.size() == 1 &&
+            ((protectedPixels[center] >> 8) & 255) > (protectedPixels[center] & 255) &&
+            (protectedPixels[center + 30] & 255) > ((protectedPixels[center + 30] >> 16) & 255),
+            "Foreground hull/window geometry must cover nearer world walls while preserving its own mutual depth.");
+        wall->SetVisible(false);
+        const auto noWall = render();
+        Check(noWall[center] == protectedPixels[center] && noWall[center + 30] == protectedPixels[center + 30] &&
+            visible.HasResults(), "Foreground-only scenes must render identical interior pixels without world geometry.");
+        wall->SetVisible(true);
+        hull->m_foreground = window->m_foreground = false;
+        Check(render() == ordinary && visible.m_foregroundInstances.m_opaqueInstances.empty(),
+            "Leaving first-person view must clear foreground buckets and restore ordinary world-depth pixels.");
+        wall->SetVisible(false);
+        window->SetVisible(false);
+        const auto fullHull = render();
+        const auto coloredPixels = [](const auto& pixels)
+        {
+            return std::count_if(pixels.begin(), pixels.end(), [](auto pixel) { return (pixel & 0xffffff) != 0; });
+        };
+        auto& material = hull->GetOrCreateMaterialOverrides()[0];
+        material.m_primitiveCountOverride = 1;
+        const auto halfHull = render();
+        Check(coloredPixels(fullHull) > 1000 && coloredPixels(halfHull) > coloredPixels(fullHull) * 0.45f &&
+            coloredPixels(halfHull) < coloredPixels(fullHull) * 0.55f,
+            "A one-triangle material override must draw half of the original two-triangle GPU quad.");
+        material.m_primitiveCountOverride = 0;
+        Check(coloredPixels(render()) == 0, "A zero-triangle override must submit no visible geometry.");
+        material.m_primitiveCountOverride = 100;
+        Check(render() == fullHull, "Oversized draw-count overrides must clamp to the original GPU index range.");
+        material.m_primitiveCountOverride = -1;
+        Check(render() == fullHull, "Removing a draw-count override must restore the exact original pixels.");
+        std::cout << "Foreground depth: nearby wall excluded from hull/window depth; local occlusion and world-depth restoration verified.\n";
+    }
 
     void ConfigureUnderwaterView(RenderingSettings& settings, bool enabled)
     {
@@ -4710,7 +5147,139 @@ namespace
             << changedPixels << " changed pixels).\n";
     }
 
-    void CheckMachineWaterHeight()
+    void CheckMachinePressureDisplay(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context,
+        Desperabis::GameContext& core, Level& level)
+    {
+        const auto machineInstance = std::make_shared<RenderableInstance>();
+        const auto pointerInstance = std::make_shared<RenderableInstance>();
+        auto& machine = *machineInstance;
+        auto& pointer = *pointerInstance;
+        const auto refresh = [&](int slot, const RenderableInstancePtr& instance)
+        {
+            ::RawGameObject object{};
+            object.m_level = &level;
+            object.m_objectNumber = slot;
+            Desperabis::EncodeGameObject(core.GetObjectRenderState(slot), object.m_rawBytes, sizeof(object.m_rawBytes));
+            level.ApplyRenderProperties(instance, object);
+        };
+        refresh(75, machineInstance);
+        machine.PrepareSubInstancesForRendering();
+        const auto gaugeModel = level.GetLevelInfo().GetModelAnim(5)->GetModel(2, 2);
+        const auto found = std::find_if(machine.m_subInstances.begin(), machine.m_subInstances.end(),
+            [&](const auto& child) { return child.GetRenderable() == gaugeModel; });
+        Check(found != machine.m_subInstances.end(), "The real machine must attach its original pressure display.");
+        auto& gauge = *found;
+        Check(std::all_of(gauge.GetOrCreateMaterialOverrides().begin(), gauge.GetOrCreateMaterialOverrides().end(),
+            [](const auto& material) { return material.m_depthOffset == 2.f * DespToFloat; }),
+            "Level texture assignment must preserve the offset on every display material.");
+        Target target(device, 480, 320);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        Texture lightmap;
+        lightmap.CreatePlainWhite();
+        lightmap.m_atlasData = {0,0,0.5f,0.5f};
+        Camera camera;
+        Matrix4 projection;
+        projection.CreateProjection(1.5f, Math::Pi / 3.f, 0.01f, 50.f);
+        camera.SetProjectionMatrix(projection);
+        RenderingSettings settings;
+        settings.fullbrightRendering = true;
+        ProfilingStats stats;
+        const auto render = [&](bool includeGauge, bool includePointer, bool includeHousing = true)
+        {
+            VisibilityResult visible;
+            visible.m_mainCamera = &camera;
+            visible.m_ambientColor = {1,1,1};
+            visible.m_fogFalloff = 0.f;
+            visible.m_lightmap = &lightmap;
+            const auto add = [&](const RenderableInstance& instance)
+            {
+                if (instance.HasOpaqueMaterials())
+                    visible.m_visibleInstances.m_opaqueInstances.push_back({&instance, ~uint32_t{0}});
+                if (instance.HasTransparentMaterials())
+                    visible.m_visibleInstances.m_transparentInstances.push_back({&instance, ~uint32_t{0}});
+                visible.m_visibleInstances.m_visibleTransparencyTypes |= instance.GetUsedTransparencyMask();
+            };
+            if (includeHousing) { add(machine); }
+            for (const auto& child : machine.m_subInstances)
+            {
+                if (&child == &gauge ? includeGauge : includeHousing) { add(child); }
+            }
+            if (includePointer) { add(pointer); }
+            const float background[]{1,0,1,1};
+            context->ClearRenderTargetView(target.colorView.Get(), background);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            return target.Pixels(device, context);
+        };
+        const auto differences = [](const auto& first, const auto& second)
+        {
+            std::size_t changed = 0;
+            for (std::size_t i = 0; i < first.size(); ++i) { changed += first[i] != second[i]; }
+            return changed;
+        };
+        const auto offsets = [&](bool enabled)
+        {
+            for (auto& material : gauge.GetOrCreateMaterialOverrides())
+            {
+                material.m_depthOffset = enabled ? 2.f * DespToFloat : 0.f;
+                material.ComputeHash();
+            }
+            for (auto& material : pointer.GetOrCreateMaterialOverrides())
+            {
+                material.m_depthOffset = enabled ? 4.f * DespToFloat : 0.f;
+                material.ComputeHash();
+            }
+        };
+        const auto direction = machine.GetTransform().TransformDirection(Vector(0,0,-1));
+        const auto right = machine.GetTransform().TransformDirection(Vector(-1,0,0));
+        const auto gaugeCenter = gauge.GetGlobalBounds().GetCenter();
+        const auto originalRoll = core.worldObjects[107].winZ;
+        for (const int roll : {-76,80})
+        {
+            core.worldObjects[107].winZ = static_cast<std::int16_t>(roll);
+            refresh(107, pointerInstance);
+            Check(std::all_of(pointer.GetOrCreateMaterialOverrides().begin(), pointer.GetOrCreateMaterialOverrides().end(),
+                [](const auto& material) { return material.m_depthOffset == 4.f * DespToFloat; }),
+                "Pressure-pointer pose updates must preserve its depth offset.");
+            for (const float distance : {0.35f,0.7f})
+            {
+                auto displacement = direction;
+                displacement *= distance;
+                Matrix4 transform;
+                const auto position = gaugeCenter + displacement;
+                transform.Create(Vector(position.GetX(), position.GetY(), position.GetZ()),
+                    right, machine.GetTransform().GetUpDir(), direction);
+                camera.SetCameraTransformMatrix(transform);
+                offsets(true);
+                const auto corrected = render(true, true);
+                const auto displayPixels = differences(corrected, render(false, true));
+                const auto pointerPixels = differences(corrected, render(true, false));
+                const auto isolated = render(true, true, false);
+                std::size_t isolatedPixels = 0, occludedPixels = 0;
+                for (std::size_t pixel = 0; pixel < isolated.size(); ++pixel)
+                {
+                    if ((isolated[pixel] & 0xffffff) == 0xff00ff) { continue; }
+                    ++isolatedPixels;
+                    occludedPixels += isolated[pixel] != corrected[pixel];
+                }
+                offsets(false);
+                const auto uncorrected = render(true, true);
+                const auto hiddenDisplay = differences(uncorrected, render(false, true));
+                const auto hiddenPointer = differences(uncorrected, render(true, false));
+                std::cout << "Machine pressure display at " << distance << ", roll " << roll << ": "
+                    << displayPixels << "/" << hiddenDisplay << " face pixels, "
+                    << pointerPixels << "/" << hiddenPointer << " pointer pixels (corrected/unadjusted), "
+                    << occludedPixels << "/" << isolatedPixels << " display pixels occluded.\n";
+                Check(displayPixels > 50 && isolatedPixels > 50 && occludedPixels == 0 && pointerPixels > 0 &&
+                    hiddenDisplay < displayPixels / 10 && hiddenPointer == 0,
+                    "The entire real pressure display and rotating pointer must show above the neutral housing; removing their offsets must reproduce occlusion.");
+                offsets(true);
+            }
+        }
+        core.worldObjects[107].winZ = originalRoll;
+    }
+
+    void CheckMachineWaterHeight(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
         class Host final : public Desperabis::GameContext
         {
@@ -4732,6 +5301,7 @@ namespace
         LevelScene scene(31);
         scene.m_createGameObjects = false;
         FORCE_WAIT(scene.CreateScene());
+        CheckMachinePressureDisplay(renderer, device, context, core, *scene.m_level);
         std::vector<RenderableInstancePtr> water;
         std::vector<std::shared_ptr<IGraphicsRuntimeObject>> buffers;
         for (const auto& instance : scene.GetRenderableInstances())
@@ -7092,6 +7662,8 @@ int main(int argc, char* argv[])
         CheckPrimitiveSortingDepth(renderer, device.Get(), context.Get());
         CheckModelSortingDepthOverrides(device.Get(), context.Get());
         CheckLevel24WindmillDoors(renderer, device.Get(), context.Get());
+        CheckSubmarinePortholeGlass(renderer, device.Get(), context.Get());
+        CheckForegroundDepth(renderer, device.Get(), context.Get());
         CheckTutorialFlames();
         CheckStaticFireTracking();
         CheckFreshObjectPlacement();
@@ -7101,7 +7673,7 @@ int main(int argc, char* argv[])
         CheckWitchMouth(renderer, device.Get(), context.Get());
         CheckMutableWalls(renderer, device.Get(), context.Get());
         CheckWaterSurfaceDefinitions();
-        CheckMachineWaterHeight();
+        CheckMachineWaterHeight(renderer, device.Get(), context.Get());
         CheckEnemyModels();
         CheckPresentationRecovery();
         CheckEndingActorVisibility();

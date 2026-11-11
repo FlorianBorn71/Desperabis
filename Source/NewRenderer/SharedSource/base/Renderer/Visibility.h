@@ -24,7 +24,8 @@ struct VisibilityResult
 
     bool HasResults() const 
     {
-        return m_mainCamera != nullptr && (m_visibleInstances.m_visibleTransparencyTypes != TransparencyModeMask::None);
+        return m_mainCamera != nullptr && (m_visibleInstances.m_visibleTransparencyTypes != TransparencyModeMask::None ||
+            m_foregroundInstances.m_visibleTransparencyTypes != TransparencyModeMask::None);
     }
 
     const Camera* GetMainCamera() const;
@@ -61,6 +62,7 @@ struct VisibilityResult
     };
 
     VisibleInstances m_visibleInstances;
+    VisibleInstances m_foregroundInstances;
     std::vector<const TextMeshInstance*> m_visibleTextMeshInstances;
 
 #ifdef ENABLE_ADVANCED_RENDERING
@@ -75,7 +77,7 @@ struct VisibilityResult
 #endif
 
     float m_fogFalloff = 0.3f;
-    Vector3 m_fogColor;
+    Vector3 m_fogColor{0,0,0};
     Vector3 m_ambientColor;
     float m_ambientNrmlContribution = 0.01f;
 	VisibilityTileGrid m_grid;

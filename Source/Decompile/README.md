@@ -88,6 +88,14 @@ For the first explained case and shared collision-map pointer, see
   puzzle, including runtime continuations and renderer water-height updates.
   Original-record regressions are in `Scaffold/MachineLevelTests.cpp`; see
   [level-31 recovery](BehaviorRecovery.md#machinery-and-fish-puzzle-level-31).
+- `level32-dispatch-evidence.txt`, `level32-helper-evidence.txt`,
+  `level32-vehicle-evidence.txt`, `level32-window-render-evidence.txt`,
+  `level32-window-primitives-evidence.txt`: underwater texture copying,
+  decorative fish, submarine control and progressive window failure.
+  `Scaffold/SubmarineTests.cpp` supplies original-level regressions
+  (`submarine-gameplay`); renderer tests cover primitive-prefix geometry,
+  level-local texture uploads and the approximate pale-blue porthole tint.
+  See [level-32 recovery](BehaviorRecovery.md#submarine-gameplay-and-porthole-glass-level-32).
 - `Scaffold/ApplicationFlow.h`: native-valued menu enums; outer page dispatch
   is implemented in `GameContext.cpp`. Page loops and loading remain
   explicit throwing hooks, not rendering or a playable application.

@@ -108,7 +108,7 @@ void RenderContextDX11::RenderInstance(const RenderableInstance* instance, Trans
         if (drawCallIndex >= 0 && i != drawCallIndex) { continue; }
         const DrawCall& dc(renderable->m_drawCalls[i]);
         const DrawCallMaterial& material = (i < instance->m_materialOverride.size()) ? instance->m_materialOverride[i] : dc.m_material;
-        if (material.m_transparencyType != transparencyFilter)
+        if (material.m_transparencyType != transparencyFilter || material.m_primitiveCountOverride == 0)
         {
             continue;
         }
@@ -146,6 +146,7 @@ void RenderContextDX11::RenderInstance(const RenderableInstance* instance, Trans
             m_lastMaterialHash = material.m_materialHash;
         }
 
-        SubmitDrawcall(dc.m_firstIndex, dc.m_primitiveCount);
+        SubmitDrawcall(dc.m_firstIndex, material.m_primitiveCountOverride < 0 ? dc.m_primitiveCount :
+            (std::min)(dc.m_primitiveCount, material.m_primitiveCountOverride));
     }
 }

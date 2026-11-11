@@ -143,12 +143,13 @@ private:
 class PlayerLight : public LightSource
 {
 public:
-    enum class Mode { Off, Blue, Normal };
+    enum class Mode { Off, Blue, Normal, Submarine };
 
     PlayerLight(Scene* scene);
     virtual ~PlayerLight() = default;
 
     void SetMode(Mode mode);
+    Mode GetMode() const { return m_mode; }
     virtual void Update(double elapsedTime) override final;
 
 private:

@@ -11,9 +11,33 @@
 #include <DX11/RenderContextDX11.h>
 #include <Renderer/Camera.h>
 #include <Renderer/RenderableInstance.h>
+#include <Sample/LevelScene.h>
+#include <Renderer/LightSource.h>
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+
+void ApplicationUi::SynchronizeSubmarineView(const Desperabis::GameContext& core, LevelScene& scene,
+    const std::array<std::shared_ptr<RenderableInstance>, 166>& instances, bool firstPerson)
+{
+    const auto& objects = core.GetWorldObjects();
+    const int slot = core.controlledVehicleSlot;
+    const bool occupied = firstPerson && slot >= 2 && slot <= 164 && objects[slot].health > 0 &&
+        objects[slot].behavior == Desperabis::BehaviorType::Submarine && objects[slot].doorLockOrGroupBitmask > 0;
+    for (std::size_t index = 0; index < instances.size(); ++index)
+    {
+        if (!instances[index]) { continue; }
+        const auto& object = objects[index];
+        instances[index]->m_foreground = occupied && object.health > 0 &&
+            (index == slot || (object.renderPlacementMode == 20 && object.doorLockOrGroupBitmask == slot));
+    }
+    if (const auto& light = scene.GetPlayerLight())
+    {
+        const auto mode = occupied ? PlayerLight::Mode::Submarine :
+            (core.playerUnderwater ? PlayerLight::Mode::Blue : PlayerLight::Mode::Normal);
+        if (light->GetMode() != mode) { light->SetMode(mode); }
+    }
+}
 
 void ApplicationUi::SynchronizeObjectPresentations(const std::function<void(int)>& update,
     const std::function<void(int, const char*)>& reportError)
@@ -62,6 +86,18 @@ bool ApplicationUi::SynchronizeLevelGeometry(Level& level, const Desperabis::Lev
         reportError("water height synchronization failed", error.what());
     }
     synchronize("surface synchronization failed", &Level::SynchronizeSurfaceTiles, geometry.surfaceFlags);
+    for (std::size_t slot = 0; slot < geometry.texturePixels.size(); ++slot)
+    {
+        const auto& texture = geometry.texturePixels[slot];
+        if (texture.revision == 0) { continue; }
+        try { level.SynchronizeTexturePixels(slot, texture.width, texture.height, texture.pixels, texture.revision); }
+        catch (const std::exception& error)
+        {
+            succeeded = false;
+            const auto operation = "texture synchronization failed [slot " + std::to_string(slot) + "]";
+            reportError(operation.c_str(), error.what());
+        }
+    }
     return succeeded;
 }
 

@@ -158,10 +158,11 @@ void PlayerLight::SetMode(Mode mode)
         SetRadius(0.f);
         break;
     case Mode::Blue:
+    case Mode::Submarine:
         SetSpecularAmount(1.f);
         m_bluePhase = 0.0;
-        SetColor(Color4{ 32, 80, 255, 255 }, 6.f);
-        SetRadius(220.f * DespToFloat);
+        SetColor(Color4{ 32, 80, 255, 255 }, mode == Mode::Submarine ? 4.5f : 6.f);
+        SetRadius((mode == Mode::Submarine ? 1600.f : 220.f) * DespToFloat);
         break;
     case Mode::Normal:
         SetSpecularAmount(0.f);
@@ -178,9 +179,10 @@ void PlayerLight::Update(double elapsedTime)
 {
     Vector pos = Renderer::Instance().GetOrCreateCamera()->GetCameraPosition();
     SetPosition(pos);
-    if (m_mode == Mode::Blue)
+    if (m_mode == Mode::Blue || m_mode == Mode::Submarine)
     {
         m_bluePhase = fmod(m_bluePhase + elapsedTime * (2.0 * Math::Pi / 6.0), 2.0 * Math::Pi);
-        m_multiplier = 6.f * (1.f + 0.3f * static_cast<float>(sin(m_bluePhase)));
+        m_multiplier = (m_mode == Mode::Submarine ? 4.5f : 6.f) *
+            (1.f + 0.3f * static_cast<float>(sin(m_bluePhase)));
     }
 }

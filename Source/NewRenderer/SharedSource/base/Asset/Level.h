@@ -30,6 +30,8 @@ public:
     std::size_t SynchronizeFloorTiles(const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride);
     std::size_t SynchronizeSurfaceTiles(const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride);
     void SynchronizeWaterHeight(WaterSlotIndex slot, float height);
+    bool SynchronizeTexturePixels(std::size_t slot, std::uint16_t width, std::uint16_t height,
+        const std::vector<byte>& pixels, std::uint64_t revision);
 	float GetHeightAtPos(const Vector& pos) const 
     {
         return m_cellArray.GetHeightAtPos(pos);
@@ -72,6 +74,8 @@ protected:
     int m_levelIndex = 0;
     bool m_isSaveGame = false;
     LevelInfo m_levelInfo;
+    std::array<bool, LevelInfo::NumSlots> m_mutableTextureSlots{};
+    std::array<std::uint64_t, LevelInfo::NumSlots> m_texturePixelRevisions{};
     GridCellArray m_cellArray;
     Vector m_playerStartPos;
     std::vector<RawGameObject> m_rawGameObject;

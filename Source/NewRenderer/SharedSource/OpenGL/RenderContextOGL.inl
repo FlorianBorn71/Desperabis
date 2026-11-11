@@ -63,7 +63,7 @@ void RenderContextOGL::RenderInstance(const RenderableInstance* instance, Transp
         if (drawCallIndex >= 0 && i != drawCallIndex) { continue; }
         const DrawCall& dc(renderable->m_drawCalls[i]);
         const DrawCallMaterial& material = (i < instance->m_materialOverride.size()) ? instance->m_materialOverride[i] : dc.m_material;
-        if (material.m_transparencyType != transparencyFilter)
+        if (material.m_transparencyType != transparencyFilter || material.m_primitiveCountOverride == 0)
         {
             continue;
         }
@@ -95,6 +95,7 @@ void RenderContextOGL::RenderInstance(const RenderableInstance* instance, Transp
             m_rendererOGL.m_instanceMaterial.Update(instMaterial);
         }
 
-        SubmitDrawcall(dc.m_firstIndex, dc.m_primitiveCount);
+        SubmitDrawcall(dc.m_firstIndex, material.m_primitiveCountOverride < 0 ? dc.m_primitiveCount :
+            (std::min)(dc.m_primitiveCount, material.m_primitiveCountOverride));
     }
 }

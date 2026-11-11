@@ -60,7 +60,7 @@ namespace Desperabis
         RopeSwitch = 52, // The one that hangs in level 23, but also used for endboss legs?! For the animation?
         Switch3 = 53, // The one that rotates in swamp level 24
         UnderwaterPlants = 54, // is this a switch?!
-        Behavior_55 = 55,
+        UnderwaterTextureNoise = 55,
         RotatingSwitch = 56,
         MetalPole = 57, // the one to open door in submarine level 32. Also used for the torchlight that you can carry.
         KeyInBucket = 58, // level 33

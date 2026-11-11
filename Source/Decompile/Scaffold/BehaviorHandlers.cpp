@@ -1881,9 +1881,27 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::UnderwaterPlants, 0x212D };
     }
 
-    DispatchResult Function_Behavior_55(RawGameObject&, GameContext&)
+    DispatchResult Function_UnderwaterTextureNoise(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_55, 0x21FF };
+        if (context.playerUnderwater && object.itemValue > 0 && WrapSignedWord(object.generalPurpose1) > 0)
+        {
+            if (!context.level) { throw std::logic_error("Underwater texture noise requires level textures."); }
+            auto& target = context.level->texturePixels.at(object.itemValue);
+            const auto& source = context.level->texturePixels.at(object.generalPurpose1);
+            if (target.pixels.empty() || source.pixels.empty())
+            {
+                throw std::invalid_argument("Underwater texture noise references an unloaded texture.");
+            }
+            const auto copies = WrapSignedWord(WrapSignedWord(object.generalPurpose3) * context.tickCount);
+            for (int copy = 0; copy < copies; ++copy)
+            {
+                const auto color = source.pixels.at(context.Random(source.width));
+                object.velocityX = WrapSignedWord(context.Random(static_cast<std::uint16_t>(target.pixels.size())));
+                target.pixels.at(static_cast<std::uint16_t>(object.velocityX)) = color;
+            }
+            if (copies > 0) { ++target.revision; }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::UnderwaterTextureNoise, 0x21FF };
     }
 
     DispatchResult Function_RotatingSwitch(RawGameObject& object, GameContext& context)
@@ -2099,9 +2117,39 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::Crab, 0x256E };
     }
 
-    DispatchResult Function_DecoFish(RawGameObject&, GameContext&)
+    DispatchResult Function_DecoFish(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::DecoFish, 0x259C };
+        for (int tick = 0; tick < context.tickCount; ++tick)
+        {
+            object.blendWeightOrSpriteOpacity = WrapSignedWord(
+                WrapSignedWord(object.blendWeightOrSpriteOpacity + 200 + WrapSignedWord(object.generalPurpose3)) % 200);
+            object.generalPurpose3 = object.blendWeightOrSpriteOpacity < 100 ? 10 : 3;
+            object.generalPurpose1 = static_cast<std::uint16_t>(object.generalPurpose1 +
+                GetStepToward(WrapSignedWord(object.generalPurpose1),
+                    WrapSignedWord(20 * object.generalPurpose3), WrapSignedWord(object.generalPurpose3)));
+            std::int16_t x = 0, z = 0;
+            std::uint16_t obstacle = 0;
+            context.QueryCollisionMapNeighborhood(object.posX, object.posZ, 2, x, z, obstacle, 0x18);
+            object.posX = WrapSignedWord(object.posX + x);
+            object.posZ = WrapSignedWord(object.posZ + z);
+            if (x == 0 && z == 0 && context.Random(100) > 0)
+            {
+                std::int16_t dx, dz, unused;
+                GetClampedDirectionDisplacement(dx, unused, object.winY, WrapSignedWord(-WrapSignedWord(object.generalPurpose1)));
+                GetClampedDirectionDisplacement(unused, dz, object.winY, WrapSignedWord(object.generalPurpose1));
+                dz = WrapSignedWord(-dz);
+                AddFixedPoint8(object.posX, object.velocityX, dx);
+                AddFixedPoint8(object.posZ, object.velocityZ, dz);
+            }
+            else
+            {
+                if (object.velocityY == 0) { object.velocityY = WrapSignedWord(30 * context.RandomSigned(2)); }
+                object.velocityY = WrapSignedWord(object.velocityY + 5 * SignWord(object.velocityY));
+            }
+            object.winY = WrapSignedWord(object.winY + object.velocityY / 16);
+            object.velocityY = WrapSignedWord(object.velocityY - SignWord(object.velocityY));
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::DecoFish, 0x259C };
     }
 
     DispatchResult Function_TriggerDebris(RawGameObject& object, GameContext& context)
@@ -3206,9 +3254,15 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::RotatingMachineCenter, 0x3FE0 };
     }
 
-    DispatchResult Function_Submarine(RawGameObject&, GameContext&)
+    DispatchResult Function_Submarine(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Submarine, 0x4041 };
+        if (object.doorLockOrGroupBitmask > 0)
+        {
+            const auto slot = context.FindWorldObjectSlot(object);
+            if (slot < 1) { throw std::invalid_argument("Controlled submarine requires a world-object slot."); }
+            context.controlledVehicleSlot = static_cast<std::uint16_t>(slot);
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::Submarine, 0x4041 };
     }
 
     DispatchResult Function_GrasingCow(RawGameObject& object, GameContext& context)
@@ -3250,9 +3304,29 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::WashingWater, 0x40ED };
     }
 
-    DispatchResult Function_CrackingSubmarineWindow(RawGameObject&, GameContext&)
+    DispatchResult Function_CrackingSubmarineWindow(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::CrackingSubmarineWindow, 0x41AE };
+        const auto step = GetStepToward(object.blendWeightOrSpriteOpacity, context.windX, 1);
+        if (context.windX > 100) { object.blendWeightOrSpriteOpacity = WrapSignedWord(object.itemValue + 1); }
+        if (context.tickCount > static_cast<int>(context.Random(5)) && step > 0)
+        {
+            object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity + step);
+            if (context.Random(2) == 0) { context.StopSoundSample(85); }
+            context.PlaySoundEffect(static_cast<SoundEffect>(99), GameContext::GetSoundVolume(0), object, 2);
+        }
+        if (object.blendWeightOrSpriteOpacity >= object.itemValue)
+        {
+            object.behavior = BehaviorType::None;
+            object.animFrame = 2;
+            object.modelFrame2 = 0;
+            context.ApplyPlayerLifeDelta(-context.playerLife);
+            context.StopAllSoundEffects();
+            for (const int effect : {76,81,32})
+            {
+                context.PlaySoundEffect(static_cast<SoundEffect>(effect), GameContext::GetSoundVolume(0), object, 3);
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::CrackingSubmarineWindow, 0x41AE };
     }
 
     DispatchResult Function_PuzzleGameTile(RawGameObject&, GameContext&)

@@ -393,7 +393,8 @@ namespace Desperabis
         for (std::size_t slot = 2; slot <= 164; ++slot)
         {
             const auto& object = worldObjects[slot];
-            if (object.health > 0 && object.behavior == BehaviorType::Lorry && object.doorLockOrGroupBitmask > 0)
+            if (object.health > 0 && (object.behavior == BehaviorType::Lorry ||
+                object.behavior == BehaviorType::Submarine) && object.doorLockOrGroupBitmask > 0)
             {
                 controlledVehicleSlot = static_cast<std::uint16_t>(slot);
             }
@@ -503,7 +504,117 @@ namespace Desperabis
         if (playerVerticalSpeed > 0) { playerVerticalSpeed = 0; }
     }
 
-    bool GameContext::UpdateControlledLorry()
+    void GameContext::UpdateControlledSubmarine(RawGameObject& submarine)
+    {
+        submarine.collisionRadiusXZ = 62;
+        submarine.collisionRadiusY = 50;
+        submarine.doorLockOrGroupBitmask = 1;
+        PlaySoundEffect(static_cast<SoundEffect>(60), GetSoundVolume(0), -10, 1);
+        PlaySoundEffect(static_cast<SoundEffect>(58), GetSoundVolume(0), -11, 1);
+        auto heading = WrapSignedWord(512 - playerHeading);
+        NormalizeAnglePair(heading, submarine.winY);
+        const auto jitter = RandomSigned(static_cast<std::uint16_t>(submarine.velocityY) >> 1);
+        const auto floor = GetTerrainFloorHeight(submarine.posX, submarine.posY, submarine.posZ);
+        submarine.posY = WrapSignedWord(submarine.posY + SignWord(WrapSignedWord(floor - submarine.posY + jitter)));
+        if (submarine.velocityY > 0)
+        {
+            --submarine.velocityY;
+            StopSoundSample(60);
+            PlaySoundEffect(static_cast<SoundEffect>(85),
+                GetSoundVolume(static_cast<std::int16_t>(Random(100))), -13, 2);
+        }
+        std::int16_t x = 0, z = 0;
+        std::uint16_t obstacle = 0;
+        QueryCollisionMapNeighborhood(worldObjects[1].posX, worldObjects[1].posZ, 2, x, z, obstacle, 0x18);
+        submarine.posX = WrapSignedWord(submarine.posX + x);
+        submarine.posZ = WrapSignedWord(submarine.posZ + z);
+        if (x == 0 && z == 0)
+        {
+            std::int16_t dx, dz, unused;
+            GetClampedDirectionDisplacement(dx, unused, submarine.winY, WrapSignedWord(-WrapSignedWord(submarine.generalPurpose1)));
+            GetClampedDirectionDisplacement(unused, dz, submarine.winY, WrapSignedWord(submarine.generalPurpose1));
+            dz = WrapSignedWord(-dz);
+            AddFixedPoint8(submarine.posX, submarine.velocityX, dx);
+            AddFixedPoint8(submarine.posZ, submarine.velocityZ, dz);
+        }
+        else if (submarine.velocityY <= 0)
+        {
+            submarine.velocityY = 30;
+            windX = WrapSignedWord(windX + 3);
+        }
+        submarine.collisionMask = 3;
+        const auto hit = FindCollidingObject(submarine);
+        if (hit > 1)
+        {
+            auto& target = worldObjects.at(hit);
+            DamageObject(target, 0);
+            if (target.collisionType == CollisionType::LevelEnd)
+            {
+                submarine.behavior = BehaviorType::None;
+                controlledVehicleSlot = 0;
+                submarine.collisionMask = 0;
+                target.collisionRadiusXZ = 200;
+                return;
+            }
+            if (target.collisionType == CollisionType::PushPlayer)
+            {
+                windX = WrapSignedWord(windX + target.behaviorParameter);
+                target.behaviorParameter = 0;
+            }
+        }
+        submarine.collisionMask = 1;
+        if (submarine.modelFrame2 > 3)
+        {
+            submarine.doorLockOrGroupBitmask = 2;
+            submarine.blendWeightOrSpriteOpacity = WrapSignedWord(submarine.blendWeightOrSpriteOpacity + 3);
+            if (submarine.blendWeightOrSpriteOpacity > 200)
+            {
+                submarine.blendWeightOrSpriteOpacity = 0;
+                submarine.animFrame = 1;
+                submarine.modelFrame2 = 2;
+            }
+            return;
+        }
+        const auto turn = GetStepToward(submarine.winY, heading, 1);
+        if (turn > 0) { submarine.modelFrame2 = 2; }
+        if (turn < 0) { submarine.modelFrame2 = 3; }
+        if (submarine.blendWeightOrSpriteOpacity > 0)
+        {
+            submarine.winY = WrapSignedWord(submarine.winY + turn);
+            playerTargetHeading = static_cast<std::int16_t>((playerTargetHeading - turn) & 511);
+        }
+        submarine.blendWeightOrSpriteOpacity = WrapSignedWord(submarine.blendWeightOrSpriteOpacity +
+            GetStepToward(submarine.blendWeightOrSpriteOpacity, 0, 5));
+        const auto bubbleX = WrapSignedWord(worldObjects[1].posX + RandomSigned(400));
+        const auto bubbleZ = WrapSignedWord(worldObjects[1].posZ + RandomSigned(400));
+        const auto bubbles = Random(5);
+        if (Random(40) == 0)
+        {
+            for (int bubble = 0; bubble <= bubbles; ++bubble)
+            {
+                SpawnBubble(bubbleX, WrapSignedWord(GetTerrainFloorHeight(bubbleX, 0, bubbleZ) + 5 * bubble), bubbleZ);
+            }
+        }
+        if (Random(10) == 0)
+        {
+            const auto slot = FindFreeObjectIndex();
+            const auto angle = WrapSignedWord(submarine.winY + RandomSigned(50));
+            std::int16_t dx, dz, unused;
+            GetClampedDirectionDisplacement(dx, unused, angle, -270);
+            GetClampedDirectionDisplacement(unused, dz, angle, 270);
+            dz = WrapSignedWord(-dz);
+            const auto frame = static_cast<std::uint8_t>(Random(2) + 2);
+            auto& particle = worldObjects[slot];
+            InitializeDriftingParticle(particle, frame,
+                WrapSignedWord(worldObjects[1].posX + dx), WrapSignedWord(worldObjects[1].posZ + dz));
+            particle.modelFrame2 = 5;
+            SetObjectHealth(particle, 150);
+            particle.posY = WrapSignedWord(worldObjects[1].posY + worldObjects[1].collisionRadiusY + 2 + Random(150) - 50);
+        }
+        playerUnderwater = true;
+    }
+
+    bool GameContext::UpdateControlledVehicle()
     {
         if (controlledVehicleSlot == 0) { return false; }
         if (controlledVehicleSlot >= worldObjects.size())
@@ -511,12 +622,14 @@ namespace Desperabis
             throw std::out_of_range("Controlled vehicle is outside native world-object slots.");
         }
         auto& cart = worldObjects[controlledVehicleSlot];
-        if (cart.health <= 0 || cart.behavior != BehaviorType::Lorry || cart.doorLockOrGroupBitmask <= 0)
+        if (cart.health <= 0 || (cart.behavior != BehaviorType::Lorry && cart.behavior != BehaviorType::Submarine) ||
+            cart.doorLockOrGroupBitmask <= 0)
         {
             controlledVehicleSlot = 0;
             return false;
         }
-        if (cart.health == 1000)
+        if (cart.behavior == BehaviorType::Submarine) { UpdateControlledSubmarine(cart); }
+        else if (cart.health == 1000)
         {
             const auto state = cart.doorLockOrGroupBitmask;
             if (state >= 1 && state <= 3)
@@ -635,7 +748,7 @@ namespace Desperabis
         playerSidewaysSpeed = WrapSignedWord(playerSidewaysSpeed - SignWord(playerSidewaysSpeed));
         playerTurnSpeed = WrapSignedWord(playerTurnSpeed - SignWord(playerTurnSpeed));
 
-        // TODO: Recover mouse controls and other vehicle/attached-object movement.
+        // TODO: Recover mouse controls and other attached-object movement.
         for (int tick = 0; tick < frameTickCount; ++tick)
         {
             if (playerLife <= 0)
@@ -665,11 +778,11 @@ namespace Desperabis
                 ++result.simulatedTicks;
                 continue;
             }
-            if (UpdateControlledLorry())
+            if (UpdateControlledVehicle())
             {
                 player.velocityX = directionX;
                 player.velocityZ = directionZ;
-                UpdatePlayerUnderwater();
+                RefreshUnderwaterPresentation();
                 ++result.simulatedTicks;
                 continue;
             }
@@ -978,6 +1091,21 @@ namespace Desperabis
         soundListenerX = worldObjects[1].posX;
         soundListenerZ = worldObjects[1].posZ;
         lightingCache.Reset(soundListenerX, soundListenerZ, lightingCache.activeRadius);
+        if (controlledVehicleSlot != 0)
+        {
+            const auto& vehicle = worldObjects.at(controlledVehicleSlot);
+            if (vehicle.behavior == BehaviorType::Submarine && vehicle.modelFrame2 <= 3 && vehicle.groupIndexOrLock > 0)
+            {
+                for (int x = -3; x <= 3; ++x)
+                {
+                    for (int z = -3; z <= 3; ++z)
+                    {
+                        lightingCache.contributions[x + 10][z + 10] = WrapSignedWord(
+                            (7 - std::abs(x) - std::abs(z)) * vehicle.groupIndexOrLock);
+                    }
+                }
+            }
+        }
         field_DC34 = 0;
         const auto loadIdBeforeInteraction = nextLoadRequestId;
         UpdateModelAttachments();
@@ -1126,6 +1254,21 @@ namespace Desperabis
             for (const auto& object : data.objects)
             {
                 if (object.health <= 0) { continue; }
+                if (object.behavior == BehaviorType::UnderwaterTextureNoise)
+                {
+                    for (const int slot : {object.itemValue, WrapSignedWord(object.generalPurpose1)})
+                    {
+                        if (slot < 1 || slot >= static_cast<int>(data.level->texturePixels.size()) ||
+                            data.level->textureFileIndices[slot] == 0)
+                        {
+                            throw std::invalid_argument("Underwater texture noise references an unavailable level texture.");
+                        }
+                        if (!data.level->texturePixels[slot].pixels.empty()) { continue; }
+                        const auto bytes = LoadFile("GRAFIK\\TUR" +
+                            std::to_string(data.level->textureFileIndices[slot]) + ".256");
+                        data.level->LoadTexturePixels(slot, bytes.data(), bytes.size());
+                    }
+                }
                 needsShopDescriptions |= object.behavior == BehaviorType::WitchHead;
                 if (object.behavior != BehaviorType::TrackFireAnimation &&
                     object.behavior != BehaviorType::WitchMouthAnimation) { continue; }
@@ -4047,6 +4190,23 @@ namespace Desperabis
         }
         if (!audioHandler) { return PlaySoundEffect(effect, volume, 0, instanceLimit); }
         throw std::invalid_argument("Object sound sources must belong to GameContext::worldObjects.");
+    }
+
+    void Level::LoadTexturePixels(std::size_t slot, const std::uint8_t* data, std::size_t size)
+    {
+        if (slot >= texturePixels.size() || !data || size < 4)
+        {
+            throw std::invalid_argument("Level texture requires a valid slot and four-byte dimensions.");
+        }
+        const auto width = 1u + data[0] + (static_cast<unsigned int>(data[1]) << 8);
+        const auto height = 1u + data[2] + (static_cast<unsigned int>(data[3]) << 8);
+        const auto count = static_cast<std::uint64_t>(width) * height;
+        if (count > 65535 || size - 4 < count)
+        {
+            throw std::invalid_argument("Level texture requires complete pixel data within the native 16-bit pixel range.");
+        }
+        texturePixels[slot] = {static_cast<std::uint16_t>(width), static_cast<std::uint16_t>(height),
+            std::vector<std::uint8_t>(data + 4, data + 4 + count), 0};
     }
 
     void Level::LoadTextureMessages(std::size_t slot, const std::uint8_t* data, std::size_t size)

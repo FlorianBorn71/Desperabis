@@ -9,6 +9,7 @@ struct SubRenderable
 {
     Vector m_localPos, m_localOri;
     int m_anchorVertex = -1;
+    int m_sourcePrimitiveIndex = -1;
     const Renderable* m_renderable = nullptr;
 };
 

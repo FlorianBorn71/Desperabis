@@ -222,6 +222,8 @@ namespace
                 entry.type == BehaviorType::BatOutdoor || entry.type == BehaviorType::LavaSmoke ||
                 entry.type == BehaviorType::RollingRockSlope || entry.type == BehaviorType::RollingRock ||
                 entry.type == BehaviorType::Shark || entry.type == BehaviorType::ExtinguishLava ||
+                entry.type == BehaviorType::UnderwaterTextureNoise || entry.type == BehaviorType::DecoFish ||
+                entry.type == BehaviorType::Submarine || entry.type == BehaviorType::CrackingSubmarineWindow ||
                 entry.type == BehaviorType::Door ||
                 entry.type == BehaviorType::TutorialTrigger ||
                 entry.type == BehaviorType::LightningGenerator || entry.type == BehaviorType::WindController ||

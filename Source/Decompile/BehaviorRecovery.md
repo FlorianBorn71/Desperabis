@@ -60,6 +60,101 @@ pressure/countdown/explosion particles and lifecycle hooks, physical drainage,
 both water gates, swimming/stranded fish, native saves, pause and a sixty-frame
 all-objects coverage run. WARP checks the original level-31 water batches,
 unchanged GPU buffers, lowered bounds/mirror heights and post-drain gate removal.
+The original machine's `VEKT66.3DA` animation-3 display (frame 3) uses a
+2-DOS-unit material depth offset, and the separate pressure pointer (frame 5)
+uses 4 units so it remains above the face. The casing, front housing and wreck
+(frames 1, 4 and 2) keep exactly zero primitive/material bias. Real-asset GPU
+tests cover the attached display and rotating pointer at two viewing distances.
+
+### Submarine gameplay and porthole glass (level 32)
+
+The original level contains 140 live authored records (native slots 2..141).
+All four previously missing authored behavior types are now implemented, on 25 objects:
+
+| ID | Behavior | Native slots |
+| --- | --- | --- |
+| 55 | UnderwaterTextureNoise | 36 |
+| 67 | DecoFish | 9, 51, 52, 54, 55, 66, 67, 85, 86, 111..114, 123..128, 135..137 |
+| 141 | Submarine | 16 |
+| 144 | CrackingSubmarineWindow | 60 |
+
+Other authored types already have handlers: None, Pillar, Door, IdleAnimation,
+RollingRock, Switch1, RopeSwitch, UnderwaterPlants, RotatingSwitch, MetalPole,
+Crab and AnancondaHead.
+
+Evidence: [dispatch](level32-dispatch-evidence.txt),
+[fish helper](level32-helper-evidence.txt),
+[submarine controller](level32-vehicle-evidence.txt),
+[object rendering](level32-window-render-evidence.txt), and
+[primitive-prefix selection](level32-window-primitives-evidence.txt).
+
+- **UnderwaterTextureNoise (55), `0000:21FF`:** while underwater, performs
+  the signed low-word product of word 40 and behavior ticks as random pixel
+  copies. Each copy samples a random column from the source texture's first
+  row, then a random destination pixel. Slot 36 uses 30 copies/tick from
+  texture slot 9 (`TUR29`) into slot 8 (`TUR28`), saving the destination
+  offset in velocity X. GameCore owns palette-indexed pixels; the renderer
+  uploads changed revisions into a level-local texture, preserving cached
+  source assets and retrying failed uploads.
+- **DecoFish (67), `0000:259C` / `10AC:B6B2`:** per-tick phase-dependent
+  speed, signed fixed-point swimming, collision-map avoidance and random
+  accelerating/damped turns. Authored height and collision mask survive.
+- **Submarine (141), `0000:4041` / `10AC:A467`:** the behavior registers the
+  boarded vehicle; the separate player-frame controller handles movement,
+  initial hatch closing, heading/steering pulses, map impacts, hull stress,
+  contact damage-byte consumption, bubbles/particles, sound and the 7x7
+  headlamp. The shared controlled-vehicle path copies the cabin camera
+  without gravity or ordinary underwater oxygen consumption. Native riding
+  saves restore the controlled submarine, and the level-exit contact widens
+  the exit trigger and releases control.
+- **CrackingSubmarineWindow (144), `0000:41AE`:** word 42 advances toward
+  hull stress without healing, with effect 99; stress above 100 forces
+  failure even at zero behavior ticks. At the authored threshold 54 the
+  handler selects broken-pane frame 2, clears its behavior/morph, drains
+  player life through the shared damage helper and requests effects 76/81/32.
+  Native secondary frame **255** is not a morph target: `1E48:9C62` clamps
+  the number of authored primitives to word 42. Stable batching preserves
+  their order within each material, and a compact per-triangle source index
+  translates that limit into material draw-count overrides. Phases 0..54
+  progressively expose the original frame's 54 crack lines using its existing
+  GPU buffers; no prefix models or per-phase geometry uploads are created.
+  Invisible records consume native indices without triangles; model-reference
+  primitives gate their attached subinstances at the same limit.
+
+`submarine-gameplay` covers original records, exact noise writes/RNG ordering,
+all 22 fish in batched and individual ticks, real boarding, steering, pressure,
+exit/save restoration, oxygen/headlamp behavior, cracking/death, and full-level
+dispatch coverage. WARP checks original crack-prefix GPU endpoints/counts,
+attachment render-state updates, the shattered frame, palette-exact texture
+uploads, asset isolation and retryable upload failures. Count-override tests
+also cover interleaved materials, skipped markers, two-sided geometry,
+submodels, zero/oversized counts, reset on the same primary frame, shared GPU
+buffer identity and actual partial-draw pixels.
+
+Modern first-person presentation intentionally differs from DOS sorting:
+while riding, the submarine and its placement-20 attachments render after
+the world with fresh depth, preserving mutual hull/window occlusion without
+nearby world geometry protruding through the cabin. They remain ordinary
+world objects outside the vehicle or in free-camera view. The submarine-only
+blue player light uses multiplier **4.5** and radius **1600 DOS units**,
+retaining its six-second +/-30% pulse and specular contribution. Ordinary
+underwater blue (6/220) and above-water white (1.5/600) remain unchanged.
+WARP tests verify foreground/world depth separation and restoration, local
+occlusion, boarding/exit/free-camera light selection and uninterrupted pulsing.
+
+The twelve porthole walls around the starting room use `VEKT52.3DA`,
+animation 2/frame 1. Primitive 24 is a textured-wall record with material
+selector 36; the previous converter replaced it with an opaque white point
+texture. That selector now uses unlit pale-blue `(180,220,255)` glass at
+**5% opacity**. Wall surfaces, metal rims and reveals remain opaque, and the
+other transparent-wall selectors retain their existing handling. The original
+DOS fill remapped the underlying framebuffer pixels through a selected color
+table (including blue, red and very dark tables, per the author); this
+five-percent blue blend is a modern approximation, **not** an implementation
+of those native color tables. GPU tests
+check the original pane over two backgrounds (95% background transmission)
+and verify that glass changes the actual starting-room scenery by no more
+than 13/255 per RGB channel.
 
 ### Park gameplay (level 30, excluding Moon)
 
@@ -171,7 +266,7 @@ normal corner map visible. Training/part 2 still require their map pickup;
 part-1 weapon cheats remain disabled.
 
 An audit of all original `OBJPOS` records for the seven playable maps,
-including inactive records, now finds these **25 unimplemented world-behavior
+including inactive records, now finds these **21 unimplemented world-behavior
 handlers**. Names retain existing spellings and numeric placeholders; this
 is a coverage inventory, not a claim that the names fully describe recovered
 native logic.
@@ -179,13 +274,9 @@ native logic.
 | ID | Handler | Maps |
 | --- | --- | --- |
 | 42 | MercuryLamp | 34 |
-| 55 | Behavior_55 | 32 |
 | 58 | KeyInBucket | 33 |
-| 67 | DecoFish | 32 |
 | 84 | ItemHiddenInBox | 36 |
 | 100 | Moon | 30, 36 |
-| 141 | Submarine | 32 |
-| 144 | CrackingSubmarineWindow | 32 |
 | 145 | PuzzleGameTile | 35 |
 | 147 | PuzzleGameHandler | 35 |
 | 148 | Behavior_148 | 35 |
@@ -2996,9 +3087,10 @@ explicit eye height, heading, retained momentum, render-state capture,
 same-frame listener updates, original level 10/23/36 records, ladder state and
 frame timing, drag, and independent map gates.
 
-**Remaining boundaries:** Lorry 78 and Submarine 141 attach the player but
-require substantial native vehicle controllers; neither is implemented by
-merely copying vehicle position. Radial contact separation, several other
+Lorry 78 and Submarine 141 now have separate native vehicle controllers; see
+the vehicle and level-32 recovery sections rather than treating boarding as
+merely copying vehicle position.
+**Remaining boundaries:** Radial contact separation, several other
 contact/hazard responses remain unported. Oxygen depletion, bubbles and
 underwater audio are now implemented below. Behavior **178** compares horizontal player distance with
 `itemValue` and switches a DOS viewport-region height; it does not move the

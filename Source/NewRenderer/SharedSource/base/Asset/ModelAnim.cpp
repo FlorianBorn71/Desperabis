@@ -22,6 +22,7 @@ void ModelAnim::Read(AssetStream& s)
         std::wstring_view filename;
         int animation, frame; // One-based; frame zero selects the whole animation.
         float scale;
+        float depthOffsetDos = 0.f;
     } depthBiasOverrides[]{
         {L"VEKT\\VEKT20.3DA", 1, 1, 0.5f}, // Smaller windmill body variants.
         {L"VEKT\\VEKT20.3DA", 1, 2, 0.5f},
@@ -29,6 +30,11 @@ void ModelAnim::Read(AssetStream& s)
         {L"VEKT\\VEKT20.3DA", 1, 4, 0.5f},
         {L"VEKT\\VEKT20.3DA", 3, 0, 2.f}, // Windmill body variants.
         {L"VEKT\\VEKT60.3DA", 3, 2, 1.f}, // Recessed knothole.
+        {L"VEKT\\VEKT66.3DA", 3, 1, 0.f}, // Machine casing and wreck stay at geometric depth.
+        {L"VEKT\\VEKT66.3DA", 3, 2, 0.f},
+        {L"VEKT\\VEKT66.3DA", 3, 3, 0.002f, 2.f}, // Entire pressure display, including priority-zero faces.
+        {L"VEKT\\VEKT66.3DA", 3, 4, 0.f},
+        {L"VEKT\\VEKT66.3DA", 3, 5, 0.f, 4.f}, // Pointer remains above the display.
         {L"VEKT\\VEKT68.3DA", 1, 0, 0.02f}, // Witch head's recessed mouth.
     };
 
@@ -60,12 +66,14 @@ void ModelAnim::Read(AssetStream& s)
         for (int frame = 0; frame < m_numFrames; frame++)
         {
             Model& m(m_model[anim][frame]);
+            float depthOffset = 0.f;
             for (const auto& override : depthBiasOverrides)
             {
                 if (s.GetSourceFilename() == override.filename && anim + 1 == override.animation &&
                     (override.frame == 0 || frame + 1 == override.frame))
                 {
                     m.m_sortingDepthBiasScale = override.scale;
+                    depthOffset = override.depthOffsetDos * DespToFloat;
                 }
             }
             m.m_positionOfs = (uint16_t)context.m_vertexPos.size();
@@ -75,6 +83,14 @@ void ModelAnim::Read(AssetStream& s)
 
             m.Read(s, context);
             GeometryUtils::Convert(m, conversion);
+            if (depthOffset != 0.f)
+            {
+                for (auto& draw : m.m_drawCalls)
+                {
+                    draw.m_material.m_depthOffset = depthOffset;
+                    draw.m_material.ComputeHash();
+                }
+            }
         }
     }
 

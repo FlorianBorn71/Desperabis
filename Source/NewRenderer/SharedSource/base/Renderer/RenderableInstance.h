@@ -85,6 +85,7 @@ public:
 	std::vector<DrawCallMaterial>& GetMaterialOverrides() { return m_materialOverride; }
     const std::vector<DrawCallMaterial>& GetMaterialOverrides() const { return m_materialOverride; }
     std::vector<DrawCallMaterial>& GetOrCreateMaterialOverrides();
+    void SetSourcePrimitiveCount(int count);
 
     // sorting/visibility
 	uint32_t ComputeOpaqueSortingHash() const;
@@ -110,6 +111,7 @@ public:
     float m_blendWeight = 0.f;
     float m_uniformScale = 1.f;
     float m_fireIntensity = 0.f;
+    bool m_foreground = false;
     Color4 m_tintColor = { 255,255,255,255 };
 #ifdef _DEBUG
     std::string m_debugName;

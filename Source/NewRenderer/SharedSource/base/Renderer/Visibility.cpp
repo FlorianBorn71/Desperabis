@@ -14,6 +14,7 @@ void VisibilityResult::Reset()
 {
     m_mainCamera = nullptr;
     m_visibleInstances.Reset();
+    m_foregroundInstances.Reset();
     m_visibleTextMeshInstances.clear();
 #ifdef ENABLE_ADVANCED_RENDERING
     m_visibileLights.clear();
@@ -94,7 +95,6 @@ void DefaultVisibilityContext::DetermineVisibleInstances(VisibilityResult& resul
     VisibilityResult::InstanceCollection& list_o(target.m_opaqueInstances);
     VisibilityResult::InstanceCollection& list_t(target.m_transparentInstances);
     VisibilityResult::InstanceCollection& list_s(target.m_skyInstances);
-    VisibilityResult::InstanceCollection& list_f(target.m_burningInstances);
 
 	auto AddBurningLight = [&](const RenderableInstance* inst, bool performLightVisibleTest)
 	{
@@ -116,38 +116,38 @@ void DefaultVisibilityContext::DetermineVisibleInstances(VisibilityResult& resul
 	};
 
 
-    auto AddInstanceToBuckets = [&](const RenderableInstance* inst)
+    auto AddInstanceToBuckets = [&](const RenderableInstance* inst, VisibilityResult::VisibleInstances& bucket)
     {
-		target.m_visibleTransparencyTypes |= inst->GetUsedTransparencyMask();
+		bucket.m_visibleTransparencyTypes |= inst->GetUsedTransparencyMask();
 		// sort into buckets
 		if (inst->HasOpaqueMaterials())
 		{
-			VisibilityResult::InstanceAndHash& entry = list_o.emplace_back();
+			VisibilityResult::InstanceAndHash& entry = bucket.m_opaqueInstances.emplace_back();
 			entry.m_instance = inst;
 			entry.m_sortingHash = inst->ComputeOpaqueSortingHash();
 		}
 		if (inst->HasTransparentMaterials())
 		{
-			VisibilityResult::InstanceAndHash& entry = list_t.emplace_back();
+			VisibilityResult::InstanceAndHash& entry = bucket.m_transparentInstances.emplace_back();
 			entry.m_instance = inst;
 			entry.m_sortingHash = inst->ComputeTransparentSortingHash(cameraPos);
 		}
 		if (inst->HasSkyMaterials())
 		{
-			VisibilityResult::InstanceAndHash& entry = list_s.emplace_back();
+			VisibilityResult::InstanceAndHash& entry = bucket.m_skyInstances.emplace_back();
 			entry.m_instance = inst;
 			entry.m_sortingHash = inst->ComputeSkySortingHash();
 		}
 		if (inst->m_fireIntensity > 0.f)
 		{
-			VisibilityResult::InstanceAndHash& entry = list_f.emplace_back();
+			VisibilityResult::InstanceAndHash& entry = bucket.m_burningInstances.emplace_back();
 			entry.m_instance = inst;
 			entry.m_sortingHash = inst->ComputeOpaqueSortingHash(); // since flames are all additively rendered, we can as well sort by renderstate
 			// add a light source implicitly:
 			AddBurningLight(inst, false); //  no need to test visibility since the object itself is visible
 		}
 #ifdef ENABLE_ADVANCED_RENDERING
-		if (collectWaterReceiver && inst->HasWaterMaterials())
+		if (collectWaterReceiver && &bucket == &target && inst->HasWaterMaterials())
 		{
             const auto& draws = inst->GetRenderable()->m_drawCalls;
             for (int drawIndex = 0; drawIndex < static_cast<int>(draws.size()); ++drawIndex)
@@ -173,6 +173,8 @@ void DefaultVisibilityContext::DetermineVisibleInstances(VisibilityResult& resul
         {
             continue;
         }
+        if (inst->m_foreground && !collectWaterReceiver) { continue; }
+        auto& bucket = inst->m_foreground ? result.m_foregroundInstances : target;
 
         TransparencyModeMask transpMask = inst->GetUsedTransparencyMask();
         if (m_performFrustumClipping && (transpMask & TransparencyModeMask::AllSky) == TransparencyModeMask::None)
@@ -180,7 +182,7 @@ void DefaultVisibilityContext::DetermineVisibleInstances(VisibilityResult& resul
             inst->UpdateGlobalBounds();
             const BoundingVolume& bounds = inst->GetGlobalBounds();
             
-            if ((grid != nullptr && !grid->IsVisible(bounds)) || !camFrustum.IsVolumeVisible(bounds))
+            if ((grid != nullptr && !inst->m_foreground && !grid->IsVisible(bounds)) || !camFrustum.IsVolumeVisible(bounds))
             {
                 if (inst->m_fireIntensity > 0.f) // even when not visible, fire light may need to be added
                 {
@@ -194,20 +196,26 @@ void DefaultVisibilityContext::DetermineVisibleInstances(VisibilityResult& resul
 
         if (inst->GetRenderable()->HasOwnDrawcalls())
         {
-            AddInstanceToBuckets(inst.get());
+            AddInstanceToBuckets(inst.get(), bucket);
         }
         inst->PrepareSubInstancesForRendering();
 
         // sub instances:
         for (const RenderableInstance& subInst : inst->m_subInstances)
         {
-			AddInstanceToBuckets(&subInst);
+			AddInstanceToBuckets(&subInst, bucket);
         }
     }
 
     SortCollection(list_o);
     SortCollection(list_t);
     SortCollection(list_s);
+    if (collectWaterReceiver)
+    {
+        SortCollection(result.m_foregroundInstances.m_opaqueInstances);
+        SortCollection(result.m_foregroundInstances.m_transparentInstances);
+        SortCollection(result.m_foregroundInstances.m_skyInstances);
+    }
 #ifdef ENABLE_ADVANCED_RENDERING
     if (collectWaterReceiver)
     {

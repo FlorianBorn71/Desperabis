@@ -336,6 +336,20 @@ VisibilityResult::VisibleWaterLevel RendererDX11::PrepareWeaponReflection(
 
 void RendererDX11::RenderHudGeometry(const VisibilityResult& world, const RenderingSettings& settings, ProfilingStats& stats)
 {
+    if (world.m_foregroundInstances.m_visibleTransparencyTypes != TransparencyModeMask::None)
+    {
+        RenderContextDX11 context(*this, world, settings, stats);
+        context.BeginRendering();
+        context.BeginRenderTargetScope(RenderTargetPassType::MainView);
+        context.TrackGlobals();
+        // Foreground meshes share depth with each other, but never with nearby world geometry.
+        const auto* target = static_cast<RenderTargetDX11*>(m_mainRT.get());
+        m_d3dContext->ClearDepthStencilView(target->m_depthStencilView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+        RenderOpaqueGeometry(context, world.m_foregroundInstances);
+        RenderTransparentGeometry(context, world.m_foregroundInstances);
+        context.EndRenderTargetScope();
+        context.EndRendering();
+    }
     const auto weaponDraw = std::move(m_weaponDraw);
     m_weaponDraw = {};
     if (weaponDraw) { weaponDraw(world, settings, stats); }

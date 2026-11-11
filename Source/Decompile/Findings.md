@@ -902,6 +902,16 @@ in both Debug and Release. Animation/frame numbers below are one-based:
 | `VEKT20.3DA` (larger windmill bodies) | 3 | All five | 2.0 | 50 |
 | `VEKT60.3DA` (knothole) | 3 | 2 only | 1.0 | 25 |
 | `VEKT68.3DA` (witch head) | 1 | All head poses | 0.02 | 0.5 |
+| `VEKT66.3DA` (exploding machine housing/wreck) | 3 | 1, 2, 4 | 0 | 0 |
+| `VEKT66.3DA` (pressure display) | 3 | 3 | 0.002 | 0.05 |
+| `VEKT66.3DA` (pressure pointer) | 3 | 5 | 0 | 0 |
+
+The pressure display additionally has a **2-DOS-unit material offset** on
+every draw call, including its priority-zero backing. Its separately rotating
+pointer has a **4-DOS-unit material offset**, preserving its position above
+the recessed face. The machine casing, front housing and exploded wreck have
+zero primitive and material offsets. These offsets are assigned after model
+conversion, using the same profile table, and survive level-texture/pose updates.
 
 Other models in those same banks retain the low default; notably the
 `VEKT63.3DA` well uses 0.05-unit steps, with a maximum offset of 0.2 DOS
