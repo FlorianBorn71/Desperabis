@@ -36,7 +36,7 @@ namespace Desperabis
         }
         if (object.collisionType == CollisionType::PushPlayer)
         {
-            if (object.behaviorParameter == 0 || context.DEBUG_noPlayerCollision)
+            if (GameContext::GetPushContactDamageFactor(object) == 0 || context.DEBUG_noPlayerCollision)
             {
                 return { InteractionStatus::NoEffect };
             }

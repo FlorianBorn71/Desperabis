@@ -15,6 +15,17 @@ For the first explained case and shared collision-map pointer, see
 
 ## Directory conventions
 
+- `level35-native-evidence.txt`, `level35-helper-evidence.txt`,
+  `level35-book-evidence.txt`, `level35-book-image-evidence.txt`,
+  `Scaffold/CastlePuzzleTests.cpp`: sliding tiles and numbered-tile triggers,
+  combination wheels, clock hands/pendulum/chimes and timed rotating knights.
+  The code book software-darkens parchment with raw indexed artwork and caches
+  its unique uploaded texture; raw font glyphs remain available for future book
+  text composition. Tests also cover the one-shot knight crossbow; renderer
+  placement tests cover the centralized, save-safe bookshelf-key lift.
+  Flame-tracked furniture contacts are intentionally harmless;
+  furniture uses geometric depth rather than DOS sorting offsets.
+  See [castle puzzles](BehaviorRecovery.md#castle-sliding-tiles-combination-wheels-and-clock-level-35).
 - `level34-native-evidence.txt`, `level34-ray-support-evidence.txt`,
   `Scaffold/MercuryLampTests.cpp`: coffin bones/dog feeding, portable mirror
   and vase, mercury beam reflection and sensor-controlled door. The renderer

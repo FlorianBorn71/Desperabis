@@ -300,7 +300,8 @@ namespace Desperabis
             return result;
         }
         case CollisionType::BookWithCode:
-            return { InteractionStatus::UnimplementedHandler };
+            state.OpenCodeBook(object.itemValue);
+            return { InteractionStatus::Applied };
 
         default:
             break;

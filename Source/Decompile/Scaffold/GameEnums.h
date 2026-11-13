@@ -144,9 +144,9 @@ namespace Desperabis
         WashingWater = 143,
         CrackingSubmarineWindow = 144,
         PuzzleGameTile = 145, // level 35
-        Behavior_146 = 146,
+        PuzzleGameTileMoving = 146,
         PuzzleGameHandler = 147,
-        Behavior_148 = 148, // something I could not locate in level 35
+        PuzzleTileTrigger = 148,
         PuzzleSpool = 149, // the ones with roman numbers in level 35
         OpeningCreviceWithExit = 150, // the one that opens in level 25
         Behavior_151 = 151,

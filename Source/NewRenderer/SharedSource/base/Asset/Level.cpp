@@ -273,7 +273,7 @@ void Level::ReadGameObjects(const byte* rawData, int dataSize)
     for (int i = 0; i < count; i++, go++, rawData+= objSize)
     {
         go->m_level = this;
-        go->m_objectNumber = i; // +1 for one-base?
+        go->m_objectNumber = i; // Zero-based OBJPOS record; native world slot is i + 2.
 
 //        ((byte*)rawData)[8] = 0; // turn off behavior in savegame
         memcpy(go->m_rawBytes, rawData, objSize);
@@ -1592,7 +1592,12 @@ void Level::CorrectInitialObjectPlacement(RawGameObject& rawGO) const
     };
     if (key)
     {
-        const auto authoredHeight = rawGO.m_rawShorts[7];
+        auto authoredHeight = rawGO.m_rawShorts[7];
+        if (m_levelInfo.m_levelIndex == 35 && rawGO.m_objectNumber == 78)
+        {
+            // The bookshelf key (native slot 80) needs one unit above its authored -154.
+            authoredHeight = (std::max)(authoredHeight, int16_t{-153});
+        }
         placeOnFloor(4);
         rawGO.m_rawShorts[7] = (std::max)(authoredHeight, rawGO.m_rawShorts[7]);
         return;

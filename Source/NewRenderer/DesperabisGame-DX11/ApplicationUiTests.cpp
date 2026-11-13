@@ -522,6 +522,23 @@ namespace
                 "The original model's highest authored priority must have the expected scaled GPU offset.");
         };
         auto& assets = AssetManager::Instance();
+        const auto table = FORCE_GET(assets.LoadAsset<ModelAnim>(L"VEKT\\VEKT30.3DA"));
+        checkGpuOffsets(*table->GetModel(1, 1), 0.f, 0);
+        Check(table->GetModel(1, 0)->m_sortingDepthBiasScale == 0.002f &&
+            table->GetModel(1, 2)->m_sortingDepthBiasScale == 0.002f &&
+            table->GetModel(1, 3)->m_sortingDepthBiasScale == 0.002f,
+            "The table override must not change neighboring props in its shared asset bank.");
+        const auto furniture = FORCE_GET(assets.LoadAsset<ModelAnim>(L"VEKT\\VEKT59.3DA"));
+        for (int animation = 0; animation < furniture->m_numAnims; ++animation)
+        {
+            for (int frame = 0; frame < furniture->m_numFrames; ++frame)
+            {
+                const auto& model = *furniture->GetModel(animation, frame);
+                Check(model.m_sortingDepthBiasScale == 0.f,
+                    "Castle furniture must disable the DOS sorting-depth offsets.");
+                if (!model.m_drawCalls.empty()) { checkGpuOffsets(model, 0.f, 0); }
+            }
+        }
         const auto windmill = FORCE_GET(assets.LoadAsset<ModelAnim>(L"VEKT\\VEKT20.3DA"));
         constexpr byte smallWindmillPriorities[]{3,3,3,1};
         for (int frame = 0; frame < 4; ++frame)
@@ -1507,6 +1524,8 @@ namespace
                 for (std::size_t slot = 2; slot <= 164; ++slot)
                 {
                     ::RawGameObject raw{};
+                    raw.m_level = &m_level;
+                    raw.m_objectNumber = static_cast<int>(slot - 2);
                     Desperabis::EncodeGameObject(worldObjects[slot], raw.m_rawBytes, sizeof(raw.m_rawBytes));
                     m_level.CorrectInitialObjectPlacement(raw);
                     worldObjects[slot].posX = raw.m_rawShorts[6];
@@ -6530,6 +6549,114 @@ namespace
             "63 modelled shoreline tiles, 38 flat tiles and per-material reflection/refraction passed.\n";
     }
 
+    void CheckClockHands(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context,
+        Desperabis::GameContext& core, Level& level)
+    {
+        std::array<RenderableInstancePtr, 3> instances{
+            std::make_shared<RenderableInstance>(), std::make_shared<RenderableInstance>(),
+            std::make_shared<RenderableInstance>()};
+        const auto refresh = [&](int index)
+        {
+            ::RawGameObject raw{};
+            raw.m_level = &level;
+            Desperabis::EncodeGameObject(core.GetObjectRenderState(33 + index), raw.m_rawBytes, 54);
+            level.ApplyRenderProperties(instances[index], raw);
+        };
+        refresh(0);
+        const auto& clock = *instances[0];
+        const auto& anchor = clock.GetRenderable()->m_sourcePositions.at(36);
+        const auto pivot = clock.GetTransform().TransformPosition(Vector(anchor.x, anchor.y, anchor.z));
+        const auto outward = clock.GetTransform().TransformDirection(Vector(0,0,-1));
+        const auto right = clock.GetTransform().TransformDirection(Vector(-1,0,0));
+        Target target(device, 480, 320);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        Camera camera;
+        Matrix4 projection;
+        projection.CreateProjection(1.5f, Math::Pi / 3.f, 0.01f, 50.f);
+        camera.SetProjectionMatrix(projection);
+        RenderingSettings settings;
+        settings.fullbrightRendering = true;
+        ProfilingStats stats;
+        const auto render = [&](bool housing, int hand)
+        {
+            VisibilityResult visible;
+            visible.m_mainCamera = &camera;
+            visible.m_ambientColor = {1,1,1};
+            visible.m_fogFalloff = 0.f;
+            visible.m_lightmap = AssetManager::Instance().GetPlainWhiteTexture();
+            for (int index = 0; index < 3; ++index)
+            {
+                if (index == 0 ? !housing : index != hand) { continue; }
+                const auto& instance = *instances[index];
+                visible.m_visibleInstances.m_opaqueInstances.push_back({&instance, ~uint32_t{0}});
+                visible.m_visibleInstances.m_visibleTransparencyTypes |= instance.GetUsedTransparencyMask();
+            }
+            const float background[]{1,0,1,1};
+            context->ClearRenderTargetView(target.colorView.Get(), background);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            return target.Pixels(device, context);
+        };
+        const auto originalTime = core.worldObjects[33].itemValue;
+        for (const int minutes : {0,90,180,360})
+        {
+            core.worldObjects[33].itemValue = static_cast<std::int16_t>(minutes);
+            for (int hand = 1; hand <= 2; ++hand)
+            {
+                Desperabis::DispatchObjectCase(core.worldObjects[33 + hand], core);
+                refresh(hand);
+                Check((instances[hand]->GetTransform().GetTranslation() - pivot).GetLength() < DespToFloat,
+                    "Clock hands must share the dial's source-model center within native coordinate rounding.");
+                Check(std::all_of(instances[hand]->GetOrCreateMaterialOverrides().begin(),
+                    instances[hand]->GetOrCreateMaterialOverrides().end(),
+                    [](const auto& material) { return material.m_depthOffset == DespToFloat; }),
+                    "Both original hand models must retain their one-unit depth clearance after pose updates.");
+                for (const auto [distance, side] : {std::pair{40.f,-0.25f}, {40.f,0.f}, {40.f,0.25f},
+                    {80.f,-0.25f}, {80.f,0.f}, {80.f,0.25f}})
+                {
+                    Matrix4 view;
+                    auto displacement = outward;
+                    displacement *= distance * DespToFloat;
+                    auto sideways = right;
+                    sideways *= side * distance * DespToFloat;
+                    view.Create(pivot + displacement + sideways,
+                        right, clock.GetTransform().GetUpDir(), outward);
+                    camera.SetCameraTransformMatrix(view);
+                    const auto setOffset = [&](float offset)
+                    {
+                        for (auto& material : instances[hand]->GetOrCreateMaterialOverrides())
+                        {
+                            material.m_depthOffset = offset * DespToFloat;
+                            material.ComputeHash();
+                        }
+                    };
+                    setOffset(1.f);
+                    const auto corrected = render(true, hand);
+                    const auto isolated = render(false, hand);
+                    setOffset(0.f);
+                    const auto uncorrected = render(true, hand);
+                    int pixels = 0, clipped = 0, originallyClipped = 0;
+                    for (std::size_t pixel = 0; pixel < isolated.size(); ++pixel)
+                    {
+                        if ((isolated[pixel] & 0xffffff) == 0xff00ff) { continue; }
+                        ++pixels;
+                        clipped += isolated[pixel] != corrected[pixel];
+                        originallyClipped += isolated[pixel] != uncorrected[pixel];
+                    }
+                    std::cout << "Clock hand " << hand << ", time " << minutes << ", distance " << distance << ", side " << side
+                        << ": " << pixels << " pixels; " << clipped << "/" << originallyClipped
+                        << " clipped (corrected/original).\n";
+                    Check(pixels > 5 && clipped == 0 && originallyClipped > pixels / 2,
+                        "A clock hand must remain completely visible over the dial; removing clearance must reproduce clipping.");
+                    setOffset(1.f);
+                }
+            }
+        }
+        core.worldObjects[33].itemValue = originalTime;
+        Desperabis::DispatchObjectCase(core.worldObjects[34], core);
+        Desperabis::DispatchObjectCase(core.worldObjects[35], core);
+    }
+
     void CheckMaps(ApplicationUi& ui, RendererDX11& renderer, const Level& level,
         const Font& font, const TextureAnim& hud, ID3D11Device3* device, ID3D11DeviceContext3* context,
         const char* screenshot = nullptr)
@@ -6682,6 +6809,40 @@ namespace
             }
             Check(waterPixels > 100 && paperPixels > 1000,
                 "The full map must retain blue water and show parchment through its unoccupied area.");
+            const Desperabis::ApplicationPresentation bookPage{Desperabis::MenuPage::CodeBook, {
+                Desperabis::UiBitmap{{0,0,360,240}, Desperabis::UiBitmapSource::MapPaper, 0,0,0,{}},
+                Desperabis::UiBitmap{{76,103,0,0}, Desperabis::UiBitmapSource::TextIllustration,
+                    0,0,13,{},Desperabis::UiBitmapLayout::TopLeft}}};
+            const auto book = render(bookPage);
+            Check(!ui.UploadPaperPage(bookPage, renderer), "Unchanged book pages must reuse their uploaded texture.");
+            int illustrationPixels = 0;
+            int deepInkPixels = 0, shadedPaperPixels = 0;
+            for (std::size_t i = 0; i < book.size(); ++i)
+            {
+                illustrationPixels += book[i] != paper[i];
+                for (int shift : {0, 8, 16})
+                {
+                    Check(((book[i] >> shift) & 255) <= ((paper[i] >> shift) & 255) + 1,
+                        "Book ink must only darken each paper channel, never introduce palette-red pixels.");
+                }
+                const int red = book[i] & 255;
+                deepInkPixels += red < 30 && (paper[i] & 255) > 100;
+                shadedPaperPixels += red > 30 && red + 20 < static_cast<int>(paper[i] & 255);
+            }
+            Check(illustrationPixels > 1000 && illustrationPixels < static_cast<int>(book.size()) / 2,
+                "The code-book image must render visibly over, not replace, the original parchment.");
+            Check(deepInkPixels > 20 && shadedPaperPixels > 100,
+                "Raw artwork must retain both strong ink and intermediate darkening on parchment.");
+            auto changedBook = bookPage;
+            std::get<Desperabis::UiBitmap>(changedBook.commands[1]).bounds.x = -20;
+            Check(ui.UploadPaperPage(changedBook, renderer) && ui.UploadPaperPage(bookPage, renderer),
+                "Changed or clipped artwork placement must rebuild the page without altering the parchment source.");
+            std::get<Desperabis::UiBitmap>(changedBook.commands[1]).frame = 255;
+            bool invalidBookRejected = false;
+            try { ui.UploadPaperPage(changedBook, renderer); }
+            catch (const std::runtime_error&) { invalidBookRejected = true; }
+            Check(invalidBookRejected && !ui.UploadPaperPage(bookPage, renderer),
+                "A missing illustration must report failure without replacing the valid cached page.");
         }
         ++geometry.geometryRevision;
         Check(ui.UploadCollisionMap(core, renderer), "Geometry coverage changes must invalidate map presentation.");
@@ -6741,6 +6902,55 @@ namespace
             original.LoadGame(snapshot);
             Check(original.CaptureSaveGame("WARP snapshot") == snapshot,
                 "Core and renderer must agree on native snapshot state and resources.");
+            if (number == 35)
+            {
+                CheckClockHands(renderer, device, context, original, *savedLevel);
+                Check(Desperabis::HandlePlayerObjectInteraction(original.worldObjects[98], original).status ==
+                    Desperabis::InteractionStatus::Applied && original.GetMenuPage() == Desperabis::MenuPage::CodeBook,
+                    "The original castle book must open through its real interaction path.");
+                const auto book = original.GetApplicationPresentation();
+                Check(!book.commands.empty() && std::holds_alternative<Desperabis::UiFill>(book.commands.front()),
+                    "The real book recipe must exercise the application's full-canvas clear.");
+                auto paper = book;
+                paper.commands.erase(std::remove_if(paper.commands.begin(), paper.commands.end(), [](const auto& command)
+                {
+                    const auto* bitmap = std::get_if<Desperabis::UiBitmap>(&command);
+                    return bitmap && bitmap->source == Desperabis::UiBitmapSource::TextIllustration;
+                }), paper.commands.end());
+                for (const auto size : {std::pair<UINT, UINT>{360,240}, {1280,720}, {480,800}})
+                {
+                    Target target(device, size.first, size.second);
+                    renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+                    const auto render = [&](const Desperabis::ApplicationPresentation& recipe)
+                    {
+                        const float background[]{0.1f, 0.2f, 0.3f, 1.f};
+                        context->ClearRenderTargetView(target.colorView.Get(), background);
+                        VisibilityResult empty;
+                        empty.m_mainCamera = &camera;
+                        renderer.RenderSceneElements(empty, settings, stats);
+                        ui.Draw(recipe, renderer, level, font, hud, settings, stats, target.viewport,
+                            context, target.colorView.Get(), target.depthView.Get());
+                        return target.Pixels(device, context);
+                    };
+                    const auto background = render(paper);
+                    const auto illustrated = render(book);
+                    int inkPixels = 0;
+                    for (std::size_t pixel = 0; pixel < illustrated.size(); ++pixel)
+                    {
+                        inkPixels += illustrated[pixel] != background[pixel];
+                    }
+                    Check(inkPixels > 1000 && !ui.UploadPaperPage(book, renderer),
+                        "The actual book recipe must render ink and reuse its page texture at every aspect ratio.");
+                }
+                struct CloseBook final : Desperabis::InputHandler
+                {
+                    bool IsKeyPressed(Desperabis::InputKey key) override
+                    { return key == Desperabis::InputKey::UiCancelKey; }
+                } close;
+                original.UpdateApplication(0, close);
+                Check(original.GetMenuPage() == Desperabis::MenuPage::Gameplay,
+                    "The rendered original book must close back to gameplay.");
+            }
             savedScene.ClearScene();
             auto corrupt = snapshot;
             corrupt.back() ^= 1;
@@ -7629,6 +7839,31 @@ namespace
         }
         Check(raisedKeys >= 2 && wallMaps == 1, "Placement tests must exercise the buried tutorial keys and original wall map.");
         {
+            LevelScene castle(35);
+            castle.m_createGameObjects = false;
+            FORCE_WAIT(castle.CreateScene());
+            const auto source = castle.m_level->GetRawGameObjects().at(78);
+            Check(source.m_objectNumber == 78 && source.m_rawShorts[7] == -154,
+                "The bookshelf fixture must retain its authored height and zero-based OBJPOS index.");
+            auto key = source;
+            castle.m_level->CorrectInitialObjectPlacement(key);
+            Check(key.m_rawShorts[7] == -153 && key.m_rawShorts[6] == source.m_rawShorts[6] &&
+                key.m_rawShorts[8] == source.m_rawShorts[8],
+                "The shared placement policy must raise only the bookshelf key by one unit.");
+            const auto once = key;
+            castle.m_level->CorrectInitialObjectPlacement(key);
+            Check(key == once, "The bookshelf exception must not accumulate when placement runs twice.");
+            auto other = source;
+            other.m_objectNumber = 79;
+            castle.m_level->CorrectInitialObjectPlacement(other);
+            Check(other == source, "The bookshelf exception must not apply to a different object record.");
+            key.m_rawShorts[7] += 10;
+            castle.m_level->CorrectInitialObjectPlacement(key);
+            Check(key.m_rawShorts[7] == -143, "The bookshelf exception must not lower an already elevated key.");
+            Check(castle.m_level->GetRawGameObjects().at(78) == source,
+                "Placement must not mutate the cached authored bookshelf record.");
+        }
+        {
             LevelScene swamp(24);
             swamp.m_createGameObjects = false;
             FORCE_WAIT(swamp.CreateScene());
@@ -7699,7 +7934,39 @@ namespace
                 InitializeLevelPlayerSpawn(data, {0,0,100});
                 CompleteLevelLoad(request.id, std::move(data));
             }
+            void OnFreshLevelLoaded() override
+            {
+                const auto number = GetLoadedLevelNumber();
+                Check(number.has_value(), "Fresh placement requires a loaded level number.");
+                auto* renderLevel = FORCE_GET(AssetManager::Instance().LoadLevel(*number));
+                for (std::size_t slot = 2; slot <= 164; ++slot)
+                {
+                    ::RawGameObject raw{};
+                    raw.m_level = renderLevel;
+                    raw.m_objectNumber = static_cast<int>(slot - 2);
+                    Desperabis::EncodeGameObject(worldObjects[slot], raw.m_rawBytes, sizeof(raw.m_rawBytes));
+                    renderLevel->CorrectInitialObjectPlacement(raw);
+                    worldObjects[slot].posX = raw.m_rawShorts[6];
+                    worldObjects[slot].posY = raw.m_rawShorts[7];
+                    worldObjects[slot].posZ = raw.m_rawShorts[8];
+                }
+            }
         } host;
+        host.StartLevel(35);
+        Check(host.worldObjects[80].posY == -153,
+            "The host's fresh-level callback must apply the shared bookshelf correction to gameplay coordinates.");
+        host.LoadGame(host.CaptureSaveGame("Bookshelf placement"));
+        host.LoadGame(host.CaptureSaveGame("Bookshelf again"));
+        Check(host.worldObjects[80].posY == -153, "Repeated save restoration must not accumulate the key lift.");
+        host.worldObjects[80].posY = -154;
+        const auto originalPlacement = host.CaptureSaveGame("Original bookshelf");
+        host.LoadGame(originalPlacement);
+        Check(host.worldObjects[80].posY == -154, "Existing saves must retain their original bookshelf-key height.");
+        FloorLevel savedCastle;
+        FORCE_WAIT(savedCastle.LoadSaveGameData(originalPlacement.data(), static_cast<int>(originalPlacement.size())));
+        auto savedKey = savedCastle.GetRawGameObjects().at(78);
+        savedCastle.CorrectInitialObjectPlacement(savedKey);
+        Check(savedKey.m_rawShorts[7] == -154, "SPL renderer levels must also bypass the bookshelf exception.");
         host.StartLevel(10);
         const auto bytes = host.CaptureSaveGame("Placement regression");
         FloorLevel saved;

@@ -165,13 +165,13 @@ namespace
             case 99: destination = MenuPage::Gameplay; break;
             default:
                 if (value >= 12 && value <= 19) { destination = MenuPage::Gameplay; }
-                if (value >= 200 && value <= 299) { calledPage = true; }
+                if ((value >= 200 && value <= 299) || page == MenuPage::CodeBook) { calledPage = true; }
                 break;
             }
             Check(context.GetMenuPage() == destination &&
                 context.visits.size() == (calledPage ? 1u : 0u) &&
                 (!calledPage || context.visits.front() == page),
-                "Outer application routing differs for a native state word.");
+                "Outer application routing differs for a native state word or the host book modal.");
             Check(context.positionalSoundsSuppressed == (value == 20),
                 "Presentation state 20 must set the native shared suppression gate.");
         }

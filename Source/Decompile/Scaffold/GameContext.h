@@ -381,6 +381,7 @@ namespace Desperabis
         bool SelectMainMenuAction(MainMenuAction action);
         bool OpenInventory();
         void OpenMap();
+        void OpenCodeBook(std::int16_t section);
         void StartNewGame(std::int16_t chapter);
         void LoadGameParts();
         void SetGameParts(const std::uint8_t* bytes, std::size_t size);
@@ -589,6 +590,7 @@ namespace Desperabis
         int FindWorldObjectSlot(const RawGameObject& object) const;
         // Original 1E48:2D63: no player-health test.
         bool OverlapsPlayer(const RawGameObject& source) const;
+        static std::uint8_t GetPushContactDamageFactor(const RawGameObject& object);
         // Original 0000:CE9E, including its later-slot preference rule.
         std::uint16_t FindPlayerCollision() const;
         // Both native allocators clear the selected record, including fallback slot 165.
@@ -716,6 +718,7 @@ namespace Desperabis
         std::int16_t playerTargetHeading = 0;
         std::optional<std::array<std::int16_t, 3>> playerDeathDirection;
         MenuPage menuPage = MenuPage::MainMenu;
+        std::vector<UiBitmap> codeBookPictures;
         GameRuntimeState runtimeState = GameRuntimeState::NoLevel;
         std::uint64_t nextLoadRequestId = 0;
         std::optional<LevelLoadRequest> pendingLevelLoad;

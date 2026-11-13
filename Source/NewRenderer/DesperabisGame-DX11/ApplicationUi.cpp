@@ -182,6 +182,10 @@ namespace
             }
             return { model->m_ownTextures[command.frame] };
         }
+        if (command.source == UiBitmapSource::TextIllustration)
+        {
+            throw std::logic_error("Text illustrations must be composed onto their paper page.");
+        }
         const TextureAnim* animation = command.source == UiBitmapSource::InventoryIcons ? icons :
             command.source == UiBitmapSource::MenuCursor ? &cursor : &hud;
         if (command.source == UiBitmapSource::LevelSprite)
@@ -373,6 +377,116 @@ namespace
     }
 }
 
+std::vector<ApplicationUi::IndexedBitmap> ApplicationUi::ReadIndexedBitmaps(const std::vector<byte>& bytes)
+{
+    if (bytes.size() < 2 || bytes[0] == 0 || bytes[1] == 0)
+    {
+        throw std::runtime_error("Invalid indexed AN2 bank.");
+    }
+    std::size_t offset = 2;
+    const auto word = [&]() -> int
+    {
+        if (offset + 2 > bytes.size()) { throw std::runtime_error("Truncated indexed AN2 header."); }
+        const int value = bytes[offset] | (bytes[offset + 1] << 8);
+        offset += 2;
+        return value;
+    };
+    std::vector<IndexedBitmap> frames;
+    for (int frame = 0; frame < bytes[0] * bytes[1]; ++frame)
+    {
+        const int x = word(), y = word();
+        const int width = word() + 1, height = word() + 1;
+        if (width > 1024 || height > 1024 || offset + width * height > bytes.size())
+        {
+            throw std::runtime_error("Invalid indexed AN2 dimensions.");
+        }
+        frames.push_back({width, height, x < 32768 ? x : x - 65536, y < 32768 ? y : y - 65536,
+            {bytes.begin() + offset, bytes.begin() + offset + width * height}});
+        offset += width * height;
+    }
+    if (offset != bytes.size()) { throw std::runtime_error("Unexpected trailing indexed AN2 data."); }
+    return frames;
+}
+
+void ApplicationUi::BlitPaperBitmap(std::vector<Color4>& paper, const IndexedBitmap& bitmap, int x, int y)
+{
+    for (int row = 0; row < bitmap.height; ++row)
+    {
+        for (int column = 0; column < bitmap.width; ++column)
+        {
+            const auto shade = bitmap.pixels[row * bitmap.width + column];
+            if (shade > 7) { throw std::runtime_error("Paper artwork requires darkening indices 0..7."); }
+            if (x + column < 0 || x + column >= 360 || y + row < 0 || y + row >= 240) { continue; }
+            auto& color = paper[(y + row) * 360 + x + column];
+            color.r = static_cast<byte>(color.r * (7 - shade) / 7);
+            color.g = static_cast<byte>(color.g * (7 - shade) / 7);
+            color.b = static_cast<byte>(color.b * (7 - shade) / 7);
+        }
+    }
+}
+
+bool ApplicationUi::UploadPaperPage(const Desperabis::ApplicationPresentation& presentation, Renderer& renderer)
+{
+    using namespace Desperabis;
+    if (presentation.page != MenuPage::CodeBook || m_mapPaperPixels.size() != 360 * 240)
+    {
+        throw std::logic_error("Paper composition requires an initialized code-book page.");
+    }
+    std::string key;
+    bool paper = false;
+    for (const auto& command : presentation.commands)
+    {
+        // The opaque paper replaces the application's preceding full-canvas clear.
+        if (const auto* fill = std::get_if<UiFill>(&command); fill && !paper &&
+            fill->bounds.x == 0 && fill->bounds.y == 0 &&
+            fill->bounds.width == 360 && fill->bounds.height == 240) { continue; }
+        const auto* bitmap = std::get_if<UiBitmap>(&command);
+        if (!bitmap || bitmap->flipHorizontal || bitmap->shade != 0 ||
+            bitmap->color.r != 255 || bitmap->color.g != 255 || bitmap->color.b != 255 || bitmap->color.a != 255)
+        {
+            throw std::logic_error("Unsupported software paper command.");
+        }
+        if (bitmap->source == UiBitmapSource::MapPaper && !paper && key.empty() &&
+            bitmap->bounds.x == 0 && bitmap->bounds.y == 0 &&
+            bitmap->bounds.width == 360 && bitmap->bounds.height == 240)
+        {
+            paper = true;
+            key = "paper";
+        }
+        else if (bitmap->source == UiBitmapSource::TextIllustration && paper &&
+            bitmap->layout == UiBitmapLayout::TopLeft && bitmap->frame < m_textPictures.size() &&
+            std::isfinite(bitmap->bounds.x) && std::isfinite(bitmap->bounds.y) &&
+            std::abs(bitmap->bounds.x) <= 32767 && std::abs(bitmap->bounds.y) <= 32767)
+        {
+            key += ":" + std::to_string(bitmap->frame) + ":" + std::to_string(bitmap->bounds.x) +
+                ":" + std::to_string(bitmap->bounds.y);
+        }
+        else { throw std::runtime_error("Invalid paper background or illustration placement."); }
+    }
+    if (!paper) { throw std::runtime_error("Paper page has no background."); }
+    if (m_paperPage.mesh && key == m_paperPage.key) { return false; }
+    TextureLoadingContext pixels;
+    pixels.m_rgbaData = m_mapPaperPixels;
+    for (const auto& command : presentation.commands)
+    {
+        const auto* bitmap = std::get_if<UiBitmap>(&command);
+        if (!bitmap || bitmap->source != UiBitmapSource::TextIllustration) { continue; }
+        const auto& frame = m_textPictures.at(bitmap->frame);
+        BlitPaperBitmap(pixels.m_rgbaData, frame, static_cast<int>(std::lround(bitmap->bounds.x)),
+            static_cast<int>(std::lround(bitmap->bounds.y)) + frame.offsetY);
+    }
+    auto texture = std::make_shared<Texture>();
+    AssetManager::Instance().RegisterAsset(*texture);
+    texture->m_width = 360;
+    texture->m_height = 240;
+    texture->SetDefaultParams();
+    renderer.CreateTexture(*texture, pixels);
+    const std::array<Vector2, 4> uv{{{0,0}, {1,0}, {0,1}, {1,1}}};
+    auto mesh = TextMesh::CreateTexturedQuad(*texture, 360, 240, uv);
+    m_paperPage = {std::move(key), std::move(mesh), std::move(texture)};
+    return true;
+}
+
 FUTURE(void) ApplicationUi::Initialize()
 {
     const auto read = [](std::wstring_view name)
@@ -398,6 +512,7 @@ FUTURE(void) ApplicationUi::Initialize()
         m_mapPaperPixels[i] = paperPalette->GetEntryCustomAlpha(paper[i + 4], 255);
     }
     m_weapons = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\WAFFEN.AN2");
+    m_textPictures = ReadIndexedBitmaps(CO_AWAIT read(L"ANIMS\\TXTBILD.AN2"));
     m_scytheModel = CO_AWAIT AssetManager::Instance().LoadAsset<ModelAnim>(L"VEKT\\VEKT67.3DA");
     if (m_weapons->m_countX != 4 || m_weapons->m_countY != 3)
     {
@@ -476,17 +591,16 @@ FUTURE(void) ApplicationUi::Initialize()
     m_textCaret = TextMesh::CreateTexturedQuad(*AssetManager::Instance().GetPlainWhiteTexture(), 1, 10);
     for (std::size_t bank = 0; bank < FontCharacters.size(); ++bank)
     {
-        const auto font = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(
-            L"ANIMS\\SCHRIFT" + std::to_wstring(bank) + L".AN2", fontPalette);
-        if (FontCharacters[bank].size() > font->m_frames.size())
+        auto font = ReadIndexedBitmaps(CO_AWAIT read(L"ANIMS\\SCHRIFT" + std::to_wstring(bank) + L".AN2"));
+        if (FontCharacters[bank].size() > font.size())
         {
             throw std::runtime_error("Incomplete native inventory font bank.");
         }
         for (std::size_t character = 0; character < FontCharacters[bank].size(); ++character)
         {
-            const auto& frame = font->m_frames[character];
+            auto& frame = font[character];
             m_nativeGlyphs.emplace(FontCharacters[bank][character],
-                NativeGlyph{ frame.m_width + frame.m_relX + 1, frame.m_relY, nullptr });
+                NativeGlyph{ frame.width + frame.offsetX + 1, frame.offsetY, std::move(frame), nullptr });
         }
     }
     CO_RETURN;
@@ -742,6 +856,7 @@ void ApplicationUi::Deinitialize()
     m_weapons.reset();
     m_scytheModel.reset();
     m_mapPaper.reset();
+    m_textPictures.clear();
     m_menuBackground.reset();
     m_menuCursor.reset();
     m_textCaret.reset();
@@ -751,6 +866,7 @@ void ApplicationUi::Deinitialize()
 void ApplicationUi::Clear()
 {
     m_meshes.clear();
+    m_paperPage = {};
     m_collisionMap.reset();
     m_mapSource = nullptr;
     m_mapMaterialViews.clear();
@@ -1006,6 +1122,17 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
     const float anchor = presentation.page == MenuPage::Gameplay ? 1.f : 0.5f;
     const float offsetX = viewport.TopLeftX + (viewport.Width - ApplicationPresentation::Width * canvasScale) * anchor;
     const float offsetY = viewport.TopLeftY + (viewport.Height - ApplicationPresentation::Height * canvasScale) * anchor;
+    if (presentation.page == MenuPage::CodeBook)
+    {
+        UploadPaperPage(presentation, renderer);
+        TextMeshInstance instance(m_paperPage.mesh);
+        instance.SetScale(canvasScale);
+        instance.SetPosition(offsetX, offsetY);
+        VisibilityResult elements;
+        RenderContextDX11 context(renderer, elements, settings, stats);
+        context.RenderTextMeshes({&instance});
+        return;
+    }
     m_meshes.resize(presentation.commands.size());
     VisibilityResult elements;
     RenderContextDX11 context(renderer, elements, settings, stats);
@@ -1169,7 +1296,8 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
             const auto frame = bitmap->source == UiBitmapSource::MapPaper ? BitmapFrame{ *m_mapPaper } :
                 bitmap->source == UiBitmapSource::MenuBackground ? BitmapFrame{ *m_menuBackground } :
                     ResolveBitmap(*bitmap, level, *selectedHud,
-                        bank == m_inventoryIcons.end() ? nullptr : bank->second.at(bitmap->shade).get(), *m_menuCursor);
+                        bank == m_inventoryIcons.end() ? nullptr : bank->second.at(bitmap->shade).get(),
+                        *m_menuCursor);
             const auto& texture = frame.texture;
             if (texture.m_width == 0 || texture.m_height == 0)
             {
@@ -1184,6 +1312,7 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
                 texture.m_height * fit * verticalScale;
             x = bitmap->bounds.x;
             y = bitmap->bounds.y;
+            if (bitmap->source == UiBitmapSource::TextIllustration) { y += frame.anchorY; }
             if (bitmap->layout == UiBitmapLayout::Fit)
             {
                 x += (bitmap->bounds.width - width) * 0.5f;

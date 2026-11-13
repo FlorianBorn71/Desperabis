@@ -738,6 +738,41 @@ namespace
         }
     }
 
+    void TestFurnitureContacts(const std::filesystem::path& root)
+    {
+        Host source;
+        source.root = root;
+        LevelLoadData original;
+        source.LoadLevelObjects(35, original);
+        for (const int slot : {22, 27})
+        {
+            Host host;
+            host.Load();
+            host.behaviorDispatchEnabled = false;
+            auto& decoration = host.worldObjects[2];
+            decoration = original.objects[slot];
+            auto& player = host.worldObjects[1];
+            decoration.posX = player.posX;
+            decoration.posY = player.posY;
+            decoration.posZ = player.posZ;
+            Check(decoration.behavior == BehaviorType::TrackFireAnimation &&
+                decoration.behaviorParameter > 0 && host.FindPlayerCollision() == 2,
+                "The original burning furniture must retain its authored physical collider.");
+            Input input;
+            const auto life = host.playerLife;
+            Check(UpdatePlayerInteraction(host, input).status == InteractionStatus::NoEffect &&
+                host.playerLife == life, "Residual furniture contacts must not kill the player.");
+            Step(host, input);
+            Check(host.playerLife == life, "Expanded furniture push contacts must not apply animation-period damage.");
+            decoration.behavior = BehaviorType::None;
+            decoration.posX = player.posX;
+            decoration.posY = player.posY;
+            decoration.posZ = player.posZ;
+            Check(UpdatePlayerInteraction(host, input).status == InteractionStatus::Applied && host.playerLife == 0,
+                "Real crushing contacts must retain native lethal behavior.");
+        }
+    }
+
     void TestOriginalHarmfulTerrain(const std::filesystem::path& root)
     {
         for (const auto fixture : {std::pair{16,131}, {25,132}, {25,196}, {25,2}})
@@ -811,6 +846,7 @@ int main(int argc, char** argv)
         TestLaddersAndMapGates();
         TestOriginalTeleporters(argv[1]);
         TestOriginalBridges(argv[1]);
+        TestFurnitureContacts(argv[1]);
         TestOriginalHarmfulTerrain(argv[1]);
         std::cout << "Player support, teleport, ladder and footstep tests passed.\n";
         return 0;

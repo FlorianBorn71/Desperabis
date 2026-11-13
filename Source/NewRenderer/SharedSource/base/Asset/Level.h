@@ -24,6 +24,7 @@ public:
     FUTURE(std::shared_ptr<PlayerLight>) PopulateScene(Scene& scene, bool createGameObjects, bool addMapIcons,
         ObjectPresentationCallback objectPresentation = {});
 	void ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& rawGO, Texture* spriteOverride = nullptr) const;
+    // Fresh-only, idempotent placement policy; m_objectNumber is the zero-based OBJPOS record.
     void CorrectInitialObjectPlacement(RawGameObject& rawGO) const;
     RenderableInstancePtr CreatePlayerObject();
     std::size_t SynchronizeWallTiles(const byte* tiles, std::size_t width, std::size_t height, std::size_t rowStride);

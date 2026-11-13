@@ -212,7 +212,7 @@ namespace GamePlay
         LightningGenerator = 102,
         EndingSequenceTrigger = 111,
         WindController = 108,
-        Behavior_148 = 148, // something I could not locate in level 35
+        PuzzleTileTrigger = 148,
         RandomAttachmentYaw = 161,
         ObjectPoseSequence = 170,
         DistanceSkyToggle = 178,

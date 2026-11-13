@@ -844,9 +844,10 @@ namespace Desperabis
                         (candidate.collisionType == CollisionType::PushPlayer ||
                             candidate.collisionType == CollisionType::TriggerDebris))
                     {
-                        if (candidate.behaviorParameter > 1)
+                        const auto damageFactor = GetPushContactDamageFactor(candidate);
+                        if (damageFactor > 1)
                         {
-                            ApplyPlayerLifeDelta(-29491 * static_cast<std::int32_t>(candidate.behaviorParameter));
+                            ApplyPlayerLifeDelta(-29491 * static_cast<std::int32_t>(damageFactor));
                         }
                         const auto dx = WrapSignedWord(player.posX - candidate.posX);
                         const auto dz = WrapSignedWord(player.posZ - candidate.posZ);
@@ -1528,6 +1529,7 @@ namespace Desperabis
         case MenuPage::UnidentifiedPage8:
         case MenuPage::UnidentifiedPage9:
         case MenuPage::Map:
+        case MenuPage::CodeBook:
         case MenuPage::Presentation22:
         case MenuPage::Presentation23:
         case MenuPage::Presentation25:
@@ -3911,6 +3913,12 @@ namespace Desperabis
             }
         }
         return 0;
+    }
+
+    std::uint8_t GameContext::GetPushContactDamageFactor(const RawGameObject& object)
+    {
+        // Flame-tracked furniture uses this byte as its animation period, not a modern contact hazard.
+        return object.behavior == BehaviorType::TrackFireAnimation ? 0 : object.behaviorParameter;
     }
 
     bool GameContext::OverlapsPlayer(const RawGameObject& source) const

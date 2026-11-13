@@ -63,6 +63,32 @@ namespace Desperabis
             }
             object.generalPurpose2 = static_cast<std::uint16_t>(elapsed + context.tickCount);
         }
+
+        std::array<char, 16> PuzzleTileState(const GameContext& context)
+        {
+            std::array<char, 16> state;
+            state.fill('0');
+            for (const auto& tile : context.worldObjects)
+            {
+                if (tile.health <= 0 || (tile.behavior != BehaviorType::PuzzleGameTile &&
+                    tile.behavior != BehaviorType::PuzzleGameTileMoving)) { continue; }
+                if (tile.itemValue < 1 || tile.itemValue > 16)
+                {
+                    throw std::out_of_range("Puzzle tile position must be in 1..16.");
+                }
+                const bool moving = tile.behavior == BehaviorType::PuzzleGameTileMoving;
+                state[tile.itemValue - 1] = !moving && tile.itemValue == tile.doorLockOrGroupBitmask ? '2' : '1';
+                if (moving)
+                {
+                    if (tile.generalPurpose1 < 1 || tile.generalPurpose1 > 16)
+                    {
+                        throw std::out_of_range("Moving puzzle tile requires its original cell in 1..16.");
+                    }
+                    state[tile.generalPurpose1 - 1] = '1';
+                }
+            }
+            return state;
+        }
     }
 
     DispatchResult Function_BouncingObject(RawGameObject& object, GameContext& context)
@@ -3416,29 +3442,103 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::CrackingSubmarineWindow, 0x41AE };
     }
 
-    DispatchResult Function_PuzzleGameTile(RawGameObject&, GameContext&)
+    DispatchResult Function_PuzzleGameTile(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::PuzzleGameTile, 0x42A1 };
+        object.collisionType = CollisionType::PuzzleGameTile;
+        object.itemValue = std::clamp<std::int16_t>(object.itemValue, 1, 16);
+        object.renderPlacementMode = 2;
+        if (WrapSignedWord(object.generalPurpose3) > 0)
+        {
+            const auto state = PuzzleTileState(context);
+            const int cell = object.itemValue;
+            object.generalPurpose1 = static_cast<std::uint16_t>(cell);
+            for (const int delta : {-4, 4, -1, 1})
+            {
+                const int next = cell + delta;
+                if (next < 1 || next > 16 || state[next - 1] != '0') { continue; }
+                if (std::abs(delta) == 1 && (next - 1) / 4 != (cell - 1) / 4) { continue; }
+                object.velocityX = delta == -1 ? -100 : delta == 1 ? 100 : 0;
+                object.velocityZ = delta == -4 ? 100 : delta == 4 ? -100 : 0;
+                object.itemValue = static_cast<std::int16_t>(next);
+                object.behavior = BehaviorType::PuzzleGameTileMoving;
+                break;
+            }
+        }
+        object.generalPurpose3 = 0;
+        return { DispatchStatus::ExecutedCase, BehaviorType::PuzzleGameTile, 0x42A1 };
     }
 
-    DispatchResult Function_Behavior_146(RawGameObject&, GameContext&)
+    DispatchResult Function_PuzzleGameTileMoving(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_146, 0x4313 };
+        object.renderPlacementMode = 3;
+        context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+            GameContext::GetSoundVolume(0), object, 1);
+        const auto step = WrapSignedWord(context.tickCount * 8);
+        const auto dx = GetStepToward(0, object.velocityX, step);
+        const auto dz = GetStepToward(0, object.velocityZ, step);
+        object.posX = WrapSignedWord(object.posX + dx);
+        object.posZ = WrapSignedWord(object.posZ + dz);
+        object.velocityX = WrapSignedWord(object.velocityX - dx);
+        object.velocityZ = WrapSignedWord(object.velocityZ - dz);
+        if (object.velocityX == 0 && object.velocityZ == 0) { object.behavior = BehaviorType::PuzzleGameTile; }
+        object.generalPurpose3 = 0;
+        return { DispatchStatus::ExecutedCase, BehaviorType::PuzzleGameTileMoving, 0x4313 };
     }
 
-    DispatchResult Function_PuzzleGameHandler(RawGameObject&, GameContext&)
+    DispatchResult Function_PuzzleGameHandler(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::PuzzleGameHandler, 0x43D5 };
+        if (object.behaviorParameter == 0 || object.behaviorParameter > 16)
+        {
+            throw std::out_of_range("Puzzle controller requires a run length in 1..16.");
+        }
+        const auto state = PuzzleTileState(context);
+        const std::string pattern(object.behaviorParameter,
+            static_cast<char>(object.doorLockOrGroupBitmask & 255));
+        if (std::search(state.begin(), state.end(), pattern.begin(), pattern.end()) != state.end())
+        {
+            HandleSwitchInteraction(object, context);
+            context.SetObjectHealth(object, 0);
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::PuzzleGameHandler, 0x43D5 };
     }
 
-    DispatchResult Function_Behavior_148(RawGameObject&, GameContext&)
+    DispatchResult Function_PuzzleTileTrigger(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_148, 0x441F };
+        object.collisionMask = 1;
+        const auto slot = context.FindCollidingObject(object);
+        object.collisionMask = 0;
+        if (slot > 0 && context.worldObjects[slot].collisionType == CollisionType::PuzzleGameTile &&
+            context.worldObjects[slot].doorLockOrGroupBitmask == object.doorLockOrGroupBitmask)
+        {
+            HandleSwitchInteraction(object, context);
+            object.behavior = BehaviorType::None;
+            object.collisionType = CollisionType::None;
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::PuzzleTileTrigger, 0x441F };
     }
 
-    DispatchResult Function_PuzzleSpool(RawGameObject&, GameContext&)
+    DispatchResult Function_PuzzleSpool(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::PuzzleSpool, 0x4480 };
+        if (object.groupIndexOrLock < 0 ||
+            static_cast<std::size_t>(object.groupIndexOrLock) >= std::size(context.switchGroupMasks))
+        {
+            throw std::out_of_range("Puzzle wheel requires a switch-group index in 0..4.");
+        }
+        if (object.generalPurpose2 == 0 && object.velocityX > 0)
+        {
+            object.generalPurpose2 = static_cast<std::uint16_t>(object.velocityX * object.itemValue);
+            context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+                GameContext::GetSoundVolume(0), object, 1);
+        }
+        object.velocityX = 0;
+        const auto step = GetStepToward(WrapSignedWord(object.generalPurpose2), 0, 5);
+        object.winX = static_cast<std::int16_t>((object.winX + step) & 511);
+        object.generalPurpose2 = static_cast<std::uint16_t>(object.generalPurpose2 + step);
+        auto& mask = context.switchGroupMasks[object.groupIndexOrLock];
+        const auto bit = static_cast<std::uint8_t>(object.velocityZ);
+        if (object.winX == WrapSignedWord(object.generalPurpose1)) { mask &= static_cast<std::uint8_t>(~bit); }
+        else { mask |= bit; }
+        return { DispatchStatus::ExecutedCase, BehaviorType::PuzzleSpool, 0x4480 };
     }
 
     DispatchResult Function_OpeningCreviceWithExit(RawGameObject&, GameContext&)
@@ -3496,19 +3596,82 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::SomethingWithTheFishes, 0x4652 };
     }
 
-    DispatchResult Function_GrandfatherClock(RawGameObject&, GameContext&)
+    DispatchResult Function_GrandfatherClock(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::GrandfatherClock, 0x4691 };
+        object.velocityX = WrapSignedWord(object.velocityX + context.tickCount);
+        const auto seconds = object.velocityX / 35;
+        if (seconds > 0)
+        {
+            object.velocityY = WrapSignedWord(object.velocityY + seconds);
+            object.velocityX %= 35;
+            const auto minutes = object.velocityY / 60;
+            if (minutes > 0)
+            {
+                object.itemValue = static_cast<std::int16_t>(WrapSignedWord(object.itemValue + minutes) % 720);
+                object.velocityY %= 60;
+            }
+            const int minute = object.itemValue % 60;
+            if (minute == 0 && object.doorLockOrGroupBitmask < 0)
+            {
+                object.doorLockOrGroupBitmask = object.itemValue / 60;
+                if (object.doorLockOrGroupBitmask == 0)
+                {
+                    object.doorLockOrGroupBitmask = 12;
+                    for (int slot = 2; slot <= 140; ++slot)
+                    {
+                        auto& target = context.worldObjects[slot];
+                        if (target.health == 1000 + object.behaviorParameter) { context.DamageObject(target, 0); }
+                    }
+                }
+            }
+            else if ((minute == 15 || minute == 45) && object.doorLockOrGroupBitmask < 0)
+            {
+                object.doorLockOrGroupBitmask = 1;
+            }
+            else if (minute == 30 && object.doorLockOrGroupBitmask < 0)
+            {
+                object.doorLockOrGroupBitmask = 2;
+            }
+            else if (minute != 0 && minute != 15 && minute != 30 && minute != 45)
+            {
+                object.doorLockOrGroupBitmask = -1;
+            }
+            const auto distance = context.GetSoundDistanceAt(object.posX, object.posZ);
+            if (object.doorLockOrGroupBitmask > 0)
+            {
+                context.PlaySoundEffect(static_cast<SoundEffect>(71),
+                    GameContext::GetSoundVolume(distance / 2), -10, 2);
+                --object.doorLockOrGroupBitmask;
+            }
+            else
+            {
+                context.PlaySoundEffect(static_cast<SoundEffect>(69 + (object.velocityY & 1)),
+                    GameContext::GetSoundVolume(WrapSignedWord(distance * 3)), object, 1);
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::GrandfatherClock, 0x4691 };
     }
 
-    DispatchResult Function_GrandfatherClockHand(RawGameObject&, GameContext&)
+    DispatchResult Function_GrandfatherClockHand(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::GrandfatherClockHand, 0x46A4 };
+        if (object.doorLockOrGroupBitmask > 0 && object.itemValue > 0)
+        {
+            if (static_cast<std::size_t>(object.doorLockOrGroupBitmask) >= context.worldObjects.size())
+            {
+                throw std::out_of_range("Clock hand requires a valid parent clock slot.");
+            }
+            object.winZ = WrapSignedWord(context.worldObjects[object.doorLockOrGroupBitmask].itemValue *
+                512 / object.itemValue);
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::GrandfatherClockHand, 0x46A4 };
     }
 
-    DispatchResult Function_GrandfatherClockPendulum(RawGameObject&, GameContext&)
+    DispatchResult Function_GrandfatherClockPendulum(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::GrandfatherClockPendulum, 0x46EB };
+        object.velocityZ = static_cast<std::int16_t>((object.velocityZ + context.tickCount * object.itemValue) & 511);
+        object.winZ = WrapSignedWord(static_cast<std::int32_t>(
+            (static_cast<std::int64_t>(Sine(object.velocityZ)) * WrapSignedWord(object.generalPurpose1)) >> 16));
+        return { DispatchStatus::ExecutedCase, BehaviorType::GrandfatherClockPendulum, 0x46EB };
     }
 
     DispatchResult Function_PeriodicGlobalSound(RawGameObject& object, GameContext& context)
@@ -3527,9 +3690,24 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::PeriodicGlobalSound, 0x4738 };
     }
 
-    DispatchResult Function_RotateKnightsInClock(RawGameObject&, GameContext&)
+    DispatchResult Function_RotateKnightsInClock(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::RotateKnightsInClock, 0x4782 };
+        if (object.health == 1000)
+        {
+            for (int tick = 0; tick < context.tickCount; ++tick)
+            {
+                object.winY = static_cast<std::int16_t>((object.winY + object.velocityX) & 511);
+                context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+                    GameContext::GetSoundVolume(0), object, 1);
+                object.generalPurpose2 = static_cast<std::uint16_t>(object.generalPurpose2 - 1);
+                if (WrapSignedWord(object.generalPurpose2) <= 0)
+                {
+                    object.generalPurpose2 = object.generalPurpose1;
+                    context.SetObjectHealth(object, WrapSignedWord(1000 + object.doorLockOrGroupBitmask));
+                }
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::RotateKnightsInClock, 0x4782 };
     }
 
     DispatchResult Function_RandomAttachmentYaw(RawGameObject& object, GameContext& context)
@@ -3544,9 +3722,7 @@ namespace Desperabis
         {
             context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
                 context.GetSoundVolumeAt(object.posX, object.posZ), object, 1);
-            auto emitter = object;
-            emitter.generalPurpose1 = static_cast<std::uint16_t>(object.itemValue);
-            context.SpawnEmitterProjectile(emitter);
+            context.SpawnEmitterProjectile(object);
             object.behavior = BehaviorType::None;
             if (object.modelFrame2 > 0) { object.animFrame = object.modelFrame2; }
         }

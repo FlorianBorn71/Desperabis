@@ -291,7 +291,7 @@ namespace GamePlay
         BT_ENUM2STRING(GrandfatherClockHand);
         BT_ENUM2STRING(GrandfatherClockPendulum);
         BT_ENUM2STRING(PuzzleSpool);
-        BT_ENUM2STRING(Behavior_148);
+        BT_ENUM2STRING(PuzzleTileTrigger);
         BT_ENUM2STRING(DestroyableRoof);
         BT_ENUM2STRING(Teleporter);
         BT_ENUM2STRING(ItemHiddenInBox);

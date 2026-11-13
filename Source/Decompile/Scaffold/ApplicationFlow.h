@@ -38,6 +38,7 @@ namespace Desperabis
         Dialog101 = 101,
         ResourcePresentationFirst = 200,
         ResourcePresentationLast = 299,
+        CodeBook = 300, // Host modal for the native blocking book reader, not a DOS page number.
         Quit = 0xffff
     };
 
@@ -90,7 +91,7 @@ namespace Desperabis
         bool caret = false;
     };
 
-    enum class UiBitmapSource { Hud, LevelSprite, ModelTexture, InventoryIcons, MapPaper, MenuBackground, MenuCursor };
+    enum class UiBitmapSource { Hud, LevelSprite, ModelTexture, InventoryIcons, MapPaper, MenuBackground, MenuCursor, TextIllustration };
     enum class UiBitmapLayout { Fit, TopLeft, SpriteAnchor, Center, Stretch };
 
     struct UiBitmap

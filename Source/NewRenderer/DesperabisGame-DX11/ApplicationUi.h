@@ -29,6 +29,7 @@ public:
     // Called only when a map is visible. Clears the core's dirty flag after a successful upload.
     bool UploadCollisionMap(Desperabis::GameContext& core, Renderer& renderer);
     bool UploadGeometryMap(const Desperabis::GameContext& core, Renderer& renderer);
+    bool UploadPaperPage(const Desperabis::ApplicationPresentation& presentation, Renderer& renderer);
     // Reports each failed plane independently; false does not prevent subsequent object presentation.
     static bool SynchronizeLevelGeometry(Level& level, const Desperabis::Level& geometry,
         const std::function<void(const char*, const char*)>& reportError);
@@ -61,6 +62,13 @@ public:
         ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView);
 
 private:
+    struct IndexedBitmap
+    {
+        int width, height, offsetX, offsetY;
+        std::vector<byte> pixels;
+    };
+    static std::vector<IndexedBitmap> ReadIndexedBitmaps(const std::vector<byte>& bytes);
+    static void BlitPaperBitmap(std::vector<Color4>& paper, const IndexedBitmap& bitmap, int x, int y);
     struct CachedMesh
     {
         std::string key;
@@ -68,9 +76,11 @@ private:
         std::shared_ptr<Texture> texture;
     };
     std::vector<CachedMesh> m_meshes;
+    CachedMesh m_paperPage;
     struct NativeGlyph
     {
         int advance, offsetY;
+        IndexedBitmap bitmap;
         std::shared_ptr<TextMesh> mesh;
     };
     std::map<char, NativeGlyph> m_nativeGlyphs;
@@ -80,6 +90,7 @@ private:
     std::array<std::array<byte, 256>, 8> m_shades{};
     std::array<byte, 90> m_healthGradient{};
     std::shared_ptr<TextureAnim> m_weapons;
+    std::vector<IndexedBitmap> m_textPictures;
     std::shared_ptr<ModelAnim> m_scytheModel;
     std::array<std::array<std::shared_ptr<TextMesh>, 2>, 12> m_weaponMeshes;
     CachedMesh m_heldWeaponMesh;

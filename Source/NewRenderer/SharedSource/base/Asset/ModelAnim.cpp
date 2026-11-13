@@ -29,6 +29,12 @@ void ModelAnim::Read(AssetStream& s)
         {L"VEKT\\VEKT20.3DA", 1, 3, 0.5f},
         {L"VEKT\\VEKT20.3DA", 1, 4, 0.5f},
         {L"VEKT\\VEKT20.3DA", 3, 0, 2.f}, // Windmill body variants.
+        {L"VEKT\\VEKT30.3DA", 2, 2, 0.f}, // Table supporting the foil and code book.
+        {L"VEKT\\VEKT57.3DA", 2, 2, 0.002f, 1.f}, // Clock hands clear the coplanar dial.
+        {L"VEKT\\VEKT57.3DA", 2, 3, 0.002f, 1.f},
+        {L"VEKT\\VEKT59.3DA", 1, 0, 0.f}, // Castle furniture stays at geometric depth.
+        {L"VEKT\\VEKT59.3DA", 2, 0, 0.f},
+        {L"VEKT\\VEKT59.3DA", 3, 0, 0.f},
         {L"VEKT\\VEKT60.3DA", 3, 2, 1.f}, // Recessed knothole.
         {L"VEKT\\VEKT66.3DA", 3, 1, 0.f}, // Machine casing and wreck stay at geometric depth.
         {L"VEKT\\VEKT66.3DA", 3, 2, 0.f},

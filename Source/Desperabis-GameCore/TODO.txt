@@ -9,9 +9,10 @@ bugs P1:
 improvements:
 - look through ceiling when sliding down in cathedral
 - list sounds/effects as enums
+- Key in the bucket on the rope: Shouldn't the rope swing?
+- digging for key with the shovel (L19): Currently cut by ground texture
 
 missing
-- electric bolt
 - cutscenes
 - strave keys
 - book text
@@ -29,3 +30,4 @@ Fixed:
    - Machine in level 31 (pressure window)
 - visibility bbox fo morphed models (doors, ladder...)
 - graveyard moon blending
+- electric bolt

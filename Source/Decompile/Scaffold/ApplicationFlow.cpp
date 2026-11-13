@@ -23,6 +23,50 @@ namespace Desperabis
         };
     }
 
+    void GameContext::OpenCodeBook(std::int16_t section)
+    {
+        if (section <= 0 || menuPage != MenuPage::Gameplay || runtimeState != GameRuntimeState::Ready)
+        {
+            throw std::logic_error("Reading a code book requires a positive text section and active gameplay.");
+        }
+        const auto bytes = LoadFile("LEVEL\\TEXTE.TXT");
+        const std::string contents(bytes.begin(), bytes.end());
+        const auto marker = "@" + std::to_string(section);
+        std::size_t start = 0;
+        for (;;)
+        {
+            start = contents.find(marker, start);
+            if (start == std::string::npos) { throw std::runtime_error("Code-book text section is missing."); }
+            start += marker.size();
+            if (start == contents.size() || contents[start] < '0' || contents[start] > '9') { break; }
+        }
+        const auto end = contents.find('@', start);
+        std::vector<UiBitmap> pictures;
+        float y = 5, width = 0;
+        for (auto i = start; i < contents.size() && i != end; ++i)
+        {
+            const auto value = static_cast<std::uint8_t>(contents[i]);
+            if (value == '\r' || value == ' ') { width += 8; }
+            else if (value == '\n') { continue; }
+            else if (value == '#') { y += 16; width = 0; }
+            else if (value == '+') { y += 6; }
+            else if (value == 254)
+            {
+                if (++i == contents.size() || i == end || contents[i] < 'A' || contents[i] > '^')
+                {
+                    throw std::runtime_error("Code-book illustration selector is invalid.");
+                }
+                pictures.push_back(UiBitmap{{20 + width, y + 20, 0, 0},
+                    UiBitmapSource::TextIllustration, 0, 0, static_cast<std::uint8_t>(contents[i] - 'A'),
+                    {}, UiBitmapLayout::TopLeft});
+            }
+            else { throw std::runtime_error("Code book contains an unrecovered text control or text layout."); }
+        }
+        if (pictures.empty()) { throw std::runtime_error("Code book contains no illustrations."); }
+        codeBookPictures = std::move(pictures);
+        SetMenuPage(MenuPage::CodeBook);
+    }
+
     void GameContext::PrepareLevelProgression(bool changingLevel)
     {
         for (auto& item : inventory)
@@ -296,6 +340,7 @@ namespace Desperabis
             }
             break;
         case MenuPage::Map:
+        case MenuPage::CodeBook:
             if (wasPressed(InputKey::UiCancelKey) || wasPressed(InputKey::UiConfirmKey))
             {
                 SetMenuPage(MenuPage::Gameplay);
@@ -535,6 +580,13 @@ namespace Desperabis
         if (menuPage == MenuPage::Map)
         {
             draw.emplace_back(UiMap{ { 0, 0, result.Width, result.Height }, true });
+            return result;
+        }
+        if (menuPage == MenuPage::CodeBook)
+        {
+            draw.emplace_back(UiBitmap{{0, 0, result.Width, result.Height},
+                UiBitmapSource::MapPaper, 0, 0, 0, {}, UiBitmapLayout::Stretch});
+            for (const auto& picture : codeBookPictures) { draw.emplace_back(picture); }
             return result;
         }
         const auto text = [&draw, page = menuPage](float x, float y, std::string value, UiColor color,

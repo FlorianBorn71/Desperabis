@@ -496,6 +496,117 @@ sampling, reflection generation without a visible puddle, every cow's
 interpolated head transform, persistent tree-door textures and visible door
 pixels, fountain opacity across sprite recreation, and gravity-free movement.
 
+### Castle sliding tiles, combination wheels and clock (level 35)
+
+The original records and native routines are preserved in
+`level35-native-evidence.txt`, `level35-helper-evidence.txt`,
+`level35-book-evidence.txt` and `level35-book-image-evidence.txt`.
+All eight formerly missing authored handlers are implemented, together with
+the runtime tile-motion continuation, behavior 146.
+
+- **Sliding tiles (145/146/147):** `itemValue` is the current cell, 1..16;
+  `doorLockOrGroupBitmask` is the tile's required cell/number, 1..15.
+  The native global at DS:05D6 is a short string of sixteen occupancy marks:
+  `0` empty, `1` wrong/moving, `2` correctly placed. The modern implementation
+  derives this state from the authoritative object records when queried,
+  including both the moving tile's destination and its source in
+  `generalPurpose1`. This preserves in-flight SPL saves without a second,
+  unsaved puzzle-state array. Interaction chooses an adjacent gap, reserves it,
+  and transitions to **PuzzleGameTileMoving (146)**. X/Z motion is 100 DOS
+  units at eight units per behavior tick, with exact endpoint clamping and the
+  original sliding sound. Further interactions during motion are consumed.
+  The completion controller requires fifteen consecutive correct marks,
+  activates group 21 through the existing switch helper and removes itself.
+  One intentional correction to the native linear-index neighbor check:
+  horizontal moves cannot wrap between rows of the 4x4 grid.
+- **Numbered-tile triggers (148):** the two small trigger volumes at slots
+  69/71 temporarily query collision mask 1. Only a tile whose required number
+  matches the trigger's word 46 activates its authored group (22/20).
+  They then disable their behavior/collision exactly once. With the author's
+  approval, the former `Behavior_148` is named **PuzzleTileTrigger**.
+- **Combination wheels (149):** slots 38/74/75/76 each accept one 64-angle
+  turn while idle. The wheel rotates toward its new position by five angle
+  units per dispatch; repeated input while moving does not queue more turns.
+  The native target angles are 320/192/448/0. Each wheel clears or sets its
+  own bit(s), 1/2/4/248, in switch-mask byte 1; all correct positions release
+  the existing door at slot 55. Positions, pending rotation and masks already
+  use the native save layout.
+- **Clock (155..157):** slot 33 advances its native counters at 35 ticks per
+  second, 60 seconds per minute and 720 minutes per dial revolution.
+  Interaction advances its subsecond counter by the authored 2098 units.
+  Hands at 34/35 derive roll from the parent clock's minute count divided by
+  60/720; the pendulum at 36 uses the native clamped sine, phase speed 11
+  and amplitude 16. Tick/tock and quarter-, half- and full-hour chimes retain
+  the original sound selection and latch. At twelve, the clock activates
+  matching health-tagged objects, including the clock doors and knights.
+  Chimes occur once at :15/:45, twice at :30, and once per hour number on
+  full hours (twelve at noon/midnight); advancing the clock through interaction
+  crosses the same chime thresholds.
+  Both hands attach to the same dial-center vertex through parent polygons
+  17/18. Their geometry is coplanar with the dial, and native-coordinate
+  rounding can put the pivot just behind its surface. The existing model
+  override gives only `VEKT57.3DA` animation 2/frames 2..3 one DOS unit of
+  depth clearance, preserving the pivot, angles and saved object coordinates.
+  WARP checks compare complete hand pixels against the unobstructed models
+  at four clock times, two distances and centered/side views; removing the
+  bias must reproduce dial occlusion.
+- **Rotating knights (159):** slot 60 rotates only at health 1000, two
+  angle units per tick, emitting its original mechanism sound. Its first
+  countdown is 511 ticks; later activations reset to 512. Expiry returns it
+  to health 1001, so the existing lever can restart it.
+- **Code book (collision 252):** slot 98 selects section 101 of
+  `LEVEL\TEXTE.TXT`. The `FE 4E` inline-picture command selects image 14
+  (zero-based frame 13) from the original 3x5 `ANIMS\TXTBILD.AN2` bank:
+  the 153x127 combination drawing. The reader implements the picture-only
+  section's native spacing/line controls, not the full narrative-text
+  interpreter. Unsupported controls, missing sections and missing pictures
+  report errors rather than opening an empty successful page.
+  Illustration pixels retain their raw darkening indices, not game-palette
+  colors: zero leaves the paper untouched and seven produces full ink.
+  Software composition multiplies each parchment RGB channel by
+  `(7-index)/7`, clips at page edges and uploads one unique 360x240 texture,
+  cached until the artwork/placement changes. The composer accepts the
+  application's preceding full-canvas clear, which the opaque parchment
+  replaces. Raw `SCHRIFT*.AN2` glyphs use
+  the same indexed-frame reader and retain their pixels for future software
+  text composition; the narrative-text interpreter remains deferred.
+- **Knight crossbow (162):** native `0000:4856` passes GP1 to projectile
+  helper `10AC:4106`. Slot 67 has GP1=1 (crossbow bolt), while itemValue=0;
+  replacing the selector with itemValue incorrectly rejected every shot
+  before the one-shot behavior could disable itself, repeating its sound.
+- **Furniture contacts:** shelves' own collision-9 records have factor zero.
+  Flame-tracked decorations at slots 22/27 reuse byte 52 for their animation
+  period, but native push contacts also interpret that byte as damage and
+  residual lethality. An author-approved modern correction makes
+  `TrackFireAnimation` push contacts harmless without removing their physical
+  separation. Other push/crushing contacts and actual fire hazards retain
+  their damage/depletion paths.
+- **Placement/depth corrections:** only fresh level-35 loads raise bookshelf
+  key slot 80 by one DOS unit (-154 to -153). SPL restoration never reapplies
+  this correction. All initial world-object placement corrections live in
+  `Level::CorrectInitialObjectPlacement`, including this exception alongside
+  generic ground-key, wall-map and puddle clearance. The DX11 fresh-load hook
+  supplies zero-based OBJPOS indices and copies corrected XYZ into GameCore;
+  the legacy renderer uses the same policy. GameCore's object decoder does
+  not contain presentation-specific placement patches.
+  The existing per-model override table disables sorting
+  depth bias throughout furniture bank `VEKT59.3DA` and for the foil/book table
+  in `VEKT30.3DA` animation 2/frame 2; no renderer capability or global
+  priority scale changes.
+  A host-only `CodeBook` modal pauses gameplay, draws the original parchment
+  and illustration, and closes with Enter/Escape without consuming the book.
+  This uses only application UI drawing; no core-renderer additions.
+
+`castle-puzzles` tests exercise original records, legal/blocked/row-edge moves,
+both reserved cells during movement and after native save/load, actual
+completion and numbered-trigger door activation, wheel input/door masks,
+clock adjustment/chimes/hands/pendulum, knight timeout/restart, and the original
+book section's modal input/pause behavior. WARP UI regressions render the
+actual illustration and the full core-generated book recipe, including its
+leading clear, at three aspect ratios, and verify that parchment remains
+visible around the ink.
+Foil/fire visibility and the Part-1 outro remain separate, deferred work.
+
 ### Part-1 coverage audit and modern defaults
 
 The original `GRAFIK/HERZ.256` orders part 1 as **29, 30, 31, 32, 33,
@@ -507,26 +618,14 @@ grants the collected-map flag after fresh loads and save restores, making the
 normal corner map visible. Training/part 2 still require their map pickup;
 part-1 weapon cheats remain disabled.
 
-An audit of all original `OBJPOS` records for the seven playable maps,
-including inactive records, now finds these **8 relevant unimplemented
-world-behavior handlers**, excluding native sky/moon visibility controllers.
-Names retain existing spellings and numeric placeholders; this
-is a coverage inventory, not a claim that the names fully describe recovered
-native logic.
-
-| ID | Handler | Maps |
-| --- | --- | --- |
-| 145 | PuzzleGameTile | 35 |
-| 147 | PuzzleGameHandler | 35 |
-| 148 | Behavior_148 | 35 |
-| 149 | PuzzleSpool | 35 |
-| 155 | GrandfatherClock | 35 |
-| 156 | GrandfatherClockHand | 35 |
-| 157 | GrandfatherClockPendulum | 35 |
-| 159 | RotateKnightsInClock | 35 |
+The eight formerly outstanding authored world-behavior handlers in the seven
+playable maps are now recovered with the castle puzzles above, together with
+runtime continuation 146. Native sky/moon visibility controllers remain
+deliberately excluded. This is an authored-record coverage inventory, not a
+claim that every possible configuration or runtime-generated behavior works.
 
 `ShootArrows` (40) has an unimplemented fallback for other configurations, but
-park slot 41 uses supported `generalPurpose1=11`; it is not counted above.
+park slot 41 uses supported `generalPurpose1=11`; it is not an authored-map gap.
 This list does not imply the remaining gameplay is complete: interactions,
 held-tool state machines, runtime-generated variants and renderer effects are
 separate coverage surfaces.
@@ -538,9 +637,10 @@ deliberately excluded. Additional confirmed part-1 gaps:
   supported held-tool/weapon-view state machine.
 - **Other tools:** selector-6 metal poles, portable coffin, bones, mirror and
   vase are supported.
-- **Explicit interaction stub:** `BookWithCode` (252).
+- **BookWithCode (252):** supported by the picture-only code-book modal above.
   Light sensors (94) are activated by mercury rays, not player contact.
 - **Introduction:** HERZ entry 29 is still skipped rather than played.
+- **Part-1 outro:** completing map 35 currently returns directly to the menu.
 
 The park's seven ordinary locked doors use lock IDs **1..7**, and its authored
 keys have matching `itemValue` IDs **1..7**. Original-asset regressions exercise

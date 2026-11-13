@@ -461,6 +461,8 @@ namespace
 			for (std::size_t slot = 2; slot <= 164; ++slot)
 			{
 				RawGameObject raw{};
+				raw.m_level = g_scene->m_level;
+				raw.m_objectNumber = static_cast<int>(slot - 2);
 				std::memcpy(raw.m_rawBytes, &worldObjects[slot], sizeof(worldObjects[slot]));
 				g_scene->m_level->CorrectInitialObjectPlacement(raw);
 				worldObjects[slot].posX = raw.m_rawShorts[6];

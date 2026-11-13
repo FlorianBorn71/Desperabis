@@ -195,6 +195,7 @@ namespace
                 object.groupIndexOrLock = 1;
             }
             if (entry.type == BehaviorType::BuyItem) { object.itemValue = 2; }
+            if (entry.type == BehaviorType::PuzzleGameHandler) { object.behaviorParameter = 15; }
             const auto before = ObjectBytes(object);
             context.tickCount = 3;
             auto level = CreateDummyLevel();
@@ -210,6 +211,11 @@ namespace
             Check(FindBehavior(entry.type) == &entry && FindBehavior(entry.name) == &entry,
                 "Behavior enum/name lookup must reference the same descriptor.");
             const bool implemented = entry.type == BehaviorType::Pillar || entry.type == BehaviorType::LightSource ||
+                entry.type == BehaviorType::PuzzleGameTile || entry.type == BehaviorType::PuzzleGameTileMoving ||
+                entry.type == BehaviorType::PuzzleGameHandler || entry.type == BehaviorType::PuzzleTileTrigger ||
+                entry.type == BehaviorType::PuzzleSpool || entry.type == BehaviorType::GrandfatherClock ||
+                entry.type == BehaviorType::GrandfatherClockHand || entry.type == BehaviorType::GrandfatherClockPendulum ||
+                entry.type == BehaviorType::RotateKnightsInClock ||
                 entry.type == BehaviorType::MercuryLamp || entry.type == BehaviorType::ActionObjectToGrab ||
                 entry.type == BehaviorType::ItemHiddenInBox || entry.type == BehaviorType::RoofTopThunderHandler1 ||
                 entry.type == BehaviorType::DestroyableRoof || entry.type == BehaviorType::RoofTopThunderHandler2 ||
@@ -2102,14 +2108,6 @@ namespace
         key.health = -1;
         Check(HandlePlayerObjectInteraction(key, state).status == InteractionStatus::InactiveObject,
             "Host interaction requests must reject inactive selected objects.");
-        for (const auto type : { CollisionType::BookWithCode })
-        {
-            auto unsupported = pickup(type);
-            const auto before = unsupported;
-            Check(HandlePlayerObjectInteraction(unsupported, state).status == InteractionStatus::UnimplementedHandler &&
-                sameObject(unsupported, before) && state.inventory[0].health == 0,
-                "Unimplemented special interactions must not fall through into fake successful pickups.");
-        }
         auto generic = pickup(static_cast<CollisionType>(255));
         Check(HandlePlayerObjectInteraction(generic, state).inventorySlot == 1,
             "Collision bytes without a specialized branch must preserve the original generic pickup tail.");
@@ -3463,6 +3461,7 @@ namespace
                 level.trackedTextureFrameCounts[1] = 5;
             }
             if (object.behavior == BehaviorType::BuyItem) { object.itemValue = 2; }
+            if (object.behavior == BehaviorType::PuzzleGameHandler) { object.behaviorParameter = 15; }
             level.heightSurfaces[0] = Level::HeightSurface{ 0, 0 };
             const auto result = DispatchObjectCase(object, context);
             Check(result.moduleOffset == originalEntry(behavior) && result.behavior == static_cast<BehaviorType>(behavior),
