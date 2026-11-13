@@ -141,6 +141,7 @@ void RenderContextDX11::RenderInstance(const RenderableInstance* instance, Trans
             //instMaterial.m_applyLighting = 0.f; // REMOVE
             instMaterial.m_transparency = material.m_opacity;
             instMaterial.m_depthOffset = material.m_depthOffset;
+            instMaterial.m_alphaCutoff = material.m_useAlphaTest ? 0.5f : 0.f;
             m_d3dContext->UpdateSubresource1(m_rendererDX11.m_constantBufferMaterial.Get(), 0, nullptr, &instMaterial, 0, 0, 0);
             assert(material.m_materialHash != 0 && material.m_materialHash != 0xffffffff);
             m_lastMaterialHash = material.m_materialHash;

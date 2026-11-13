@@ -54,6 +54,27 @@ void RenderContextOGL::RenderTextMeshes(const std::vector<const TextMeshInstance
 	}
 }
 
+void RenderContextOGL::BeginScissorRect(const ScissorRect& rect)
+{
+    if (rect.left > rect.right || rect.top > rect.bottom)
+    {
+        throw std::invalid_argument("Scissor rectangle edges must be ordered.");
+    }
+    m_savedScissorEnabled = glIsEnabled(GL_SCISSOR_TEST) == GL_TRUE;
+    glGetIntegerv(GL_SCISSOR_BOX, m_savedScissorRect);
+    const auto* target = m_rendererOGL.GetRenderTarget<RenderTargetOGL>(m_renderTargetPass);
+    glScissor(rect.left, target->m_height - rect.bottom, rect.right - rect.left, rect.bottom - rect.top);
+    glEnable(GL_SCISSOR_TEST);
+    CHECK_GL_ERRORS;
+}
+
+void RenderContextOGL::EndScissorRect()
+{
+    glScissor(m_savedScissorRect[0], m_savedScissorRect[1], m_savedScissorRect[2], m_savedScissorRect[3]);
+    if (!m_savedScissorEnabled) { glDisable(GL_SCISSOR_TEST); }
+    CHECK_GL_ERRORS;
+}
+
 void RenderContextOGL::SetBlendState(TransparencyMode mode)
 {
 	// blend mode:

@@ -11,6 +11,12 @@ struct FogParameters
 	bool affectUnlit = false;
 };
 
+// Render-target pixels, measured from the top left; right/bottom are exclusive.
+struct ScissorRect
+{
+	int left, top, right, bottom;
+};
+
 /// <summary>
 /// Tweakables that control how a scene is rendered.
 /// The application owns the instances and passes them into the renderer,
@@ -30,6 +36,8 @@ public:
 	std::optional<FogParameters> fogOverride;
 	bool renderSky = true;
 	std::optional<Vector4> clearColorOverride;
+	// Scissored instances are hidden unless a reveal rectangle is supplied.
+	std::optional<ScissorRect> scissorRect;
 
 	/// Needs to be called before anything is loaded
 	static void SetRelativeGeometryScaling(float scale);

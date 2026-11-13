@@ -224,6 +224,7 @@ FUTURE(void) RendererDX11::Initialize(ID3D11Device3* device, ID3D11DeviceContext
 void RendererDX11::Deinitialize()
 {
     m_waterRasterizerState.Reset();
+    m_scissorRasterizerState.Reset();
     m_itemPreview.reset();
     m_weaponDraw = {};
     m_d3dDevice.Reset();

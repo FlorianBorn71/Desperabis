@@ -515,6 +515,8 @@ namespace
         }
         inst->m_tintColor = { 255,255,255,255 };
 		inst->m_fireIntensity = 0.f;
+        inst->m_renderOrder = display == GamePlay::DisplayType::SpriteScissorRect ?
+            RenderOrder::Scissored : RenderOrder::Normal;
 
         DrawCallMaterial& overrideMat = inst->m_materialOverride.emplace_back();
         overrideMat = spriteMesh->m_drawCalls[0].m_material;
@@ -1691,6 +1693,8 @@ void Level::ApplyRenderProperties(RenderableInstancePtr inst, RawGameObject& raw
 	GamePlay::DisplayType display = prop.GetDisplayType();
 	int modelId = prop.GetModelId();
     const Renderable* oldRenderable = inst->GetRenderable();
+    inst->m_renderOrder = display == GamePlay::DisplayType::SpriteScissorRect ?
+        RenderOrder::Scissored : RenderOrder::Normal;
     if (prop.IsRenderSuppressed())
     {
         inst->SetRenderable(nullptr, nullptr);

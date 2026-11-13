@@ -74,10 +74,10 @@ protected:
     static inline void RenderSky(CONTEXT_TYPE& context, const VisibilityResult::VisibleInstances& instances);
  
     template <typename CONTEXT_TYPE>
-    static inline void RenderOpaqueGeometry(CONTEXT_TYPE& context, const VisibilityResult::VisibleInstances& instances);
+    static inline void RenderOpaqueGeometry(CONTEXT_TYPE& context, const VisibilityResult::VisibleInstances& instances, RenderOrder order = RenderOrder::Normal);
     
     template <typename CONTEXT_TYPE>
-    static inline void RenderTransparentGeometry(CONTEXT_TYPE& context, const VisibilityResult::VisibleInstances& instances);
+    static inline void RenderTransparentGeometry(CONTEXT_TYPE& context, const VisibilityResult::VisibleInstances& instances, RenderOrder order = RenderOrder::Normal);
 
 #ifdef ENABLE_ADVANCED_RENDERING
     template <typename CONTEXT_TYPE>
@@ -133,7 +133,7 @@ protected:
     {
         float m_transparency; // alpha modulo for transparent objects
         float m_applyLighting; // apply lighting and fog
-        float m_depthOffset = 0, padding2 = 0;
+        float m_depthOffset = 0, m_alphaCutoff = 0.5f;
     };
 
     ProfilingStats m_ownStats;

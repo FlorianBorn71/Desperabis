@@ -121,6 +121,12 @@ namespace Desperabis
             view.projectionCenterY = static_cast<float>(playerLookHeight);
             view.focalLength = 120;
             break;
+        case WeaponType::Foil:
+            sprite(11);
+            model(5, 4, { weaponHand == 1 ? -3 : 3, 220 / 7 + bounce + 15 - pose,
+                65 + bounce, 0, 0, 0 });
+            view.projectionCenterY = 90;
+            break;
         case WeaponType::Electricity:
         {
             sprite(5);

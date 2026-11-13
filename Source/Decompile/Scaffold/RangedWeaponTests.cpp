@@ -638,7 +638,7 @@ namespace
                 "Underwater restrictions must precede ammunition use and allocation for every added weapon.");
             f.context.playerUnderwater = false;
         }
-        for (const int id : { 23 })
+        for (const int id : { 21 })
         {
             f.Equip(static_cast<WeaponType>(id));
             const auto objects = f.context.worldObjects;

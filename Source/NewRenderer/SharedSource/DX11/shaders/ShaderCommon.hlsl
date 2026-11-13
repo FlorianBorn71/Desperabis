@@ -59,7 +59,7 @@ cbuffer MaterialConstantBuffer : register(b4)
 {
     float Transparency; // for transparent objects the alpha modulo (0..1)
     float ApplyLighting; // 0 or 1, whether lighting should be applied
-    float DepthOffset, mat_padding2;
+    float DepthOffset, AlphaCutoff;
 };
 
 struct PackedLightSourceParams
@@ -528,12 +528,9 @@ float3 DynamicLightingColor(float3 worldPos, float3 worldNormal, float3 lightmap
 float4 ps_main(PixelShaderInput input) : SV_TARGET
 {
     float4 texCol = baseTexture.Sample(defaultSampler, input.uv0.xy);
-    clip(texCol.a - 0.5);
+    clip(texCol.a - AlphaCutoff);
 
     float4 finalColor = input.color * texCol + input.emissiveColor;
-
-    // for transparent objects, apply extra smooth alpha:
-    finalColor.a *= saturate(dot(finalColor.rgb, float3(0.2126 * 3, 0.7152 * 3, 0.0722 * 3)));
 
 #ifdef USE_FOG
     if (ApplyLighting > 0.0f)

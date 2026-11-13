@@ -352,6 +352,7 @@ namespace Desperabis
         Bucket = 9,
         ShopGold = 10,
         Lentils = 20,
+        Foil = 23,
         Scythe = 24
     };
 

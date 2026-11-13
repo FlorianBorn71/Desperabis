@@ -22,6 +22,8 @@ public:
     void RenderHudGeometry();
     void SetBlendState(TransparencyMode mode);
     void SetGeometryPassType(GeometryPassType pass);
+    void BeginScissorRect(const ScissorRect& rect);
+    void EndScissorRect();
     void RenderTextMeshes(const std::vector<const TextMeshInstance*>& instances);
 #ifdef ENABLE_ADVANCED_RENDERING
     void RenderPostEffects();
@@ -48,6 +50,9 @@ public:
     NativeTextureObjectDX11* m_debugTexture = nullptr;
     ComPtr<ID3D11RasterizerState> m_savedWaterRasterizer;
     bool m_waterCullDisabled = false;
+    ComPtr<ID3D11RasterizerState> m_savedScissorRasterizer;
+    D3D11_RECT m_savedScissorRects[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE] = {};
+    UINT m_savedScissorRectCount = 0;
 };
 
 #include <DX11/RenderContextDX11.inl>

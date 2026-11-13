@@ -303,6 +303,25 @@ namespace
             "The completed crossbow must not repeat its shot or firing sound.");
     }
 
+    void TestFoil(const std::filesystem::path& assets)
+    {
+        Host host(assets);
+        auto& foil = host.worldObjects[79];
+        Check(foil.itemValue == static_cast<std::int16_t>(WeaponType::Foil) &&
+            foil.modelId == 31 && foil.modelAnim == 5 && foil.animFrame == 5,
+            "The original castle foil must retain its authored pickup model and weapon selector.");
+        const auto pickup = HandlePlayerObjectInteraction(foil, host);
+        Check(pickup.status == InteractionStatus::Applied && pickup.inventorySlot == 1 && foil.health == 0,
+            "The original foil must be collectible through normal weapon pickup.");
+        Input input;
+        for (int tick = 0; tick < 30; ++tick) { host.Tick({1,1}, input); }
+        const auto view = host.GetWeaponView();
+        Check(host.selectedWeapon == WeaponType::Foil && view && view->bitmapFrame == 11 &&
+            view->object.modelId == 31 && view->object.modelAnim == 5 && view->object.animFrame == 4 &&
+            host.weaponAnimationSpeed == 0,
+            "Equipping the collected foil must switch from its world pickup to the original held sheet and hand.");
+    }
+
     void TestBook(const std::filesystem::path& assets)
     {
         Host host(assets);
@@ -351,6 +370,7 @@ int main(int argc, char** argv)
         TestWheels(argv[1]);
         TestClock(argv[1]);
         TestCrossbow(argv[1]);
+        TestFoil(argv[1]);
         TestBook(argv[1]);
         std::cout << "Castle sliding tiles, numbered triggers, wheels, clock and code book passed.\n";
         return 0;

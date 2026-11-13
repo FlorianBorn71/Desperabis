@@ -63,6 +63,7 @@ void DrawCallMaterial::ComputeHash()
 {
     m_materialHash = *((uint32_t*)&m_opacity) ^ 0x55555555;
     m_materialHash ^= m_applyLighting ? 17 : 0;
+    m_materialHash ^= m_useAlphaTest ? 43 : 0;
     m_materialHash ^= m_textureSlotSource == TextureSlotSource::Level ? 31 : 0;
     if (m_depthOffset != 0.f)
     {

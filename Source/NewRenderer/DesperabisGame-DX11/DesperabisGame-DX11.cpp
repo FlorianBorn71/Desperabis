@@ -185,6 +185,7 @@ namespace
 			auto settings = g_renderSettings;
 			settings.renderSky = g_scene ? g_scene->IsSkyVisible() : skyEnabled;
 			settings.clearColorOverride = Vector4{0.015f,0.015f,0.015f,0.f};
+			settings.scissorRect.reset();
 			if (IsCutscenePlaying() && cinematicDepthShade > 0 && g_scene)
 			{
 				FogParameters fog;
@@ -1292,10 +1293,12 @@ namespace
                 ApplicationUi::SynchronizeSubmarineView(*g_gameCore, *g_scene, g_objectInst, !g_useFreeCam);
             }
 			UpdateItemPreview();
+			auto worldSettings = g_gameCore->GetWorldRenderSettings();
 			if (g_scene->IsReady() && !g_useFreeCam)
 			{
 				if (const auto weapon = g_gameCore->GetWeaponView())
 				{
+					worldSettings.scissorRect = ApplicationUi::FoilRevealRect(*weapon, *g_scene->m_level, g_viewport);
 					g_renderer.SetWeaponDraw([view = *weapon](const VisibilityResult& world, const RenderingSettings& settings, ProfilingStats& stats)
 					{
 						g_applicationUi.DrawWeapon(view, g_renderer, *g_scene->m_level, settings,
@@ -1303,7 +1306,7 @@ namespace
 					});
 				}
 			}
-			Renderer::Instance().RenderScene(g_scene.get(), g_gameCore->GetWorldRenderSettings(), g_visSettings, &g_profilingStats);
+			Renderer::Instance().RenderScene(g_scene.get(), worldSettings, g_visSettings, &g_profilingStats);
 			if (!presentation.commands.empty())
 			{
 				g_applicationUi.Draw(presentation, g_renderer, *g_scene->m_level, *g_promptFont, *g_hudAnimations,

@@ -6549,6 +6549,556 @@ namespace
             "63 modelled shoreline tiles, 38 flat tiles and per-material reflection/refraction passed.\n";
     }
 
+    void CheckScissorPass(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        FlameScene scene;
+        FORCE_WAIT(scene.CreateScene());
+        auto white = std::make_shared<Texture>();
+        white->CreatePlainWhite();
+        scene.SetLightmap(white);
+        const auto quad = GeometryUtils::CreateCameraBillboardQuadMesh(20,20,{255,255,255,0});
+        auto grouped = std::make_shared<Renderable>(*quad);
+        auto& attachment = grouped->m_subRenderables.emplace_back();
+        attachment.m_renderable = quad.get();
+        attachment.m_localPos = attachment.m_localOri = Vector(0,0,0);
+        auto background = std::make_shared<RenderableInstance>(quad.get());
+        background->SetTranslation(Vector(0,0,-3));
+        background->m_tintColor = {0,0,255,255};
+        auto glass = std::make_shared<RenderableInstance>(quad.get());
+        glass->SetTranslation(Vector(0,0,-1.5f));
+        glass->m_tintColor = {0,255,0,255};
+        auto& glassMaterial = glass->GetOrCreateMaterialOverrides()[0];
+        glassMaterial.m_transparencyType = TransparencyMode::AlphaBlended;
+        glassMaterial.m_opacity = 0.5f;
+        glassMaterial.ComputeHash();
+        auto revealed = std::make_shared<RenderableInstance>(grouped.get());
+        revealed->SetTranslation(Vector(0,0,-2));
+        revealed->m_tintColor = revealed->m_subInstances[0].m_tintColor = {255,0,0,255};
+        revealed->m_renderOrder = RenderOrder::Scissored;
+        const auto blockerMesh = GeometryUtils::CreateCameraBillboardQuadMesh(0.2f,0.2f,{255,255,255,0});
+        auto blocker = std::make_shared<RenderableInstance>(blockerMesh.get());
+        blocker->SetTranslation(Vector(0,0,-1));
+        blocker->m_tintColor = {0,255,0,255};
+        for (const auto& instance : {background, glass, revealed, blocker})
+        {
+            scene.AddRenderableInstance(instance);
+        }
+        DefaultVisibilityContext visibility;
+        RenderingSettings settings;
+        settings.fullbrightRendering = true;
+        settings.renderCoronas = false;
+        ProfilingStats stats;
+        Camera camera;
+        ComPtr<ID3D11RasterizerState> previousRasterizer, rasterizer;
+        context->RSGetState(&previousRasterizer);
+        D3D11_RECT previousRects[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
+        UINT previousCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+        context->RSGetScissorRects(&previousCount, previousRects);
+        CD3D11_RASTERIZER_DESC desc(D3D11_DEFAULT);
+        desc.CullMode = D3D11_CULL_NONE;
+        CheckHr(device->CreateRasterizerState(&desc, &rasterizer));
+        const D3D11_RECT savedRects[]{{1,2,3,4}, {4,5,6,7}};
+        for (const auto size : {std::pair<UINT,UINT>{96,64}, {64,96}})
+        {
+            Target target(device, size.first, size.second);
+            renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+            Matrix4 projection;
+            projection.CreateProjection(static_cast<float>(size.first) / size.second, 1.f, 0.01f, 50.f);
+            camera.SetProjectionMatrix(projection);
+            TextMeshInstance hud(TextMesh::CreateTexturedQuad(*white, 4, 4));
+            hud.SetPosition(1,1);
+            hud.SetScale(1);
+            hud.SetTintColor({255,255,0,255});
+            const int side = static_cast<int>((std::min)(size.first, size.second) / 2);
+            const int left = (static_cast<int>(size.first) - side) / 2;
+            const int top = (static_cast<int>(size.second) - side) / 2;
+            const ScissorRect center{left, top, left + side, top + side};
+            const auto render = [&]
+            {
+                VisibilityResult visible;
+                visibility.ComputeResultFor(&camera, &scene, visible, settings, {}, stats);
+                visible.m_fogFalloff = 0;
+                visible.m_visibleTextMeshInstances.push_back(&hud);
+                const float clear[]{0,0,0,1};
+                context->ClearRenderTargetView(target.colorView.Get(), clear);
+                context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
+                context->RSSetState(rasterizer.Get());
+                context->RSSetScissorRects(2, savedRects);
+                bool restoredBeforeHud = false;
+                renderer.SetWeaponDraw([&](const VisibilityResult&, const RenderingSettings&, ProfilingStats&)
+                {
+                    ComPtr<ID3D11RasterizerState> actual;
+                    context->RSGetState(&actual);
+                    D3D11_RECT rects[2]{};
+                    UINT count = 2;
+                    context->RSGetScissorRects(&count, rects);
+                    Check(actual.Get() == rasterizer.Get() && count == 2 &&
+                        std::memcmp(rects, savedRects, sizeof(rects)) == 0,
+                        "The late scissor pass must restore the exact rasterizer and rectangles before weapon/HUD drawing.");
+                    restoredBeforeHud = true;
+                });
+                renderer.RenderSceneElements(visible, settings, stats);
+                Check(restoredBeforeHud, "The HUD callback must run after the reveal pass.");
+                D3D11_VIEWPORT viewport{};
+                UINT count = 1;
+                context->RSGetViewports(&count, &viewport);
+                Check(count == 1 && std::memcmp(&viewport, &target.viewport, sizeof(viewport)) == 0,
+                    "Scissoring must not shrink or change the camera viewport.");
+                auto pixels = target.Pixels(device, context);
+                Check((pixels[2 * target.width + 2] & 0x00ffffff) == 0x0000ffff,
+                    "HUD artwork outside the reveal rectangle must remain visible and unclipped.");
+                return pixels;
+            };
+            for (const auto mode : {TransparencyMode::Opaque, TransparencyMode::AlphaBlended, TransparencyMode::Additive})
+            {
+                for (auto* instance : {revealed.get(), &revealed->m_subInstances[0]})
+                {
+                    auto& material = instance->GetOrCreateMaterialOverrides()[0];
+                    material.m_transparencyType = mode;
+                    material.m_opacity = mode == TransparencyMode::AlphaBlended ? 0.5f : 1.f;
+                    material.ComputeHash();
+                    instance->ComputeTransparencyMask();
+                }
+                settings.scissorRect = center;
+                const auto pixels = render();
+                for (int y = 6; y < static_cast<int>(target.height); ++y)
+                {
+                    for (int x = 6; x < static_cast<int>(target.width); ++x)
+                    {
+                        const auto pixel = pixels[y * target.width + x];
+                        const bool inside = x >= center.left && x < center.right &&
+                            y >= center.top && y < center.bottom;
+                        if (!inside)
+                        {
+                            if ((pixel & 255) != 0 || ((pixel >> 8) & 255) < 126 || ((pixel >> 16) & 255) < 126)
+                            {
+                                std::cerr << "Scissor outside: " << target.width << 'x' << target.height
+                                    << ", mode " << static_cast<int>(mode) << ", pixel " << x << ',' << y
+                                    << ", RGB " << (pixel & 255) << ',' << ((pixel >> 8) & 255)
+                                    << ',' << ((pixel >> 16) & 255) << '\n';
+                            }
+                            Check((pixel & 255) == 0 && ((pixel >> 8) & 255) >= 126 &&
+                                ((pixel >> 16) & 255) >= 126,
+                                "Only tagged geometry may be clipped; normal opaque/transparent geometry must cover the entire viewport.");
+                        }
+                        else
+                        {
+                            Check((pixel & 255) > 30 || ((pixel >> 8) & 255) > 250,
+                                "Tagged geometry, including attached subinstances, must fill the reveal rectangle except where world depth occludes it.");
+                        }
+                    }
+                }
+                Check((pixels[(top + 1) * target.width + left + 1] & 255) > 30 &&
+                    (mode == TransparencyMode::Additive ||
+                        ((pixels[(top + 1) * target.width + left + 1] >> 8) & 255) < 100),
+                    "The tagged render group must draw after normal transparent geometry.");
+                const auto occluded = pixels[(target.height / 2) * target.width + target.width / 2];
+                Check((occluded & 255) == 0 && ((occluded >> 8) & 255) > 250,
+                    "Revealed geometry must retain world depth testing rather than showing through walls.");
+                settings.scissorRect.reset();
+                const auto hidden = render();
+                Check((hidden[(top + 1) * target.width + left + 1] & 255) == 0,
+                    "Scissored geometry must stay hidden when no reveal rectangle is supplied.");
+            }
+            settings.scissorRect = ScissorRect{left, top, left, top};
+            Check((render()[(top + 1) * target.width + left + 1] & 255) == 0,
+                "An empty reveal rectangle must render no tagged pixels.");
+            settings.scissorRect = ScissorRect{static_cast<int>(target.width) - 8,
+                static_cast<int>(target.height) - 8, static_cast<int>(target.width) + 8,
+                static_cast<int>(target.height) + 8};
+            const auto moved = render();
+            Check((moved[(target.height - 2) * target.width + target.width - 2] & 255) > 30 &&
+                (moved[(top + 1) * target.width + left + 1] & 255) == 0,
+                "Changing the rectangle must move clipping immediately and allow partially offscreen bounds.");
+        }
+        context->RSSetState(previousRasterizer.Get());
+        context->RSSetScissorRects(previousCount, previousRects);
+        std::cout << "Scissor pass: exact centered-square pixels, opaque/alpha/additive ordering, attached meshes, depth, hidden/empty/moving rectangles and HUD/state restoration passed.\n";
+    }
+
+    void CheckFoilFires()
+    {
+        LevelScene populated(35);
+        populated.m_createGameObjects = true;
+        FORCE_WAIT(populated.CreateScene());
+        const auto& level = *populated.m_level;
+        LevelScene presentations(35);
+        int sprites = 0, fires = 0;
+        for (auto object : level.GetRawGameObjects())
+        {
+            const GamePlay::PropertyAccessorBase properties(object);
+            if (properties.GetHealth() <= 0 || properties.GetDisplayType() != GamePlay::DisplayType::SpriteScissorRect)
+            {
+                continue;
+            }
+            ++sprites;
+            const int slot = object.m_objectNumber + 2;
+            auto instance = std::make_shared<RenderableInstance>();
+            level.ApplyRenderProperties(instance, object);
+            Check(instance->GetVisible() && instance->m_renderOrder == RenderOrder::Scissored,
+                "Every authored foil-revealed sprite must use the late scissored render group.");
+            if (properties.GetBehaviorType() != GamePlay::BehaviorType::LightSource) { continue; }
+            ++fires;
+            presentations.UpdateObjectPresentation(slot, object, instance.get());
+            Check(presentations.GetLightSources().size() == fires,
+                "Each authored foil fire must create its own light presentation.");
+            const auto light = presentations.GetLightSources().back();
+            PackedLightSourceParams before{}, after{}, corona{};
+            Check(light->FillLightParams(before) && !light->FillCoronaParams(corona),
+                "Foil fires must retain their dynamic light but never reveal their location with a corona.");
+            const auto context = presentations.GetObjectPresentation(slot);
+            object.m_rawBytes[51] = static_cast<byte>(GamePlay::DisplayType::SpriteTorchlight);
+            level.ApplyRenderProperties(instance, object);
+            presentations.UpdateObjectPresentation(slot, object, instance.get());
+            Check(instance->m_renderOrder == RenderOrder::Normal &&
+                light->FillLightParams(after) && light->FillCoronaParams(corona) &&
+                std::memcmp(&before, &after, sizeof(before)) == 0,
+                "Ordinary fires must keep normal rendering and coronas without changing their dynamic lighting.");
+            object.m_rawBytes[51] = static_cast<byte>(GamePlay::DisplayType::SpriteScissorRect);
+            level.ApplyRenderProperties(instance, object);
+            presentations.UpdateObjectPresentation(slot, object, instance.get());
+            Check(presentations.GetObjectPresentation(slot) == context &&
+                instance->m_renderOrder == RenderOrder::Scissored &&
+                light->FillLightParams(after) && !light->FillCoronaParams(corona),
+                "Runtime display changes must update clipping/coronas without reallocating the light presentation.");
+        }
+        Check(fires > 0 && presentations.GetLightSources().size() == fires,
+            "The original castle must exercise real foil-fire records and retain one light per fire.");
+        const auto& instances = populated.GetRenderableInstances();
+        Check(std::count_if(instances.begin(), instances.end(), [](const auto& instance)
+            { return instance->m_renderOrder == RenderOrder::Scissored; }) == sprites,
+            "Initial level population and per-frame synchronization must agree on every foil-only render tag.");
+        std::cout << "Foil reveal: " << sprites << " original sprites, including " << fires
+            << " flames with retained lights, suppressed coronas and runtime clipping updates passed.\n";
+    }
+
+    void CheckMaterialAlpha(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        FlameScene scene;
+        FORCE_WAIT(scene.CreateScene());
+        auto lightmap = std::make_shared<Texture>();
+        lightmap->CreatePlainWhite();
+        scene.SetLightmap(lightmap);
+        const auto mesh = GeometryUtils::CreateCameraBillboardQuadMesh(1,1,{255,255,255,0});
+        auto instance = std::make_shared<RenderableInstance>(mesh.get());
+        instance->SetTranslation(Vector(0,0,-2));
+        auto& material = instance->GetOrCreateMaterialOverrides()[0];
+        material.m_transparencyType = TransparencyMode::AlphaBlended;
+        material.m_useAlphaTest = false;
+        instance->ComputeTransparencyMask();
+        scene.AddRenderableInstance(instance);
+        Target target(device, 64, 64);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        Camera camera;
+        Matrix4 projection;
+        projection.CreateProjection(1, Math::Pi / 3.f, 0.01f, 50.f);
+        camera.SetProjectionMatrix(projection);
+        DefaultVisibilityContext visibility;
+        RenderingSettings settings;
+        settings.fullbrightRendering = true;
+        ProfilingStats stats;
+        constexpr int background = 192;
+        const auto render = [&]
+        {
+            VisibilityResult visible;
+            visibility.ComputeResultFor(&camera, &scene, visible, settings, {}, stats);
+            visible.m_fogFalloff = 0;
+            const float clear[]{background / 255.f, background / 255.f, background / 255.f, 1};
+            context->ClearRenderTargetView(target.colorView.Get(), clear);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            return target.Pixels(device, context)[32 * 64 + 32] & 255;
+        };
+        for (const int textureAlpha : {64,255})
+        {
+            Texture texture;
+            texture.CreatePlainColor({255,255,255,static_cast<byte>(textureAlpha)});
+            material.m_texture = &texture;
+            material.m_opacity = textureAlpha == 64 ? 0.5f : 0.85f;
+            const byte instanceAlpha = textureAlpha == 64 ? 128 : 192;
+            const float alpha = textureAlpha / 255.f * instanceAlpha / 255.f * material.m_opacity;
+            for (const int shade : {0,32,255})
+            {
+                instance->m_tintColor = {static_cast<byte>(shade),static_cast<byte>(shade),
+                    static_cast<byte>(shade),instanceAlpha};
+                material.ComputeHash();
+                const int actual = render();
+                const float expected = shade * alpha + background * (1 - alpha);
+                if (std::abs(actual - expected) >= 2)
+                {
+                    std::cerr << "Alpha blend: texture " << textureAlpha << ", instance " << +instanceAlpha
+                        << ", material " << material.m_opacity << ", shade " << shade
+                        << ", expected " << expected << ", actual " << actual << '\n';
+                }
+                Check(std::abs(actual - expected) < 2,
+                    "Black, gray and white geometry must blend with texture alpha times instance alpha times material opacity, independent of luminance.");
+            }
+            if (textureAlpha == 64)
+            {
+                material.m_useAlphaTest = true;
+                material.ComputeHash();
+                Check(render() == background, "Explicit alpha testing must still reject low-alpha cutout texels.");
+                material.m_useAlphaTest = false;
+                material.ComputeHash();
+                Check(render() != background, "Disabling alpha testing must restore fractional texture-alpha blending.");
+            }
+        }
+        std::cout << "Geometry alpha: RGB-independent texture/instance/material multiplication and explicit alpha-test cutoff passed.\n";
+    }
+
+    void CheckFoil(ApplicationUi& ui, RendererDX11& renderer, ID3D11Device3* device,
+        ID3D11DeviceContext3* context, const Level& level)
+    {
+        const auto* model = level.GetLevelInfo().GetModelAnim(1)->GetModel(4, 3);
+        Check(model->m_sourcePositions.size() == 5,
+            "The original held foil must contain four sheet corners and its hand anchor.");
+        const auto materials = model->m_drawCalls;
+        const auto& a = model->m_sourcePositions[0];
+        const auto& b = model->m_sourcePositions[3];
+        const Vector center((a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f, (a.z + b.z) * 0.5f);
+        Desperabis::GameContext core;
+        core.SetMenuPage(Desperabis::MenuPage::Gameplay);
+        core.selectedWeapon = core.requestedWeapon = Desperabis::WeaponType::Foil;
+        core.playerWalkPhase = 128;
+        core.UpdateWeaponAnimation(1);
+        RenderingSettings settings;
+        ProfilingStats stats;
+        for (const auto size : {std::pair<UINT, UINT>{360,240}, {1280,720}, {480,800}})
+        {
+            Target target(device, size.first, size.second);
+            renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+            const float scale = (std::min)(size.first / Desperabis::WeaponView::Width,
+                size.second / Desperabis::WeaponView::Height);
+            for (const int hand : {1,2})
+            {
+                core.weaponHand = static_cast<std::uint8_t>(hand);
+                const auto view = core.GetWeaponView();
+                Check(view.has_value(), "The equipped foil must produce its held presentation.");
+                for (const int background : {96,192})
+                {
+                    const float clear[]{background / 255.f, background / 255.f, background / 255.f, 1};
+                    context->ClearRenderTargetView(target.colorView.Get(), clear);
+                    context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 0, 0);
+                    ui.DrawWeapon(*view, renderer, level, settings, stats, target.viewport,
+                        context, target.colorView.Get(), target.depthView.Get());
+                    const auto pixels = target.Pixels(device, context);
+                    ComPtr<ID3D11Buffer> instanceBuffer, globalsBuffer;
+                    context->VSGetConstantBuffers(1, 1, &instanceBuffer);
+                    context->VSGetConstantBuffers(0, 1, &globalsBuffer);
+                    const auto instanceData = ReadBuffer<float>(device, context, instanceBuffer.Get());
+                    const auto globals = ReadBuffer<float>(device, context, globalsBuffer.Get());
+                    Matrix4 transform, projection;
+                    transform.Load(instanceData.data()); transform = transform.GetTransposed();
+                    projection.Load(globals.data() + 64); projection = projection.GetTransposed();
+                    const auto project = [&](const Vector& position)
+                    {
+                        const auto point = (transform * projection).TransformPosition(position);
+                        return Vector2{size.first * 0.5f + point.GetX() * Desperabis::WeaponView::Width * scale * 0.5f,
+                            size.second - (point.GetY() + 1.f) * Desperabis::WeaponView::Height * scale * 0.5f};
+                    };
+                    const auto middle = project(center);
+                    Check(middle.x > 0 && middle.x < size.first && middle.y > 0 && middle.y < size.second,
+                        "The held sheet must lie inside landscape, wide and portrait viewports in both hands.");
+                    const auto sample = pixels[static_cast<std::size_t>(middle.y) * size.first +
+                        static_cast<std::size_t>(middle.x)] & 255;
+                    Check(sample > background * 0.1f && sample < background * 0.3f,
+                        "The near-black foil must retain only a small, visible contribution from the scene behind it.");
+                    const auto bottom = project(Vector(a.x, a.y, a.z)).y;
+                    int handPixels = 0;
+                    for (UINT y = static_cast<UINT>(std::ceil(bottom + 2 * scale)); y < size.second; ++y)
+                    {
+                        for (UINT x = 0; x < size.first; ++x)
+                        {
+                            const auto pixel = pixels[y * size.first + x];
+                            if (std::abs(static_cast<int>(pixel & 255) - background) > 20 ||
+                                std::abs(static_cast<int>((pixel >> 8) & 255) - background) > 20 ||
+                                std::abs(static_cast<int>((pixel >> 16) & 255) - background) > 20)
+                            {
+                                ++handPixels;
+                            }
+                        }
+                    }
+                    Check(handPixels > 20 * scale * scale,
+                        "The original holding-hand bitmap must remain visible below the translucent sheet.");
+                    int wristPixels = 0;
+                    for (UINT x = 0; x < size.first; ++x)
+                    {
+                        const auto pixel = pixels[(size.second - 1) * size.first + x];
+                        const int red = pixel & 255, green = (pixel >> 8) & 255, blue = (pixel >> 16) & 255;
+                        if (red > green + 10 && red > blue + 10) { ++wristPixels; }
+                    }
+                    Check(wristPixels > 3 * scale,
+                        "The colored hand bitmap must continue through the bottom edge without a floating cut-off wrist.");
+                }
+            }
+        }
+        for (std::size_t i = 0; i < materials.size(); ++i)
+        {
+            Check(materials[i].m_material.m_materialHash == model->m_drawCalls[i].m_material.m_materialHash &&
+                materials[i].m_material.m_texture == model->m_drawCalls[i].m_material.m_texture,
+                "Held foil overrides must never modify the cached world or inventory model.");
+        }
+        std::cout << "Foil: original sheet and hand, both hands, three aspect ratios and translucent scene tint passed.\n";
+    }
+
+    void CheckFoilReveal(ApplicationUi& ui, RendererDX11& renderer, ID3D11Device3* device,
+        ID3D11DeviceContext3* context, const Level& level)
+    {
+        FlameScene scene;
+        FORCE_WAIT(scene.CreateScene());
+        auto white = std::make_shared<Texture>();
+        white->CreatePlainWhite();
+        scene.SetLightmap(white);
+        const auto quad = GeometryUtils::CreateCameraBillboardQuadMesh(20,20,{255,255,255,0});
+        auto fire = std::make_shared<RenderableInstance>(quad.get());
+        fire->SetTranslation(Vector(0,0,-2));
+        fire->m_tintColor = {255,0,0,255};
+        fire->m_renderOrder = RenderOrder::Scissored;
+        scene.AddRenderableInstance(fire);
+        Desperabis::GameContext core;
+        core.SetMenuPage(Desperabis::MenuPage::Gameplay);
+        core.selectedWeapon = core.requestedWeapon = Desperabis::WeaponType::Foil;
+        core.playerWalkPhase = 128;
+        core.UpdateWeaponAnimation(1);
+        const int restPose = core.weaponAnimationPosition;
+        const auto* model = level.GetLevelInfo().GetModelAnim(1)->GetModel(4,3);
+        RenderingSettings settings;
+        settings.fullbrightRendering = true;
+        DefaultVisibilityContext visibility;
+        ProfilingStats stats;
+        Camera camera;
+        int checked = 0;
+        for (const auto size : {std::pair<UINT,UINT>{360,240}, {1280,720}, {480,800}})
+        {
+            Target target(device, size.first, size.second);
+            renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+            const D3D11_VIEWPORT viewport{13,9,static_cast<float>(size.first - 26),
+                static_cast<float>(size.second - 18),0,1};
+            Matrix4 projection;
+            projection.CreateProjection(viewport.Width / viewport.Height, 1.f, 0.01f, 50.f);
+            camera.SetProjectionMatrix(projection);
+            for (const int hand : {1,2})
+            {
+                core.weaponHand = static_cast<std::uint8_t>(hand);
+                for (int variant = 0; variant < 6; ++variant)
+                {
+                    core.playerWalkPhase = variant == 1 ? 0 : 128;
+                    core.weaponAnimationPosition = restPose + (variant == 2 ? -12 : variant == 3 ? 12 : 0);
+                    auto view = *core.GetWeaponView();
+                    if (variant == 4) { view.object.winX = 8; view.object.winY = 12; view.object.winZ = 16; }
+                    if (variant == 5)
+                    {
+                        view.object.posX += 60;
+                        view.projectionCenterY += 7;
+                        view.focalLength *= 0.9f;
+                    }
+                    const auto rect = ApplicationUi::FoilRevealRect(view, level, viewport);
+                    Check(rect.has_value(), "Visible moving foil poses must yield a nonempty reveal rectangle.");
+                    const auto render = [&](bool reveal)
+                    {
+                        settings.scissorRect = reveal ? rect : std::nullopt;
+                        VisibilityResult visible;
+                        visibility.ComputeResultFor(&camera, &scene, visible, settings, {}, stats);
+                        visible.m_fogFalloff = 0;
+                        const float clear[]{0.75f,0.75f,0.75f,1};
+                        context->ClearRenderTargetView(target.colorView.Get(), clear);
+                        context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
+                        renderer.SetWeaponDraw([&](const VisibilityResult& world, const RenderingSettings& drawSettings,
+                            ProfilingStats& drawStats)
+                        {
+                            ui.DrawWeapon(view, renderer, level, drawSettings, drawStats, viewport,
+                                context, target.colorView.Get(), target.depthView.Get(), &world);
+                        });
+                        renderer.RenderSceneElements(visible, settings, stats);
+                        return target.Pixels(device, context);
+                    };
+                    const auto baseline = render(false);
+                    const auto revealed = render(true);
+                    ComPtr<ID3D11Buffer> instanceBuffer, globalsBuffer;
+                    context->VSGetConstantBuffers(1, 1, &instanceBuffer);
+                    context->VSGetConstantBuffers(0, 1, &globalsBuffer);
+                    const auto instanceData = ReadBuffer<float>(device, context, instanceBuffer.Get());
+                    const auto globals = ReadBuffer<float>(device, context, globalsBuffer.Get());
+                    Matrix4 modelToView, gpuProjection;
+                    modelToView.Load(instanceData.data()); modelToView = modelToView.GetTransposed();
+                    gpuProjection.Load(globals.data() + 64); gpuProjection = gpuProjection.GetTransposed();
+                    const float scale = (std::min)(viewport.Width / Desperabis::WeaponView::Width,
+                        viewport.Height / Desperabis::WeaponView::Height);
+                    const float width = Desperabis::WeaponView::Width * scale;
+                    const float height = Desperabis::WeaponView::Height * scale;
+                    const float left = viewport.TopLeftX + (viewport.Width - width) * 0.5f;
+                    const float top = viewport.TopLeftY + viewport.Height - height;
+                    std::array<Vector2,4> corners;
+                    constexpr int perimeter[]{0,1,3,2};
+                    Vector2 center{};
+                    for (std::size_t i = 0; i < corners.size(); ++i)
+                    {
+                        const auto& vertex = model->m_sourcePositions[perimeter[i]];
+                        const auto projected = (modelToView * gpuProjection).TransformPosition(Vector(vertex.x, vertex.y, vertex.z));
+                        corners[i] = {left + (projected.GetX() + 1) * width * 0.5f,
+                            top + (1 - projected.GetY()) * height * 0.5f};
+                        center.x += corners[i].x * 0.25f; center.y += corners[i].y * 0.25f;
+                    }
+                    const std::array<Vector2,4> rectCorners{{{static_cast<float>(rect->left),static_cast<float>(rect->top)},
+                        {static_cast<float>(rect->right),static_cast<float>(rect->top)},
+                        {static_cast<float>(rect->right),static_cast<float>(rect->bottom)},
+                        {static_cast<float>(rect->left),static_cast<float>(rect->bottom)}}};
+                    float minX = corners[0].x, maxX = minX, minY = corners[0].y, maxY = minY;
+                    for (std::size_t i = 0; i < corners.size(); ++i)
+                    {
+                        const auto& a = corners[i];
+                        const auto& b = corners[(i + 1) % corners.size()];
+                        minX = (std::min)(minX, a.x); maxX = (std::max)(maxX, a.x);
+                        minY = (std::min)(minY, a.y); maxY = (std::max)(maxY, a.y);
+                        const auto cross = [&](const Vector2& point)
+                        {
+                            return (b.x - a.x) * (point.y - a.y) - (b.y - a.y) * (point.x - a.x);
+                        };
+                        for (const auto& corner : rectCorners)
+                        {
+                            Check(cross(corner) * (cross(center) > 0 ? 1.f : -1.f) >=
+                                0.9f * std::hypot(b.x - a.x, b.y - a.y),
+                                "Every reveal corner must lie a pixel inside the sheet projected with the actual GPU matrices, even when tilted.");
+                        }
+                    }
+                    Check(rect->left >= left && rect->top >= top &&
+                        rect->right <= left + width && rect->bottom <= top + height,
+                        "The reveal rectangle must stay inside the bottom-anchored weapon viewport, including portrait letterboxing.");
+                    const float visibleWidth = (std::min)(maxX, left + width) - (std::max)(minX, left);
+                    const float visibleHeight = (std::min)(maxY, top + height) - (std::max)(minY, top);
+                    const int area = (rect->right - rect->left) * (rect->bottom - rect->top);
+                    Check(area > visibleWidth * visibleHeight * (variant == 4 ? 0.4f : 0.85f),
+                        "Conservative clipping must retain a substantial sheet interior rather than collapse to an arbitrary tiny box.");
+                    int changed = 0;
+                    for (int y = 0; y < static_cast<int>(target.height); ++y)
+                    {
+                        for (int x = 0; x < static_cast<int>(target.width); ++x)
+                        {
+                            const auto index = y * target.width + x;
+                            if (baseline[index] == revealed[index]) { continue; }
+                            Check(x >= rect->left && x < rect->right && y >= rect->top && y < rect->bottom,
+                                "Revealed fire must never change pixels outside the projected foil rectangle.");
+                            ++changed;
+                        }
+                    }
+                    Check(changed > area * 0.5f, "The projected foil must reveal real GPU fire pixels beneath its translucent sheet.");
+                    ++checked;
+                }
+            }
+            auto hidden = *core.GetWeaponView();
+            hidden.kind = Desperabis::WeaponView::Kind::Sprite;
+            Check(!ApplicationUi::FoilRevealRect(hidden, level, viewport), "Other held tools must not reveal hidden fires.");
+            hidden = *core.GetWeaponView();
+            hidden.object.posX = 30000;
+            Check(!ApplicationUi::FoilRevealRect(hidden, level, viewport), "An offscreen foil must not leave a stale reveal window.");
+            hidden.object.posX = 0; hidden.object.posZ = -100;
+            Check(!ApplicationUi::FoilRevealRect(hidden, level, viewport), "A foil behind the camera must not reveal fires.");
+            hidden.object.posZ = 30000;
+            Check(!ApplicationUi::FoilRevealRect(hidden, level, viewport), "A foil beyond the projection's far plane must not reveal fires.");
+        }
+        std::cout << "Projected foil: " << checked << " GPU-verified moving/tilted poses, both hands, aspect ratios, offset viewports, clipped fire pixels and hidden/offscreen tools passed.\n";
+    }
+
     void CheckClockHands(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context,
         Desperabis::GameContext& core, Level& level)
     {
@@ -6904,6 +7454,11 @@ namespace
                 "Core and renderer must agree on native snapshot state and resources.");
             if (number == 35)
             {
+                CheckMaterialAlpha(renderer, device, context);
+                CheckScissorPass(renderer, device, context);
+                CheckFoilFires();
+                CheckFoil(ui, renderer, device, context, *savedLevel);
+                CheckFoilReveal(ui, renderer, device, context, *savedLevel);
                 CheckClockHands(renderer, device, context, original, *savedLevel);
                 Check(Desperabis::HandlePlayerObjectInteraction(original.worldObjects[98], original).status ==
                     Desperabis::InteractionStatus::Applied && original.GetMenuPage() == Desperabis::MenuPage::CodeBook,

@@ -2923,7 +2923,10 @@ namespace Desperabis
 
     WeaponActionStatus GameContext::AttackWithSelectedWeapon()
     {
-        if (selectedWeapon == WeaponType::ShopGold) { return WeaponActionStatus::NoEffect; }
+        if (selectedWeapon == WeaponType::ShopGold || selectedWeapon == WeaponType::Foil)
+        {
+            return WeaponActionStatus::NoEffect;
+        }
         if (weaponAnimationSpeed != 0 || !weaponReady || positionalSoundsSuppressed)
         {
             return WeaponActionStatus::NoEffect;
@@ -3420,7 +3423,7 @@ namespace Desperabis
             weaponAmounts[6] = 100;
             weaponReady = true;
         }
-        else if (selectedWeapon == WeaponType::Electricity)
+        else if (selectedWeapon == WeaponType::Electricity || selectedWeapon == WeaponType::Foil)
         {
             weaponSpriteFrame = 1; weaponReady = true; weaponAmounts[23] = 100;
             weaponAnimationPosition = 0;
@@ -3437,7 +3440,10 @@ namespace Desperabis
             else if (phase >= 102 && phase <= 200) { weaponAnimationSpeed = 0; }
             decay();
             if (weaponAnimationSpeed == 0) { weaponAnimationPosition = 15; }
-            weaponAmounts[7] = static_cast<std::int16_t>(std::clamp(static_cast<int>(weaponAmounts[7]), 0, 360));
+            if (selectedWeapon == WeaponType::Electricity)
+            {
+                weaponAmounts[7] = static_cast<std::int16_t>(std::clamp(static_cast<int>(weaponAmounts[7]), 0, 360));
+            }
         }
         else if (selectedWeapon == WeaponType::Bucket)
         {

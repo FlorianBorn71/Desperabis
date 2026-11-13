@@ -25,6 +25,8 @@ public:
     void RenderHudGeometry() {}
     void SetBlendState(TransparencyMode mode);
     void SetGeometryPassType(GeometryPassType pass);
+    void BeginScissorRect(const ScissorRect& rect);
+    void EndScissorRect();
     void RenderTextMeshes(const std::vector<const TextMeshInstance*>& instances);
 #ifdef ENABLE_ADVANCED_RENDERING
     void RenderPostEffects();
@@ -47,6 +49,8 @@ public:
     NativeTextureObjectOGL* m_debugTexture = nullptr;
     bool m_waterCullDisabled = false;
     bool m_savedWaterCullEnabled = false;
+    bool m_savedScissorEnabled = false;
+    GLint m_savedScissorRect[4] = {};
 };
 
 #include <OpenGL/RenderContextOGL.inl>

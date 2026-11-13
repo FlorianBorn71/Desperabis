@@ -3,6 +3,12 @@
 
 class Renderer;
 
+enum class RenderOrder
+{
+    Normal,
+    Scissored,
+};
+
 enum class GeometryPassType
 {
     Sky,

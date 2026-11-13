@@ -94,6 +94,7 @@ private:
     ComPtr<ID3D11BlendState> m_blendState[(int)TransparencyMode::TransparencyModeCount];
     ComPtr<ID3D11DepthStencilState> m_depthState[(int)DepthWriteMode::DepthModeCount];
     ComPtr<ID3D11RasterizerState> m_waterRasterizerState;
+    ComPtr<ID3D11RasterizerState> m_scissorRasterizerState;
 
     std::atomic_int32_t m_runtimeIdCounter = 0;
     bool m_isStereo = false;

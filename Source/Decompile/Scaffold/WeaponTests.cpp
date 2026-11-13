@@ -278,7 +278,7 @@ namespace
         Check(context.AttackWithSelectedWeapon() == WeaponActionStatus::NoEffect &&
             context.weaponAmounts[2] == 9, "Underwater sword input must not consume resources or allocate.");
         context.playerUnderwater = false;
-        context.selectedWeapon = static_cast<WeaponType>(23);
+        context.selectedWeapon = static_cast<WeaponType>(21);
         const auto objects = context.worldObjects;
         Check(context.AttackWithSelectedWeapon() == WeaponActionStatus::UnimplementedWeapon &&
             context.UpdateWeaponAnimation(1) == WeaponActionStatus::UnimplementedWeapon &&
@@ -526,6 +526,51 @@ namespace
     }
 }
 
+void TestFoilPresentation()
+{
+    GameContext context;
+    Equip(context, WeaponType::Foil);
+    context.SetMenuPage(MenuPage::Gameplay);
+    context.playerWalkPhase = 128;
+    context.weaponSpriteFrame = 0;
+    context.weaponAnimationSpeed = -2;
+    Check(context.UpdateWeaponAnimation(1) == WeaponActionStatus::Applied,
+        "Equipping the passive foil must use the native shared draw animation.");
+    const auto drawing = context.GetWeaponView();
+    Check(drawing && drawing->kind == WeaponView::Kind::Model && drawing->bitmapFrame == 11 &&
+        drawing->bindWeaponBitmap && drawing->object.modelId == 31 &&
+        drawing->object.modelAnim == 5 && drawing->object.animFrame == 4 &&
+        drawing->object.posX == 3 && drawing->object.posY == 46 && drawing->object.posZ == 65 &&
+        drawing->object.winX == 0 && drawing->object.winY == 0 && drawing->object.winZ == 0 &&
+        drawing->projectionCenterY == 90,
+        "The foil must use the original rectangular model, holding hand, translation and projection.");
+    for (int tick = 0; tick < 25; ++tick) { context.UpdateWeaponAnimation(1); }
+    Check(context.weaponAnimationSpeed == 0 && context.weaponAnimationPosition == 15 &&
+        context.GetWeaponView()->object.posY == 31,
+        "The foil must settle into its raised native rest pose.");
+    context.weaponHand = 1;
+    Check(context.GetWeaponView()->object.posX == -3 && context.GetWeaponView()->object.winY == 0,
+        "Changing foil hands must mirror its translation without rotating the rectangular sheet.");
+    context.playerWalkPhase = 0;
+    Check(context.GetWeaponView()->object.posY == 36 && context.GetWeaponView()->object.posZ == 70,
+        "The foil must retain the native walking bounce in height and depth.");
+    const auto objects = context.worldObjects;
+    const auto seed = context.randomSeed;
+    Check(context.AttackWithSelectedWeapon() == WeaponActionStatus::NoEffect &&
+        std::memcmp(objects.data(), context.worldObjects.data(), sizeof(objects)) == 0 &&
+        context.randomSeed == seed && context.weaponAmounts[23] == 100,
+        "The passive foil must not allocate projectiles, consume charges or report an unsupported attack.");
+    context.requestedWeapon = WeaponType::Dagger;
+    context.weaponAnimationSpeed = -1;
+    context.UpdateWeaponAnimation(1);
+    Check(context.selectedWeapon == WeaponType::Foil && context.weaponAnimationSpeed == 99,
+        "Switching away must begin the shared native holster animation.");
+    context.UpdateWeaponAnimation(16);
+    context.UpdateWeaponAnimation(1);
+    Check(context.selectedWeapon == WeaponType::Dagger && !context.GetWeaponView(),
+        "Holstering the foil must commit the requested weapon and hide its stale presentation.");
+}
+
 void TestWeaponPresentation()
 {
     GameContext context;
@@ -636,6 +681,7 @@ int main()
         TestSelectionAndWorldIntegration();
         TestSwordAudio();
         TestSelectionGatesAndUnarmedTransition();
+        TestFoilPresentation();
         TestWeaponPresentation();
         std::cout << "Weapon sequence tests passed.\n";
         return 0;

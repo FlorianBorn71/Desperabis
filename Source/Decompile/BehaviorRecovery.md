@@ -605,7 +605,8 @@ book section's modal input/pause behavior. WARP UI regressions render the
 actual illustration and the full core-generated book recipe, including its
 leading clear, at three aspect ratios, and verify that parchment remains
 visible around the ink.
-Foil/fire visibility and the Part-1 outro remain separate, deferred work.
+The foil's held hand/sheet presentation and geometry-derived fire reveal
+are supported. The Part-1 outro remains separate, deferred work.
 
 ### Part-1 coverage audit and modern defaults
 
@@ -633,8 +634,9 @@ separate coverage surfaces.
 The park's bull, cows and held bucket are now recovered; see below. Moon remains
 deliberately excluded. Additional confirmed part-1 gaps:
 
-- **Foil (attack selector 23):** map 35 slot 79 can be picked up but has no
-  supported held-tool/weapon-view state machine.
+- **Foil (attack selector 23):** map 35 slot 79 supports pickup and its passive
+  held-tool presentation. Hidden fires are revealed only within the projected
+  sheet's conservative inner rectangle.
 - **Other tools:** selector-6 metal poles, portable coffin, bones, mirror and
   vase are supported.
 - **BookWithCode (252):** supported by the picture-only code-book modal above.
@@ -5369,7 +5371,8 @@ use `abs(2*bob)` in their bitmap offsets.
 | Fireball / Lentils | WAFFEN frames 6..8, casting hand sequence, look-height shift |
 | Stone | Held level sprite/model bitmap at half scale, eighth-screen hand anchor and countdown slide |
 | Trap / pole | Held object's own model/frame, fixed `10,30,0` orientation, depth `35+abs(bob)/2` |
-| Electricity | Model 31, 2/3 charged, 2/4 firing with blend target 5, 5/4 depleted; WAFFEN frame 5 |
+| Electricity | Model 31, 2/3 charged/empty, 2/4 firing/sparking with blend target 5; WAFFEN frame 5 |
+| Foil | Model 31, 5/4 sheet and hand sprite, WAFFEN frame 11; shared electric-pole draw/holster animation |
 | Shovel (`Showel`) | Model 31, 2/2, DS:03DA pose table and WAFFEN frames 9/10 |
 | Scythe | VEKT67, 2/2, DS:0416 pose table and forced mirrored transform |
 
@@ -5384,6 +5387,65 @@ combat behavior unchanged.
 The model texture copy at DS:71F0 resolves to material slot **9** in the loaded
 bank. DX11 binds the cached selected WAFFEN frame as an **instance material
 override**; it never edits the shared level model or atlas.
+
+Foil selector 23 joins selector 7 at `0000:BF5F..BF6A`; its held draw is
+`0000:C16F..C1BD`. The executable's DS:`0452+23` byte is 11, selecting the
+last WAFFEN frame. The native pose is `(handSign*3,220/7+abs(bob)+15-pose,
+65+abs(bob),0,0,0)`, with projection center Y 90. Its original VEKT14 frame
+5/4 has four rectangular sheet corners and one hand-sprite anchor; frame
+5/5 remains the world/inventory pickup. DX11 replaces only the held instance's
+special sheet-face materials (native selectors 101/105) with a near-black
+(RGB 8), 85%-opaque overlay. Standard DX11 geometry now multiplies texture alpha,
+instance tint alpha and material opacity directly, without deriving transparency
+from RGB luminance. The existing per-material alpha-test flag controls the
+texture cutoff separately. Native vertex-color alpha remains emissive strength,
+not opacity; dedicated flame/corona shaders are unchanged. GPU regressions cover
+black/gray/white at equal opacity, fractional texture alpha, instance/material
+modulation and switching the cutout test on/off. DX11 lowers the
+complete held model by 24 DOS units so its wrist continues below the screen;
+native pose/save coordinates are unchanged. The hand retains its original
+bitmap and color, and shared model materials remain unchanged. Attack input is
+a non-consuming no-op. `weapon-sequences`, `castle-puzzles` and the WARP UI suite
+cover draw/holster, original pickup/equipping, both hands, aspect ratios and
+visible translucent sheet/hand pixels.
+
+Foil-revealed sprites (native `SpriteScissorRect`, display 250) now carry the generic
+`RenderOrder::Scissored` instance tag, including all 13 castle fires. Ordinary torches, fireballs and burning
+objects retain normal rendering. The late group draws opaque, alpha-blended and
+additive geometry after normal world transparency and before post-effects and
+the held weapon/HUD. Attached meshes inherit their parent's tag. It retains
+world depth and the original camera/viewport, and is omitted from ordinary
+mirror passes to avoid revealing fires in reflections.
+
+`RenderingSettings::scissorRect` supplies render-target pixel edges from the
+top left, with exclusive right/bottom edges; an absent or empty rectangle hides
+the tagged group. DX11 preserves the existing rasterizer description and
+restores its state and scissor rectangles before post-effects/HUD. The OpenGL
+context provides the equivalent top-left-to-bottom-left conversion and state
+restoration. Before rendering the world, DX11 computes
+`ApplicationUi::FoilRevealRect` from the held model's first four source vertices
+(the fifth is its hand anchor). Drawing and reveal calculation share the model
+object/transform, projection, held-foil vertical offset and bottom-anchored weapon
+viewport setup, so the current hand, walking bob, draw/holster pose, focal length
+and projection-center changes remain aligned without reading back GPU state.
+The projected bounds contract into the quad's four inner edge half-planes with
+a one-pixel inset, then round inward and intersect the weapon viewport. This
+remains conservative for tilted sheets rather than exposing the corners of an
+outer bounding box. Other held tools, free-camera views and offscreen sheets
+have no reveal rectangle; a sheet crossing the camera/near/far plane also hides
+the reveal conservatively. Only these hidden fires lose their coronas;
+their flickering dynamic lights and ordinary fire coronas remain intact.
+WARP regressions check exact clipping boundaries in landscape/portrait, all
+three blend modes, attached meshes, world occlusion, late ordering, absent,
+empty and moving rectangles, unclipped HUD pixels and exact state restoration.
+Original castle records cover initial and runtime tags, retained lights and
+corona suppression/restoration when switching display modes.
+An additional 36-pose WARP regression reads the matrices actually bound for the
+foil, checks the rectangle against all four projected edges, and compares real
+clipped-fire pixels with an otherwise identical hidden-fire frame. It covers
+both hands, bobbing, draw/holster displacement, tilt, changed focal length and
+projection center, landscape/wide/portrait sizes and offset viewports, as well
+as offscreen/behind-camera/far-plane sheets and other tools.
 
 The loaded sword frame has six positions, all with local Y zero: it is two
 mirrored textured half-planes. DX11 retains this exact shared geometry and
@@ -5644,7 +5706,8 @@ exports linked above. No numeric-placeholder behavior enum was renamed.
 coffin, bones, mirrors and vases. Other unrecovered placement behaviors are
 rejected before consuming the held item. Subsequent recovery of `BEZEICH.TXT` identifies IDs 9, 20, 23
 and 24 as Eimer (bucket), Lentils, Folie (foil) and Sense (scythe), respectively;
-only bucket and foil remain disabled among those four. These labels come from each record's separate
+Bucket and foil presentation are now supported; foil-only sprites are clipped
+to the held sheet's projected interior. These labels come from each record's separate
 name subtype, not from its attack ID. The author confirms that Lentils are
 thrown over an invisible bridge to reveal the walkable path, while the scythe
 destroys a blocking hedge in the first level of part 1. Both interactions

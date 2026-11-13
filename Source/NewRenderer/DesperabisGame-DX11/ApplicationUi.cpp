@@ -201,12 +201,34 @@ namespace
         return { *frame, static_cast<float>(frame->m_relX), static_cast<float>(frame->m_relY) };
     }
 
-    void DrawModel(const Desperabis::UiModel& command, const Level& level, RendererDX11& renderer,
-        const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
-        ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView,
-        Texture* weaponTexture = nullptr, bool faceSwordCamera = false, Model* modelOverride = nullptr,
-        bool clearDepth = true, const VisibilityResult::VisibleWaterLevel* water = nullptr,
-        const Scene* animationScene = nullptr)
+    Desperabis::UiModel WeaponModelCommand(const Desperabis::WeaponView& view)
+    {
+        using Desperabis::WeaponView;
+        const auto& object = view.object;
+        Desperabis::UiModel command{ {0,0,WeaponView::Width,WeaponView::Height},
+            object.modelId, static_cast<byte>(object.modelAnim - 1), static_cast<byte>(object.animFrame - 1),
+            object.modelFrame2, object.blendWeightOrSpriteOpacity, object.displayType,
+            {object.winX,object.winY,object.winZ}, object.posZ };
+        command.cameraSpacePosition = {object.posX,object.posY,object.posZ};
+        command.projectionCenterY = view.projectionCenterY;
+        command.focalLength = view.focalLength;
+        if (view.bindWeaponBitmap && object.modelAnim == 5 && object.animFrame == 4)
+        {
+            (*command.cameraSpacePosition)[1] += 24;
+        }
+        return command;
+    }
+
+    D3D11_VIEWPORT WeaponModelViewport(const D3D11_VIEWPORT& viewport)
+    {
+        using Desperabis::WeaponView;
+        const float scale = (std::min)(viewport.Width / WeaponView::Width, viewport.Height / WeaponView::Height);
+        return {viewport.TopLeftX + (viewport.Width - WeaponView::Width * scale) * 0.5f,
+            viewport.TopLeftY + viewport.Height - WeaponView::Height * scale,
+            WeaponView::Width * scale, WeaponView::Height * scale, 0,1};
+    }
+
+    RawGameObject ModelObject(const Desperabis::UiModel& command)
     {
         Desperabis::RawGameObject object;
         object.health = 1000;
@@ -221,24 +243,12 @@ namespace
         object.winZ = command.angles[2];
         RawGameObject raw;
         Desperabis::EncodeGameObject(object, raw.m_rawBytes, sizeof(raw.m_rawBytes));
-        auto instance = std::make_shared<RenderableInstance>();
-        if (modelOverride)
-        {
-            instance->SetRenderable(modelOverride, nullptr);
-            level.GetLevelInfo().AssignLevelTextures(*instance);
-            instance->ComputeTransparencyMask();
-        }
-        else { level.ApplyRenderProperties(instance, raw); }
-        if (!instance->IsValid() || !instance->GetVisible())
-        {
-            throw std::runtime_error("Application UI references an unavailable model frame: " +
-                std::to_string(command.modelId) + "/" + std::to_string(command.animation + 1) +
-                "/" + std::to_string(command.frame + 1) + ".");
-        }
-        const auto& bounds = instance->GetRenderable()->m_localBounds;
-        const auto center = bounds.GetCenter();
-        Matrix4 centering;
-        centering.SetTranslation(Vector(-center.GetX(), -center.GetY(), -center.GetZ()));
+        return raw;
+    }
+
+    Matrix4 ModelTransform(const Desperabis::UiModel& command, const RawGameObject& raw,
+        const Vector& center, bool faceSwordCamera = false)
+    {
         auto transform = GamePlay::PropertyAccessorBase(raw).GetTransform();
         transform.SetTranslation(Vector(0, 0, -command.depth * DespToFloat));
         if (command.cameraSpacePosition)
@@ -259,12 +269,56 @@ namespace
                     transform.Create(transform.GetTranslation(), right, up, axis);
                 }
             }
-            instance->SetTransform(transform);
+            return transform;
         }
-        else { instance->SetTransform(centering * transform); }
+        Matrix4 centering;
+        centering.SetTranslation(Vector(-center.GetX(), -center.GetY(), -center.GetZ()));
+        return centering * transform;
+    }
+
+    Matrix4 ModelProjection(const Desperabis::UiModel& command)
+    {
+        Matrix4 projection;
+        projection.CreateProjection(command.bounds.width / command.bounds.height,
+            2.f * std::atan(command.bounds.height / (2.f * command.focalLength)), 0.001f, 100.f);
+        if (command.projectionCenterY)
+        {
+            float matrix[16];
+            projection.Store(matrix);
+            matrix[9] = 2.f * *command.projectionCenterY / command.bounds.height - 1.f;
+            projection.Load(matrix);
+        }
+        return projection;
+    }
+
+    void DrawModel(const Desperabis::UiModel& command, const Level& level, RendererDX11& renderer,
+        const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
+        ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView,
+        Texture* weaponTexture = nullptr, bool faceSwordCamera = false, Model* modelOverride = nullptr,
+        bool clearDepth = true, const VisibilityResult::VisibleWaterLevel* water = nullptr,
+        const Scene* animationScene = nullptr)
+    {
+        auto raw = ModelObject(command);
+        auto instance = std::make_shared<RenderableInstance>();
+        if (modelOverride)
+        {
+            instance->SetRenderable(modelOverride, nullptr);
+            level.GetLevelInfo().AssignLevelTextures(*instance);
+            instance->ComputeTransparencyMask();
+        }
+        else { level.ApplyRenderProperties(instance, raw); }
+        if (!instance->IsValid() || !instance->GetVisible())
+        {
+            throw std::runtime_error("Application UI references an unavailable model frame: " +
+                std::to_string(command.modelId) + "/" + std::to_string(command.animation + 1) +
+                "/" + std::to_string(command.frame + 1) + ".");
+        }
+        instance->SetTransform(ModelTransform(command, raw, instance->GetRenderable()->m_localBounds.GetCenter(), faceSwordCamera));
         instance->PrepareSubInstancesForRendering();
         const bool heldWater = command.cameraSpacePosition.has_value();
-        const auto configureMaterials = [&command, weaponTexture, heldWater](RenderableInstance& item)
+        const bool heldFoil = weaponTexture && command.modelId == 31 &&
+            command.animation == 4 && command.frame == 3;
+        const auto configureMaterials = [&command, weaponTexture, heldWater, heldFoil](RenderableInstance& item)
         {
             item.m_tintColor = { command.color.r,command.color.g,command.color.b,item.m_tintColor.a };
             for (auto& material : item.GetOrCreateMaterialOverrides())
@@ -272,6 +326,14 @@ namespace
                 if (weaponTexture && material.m_textureSlot == 9)
                 {
                     material.m_texture = weaponTexture;
+                }
+                if (heldFoil && material.m_textureSlot == -1)
+                {
+                    // The native foil's two faces encode reveal operations, not ordinary textures.
+                    material.m_texture = AssetManager::Instance().GetPlainWhiteTexture();
+                    material.m_transparencyType = TransparencyMode::AlphaBlended;
+                    material.m_opacity = 0.85f;
+                    material.m_useAlphaTest = false;
                 }
                 if (material.m_transparencyType == TransparencyMode::Water && !heldWater)
                 {
@@ -288,17 +350,7 @@ namespace
         if (animationScene) { animationScene->ApplyFireAnimationFrames(*instance); }
         instance->ComputeTransparencyMask();
         Camera camera;
-        Matrix4 projection;
-        projection.CreateProjection(command.bounds.width / command.bounds.height,
-            2.f * std::atan(command.bounds.height / (2.f * command.focalLength)), 0.001f, 100.f);
-        if (command.projectionCenterY)
-        {
-            float matrix[16];
-            projection.Store(matrix);
-            matrix[9] = 2.f * *command.projectionCenterY / command.bounds.height - 1.f;
-            projection.Load(matrix);
-        }
-        camera.SetProjectionMatrix(projection);
+        camera.SetProjectionMatrix(ModelProjection(command));
         VisibilityResult elements;
         elements.m_mainCamera = &camera;
         elements.m_ambientColor = { 1,1,1 };
@@ -316,7 +368,7 @@ namespace
         deviceContext->RSSetViewports(1, &viewport);
         const bool distortedSphere = weaponTexture && command.modelId == 31 &&
             command.animation == 1 && command.frame >= 2 && command.frame <= 4;
-        const auto draw = [&context, distortedSphere](const RenderableInstance& item, TransparencyMode mode)
+        const auto draw = [&context, distortedSphere, heldFoil](const RenderableInstance& item, TransparencyMode mode)
         {
             if (!item.GetRenderable()->HasOwnDrawcalls()) { return; }
             context.SetBlendState(mode);
@@ -325,7 +377,13 @@ namespace
                 const auto& material = i < static_cast<int>(item.m_materialOverride.size()) ?
                     item.m_materialOverride[i] : item.GetRenderable()->m_drawCalls[i].m_material;
                 if (distortedSphere && material.m_textureSlot == 9) { continue; }
-                context.RenderInstance<GeometryPassType::Instances>(&item, mode, i);
+                if (heldFoil && mode == TransparencyMode::AlphaBlended && material.m_textureSlot == -1)
+                {
+                    auto sheet = item;
+                    sheet.m_tintColor = {8,8,8,item.m_tintColor.a};
+                    context.RenderInstance<GeometryPassType::Instances>(&sheet, mode, i);
+                }
+                else { context.RenderInstance<GeometryPassType::Instances>(&item, mode, i); }
             }
         };
         if (distortedSphere)
@@ -725,6 +783,91 @@ void ApplicationUi::DrawBossFall(const std::vector<Desperabis::RawGameObject>& o
     }
 }
 
+std::optional<ScissorRect> ApplicationUi::FoilRevealRect(const Desperabis::WeaponView& view,
+    const Level& level, const D3D11_VIEWPORT& viewport)
+{
+    if (view.kind != Desperabis::WeaponView::Kind::Model || !view.bindWeaponBitmap ||
+        view.object.modelId != 31 || view.object.modelAnim != 5 || view.object.animFrame != 4)
+    {
+        return std::nullopt;
+    }
+    if (!std::isfinite(viewport.TopLeftX) || !std::isfinite(viewport.TopLeftY) ||
+        !std::isfinite(viewport.Width) || !std::isfinite(viewport.Height) ||
+        viewport.Width <= 0 || viewport.Height <= 0 ||
+        !std::isfinite(view.focalLength) || view.focalLength <= 0 || !std::isfinite(view.projectionCenterY))
+    {
+        throw std::invalid_argument("Foil projection requires a finite viewport and positive dimensions/focal length.");
+    }
+    const auto animation = level.GetLevelInfo().GetModelAnim(1);
+    const auto* model = animation ? animation->GetModelSafe(4, 3) : nullptr;
+    if (!model || model->m_sourcePositions.size() != 5)
+    {
+        throw std::runtime_error("Held foil geometry requires four sheet corners and a hand anchor.");
+    }
+    const auto command = WeaponModelCommand(view);
+    const auto transform = ModelTransform(command, ModelObject(command), model->m_localBounds.GetCenter());
+    const auto projection = ModelProjection(command);
+    const auto weaponViewport = WeaponModelViewport(viewport);
+    std::array<Vector2,4> corners;
+    constexpr int perimeter[]{0,1,3,2};
+    for (std::size_t i = 0; i < corners.size(); ++i)
+    {
+        const auto& vertex = model->m_sourcePositions[perimeter[i]];
+        const auto position = transform.TransformPosition(Vector(vertex.x, vertex.y, vertex.z));
+        if (position.GetZ() >= 0) { return std::nullopt; }
+        const auto projected = projection.TransformPosition(position);
+        if (!std::isfinite(projected.GetX()) || !std::isfinite(projected.GetY()) || !std::isfinite(projected.GetZ()))
+        {
+            throw std::runtime_error("Foil projection produced non-finite screen coordinates.");
+        }
+        if (projected.GetZ() < 0 || projected.GetZ() > 1) { return std::nullopt; }
+        corners[i] = {weaponViewport.TopLeftX + (projected.GetX() + 1.f) * weaponViewport.Width * 0.5f,
+            weaponViewport.TopLeftY + (1.f - projected.GetY()) * weaponViewport.Height * 0.5f};
+    }
+    float left = corners[0].x, right = left, top = corners[0].y, bottom = top;
+    Vector2 center{};
+    for (const auto& corner : corners)
+    {
+        left = (std::min)(left, corner.x); right = (std::max)(right, corner.x);
+        top = (std::min)(top, corner.y); bottom = (std::max)(bottom, corner.y);
+        center.x += corner.x * 0.25f; center.y += corner.y * 0.25f;
+    }
+    const std::array<Vector2,4> bounds{{{left,top}, {right,top}, {right,bottom}, {left,bottom}}};
+    constexpr float inset = 1.f;
+    float scale = 1.f;
+    // Contract the bounds into every edge's inner half-plane, including when the sheet tilts.
+    for (std::size_t i = 0; i < corners.size(); ++i)
+    {
+        const auto& a = corners[i];
+        const auto& b = corners[(i + 1) % corners.size()];
+        const float dx = b.x - a.x, dy = b.y - a.y;
+        const float length = std::hypot(dx, dy);
+        if (length == 0) { return std::nullopt; }
+        const auto distance = [&](const Vector2& point)
+        {
+            return (dx * (point.y - a.y) - dy * (point.x - a.x)) / length;
+        };
+        const float signedCenterDistance = distance(center);
+        const float centerDistance = std::abs(signedCenterDistance);
+        if (centerDistance <= inset) { return std::nullopt; }
+        for (const auto& corner : bounds)
+        {
+            const float cornerDistance = distance(corner) * (signedCenterDistance > 0 ? 1.f : -1.f);
+            if (cornerDistance < inset)
+            {
+                scale = (std::min)(scale, (centerDistance - inset) / (centerDistance - cornerDistance));
+            }
+        }
+    }
+    const ScissorRect rect{
+        static_cast<int>(std::ceil((std::max)(weaponViewport.TopLeftX, center.x + (left - center.x) * scale))),
+        static_cast<int>(std::ceil((std::max)(weaponViewport.TopLeftY, center.y + (top - center.y) * scale))),
+        static_cast<int>(std::floor((std::min)(weaponViewport.TopLeftX + weaponViewport.Width, center.x + (right - center.x) * scale))),
+        static_cast<int>(std::floor((std::min)(weaponViewport.TopLeftY + weaponViewport.Height, center.y + (bottom - center.y) * scale)))};
+    if (rect.left >= rect.right || rect.top >= rect.bottom) { return std::nullopt; }
+    return rect;
+}
+
 void ApplicationUi::DrawWeapon(const Desperabis::WeaponView& view, RendererDX11& renderer, const Level& level,
     const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
     ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView,
@@ -737,17 +880,10 @@ void ApplicationUi::DrawWeapon(const Desperabis::WeaponView& view, RendererDX11&
     if (view.kind == WeaponView::Kind::Model)
     {
         const auto& object = view.object;
-        Desperabis::UiModel command{ { 0,0,WeaponView::Width,WeaponView::Height },
-            object.modelId, static_cast<byte>(object.modelAnim - 1), static_cast<byte>(object.animFrame - 1),
-            object.modelFrame2, object.blendWeightOrSpriteOpacity, object.displayType,
-            { object.winX,object.winY,object.winZ }, object.posZ };
-        command.cameraSpacePosition = { object.posX,object.posY,object.posZ };
-        command.projectionCenterY = view.projectionCenterY;
-        command.focalLength = view.focalLength;
+        auto command = WeaponModelCommand(view);
         const bool faceSwordCamera = view.bindWeaponBitmap && object.modelAnim == 2 && object.animFrame == 1;
         if (faceSwordCamera) { (*command.cameraSpacePosition)[1] += 6; }
-        const D3D11_VIEWPORT modelViewport{ viewport.TopLeftX + (viewport.Width - WeaponView::Width * scale) * 0.5f,
-            bottom - WeaponView::Height * scale, WeaponView::Width * scale, WeaponView::Height * scale, 0,1 };
+        const auto modelViewport = WeaponModelViewport(viewport);
         auto* weaponTexture = view.bindWeaponBitmap ?
             &m_weapons->m_frames.at(view.bitmapFrame) : nullptr;
         Model* modelOverride = nullptr;

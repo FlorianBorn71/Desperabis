@@ -26,6 +26,14 @@ inline void Renderer::RenderScene_Impl(const VisibilityResult& elements, const R
 #endif
         RenderTransparentGeometry(context, elements.m_visibleInstances);
 
+        if (renderSettings.scissorRect)
+        {
+            context.BeginScissorRect(*renderSettings.scissorRect);
+            RenderOpaqueGeometry(context, elements.m_visibleInstances, RenderOrder::Scissored);
+            RenderTransparentGeometry(context, elements.m_visibleInstances, RenderOrder::Scissored);
+            context.EndScissorRect();
+        }
+
 #ifdef ENABLE_ADVANCED_RENDERING
         context.RenderPostEffects();
 #endif
@@ -66,7 +74,7 @@ inline void Renderer::RenderSky(CONTEXT_TYPE& context, const VisibilityResult::V
 }
 
 template <typename CONTEXT_TYPE>
-inline void Renderer::RenderOpaqueGeometry(CONTEXT_TYPE& context, const VisibilityResult::VisibleInstances& instances)
+inline void Renderer::RenderOpaqueGeometry(CONTEXT_TYPE& context, const VisibilityResult::VisibleInstances& instances, RenderOrder order)
 {
     if (instances.m_opaqueInstances.size() > 0)
     {
@@ -74,6 +82,7 @@ inline void Renderer::RenderOpaqueGeometry(CONTEXT_TYPE& context, const Visibili
         context.SetBlendState(TransparencyMode::Opaque);
         for (const auto& entry : instances.m_opaqueInstances)
         {
+            if (entry.m_instance->m_renderOrder != order) { continue; }
             context.RenderInstance<GeometryPassType::Instances>(entry.m_instance, TransparencyMode::Opaque);
         }
     }
@@ -81,7 +90,7 @@ inline void Renderer::RenderOpaqueGeometry(CONTEXT_TYPE& context, const Visibili
 
 
 template <typename CONTEXT_TYPE>
-inline void Renderer::RenderTransparentGeometry(CONTEXT_TYPE& context, const VisibilityResult::VisibleInstances& instances)
+inline void Renderer::RenderTransparentGeometry(CONTEXT_TYPE& context, const VisibilityResult::VisibleInstances& instances, RenderOrder order)
 {
     if (instances.m_transparentInstances.size() > 0)
     {
@@ -96,6 +105,7 @@ inline void Renderer::RenderTransparentGeometry(CONTEXT_TYPE& context, const Vis
                 context.SetBlendState(mode);
                 for (const auto& entry : instances.m_transparentInstances)
                 {
+                    if (entry.m_instance->m_renderOrder != order) { continue; }
                     context.RenderInstance<GeometryPassType::Instances>(entry.m_instance, mode);
                 }
             }
@@ -109,6 +119,7 @@ inline void Renderer::RenderTransparentGeometry(CONTEXT_TYPE& context, const Vis
         context.SetBlendState(TransparencyMode::Additive);
         for (const auto& entry : instances.m_burningInstances)
         {
+            if (entry.m_instance->m_renderOrder != order) { continue; }
             context.RenderInstance<GeometryPassType::InstancesInFlames>(entry.m_instance, TransparencyMode::Additive);
         }
     }

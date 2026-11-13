@@ -85,6 +85,41 @@ void RenderContextDX11::SetBlendState(TransparencyMode mode)
     m_d3dContext->OMSetDepthStencilState(m_rendererDX11.m_depthState[(int)dsMode].Get(), 0);
 }
 
+void RenderContextDX11::BeginScissorRect(const ScissorRect& rect)
+{
+    if (rect.left > rect.right || rect.top > rect.bottom)
+    {
+        throw std::invalid_argument("Scissor rectangle edges must be ordered.");
+    }
+    m_d3dContext->RSGetState(m_savedScissorRasterizer.ReleaseAndGetAddressOf());
+    CD3D11_RASTERIZER_DESC desired(D3D11_DEFAULT);
+    if (m_savedScissorRasterizer) { m_savedScissorRasterizer->GetDesc(&desired); }
+    desired.ScissorEnable = TRUE;
+    D3D11_RASTERIZER_DESC cached{};
+    if (m_rendererDX11.m_scissorRasterizerState) { m_rendererDX11.m_scissorRasterizerState->GetDesc(&cached); }
+    if (std::memcmp(&desired, &cached, sizeof(desired)) != 0)
+    {
+        ComPtr<ID3D11RasterizerState> state;
+        if (FAILED(m_rendererDX11.m_d3dDevice->CreateRasterizerState(&desired, &state)))
+        {
+            throw std::runtime_error("Could not create the scissor rasterizer state.");
+        }
+        m_rendererDX11.m_scissorRasterizerState = std::move(state);
+    }
+    m_savedScissorRectCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+    m_d3dContext->RSGetScissorRects(&m_savedScissorRectCount, m_savedScissorRects);
+    const D3D11_RECT clip{rect.left, rect.top, rect.right, rect.bottom};
+    m_d3dContext->RSSetScissorRects(1, &clip);
+    m_d3dContext->RSSetState(m_rendererDX11.m_scissorRasterizerState.Get());
+}
+
+void RenderContextDX11::EndScissorRect()
+{
+    m_d3dContext->RSSetState(m_savedScissorRasterizer.Get());
+    m_d3dContext->RSSetScissorRects(m_savedScissorRectCount, m_savedScissorRects);
+    m_savedScissorRasterizer.Reset();
+}
+
 void RenderContextDX11::RenderTextMeshes(const std::vector<const TextMeshInstance*>& instances)
 {
     if (instances.empty())

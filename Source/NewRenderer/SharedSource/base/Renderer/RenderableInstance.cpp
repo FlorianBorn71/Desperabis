@@ -206,6 +206,7 @@ void RenderableInstance::PrepareSubInstancesForRendering()
         position *= m_uniformScale;
         local.Create(position, sub.m_localOri, 1.f);
         sub.m_uniformScale = m_uniformScale;
+        sub.m_renderOrder = m_renderOrder;
         sub.SetTransformAndUpdate(local * m_transform);
     }
 }

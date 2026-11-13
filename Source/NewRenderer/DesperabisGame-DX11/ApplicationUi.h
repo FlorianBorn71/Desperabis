@@ -46,6 +46,8 @@ public:
         const RenderingSettings& settings, ProfilingStats& stats, const D3D11_VIEWPORT& viewport,
         ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView,
         const VisibilityResult* world = nullptr, const Scene* animationScene = nullptr);
+    static std::optional<ScissorRect> FoilRevealRect(const Desperabis::WeaponView& view,
+        const Level& level, const D3D11_VIEWPORT& viewport);
     static Vector ElectricityTipWorld(const Desperabis::WeaponView& view,
         const Level& level, const Camera& camera, const D3D11_VIEWPORT& viewport);
     static void AlignElectricBolts(const Desperabis::GameContext& core, const Level& level,

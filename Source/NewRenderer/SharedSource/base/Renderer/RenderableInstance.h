@@ -2,6 +2,7 @@
 #include <DesperabisCommon.h>
 #include <Scene/Transformable.h>
 #include <Renderer/DrawCall.h>
+#include <Renderer/RendererCommon.h>
 #include <Asset/ModelGeometry.h>
 
 class D_IMPEXP RenderableInstance
@@ -112,6 +113,7 @@ public:
     float m_uniformScale = 1.f;
     float m_fireIntensity = 0.f;
     bool m_foreground = false;
+    RenderOrder m_renderOrder = RenderOrder::Normal;
     Color4 m_tintColor = { 255,255,255,255 };
 #ifdef _DEBUG
     std::string m_debugName;

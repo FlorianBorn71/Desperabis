@@ -305,7 +305,8 @@ namespace
     {
     public:
         ObjectLightContext(GamePlay::BehaviorType behavior, std::shared_ptr<LightSource> light, bool electricImpact)
-            : m_behavior(behavior), m_light(std::move(light)), m_electricImpact(electricImpact) {}
+            : m_behavior(behavior), m_light(std::move(light)), m_electricImpact(electricImpact),
+              m_originalCoronaSize(m_light->GetCoronaSize()) {}
 
         bool Matches(const RawGameObject& object) const override
         {
@@ -316,7 +317,10 @@ namespace
 
         void Update(const RawGameObject& object, RenderableInstance* instance) override
         {
-            Vector position = GamePlay::PropertyAccessorBase(object).GetPosition();
+            const GamePlay::PropertyAccessorBase properties(object);
+            Vector position = properties.GetPosition();
+            m_light->SetCoronaSize(properties.GetDisplayType() == GamePlay::DisplayType::SpriteScissorRect ?
+                0.f : m_originalCoronaSize);
             float height = 0.f;
             switch (m_behavior)
             {
@@ -358,6 +362,7 @@ namespace
         GamePlay::BehaviorType m_behavior;
         std::shared_ptr<LightSource> m_light;
         bool m_electricImpact;
+        float m_originalCoronaSize;
     };
 }
 
