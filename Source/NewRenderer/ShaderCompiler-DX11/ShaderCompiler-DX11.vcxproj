@@ -70,6 +70,13 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <ItemGroup>
+    <FxCompile Include="..\SharedSource\DX11\shaders\DistortedSphere_PS.hlsl">
+      <EntryPointName>ps_main_distorted_sphere</EntryPointName>
+      <ShaderType>Pixel</ShaderType>
+      <ShaderModel>5.0</ShaderModel>
+      <AdditionalIncludeDirectories>$(ProjectDir)..\SharedSource\base</AdditionalIncludeDirectories>
+      <ObjectFileOutput>$(ProjectDir)..\AdditionalAssets\shaderbins\%(Filename).cso</ObjectFileOutput>
+    </FxCompile>
     <FxCompile Include="..\SharedSource\DX11\shaders\Text_VS.hlsl">
       <EntryPointName>vs_main_text</EntryPointName>
       <ShaderType>Vertex</ShaderType>

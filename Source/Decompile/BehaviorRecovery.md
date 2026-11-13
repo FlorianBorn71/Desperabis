@@ -5420,8 +5420,32 @@ weapon out of view. Projection center Y stays 125 in charged and depleted states
 so running out of charge does not make the grip jump down.
 The held model always uses the right-hand side at X +9 DOS units (three times
 the old 3-unit offset), independently of which inventory slot owns it.
-The charged sphere's authored red shades approximate a DOS glass-distortion
-effect, not a red light. Replacing that with modern refraction is deferred.
+The charged sphere is an authored sprite, not a triangulated red mesh. Its red
+shades encode DOS glass-distortion darkening, not a red light. Modern DX11
+presentation retains that billboard and uses its texture as the mask for the
+independent `DistortedSphere_PS` shader. It shows the full scene inverted in
+both axes, centered on the scene image rather than the pixels immediately behind
+the sphere. Reciprocal spherical thickness spreads samples outward with
+increasing stretch toward the rim (capped at 10x to keep grazing-angle
+displacement finite). Authored red is the centerness/transmission mask:
+darkening is `1 - red`, so final scene RGB is multiplied by red. There is no
+invented radial shading profile or additive white rim. The actual WAFFEN frame
+is 21x21: its center has red 35/63, decreasing toward the edge (10/63 at 90%
+radius), so the native mask supplies both substantial center attenuation and
+a darker rim.
+The mask lives inside the WAFFEN atlas. Its atlas scale/offset constant buffer
+is bound to the pixel shader, which recovers 0..1 sphere-local UVs before
+computing the radius. Treating atlas UVs as local coordinates had previously
+offset the center and flattened the sphere's distortion/shading.
+Scene sampling uses full-render-target coordinates and clamps at half-texel
+borders, with no extra gamma pass over the already rendered scene.
+The pass renders the opaque pole first, captures a fresh scene-color copy,
+draws glass with depth testing, then draws transparent/additive tip sparks.
+It shares the framebuffer-copy resource with refraction, not the water shader
+or normal maps. `RenderContextDX11::RenderDistortedSphere(instance, drawCallIndex)`
+is reusable for another radial-mask draw call, without electric-weapon knowledge
+in the renderer. It restores the prior pixel shader, atlas buffer, scene binding, sampler,
+blend and depth states; shared weapon materials are not modified.
 Successful
 shots use standard weapon-bank animation 6, choosing two different frames among
 1..3 and morphing between their original line meshes. The renderer applies
@@ -5451,6 +5475,11 @@ visible firing tips, a stable firing/idle grip,
 tip-root flash pixels and unchanged far endpoints across both chapter banks
 and three aspect ratios. The held `MetalPole` model moves 8 DOS units right;
 GPU centroids verify the shift without changing other placeable weapons.
+Focused sphere GPU checks verify horizontal/vertical inversion of asymmetric
+scene gradients, increasingly spread full-scene samples, authored red
+transmission, identical atlas/standalone masks within one-byte GPU rounding,
+circular clipping, foreground depth occlusion, fresh scene copies,
+offset/aspect handling and blue-background glass in both original weapon banks.
 Pressing the DX11 no-collision key N also restores charge entry 7 to 360 (100%),
 on either toggle direction; it does not change native resource consumption.
 An electric shot without an eligible target retains its native -4 sentinel and

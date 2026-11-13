@@ -72,6 +72,7 @@ private:
     ComPtr<ID3D11Buffer> m_constantBufferLights;
     ComPtr<ID3D11Buffer> m_constantBufferWaterParams;
     ComPtr<ID3D11PixelShader> m_pixelShaderMirrorReceiver;
+    ComPtr<ID3D11PixelShader> m_pixelShaderDistortedSphere;
     ComPtr<ID3D11VertexShader> m_vertexShaderMirrorReceiver;
     ComPtr<ID3D11PixelShader> m_pixelShaderCorona;
     ComPtr<ID3D11VertexShader> m_vertexShaderCorona;

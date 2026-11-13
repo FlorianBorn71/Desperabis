@@ -310,17 +310,51 @@ namespace
         if (clearDepth) { deviceContext->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1.f, 0); }
         deviceContext->OMSetRenderTargets(1, &colorView, depthView);
         deviceContext->RSSetViewports(1, &viewport);
-        const auto draw = [&context](const RenderableInstance& item)
+        const bool distortedSphere = weaponTexture && command.modelId == 31 &&
+            command.animation == 1 && command.frame >= 2 && command.frame <= 4;
+        const auto draw = [&context, distortedSphere](const RenderableInstance& item, TransparencyMode mode)
         {
             if (!item.GetRenderable()->HasOwnDrawcalls()) { return; }
-            for (const auto mode : { TransparencyMode::Opaque, TransparencyMode::AlphaBlended, TransparencyMode::Additive })
+            context.SetBlendState(mode);
+            for (int i = 0; i < static_cast<int>(item.GetRenderable()->m_drawCalls.size()); ++i)
             {
-                context.SetBlendState(mode);
-                context.RenderInstance<GeometryPassType::Instances>(&item, mode);
+                const auto& material = i < static_cast<int>(item.m_materialOverride.size()) ?
+                    item.m_materialOverride[i] : item.GetRenderable()->m_drawCalls[i].m_material;
+                if (distortedSphere && material.m_textureSlot == 9) { continue; }
+                context.RenderInstance<GeometryPassType::Instances>(&item, mode, i);
             }
         };
-        draw(*instance);
-        for (const auto& sub : instance->m_subInstances) { draw(sub); }
+        if (distortedSphere)
+        {
+            const auto glass = [&context](const RenderableInstance& item)
+            {
+                for (int i = 0; i < static_cast<int>(item.m_materialOverride.size()); ++i)
+                {
+                    if (item.m_materialOverride[i].m_textureSlot == 9) { context.RenderDistortedSphere(item, i); }
+                }
+            };
+            draw(*instance, TransparencyMode::Opaque);
+            for (const auto& sub : instance->m_subInstances) { draw(sub, TransparencyMode::Opaque); }
+            glass(*instance);
+            for (const auto& sub : instance->m_subInstances) { glass(sub); }
+            for (const auto mode : {TransparencyMode::AlphaBlended, TransparencyMode::Additive})
+            {
+                draw(*instance, mode);
+                for (const auto& sub : instance->m_subInstances) { draw(sub, mode); }
+            }
+        }
+        else
+        {
+            const auto ordinary = [&draw](const RenderableInstance& item)
+            {
+                for (const auto mode : {TransparencyMode::Opaque, TransparencyMode::AlphaBlended, TransparencyMode::Additive})
+                {
+                    draw(item, mode);
+                }
+            };
+            ordinary(*instance);
+            for (const auto& sub : instance->m_subInstances) { ordinary(sub); }
+        }
         if (heldWater && instance->HasWaterMaterials())
         {
             VisibilityResult::VisibleWaterLevel refracted;

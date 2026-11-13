@@ -604,7 +604,16 @@ no ranged beam.
 Empty electricity uses exactly the charged idle model, including its wooden
 pole and red sphere, rather than the native depleted frame. It never uses the
 firing animation without charge. The sphere's red-shaded DOS distortion
-approximation is unchanged; modern refraction is deferred.
+mask now drives a separate distorted-sphere shader: an upside-down, left/right
+inverted image of the full scene, with increasingly spread samples toward the
+edge, over a fresh framebuffer copy. Authored red is the transmission/centerness
+mask (its inverse is darkening), not a red tint or an extra radial approximation.
+The shader recovers sphere-local UVs from the mask's atlas scale/offset. The
+original sphere billboard and wooden pole stay intact; tip sparks draw after
+the glass. No water shader, scrolling normal map or water tint is used.
+`RenderContextDX11::RenderDistortedSphere` accepts a radial-mask draw call for
+reuse by other game presentation. Scene UVs use the full render target, including
+when the weapon has a smaller, offset viewport.
 Stopping, weapon/menu changes, free-camera mode and scene clearing remove the
 electricity light. Transient/emission hooks apply to the GameCore-driven host;
 the remote DOS scene shares particle materials/projectile contexts but does not

@@ -140,6 +140,8 @@ FUTURE(void) RendererDX11::Initialize(ID3D11Device3* device, ID3D11DeviceContext
 #ifdef ENABLE_ADVANCED_RENDERING
     std::vector<byte> vsDataMR = CO_AWAIT FileManager::Instance().ReadDataFuture(L"MirrorReceiver_VS.cso");
     std::vector<byte> psDataMR = CO_AWAIT FileManager::Instance().ReadDataFuture(L"MirrorReceiver_PS.cso");
+    const auto psDataSphere = CO_AWAIT FileManager::Instance().ReadDataFuture(L"DistortedSphere_PS.cso");
+    ThrowIfFailed(device->CreatePixelShader(psDataSphere.data(), psDataSphere.size(), nullptr, &m_pixelShaderDistortedSphere));
     std::vector<byte> vsDataCp = CO_AWAIT FileManager::Instance().ReadDataFuture(L"Corona_VS.cso");
     std::vector<byte> psDataCo = CO_AWAIT FileManager::Instance().ReadDataFuture(L"Corona_PS.cso");
     std::vector<byte> gsDataCo = CO_AWAIT FileManager::Instance().ReadDataFuture(L"Corona_GS.cso");
@@ -245,6 +247,7 @@ void RendererDX11::Deinitialize()
 #ifdef ENABLE_ADVANCED_RENDERING
     m_vertexShaderMirrorReceiver.Reset();
     m_pixelShaderMirrorReceiver.Reset();
+    m_pixelShaderDistortedSphere.Reset();
     m_vertexShaderCorona.Reset();
     m_pixelShaderCorona.Reset();
     m_geometryShaderCorona.Reset();

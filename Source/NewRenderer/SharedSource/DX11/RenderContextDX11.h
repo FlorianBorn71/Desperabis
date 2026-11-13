@@ -28,6 +28,8 @@ public:
     void BeginWaterRendering();
 	void EndWaterRendering();
     void PrepareRefraction(bool firstTimeRefraction);
+    // Draw a spherical lens from a radial mask after opaque geometry, before foreground effects.
+    void RenderDistortedSphere(const RenderableInstance& instance, int drawCallIndex);
     void PrepareWaterRendering(const VisibilityResult::VisibleWaterLevel& water);
 #endif
 

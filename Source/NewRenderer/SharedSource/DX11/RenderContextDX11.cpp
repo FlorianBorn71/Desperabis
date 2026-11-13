@@ -378,6 +378,54 @@ void RenderContextDX11::PrepareRefraction(bool firstTimeRefraction)
     }
 }
 
+void RenderContextDX11::RenderDistortedSphere(const RenderableInstance& instance, int drawCallIndex)
+{
+    const auto* renderable = instance.GetRenderable();
+    if (!renderable || drawCallIndex < 0 || drawCallIndex >= static_cast<int>(renderable->m_drawCalls.size()))
+    {
+        throw std::invalid_argument("Distorted spheres require a renderable radial-mask draw call.");
+    }
+    const auto& material = drawCallIndex < static_cast<int>(instance.m_materialOverride.size()) ?
+        instance.m_materialOverride[drawCallIndex] : renderable->m_drawCalls[drawCallIndex].m_material;
+    const auto* texture = material.m_texture ?
+        material.m_texture->GetNativeRuntimeObj<NativeTextureObjectDX11>() : nullptr;
+    if (!texture || !texture->m_atlasDataBuffer)
+    {
+        throw std::invalid_argument("Distorted spheres require a radial-mask texture with atlas coordinates.");
+    }
+    ComPtr<ID3D11PixelShader> previousShader;
+    ComPtr<ID3D11Buffer> previousAtlas;
+    ComPtr<ID3D11ShaderResourceView> previousScene;
+    ComPtr<ID3D11SamplerState> previousSampler;
+    ComPtr<ID3D11BlendState> previousBlend;
+    ComPtr<ID3D11DepthStencilState> previousDepth;
+    float blendFactor[4];
+    UINT sampleMask, stencilReference;
+    m_d3dContext->PSGetShader(previousShader.GetAddressOf(), nullptr, nullptr);
+    m_d3dContext->PSGetConstantBuffers(3, 1, previousAtlas.GetAddressOf());
+    m_d3dContext->PSGetShaderResources(2, 1, previousScene.GetAddressOf());
+    m_d3dContext->PSGetSamplers(1, 1, previousSampler.GetAddressOf());
+    m_d3dContext->OMGetBlendState(previousBlend.GetAddressOf(), blendFactor, &sampleMask);
+    m_d3dContext->OMGetDepthStencilState(previousDepth.GetAddressOf(), &stencilReference);
+    ID3D11ShaderResourceView* empty = nullptr;
+    m_d3dContext->PSSetShaderResources(0, 1, &empty);
+    m_d3dContext->PSSetShaderResources(2, 1, &empty);
+    m_previousTexture = nullptr;
+    m_rendererDX11.CopyFrameBuffer();
+    m_d3dContext->PSSetShaderResources(2, 1, m_rendererDX11.m_frameBufferCopy.m_nativeTexView.GetAddressOf());
+    m_d3dContext->PSSetSamplers(1, 1, m_rendererDX11.m_samplerStateClamp.GetAddressOf());
+    m_d3dContext->PSSetShader(m_rendererDX11.m_pixelShaderDistortedSphere.Get(), nullptr, 0);
+    m_d3dContext->PSSetConstantBuffers(3, 1, texture->m_atlasDataBuffer.GetAddressOf());
+    SetBlendState(TransparencyMode::Opaque);
+    RenderInstance<GeometryPassType::Instances>(&instance, material.m_transparencyType, drawCallIndex);
+    m_d3dContext->PSSetShader(previousShader.Get(), nullptr, 0);
+    m_d3dContext->PSSetConstantBuffers(3, 1, previousAtlas.GetAddressOf());
+    m_d3dContext->PSSetShaderResources(2, 1, previousScene.GetAddressOf());
+    m_d3dContext->PSSetSamplers(1, 1, previousSampler.GetAddressOf());
+    m_d3dContext->OMSetBlendState(previousBlend.Get(), blendFactor, sampleMask);
+    m_d3dContext->OMSetDepthStencilState(previousDepth.Get(), stencilReference);
+}
+
 void RenderContextDX11::PrepareWaterRendering(const VisibilityResult::VisibleWaterLevel& water)
 {
     if (!m_waterCullDisabled)

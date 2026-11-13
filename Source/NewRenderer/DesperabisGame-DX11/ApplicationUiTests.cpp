@@ -1061,6 +1061,192 @@ namespace
         bool HasFlameSlot(int slot) const { return m_fireAnimations[slot].m_torchAnim != nullptr; }
     };
 
+    void CheckDistortedSphere(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        Texture clearMask, darkMask;
+        clearMask.CreatePlainColor({255,0,0,255});
+        darkMask.CreatePlainColor({128,0,0,255});
+        Texture atlas, atlasMasks[2];
+        TextureLoadingContext atlasPixels[2];
+        for (int i = 0; i < 2; ++i)
+        {
+            const Color4 color{static_cast<byte>(i == 0 ? 255 : 128),0,0,255};
+            atlasMasks[i].CreatePlainColor(color);
+            atlasPixels[i].m_rgbaData.assign(16, color);
+        }
+        atlas.CreateAsAtlas(atlasMasks, atlasPixels, 2);
+        auto mesh = GeometryUtils::CreateCameraBillboardQuadMesh(0.7f, 0.7f);
+        RenderableInstance sphere;
+        sphere.SetRenderable(mesh.get(), nullptr);
+        Matrix4 placement;
+        placement.SetTranslation(Vector(0,0,-1));
+        sphere.SetTransform(placement);
+        RenderingSettings settings;
+        ProfilingStats stats;
+        Camera camera;
+        for (const auto size : {std::pair<UINT,UINT>{360,240}, {480,800}, {1280,720}})
+        {
+            Target target(device, size.first, size.second);
+            renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+            const D3D11_VIEWPORT viewport{20,15,static_cast<float>(size.first - 40),
+                static_cast<float>(size.second - 30),0,1};
+            Matrix4 projection;
+            projection.CreateProjection(viewport.Width / viewport.Height, 1.1f, 0.001f, 100.f);
+            camera.SetProjectionMatrix(projection);
+            VisibilityResult elements;
+            elements.m_mainCamera = &camera;
+            RenderContextDX11 draw(renderer, elements, settings, stats);
+            draw.BeginRendering();
+            draw.BeginRenderTargetScope(RenderTargetPassType::MainView);
+            draw.TrackGlobals();
+            draw.SetGeometryPassType(GeometryPassType::Instances);
+            context->RSSetViewports(1, &viewport);
+            std::vector<std::uint32_t> background(static_cast<std::size_t>(target.width) * target.height);
+            for (UINT y = 0; y < target.height; ++y)
+            {
+                for (UINT x = 0; x < target.width; ++x)
+                {
+                    background[y * target.width + x] = (32 + x * 180 / target.width) |
+                        ((32 + y * 180 / target.height) << 8) | (120u << 16) | 0xff000000u;
+                }
+            }
+            const auto render = [&](Texture& mask, float depth)
+            {
+                context->UpdateSubresource(target.color.Get(), 0, nullptr, background.data(), target.width * 4, 0);
+                context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, depth, 0);
+                auto& material = sphere.GetOrCreateMaterialOverrides().at(0);
+                material.m_texture = &mask;
+                material.ComputeHash();
+                ComPtr<ID3D11PixelShader> before, after;
+                ComPtr<ID3D11Buffer> atlasBefore, atlasAfter;
+                context->PSGetShader(before.GetAddressOf(), nullptr, nullptr);
+                context->PSGetConstantBuffers(3, 1, atlasBefore.GetAddressOf());
+                draw.RenderDistortedSphere(sphere, 0);
+                context->PSGetShader(after.GetAddressOf(), nullptr, nullptr);
+                context->PSGetConstantBuffers(3, 1, atlasAfter.GetAddressOf());
+                Check(before == after, "Distorted spheres must restore the previous shader for subsequent geometry.");
+                Check(atlasBefore == atlasAfter, "Distorted spheres must restore the previous pixel-shader atlas binding.");
+                return target.Pixels(device, context);
+            };
+            const auto clear = render(clearMask, 1.f);
+            const UINT cx = target.width / 2, cy = target.height / 2;
+            const float radius = viewport.Height * 0.35f / (2.f * std::tan(0.55f));
+            const auto channel = [](std::uint32_t pixel, int component) { return (pixel >> (component * 8)) & 255; };
+            const bool vertical = target.height > target.width;
+            const auto sourceDistance = [&](float fraction)
+            {
+                const UINT offset = static_cast<UINT>(radius * fraction);
+                const auto pixel = clear[(cy + (vertical ? offset : 0)) * target.width + cx + (vertical ? 0 : offset)];
+                const float sourceGradient = static_cast<float>(channel(pixel, vertical ? 1 : 0));
+                const float extent = static_cast<float>(vertical ? target.height : target.width);
+                const float sourceCoordinate = (sourceGradient - 32.f) * extent / 180.f;
+                return extent * 0.5f - sourceCoordinate;
+            };
+            const UINT axisOffset = static_cast<UINT>(radius * 0.35f);
+            Check(channel(clear[cy * target.width + cx + axisOffset], 0) < 100 &&
+                channel(clear[(cy + axisOffset) * target.width + cx], 1) < 100,
+                "The sphere must invert both left/right and top/bottom scene features.");
+            Check(sourceDistance(0.6f) > sourceDistance(0.3f) * 2.2f &&
+                sourceDistance(0.6f) > (vertical ? target.height : target.width) * 0.3f,
+                "The inverted sphere must cover the wider scene with increasingly spread samples toward the rim.");
+            Check(channel(clear[cy * target.width + cx], 2) == 120,
+                "A full-red mask must transmit scene color without invented radial or additive shading.");
+            const auto checkAtlas = [&](Texture& mask, const auto& expected)
+            {
+                const auto actual = render(mask, 1.f);
+                for (std::size_t i = 0; i < expected.size(); ++i)
+                {
+                    for (int c = 0; c < 3; ++c)
+                    {
+                        Check(std::abs(static_cast<int>(channel(actual[i], c)) -
+                            static_cast<int>(channel(expected[i], c))) <= 1,
+                            "Atlas and standalone masks must produce the same sphere within one-byte interpolation rounding.");
+                    }
+                }
+            };
+            checkAtlas(atlasMasks[0], clear);
+            Check(clear[5 * target.width + 5] == background[5 * target.width + 5] &&
+                clear[(cy + static_cast<UINT>(radius * 0.8f)) * target.width +
+                    cx + static_cast<UINT>(radius * 0.8f)] ==
+                background[(cy + static_cast<UINT>(radius * 0.8f)) * target.width +
+                    cx + static_cast<UINT>(radius * 0.8f)],
+                "Sphere refraction must leave pixels outside its circular silhouette unchanged.");
+            const auto dark = render(darkMask, 1.f);
+            for (int component = 0; component < 3; ++component)
+            {
+                Check(std::abs(static_cast<float>(channel(dark[cy * target.width + cx], component)) -
+                    channel(clear[cy * target.width + cx], component) * (128.f / 255.f)) <= 2.f,
+                    "The inverse red centerness must darken all scene channels, not tint or invert the authored gradient.");
+            }
+            checkAtlas(atlasMasks[1], dark);
+            Check(render(clearMask, 0.f) == background,
+                "Opaque foreground depth must occlude a distorted sphere.");
+            for (auto& pixel : background) { pixel = (pixel & 0xff00ffffu) | (210u << 16); }
+            const auto fresh = render(clearMask, 1.f);
+            Check(channel(fresh[cy * target.width + cx], 2) >= 208 &&
+                channel(clear[cy * target.width + cx], 2) <= 122,
+                "Each sphere pass must capture current scene color rather than reuse a stale water snapshot.");
+            draw.EndRenderTargetScope();
+            draw.EndRendering();
+        }
+        ApplicationUi ui;
+        FORCE_WAIT(ui.Initialize());
+        Target weaponTarget(device, 360, 240);
+        renderer.ReInitialize(weaponTarget.colorView.Get(), weaponTarget.depthView.Get(), weaponTarget.viewport);
+        Desperabis::GameContext core;
+        core.SetMenuPage(Desperabis::MenuPage::Gameplay);
+        core.selectedWeapon = Desperabis::WeaponType::Electricity;
+        core.weaponSpriteFrame = 1;
+        core.weaponHand = 2;
+        core.weaponAnimationPosition = 15;
+        core.playerWalkPhase = 128;
+        const float blueBackground[]{0.08f,0.3f,0.7f,1.f};
+        for (const int levelNumber : {10,50})
+        {
+            const auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(levelNumber));
+            for (const int state : {0,1,2})
+            {
+                core.weaponAmounts[7] = state == 0 ? 0 : 100;
+                core.weaponElectricitySparking = state == 2;
+                context->ClearRenderTargetView(weaponTarget.colorView.Get(), blueBackground);
+                const auto background = weaponTarget.Pixels(device, context);
+                ui.DrawWeapon(*core.GetWeaponView(), renderer, *level, settings, stats, weaponTarget.viewport,
+                    context, weaponTarget.colorView.Get(), weaponTarget.depthView.Get());
+                ComPtr<ID3D11Buffer> instanceBuffer, globalsBuffer;
+                context->VSGetConstantBuffers(1, 1, &instanceBuffer);
+                context->VSGetConstantBuffers(0, 1, &globalsBuffer);
+                const auto instance = ReadBuffer<float>(device, context, instanceBuffer.Get());
+                const auto globals = ReadBuffer<float>(device, context, globalsBuffer.Get());
+                Matrix4 model, projection;
+                model.Load(instance.data()); model = model.GetTransposed();
+                projection.Load(globals.data() + 64); projection = projection.GetTransposed();
+                const auto tip = (model * projection).TransformPosition(Vector(0,0,53 * DespVertToFloat));
+                const float scale = weaponTarget.viewport.Height / Desperabis::WeaponView::Height;
+                const int cx = static_cast<int>(weaponTarget.width * 0.5f +
+                    tip.GetX() * Desperabis::WeaponView::Width * scale * 0.5f);
+                const int cy = static_cast<int>(weaponTarget.height -
+                    (tip.GetY() + 1.f) * Desperabis::WeaponView::Height * scale * 0.5f);
+                const auto pixels = weaponTarget.Pixels(device, context);
+                int glassPixels = 0;
+                for (int y = (std::max)(0, cy - 12); y <= (std::min)(239, cy + 12); ++y)
+                {
+                    for (int x = (std::max)(0, cx - 12); x <= (std::min)(359, cx + 12); ++x)
+                    {
+                        const auto pixel = pixels[y * 360 + x];
+                        const int r = pixel & 255, g = (pixel >> 8) & 255, b = (pixel >> 16) & 255;
+                        if (b > r + 30 && b > g + 20 && b < static_cast<int>((background[0] >> 16) & 255) - 4)
+                        {
+                            ++glassPixels;
+                        }
+                    }
+                }
+                Check(glassPixels > 5,
+                    "Both original chapter weapons must show darkened blue scene color through their tip, not an opaque red sprite.");
+            }
+        }
+        std::cout << "Distorted sphere: full-scene horizontal/vertical inversion, outward sample spread, authored mask darkening, atlas equivalence, fresh copies, clipping, depth, aspect scaling and both weapon banks passed.\n";
+    }
+
     void CheckElectricBolts(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
         for (const int chapterLevel : {10,50})
@@ -8512,6 +8698,7 @@ int main(int argc, char* argv[])
         CheckFoggyMoon(renderer, device.Get(), context.Get());
         CheckRooftopModels();
         CheckMercuryLamp(renderer, device.Get(), context.Get());
+        CheckDistortedSphere(renderer, device.Get(), context.Get());
         CheckElectricBolts(renderer, device.Get(), context.Get());
         CheckCoronaDepthBias(renderer, device.Get(), context.Get());
         CheckHeldTorch(renderer, device.Get(), context.Get());
