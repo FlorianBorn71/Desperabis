@@ -283,6 +283,7 @@ namespace GamePlay
         VaseToGrab = 92,
         MirrorToGrab = 93,
         LightSensor = 94, // for the reflected light
+        MercuryRaySegment = 95,
         LevelEnd = 100,
         RotatingBlades = 103,
         WaterRecharge = 105, // at fountain

@@ -15,6 +15,12 @@ For the first explained case and shared collision-map pointer, see
 
 ## Directory conventions
 
+- `level34-native-evidence.txt`, `level34-ray-support-evidence.txt`,
+  `Scaffold/MercuryLampTests.cpp`: coffin bones/dog feeding, portable mirror
+  and vase, mercury beam reflection and sensor-controlled door. The renderer
+  uses original visible beam meshes, cyan source/wall-hit lights and a red
+  activated-target light, with large source/target coronas. See
+  [level 34 recovery](BehaviorRecovery.md#coffin-bones-portable-mirror-and-mercury-lamp-level-34).
 - `final-level-native-evidence.txt`, `Scaffold/FinalLevelTests.cpp`: final boss,
   collapsing slabs, isolated staged boss fall, dam/flood/debris, magician rescue, recorded ending and
   uninterrupted MUSIC1 playback. See [final boss and ending](BehaviorRecovery.md#final-boss-collapsing-floor-and-ending).
@@ -53,6 +59,16 @@ For the first explained case and shared collision-map pointer, see
   The held burning stick reuses original FACKEL sprites and adds flickering
   specular light; the recovered distance-based DOS sky switch is intentionally
   a no-op. See [level 33 recovery](BehaviorRecovery.md#mansion-sewer-oil-and-tower-bucket-level-33).
+- [Foggy moon and rooftop audit](BehaviorRecovery.md#foggy-moon-and-rooftop-audit-levels-19-and-36)
+  documents the recovered level-36 pole/switch countdown, roof blast, animated
+  strike and opening containers. `level36-dispatch-evidence.txt` and
+  `level36-helper-evidence.txt` preserve the native instructions;
+  `Scaffold/RooftopTests.cpp` supplies the `rooftop-gameplay` regressions.
+  Native sky/moon visibility toggles are intentionally excluded: modern
+  interior geometry occludes the sky. Moon opacity follows
+  the foggy sky tint, not a level number. Rain ambience uses the existing
+  teleporter indoor flag for quieter, low-pass-filtered XAudio2 playback;
+  effect voices and music remain independent.
 - `map-presentation-evidence.txt`: native map ownership gate, corner-map
   heading, PictureMap's page-11 transition and modal map dispatch.
   The corner map uses a lazily uploaded, palette-converted collision texture;
@@ -571,7 +587,8 @@ directory before rebuilding clients: DX11 loads the embedded bytecode in
 `SharedSource/DX11/BuiltInShaders_Release.cpp`, not the HLSL source at runtime.
 
 While a charged electricity weapon is firing in gameplay, the DX11 host
-maintains one cyan light and small corona at its bolt origin. Native weapon
+maintains one rapidly flickering electric-blue light (160-unit range) and a
+large 40-unit corona at its bolt origin. Native weapon
 model vertex 3 is unchanged between the two firing frames. The application
 projects it using the first-person weapon viewport, then unprojects through
 the world camera so both hands, animated poses and aspect ratios stay aligned.
@@ -579,6 +596,10 @@ Stopping, weapon/menu changes, free-camera mode and scene clearing remove the
 electricity light. Transient/emission hooks apply to the GameCore-driven host;
 the remote DOS scene shares particle materials/projectile contexts but does not
 synthesize these new events from snapshots.
+Successful native shots render the standard animation-6 line meshes as
+additive/unlit instance overrides. Their original impact sprite adds a blue
+140-unit light at the struck point, cleaned up with its object lifetime.
+These effects use game-specific presentation and existing renderer facilities.
 
 `Level::PopulateScene` requires a presentation callback when creating objects;
 `LevelScene` supplies it and translates the loader's zero-based object ordinal
@@ -591,6 +612,9 @@ along with slot reuse, behavior changes, reactivation and scene cleanup.
 It also checks flash timing/validation, emitter reuse, dragon-volley light
 counts, corona-only fading/bounds, and electricity alignment against actual GPU
 weapon matrices within 0.25 pixels in both chapter banks and three aspect ratios.
+Electric-bolt regressions additionally render all three standard line models
+in both banks, verify changing emissive flashes, tip flicker/large corona,
+blue impact positioning, and cleanup when an impact slot becomes a flame.
 
 `OnPlayerHealthChanged(previousLife, currentLife)` is a separate default-empty
 virtual hook for the authoritative signed 16.16 `playerLife` meter, not slot 1's

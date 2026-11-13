@@ -470,7 +470,7 @@ namespace
             host.GetPlayerHeading() == 128 && camera.direction[0] == 100 && camera.direction[2] == 0,
             "Enter must transfer to the destination eye height and immediately apply its heading.");
         Check(destination.generalPurpose3 == 0 && host.soundListenerX == 2200 && host.soundListenerZ == 3100 &&
-            host.playerRenderTable == 10 && host.field_D503,
+            host.playerRenderTable == 10 && host.playerIndoors,
             "Arrival must reset destination cooldown and refresh listener/render state.");
         Step(host, input);
         Check(host.worldObjects[1].posX == 2200, "Held Enter must not bounce through an uncharged destination.");
@@ -562,9 +562,9 @@ namespace
         host.worldObjects[141].posX = 2700;
         host.worldObjects[141].velocityZ = -1;
         host.playerRenderTable = 17;
-        host.field_D503 = true;
+        host.playerIndoors = true;
         host.TeleportPlayer(2);
-        Check(host.worldObjects[1].posX == 2700 && host.playerRenderTable == 17 && !host.field_D503,
+        Check(host.worldObjects[1].posX == 2700 && host.playerRenderTable == 17 && !host.playerIndoors,
             "Slot 141 must be included; zero selectors preserve the table and nonpositive velocityZ clears D503.");
         bool rejected = false;
         try { host.TeleportPlayer(12345); }

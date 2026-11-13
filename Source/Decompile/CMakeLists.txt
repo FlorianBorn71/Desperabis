@@ -50,6 +50,14 @@ foreach(target Continuous Experimental Nightly NightlyMemoryCheck)
     endif()
 endforeach()
 if(BUILD_TESTING)
+    add_executable(mercury-lamp-tests Scaffold/MercuryLampTests.cpp)
+    target_link_libraries(mercury-lamp-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME mercury-lamp-gameplay COMMAND mercury-lamp-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original")
+    add_executable(rooftop-tests Scaffold/RooftopTests.cpp)
+    target_link_libraries(rooftop-tests PRIVATE Desperabis::GameCore)
+    add_test(NAME rooftop-gameplay COMMAND rooftop-tests
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Data/SourceAssets/Original")
     add_executable(mansion-tests Scaffold/MansionTests.cpp)
     target_link_libraries(mansion-tests PRIVATE Desperabis::GameCore)
     add_test(NAME mansion-gameplay COMMAND mansion-tests

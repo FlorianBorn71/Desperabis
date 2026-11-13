@@ -403,6 +403,7 @@ namespace GamePlay
         PT_ENUM2STRING(MirrorToGrab);
         PT_ENUM2STRING(VaseToGrab);
         PT_ENUM2STRING(LightSensor);
+        PT_ENUM2STRING(MercuryRaySegment);
         PT_ENUM2STRING(GrandfatherClockItem);
         PT_ENUM2STRING(PuzzleSpool);
         PT_ENUM2STRING(PuzzleGameTile);
@@ -580,6 +581,9 @@ namespace GamePlay
 		DrawCallMaterial& mat(materials[0]);
 		mat.m_applyLighting = false;
 		mat.m_transparencyType = TransparencyMode::SkyAlphaBlended;
+        mat.SetOpacity(rawGo.m_level &&
+            rawGo.m_level->GetLevelInfo().m_raw.m_data.skyTint == SkyTint::WhiteFog ?
+                0.25f : PropertyAccessorBase(rawGo).GetSpriteTransparency());
 		mat.ComputeHash();
 		inst.ComputeTransparencyMask();
 	}

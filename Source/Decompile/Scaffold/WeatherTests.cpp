@@ -554,7 +554,7 @@ namespace
             "The existing interaction must consume key 99 and unlock the entrance.");
         host.HandleTeleporterContact(entrance, true);
         Check(host.worldObjects[1].posX == destination.posX && host.worldObjects[1].posZ == destination.posZ &&
-            host.field_D503 && host.worldObjects[38].generalPurpose3 == 0,
+            host.playerIndoors && host.worldObjects[38].generalPurpose3 == 0,
             "The unlocked entrance must teleport into the building and install the destination mode/cooldown.");
         host.StartLevel(10);
         auto& storm = host.worldObjects[82];

@@ -12,6 +12,23 @@
 #include <Renderer/LightSource.h>
 #include <cmath>
 
+namespace
+{
+    class ElectricTipLight final : public LightSource
+    {
+    public:
+        explicit ElectricTipLight(Scene* scene) : LightSource(scene) {}
+        void Update(double elapsedTime) override
+        {
+            m_phase = std::fmod(m_phase + elapsedTime, 2.0 * Math::Pi);
+            m_multiplier = static_cast<float>(2.0 + 0.7 * std::sin(m_phase * 53.0) +
+                0.3 * std::sin(m_phase * 97.0));
+        }
+    private:
+        double m_phase = 0.0;
+    };
+}
+
 LevelScene::LevelScene(int levelIndex, std::shared_ptr<Level> loadedLevel)
     : m_levelIndex(levelIndex), m_loadedLevel(std::move(loadedLevel))
 {
@@ -110,14 +127,15 @@ void LevelScene::SetElectricityLight(bool firing, const Vector& tip)
     }
     if (!m_electricityLight)
     {
-        m_electricityLight = std::make_shared<LightSource>(this);
+        m_electricityLight = std::make_shared<ElectricTipLight>(this);
         m_electricityLight->SetColor({70,210,255}, 2.f);
         m_electricityLight->SetCoronaColorMod({255,255,255});
         m_electricityLight->SetRadius(160.f * DespToFloat);
-        m_electricityLight->SetCoronaSize(4.f * DespToFloat);
+        m_electricityLight->SetCoronaSize(40.f * DespToFloat);
         AddLightSource(m_electricityLight);
     }
     m_electricityLight->SetPosition(tip);
+    m_electricityLight->UpdateGlobalBounds();
 }
 
 void LevelScene::SetHeldTorchLight(bool burning, const Vector& tip)

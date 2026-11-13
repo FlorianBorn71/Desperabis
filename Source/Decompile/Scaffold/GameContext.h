@@ -464,7 +464,7 @@ namespace Desperabis
         bool playerMapCollisionsEnabled = true; // DS:2DDC; independently controlled by behavior 184.
         bool playerLadderMovement = false; // DS:D4FF; refreshed by the active-object loop.
         std::uint8_t playerRenderTable = 0; // DS:D4BA/EC6E selector; DOS 2048-byte render table.
-        bool field_D503 = false; // Teleporter destination velocityZ > 0; DOS lighting/render gate.
+        bool playerIndoors = false; // DS:D503: teleporter destination velocityZ > 0; DOS lighting/render gate.
         bool debugWeaponColliders = false; // DS:D502.
         void RefreshWeaponInventory();
         bool SelectWeapon(WeaponType weapon);
@@ -721,6 +721,7 @@ namespace Desperabis
         std::optional<std::int16_t> loadedLevelNumber;
         std::string levelLoadError;
         bool ambientPlaybackActive = false;
+        bool rainAmbientActive = false;
         bool underwaterPlaybackActive = false;
         bool underwaterViewActive = false;
         bool underwaterContactActive = false;

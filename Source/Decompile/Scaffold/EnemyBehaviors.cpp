@@ -448,7 +448,7 @@ namespace Desperabis
         {
             object.collisionMask = 3;
             const auto slot = context.FindCollidingObject(object);
-            object.posY = context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ);
+            object.posY = WrapSignedWord(context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ) + 3);
             if (slot > 0 && context.worldObjects[slot].collisionType == CollisionType::Dog)
             {
                 auto& dog = context.worldObjects[slot];

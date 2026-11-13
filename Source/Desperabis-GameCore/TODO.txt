@@ -1,18 +1,14 @@
 bugs P0:
-- windmill entry door missing - covered by wall polygon. 
-   - same for "Astloch" in big tree
-   - Machine in level 31 (pressure window)
 - island visibility (graveyard)
 - skybox not high engough in general
 
 bugs P1:
 - cursor movement
 - keyboard assignment
-- visibility bbox fo morphed models (doors, ladder...)
 
 improvements:
-- graveyard moon blending
 - look through ceiling when sliding down in cathedral
+- list sounds/effects as enums
 
 missing
 - electric bolt
@@ -28,3 +24,8 @@ Fixed:
 - black clear color (burning forest)
 - Skythe model missing tip when 1st person model
 - Concrete block that falls over in mine level: Sticks in ground because of mismatching YPR?
+- windmill entry door missing - covered by wall polygon. 
+   - same for "Astloch" in big tree
+   - Machine in level 31 (pressure window)
+- visibility bbox fo morphed models (doors, ladder...)
+- graveyard moon blending

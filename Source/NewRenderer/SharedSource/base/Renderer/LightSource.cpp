@@ -31,8 +31,17 @@ bool LightSource::FillCoronaParams(PackedLightSourceParams& dst) const
 {
     float radius = GetEffectiveCoronaSize();
 	Color4 finalCol = m_color * m_coronaColorMod;
-	dst.SetCorona(m_pos.GetX(), m_pos.GetY(), m_pos.GetZ(), radius, finalCol);
+	dst.SetCorona(m_pos.GetX(), m_pos.GetY(), m_pos.GetZ(), radius, finalCol, 1.f, m_coronaDepthBias);
     return radius > 0.f;
+}
+
+void LightSource::SetCoronaDepthBias(float distance)
+{
+    if (!std::isfinite(distance) || distance < 0.f)
+    {
+        GAME_ERROR_AND_RETURN(std::invalid_argument("Corona depth bias must be finite and nonnegative."));
+    }
+    m_coronaDepthBias = distance;
 }
 
 void LightSource::UpdateGlobalBounds()

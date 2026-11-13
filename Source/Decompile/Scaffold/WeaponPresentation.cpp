@@ -147,6 +147,12 @@ namespace Desperabis
             view.object = inventory[weaponHand - 1];
             view.object.posX = 0;
             view.object.posY = WrapSignedWord(220 / 10 + pose);
+            if (view.object.behavior == BehaviorType::BonesToGrab ||
+                (view.object.behavior == BehaviorType::ActionObjectToGrab &&
+                    view.object.velocityX == static_cast<std::int16_t>(CollisionType::VaseToGrab)))
+            {
+                view.object.posY = WrapSignedWord(view.object.posY + 8);
+            }
             view.object.posZ = WrapSignedWord(
                 (view.object.behavior == BehaviorType::PortableCoffin ? 10 : 35) + bounce / 2);
             view.object.winX = 10; view.object.winY = 30; view.object.winZ = 0;

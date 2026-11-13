@@ -65,7 +65,7 @@ cbuffer MaterialConstantBuffer : register(b4)
 struct PackedLightSourceParams
 {
     float4 PositionAndRadius;
-    float4 ColorAndSpecular; // RGB intensity, W specular enable (unused for corona entries).
+    float4 ColorAndSpecular; // RGB intensity; W: light specular amount or corona world-depth bias.
 };
 
 cbuffer LightListConstantBuffer : register(b5)
@@ -428,6 +428,15 @@ GeometryShaderInput_Corona vs_main_corona(VertexShaderInput In)
     screenPos.x = screenPos.x * 0.5 + 0.5;
     screenPos.y = screenPos.y * -0.5 + 0.5;
 
+    float coronaDepth = screenPos.z;
+    if (lightColor.w > 0.f)
+    {
+        float4 depthTestPos = viewPos;
+        depthTestPos.z = min(depthTestPos.z + lightColor.w, -0.001f);
+        depthTestPos = mul(depthTestPos, ProjMatLeftRight[idx]);
+        coronaDepth = depthTestPos.z / depthTestPos.w;
+    }
+
     float accum = 0.f;
     const int pixelRad = 5;
     const int edge = 2 * pixelRad + 1;
@@ -439,7 +448,7 @@ GeometryShaderInput_Corona vs_main_corona(VertexShaderInput In)
         {
             float uOfs = x * RenderTargetSize.z; // 1/width
             float4 texCol = baseTexture.SampleLevel(defaultSampler, screenPos.xy + float2(uOfs,vOfs), 0);
-            float depthDiff = (texCol.r > screenPos.z) ? fraction : 0.f;
+            float depthDiff = (texCol.r > coronaDepth) ? fraction : 0.f;
             accum += depthDiff;
         }
     }

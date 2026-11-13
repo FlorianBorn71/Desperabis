@@ -6,6 +6,163 @@ each recovered case an editable, named home without hiding missing behavior.
 
 ## Game context and application flow
 
+### Coffin bones, portable mirror and mercury lamp (level 34)
+
+Recovered from [native dispatch/helpers](level34-native-evidence.txt) and
+[ray stepping and map-query evidence](level34-ray-support-evidence.txt):
+
+- Coffin 12 opens through collision 121 and activates group 20, revealing
+  bones 43/45/46/47. Bones now pass selector 6's placement gate, use their
+  original model 36 animation 4/frame 3 as the held weapon, and retain the
+  existing ground placement/dog-feeding handler. Dogs change to chewing
+  animation 4 and cease attacking/colliding after contact with a dropped bone.
+  The original coffin has sound ID zero and remains silent while opening.
+  Containers with an authored nonzero sound retain their native playback.
+  Dropped bones rest 3 DOS units above terrain to avoid sinking into the floor;
+  feeding dogs retains that small lift.
+- Mirror 58 and vase 64 use collision 93/92's native weapon-inventory path.
+  Successful pickup activates word 36's group, including the vase's group 30.
+  Placement preserves the player's chosen heading; behavior 165 restores the
+  original collision byte from velocity X, rests Y at terrain plus half its
+  height, and snaps X/Z to `((position - 12) / 50) * 50 + 25`. They can be
+  picked up and placed repeatedly. Placement preserves the portable's word-40
+  payload, fixing the lost key after carrying the vase. Breaking either the
+  untouched or carried vase reveals pickable key 40. Held bones and the vase
+  are lowered by 8 DOS units; the mirror and other placeables are unchanged.
+- Switch 69 activates lamp 66. Behavior 42 selects its lit frame, then rebuilds
+  the beam every 20 behavior ticks, retiring the previous collision-95
+  segments through lifecycle helpers. Each segment copies the original lamp's
+  model bank, selects animation 2/frame 2, and traces one additional 25-unit
+  8.8 step, up to 61 segments. Segment health is
+  `clamp(30 * frameTickCount, 1, 500)` as in the native initializer.
+- Map bit 8 stops the ray. Mirror contact changes heading to
+  `(2 * mirrorHeading + 256 - incomingHeading) & 511`. Sensor 68 activates
+  group 25, selects its lit frame and clears its collision type, starting door
+  67's existing opening animation. It also marks its otherwise-unused behavior
+  parameter with collision ID 94, preserving the activated receiver's
+  presentation identity after collision is cleared and across native saves.
+  Other solid contacts stop the beam; the
+  generated beam objects have collision mask zero outside their trace query.
+
+The renderer uses the original beam meshes with additive, unlit materials
+and their original intensity through the existing byte-color tint path.
+Per the author's requested lighting approach, only the lamp source and its
+terminal wall hit receive cyan dynamic point lights: **no lights along the
+beam or at mirror reflections**. The source also has a 60-unit cyan corona
+while switched on. Once struck, the target switch adds a persistent **pure-red
+180-unit light and 65-unit corona**. Both source and target coronas use a
+30-DOS-unit depth-test bias to avoid self-occlusion by their fixtures without
+moving the light or corona. Other coronas default to zero bias. The wall light is placed at the last clear
+sample before the blocked map pixel, keeping it outside the wall. Lamp words
+36/38/40, unused by the native lamp, store the wall-hit flag and last-clear
+X/Z for presentation. They and the beam objects round-trip through native
+saves without a format extension. Renderer-only effects remain in per-object
+presentation contexts; removing the lamp/scene removes its lights. Native
+mirror palette-table shading is not copied into a shared mutable palette;
+the modern material path retains the mirror's model and facing.
+
+`mercury-lamp-gameplay` covers original silent coffin opening, reveal, lifted dropped bones and
+dog feeding, portable pickup/place/re-pickup, the authored lamp switch,
+wall termination, reflection/sensor/door opening, solid-object obstruction,
+the 61-segment limit, key pickup before/after carrying the vase and save
+continuation. `ApplicationUiTests` measures actual lower bone/vase placement
+and visible beam GPU pixels, validates the revealed key mesh and
+checks cyan/red lights, switched coronas, persistent activation and cleanup.
+GPU checks compare unbiased and biased corona pixels at two distances in both
+perspective and orthographic projections: nearby self-occlusion is overcome,
+farther walls still hide coronas, and position/size/color stay unchanged.
+`LightSource::SetCoronaDepthBias` accepts finite nonnegative world-unit
+distances. The packed corona entry uses its previously-unused color W for
+this depth bias; dynamic-light W remains the specular amount. Embedded DX11
+shader bytecode is regenerated through the existing shader compiler/generator.
+The corona color modifier defaults to neutral white instead of uninitialized
+memory, preventing black coronas in optimized builds.
+
+### Foggy moon and rooftop audit (levels 19 and 36)
+
+The graveyard's `LEVELS.INF` record uses sky tint 10 (`SkyTint::WhiteFog`).
+`ConvertToMoon` now uses **25% opacity** for that tint, rather than a level-number
+override. Other sky tints retain the sprite's existing opacity, and an authored
+hidden moon stays hidden. Level 95 also uses this tint but has no corresponding
+moon object. WARP checks original graveyard moon pixels at one quarter of their
+full-opacity contribution, ordinary park-moon materials and the hidden rooftop
+moon.
+
+The original level-36 gameplay gaps below are now implemented from
+[dispatch evidence](level36-dispatch-evidence.txt),
+[helper evidence](level36-helper-evidence.txt) and collision 121's
+`0EF0:0E7F..0EFE` branch in [interaction evidence](player-collision-evidence.txt).
+
+| ID | Handler (existing provisional name) | Native slots | Recovered behavior |
+| --- | --- | --- | --- |
+| 84 | ItemHiddenInBox | 60, 68, 70, 93 | Sets pickup collision to 1 only at health 1000. Opening the linked containers activates keys 2, 1, 4 and medicine 200. |
+| 169 | RoofTopThunderHandler1 | 34 | At health 1000 subtracts behavior ticks from signed word 36. Strictly below zero, plays its configured effect at full volume/source 601, activates word-34's group and clears behavior. |
+| 182 | DestroyableRoof | 30 | At health 1000 selects animation 5/frame 4, retires overlapping objects, replaces terrain selector 28 with byte 160, emits the native explosion/smoke and clears behavior. |
+| 183 | RoofTopThunderHandler2 | 36 | Below health 1001 chooses two distinct random frames 1..4 and display 21; activation at exactly 1000 installs a 20-tick lifetime. |
+
+The pole fits switch 33, enabling ordinary switch activation of group 3.
+Controller 34 starts with a 150-tick delay and activates group 1, which contains
+roof 30 and strike 36. The roof has already had its turn in that object pass,
+so its destruction follows one pass after the strike appears. The blast changes
+each overlapping object's health to 20 and collision mask to zero, creates
+16 selector-7/8 projectiles at headings `i*32` and speeds `Random(5)`, then
+seven smoke particles at vertical offsets +20 through -40, with alternating
+rise factors 1/2. Cached X/Z listener distance strictly below 200 depletes
+player life. Effect channels are stopped before effect 103/source 602 plays.
+The DOS render-table-16 flash uses the existing warm, local light-flash hook,
+as with the machinery explosion; ambient rain is not stopped.
+
+Collision 121 (`SarcophagusWithBones`, retained name) now opens containers
+59, 64, 67 and 92 through held interaction. Each call plays the configured
+effect and advances the lid phase by `velocityX * frameTickCount`, not behavior
+ticks. Only an overshoot above 100 activates the linked group through ordinary
+switch handling, sets phase 100, clears horizontal speed and disables container
+collision. Landing exactly on 100 does not yet reveal the reward.
+The content's next behavior dispatch makes it pickable. This is a shared
+interaction, not a level-36 override.
+
+**Intentionally irrelevant to the modern renderer:** native sky/moon visibility
+toggles (including behavior 100 on rooftop slot 6). Interior geometry naturally
+occludes the sky, unlike the DOS renderer's limited visible range. These are
+not outstanding gameplay work and are not implemented as native visibility
+controllers.
+
+Already supported are rain emitter 4, lightning/thunder generator 5, ordinary
+doors, teleporters, the pole and its switch, grouped switches, floor spears,
+bats, rolling rock, ladder, walkable planks and the exit. Behavior 184 on slot 3
+is implemented despite its old `RoofTopThunderHandler3` name: it toggles player
+map collisions while overlapping a volume, not thunder audio.
+
+`RooftopTests.cpp` exercises all four original containers and reward pickups,
+the pole-to-switch activation chain, the zero/negative countdown boundary,
+object-pass ordering, 23 emitted particles, terrain mutation, near/far blast
+damage, strike expiry and native saves before/after detonation. Renderer tests
+resolve the original broken roof, repeatedly changing strike meshes and all
+four opening lid morphs.
+
+### Indoor rain presentation
+
+Rain ambience (`LEVELS.INF` selector 1) now follows the existing teleporter
+destination's `velocityZ > 0` / `playerIndoors` flag (original global byte at
+DS:`D503`, formerly named `field_D503`). This is teleporter-authored state,
+not a geometric indoor test or a new heap allocation. GameCore sends
+`AudioHandler::SetAmbientIndoor` on rainy-level initialization and teleportation.
+There is no level-36 hardcode; the same path covers the rain in level 10.
+
+The XAudio2 host sets the **ambient voice only** to 10% volume and applies its
+built-in 400-Hz low-pass indoors. Outside it restores unity gain and bypasses
+the filter. The voice uses `XAUDIO2_VOICE_USEFILTER`; no effect plugin or
+custom DSP is needed. The buffered loop is neither rebuilt nor restarted.
+Positional thunder and other effect voices, underwater audio, and music keep
+their own settings. Ambient rebuilds and music creation clear stale indoor
+state. These are modern presentation enhancements, not recovered DOS filtering.
+
+Core tests exercise the original rooftop entrance and indoor destinations,
+level-10's exterior return, fresh-level reset and non-rain exclusion. Audio
+tests query the live voice filter/gain, verify unchanged effect gain and
+continued looping, and check music resets. Native save files do not persist
+`playerIndoors`; this change does not add a new indoor-state save format.
+
 ### Mansion, sewer oil and tower bucket (level 33)
 
 Evidence: [native behavior dispatch](level33-dispatch-evidence.txt),
@@ -351,16 +508,14 @@ normal corner map visible. Training/part 2 still require their map pickup;
 part-1 weapon cheats remain disabled.
 
 An audit of all original `OBJPOS` records for the seven playable maps,
-including inactive records, now finds these **15 unimplemented world-behavior
-handlers**. Names retain existing spellings and numeric placeholders; this
+including inactive records, now finds these **8 relevant unimplemented
+world-behavior handlers**, excluding native sky/moon visibility controllers.
+Names retain existing spellings and numeric placeholders; this
 is a coverage inventory, not a claim that the names fully describe recovered
 native logic.
 
 | ID | Handler | Maps |
 | --- | --- | --- |
-| 42 | MercuryLamp | 34 |
-| 84 | ItemHiddenInBox | 36 |
-| 100 | Moon | 30, 36 |
 | 145 | PuzzleGameTile | 35 |
 | 147 | PuzzleGameHandler | 35 |
 | 148 | Behavior_148 | 35 |
@@ -369,10 +524,6 @@ native logic.
 | 156 | GrandfatherClockHand | 35 |
 | 157 | GrandfatherClockPendulum | 35 |
 | 159 | RotateKnightsInClock | 35 |
-| 165 | ActionObjectToGrab | 34 |
-| 169 | RoofTopThunderHandler1 | 36 |
-| 182 | DestroyableRoof | 36 |
-| 183 | RoofTopThunderHandler2 | 36 |
 
 `ShootArrows` (40) has an unimplemented fallback for other configurations, but
 park slot 41 uses supported `generalPurpose1=11`; it is not counted above.
@@ -385,12 +536,10 @@ deliberately excluded. Additional confirmed part-1 gaps:
 
 - **Foil (attack selector 23):** map 35 slot 79 can be picked up but has no
   supported held-tool/weapon-view state machine.
-- **Other tools:** selector-6 metal poles and the portable coffin are supported;
-  selector-6 bones still fail the supported placement-handler gate.
-- **Explicit interaction stubs:** `VaseToGrab` (92),
-  `MirrorToGrab` (93), `SarcophagusWithBones` (121), and `BookWithCode` (252).
-  The light-sensor puzzle (94) and
-  bucket washing/refilling have no corresponding player-contact/use path.
+- **Other tools:** selector-6 metal poles, portable coffin, bones, mirror and
+  vase are supported.
+- **Explicit interaction stub:** `BookWithCode` (252).
+  Light sensors (94) are activated by mercury rays, not player contact.
 - **Introduction:** HERZ entry 29 is still skipped rather than played.
 
 The park's seven ordinary locked doors use lock IDs **1..7**, and its authored
@@ -1778,7 +1927,7 @@ Remaining unrecovered stubs return `UnimplementedHandler` without moving
 objects or writing globals. Every handler returns its enum identity, for example:
 
 ```cpp
-return { DispatchStatus::UnimplementedHandler, BehaviorType::MercuryLamp, 0x1E53 };
+return { DispatchStatus::ExecutedCase, BehaviorType::MercuryLamp, 0x1E53 };
 ```
 
 ### Coverage and word-sized behavior values
@@ -3136,7 +3285,7 @@ Evidence: [transfer and movement cases](player-special-movement-evidence.txt),
   once per dispatch while outside player overlap, and always assigns collision 120.
 - Arrival byte 52 selects a 2048-byte DOS render lookup table through
   `1E48:B74C`; positive `velocityZ` sets DS:`D503`, used by DOS lighting/render
-  consumers. `playerRenderTable` and `field_D503` preserve the recovered state,
+  consumers. `playerRenderTable` and `playerIndoors` preserve the recovered state,
   but the modern renderer does **not** yet reproduce either presentation
   effect. Nonzero selectors occur in playable levels 19/24/33/36.
 - Activated ladder behavior **75**, health exactly 1000, adds ticks to word 38,
@@ -5262,6 +5411,22 @@ frame-tick count; absent a target restores the pre-trigger amount. Damage is
 target-minus-beam Y and a rounded square root of the native wrapped signed-word
 horizontal square; an invalid negative square-root domain throws explicitly.
 
+The first-person charged/firing/depleted recipes above remain native. Successful
+shots use standard weapon-bank animation 6, choosing two different frames among
+1..3 and morphing between their original line meshes. The renderer applies
+additive, unlit instance materials without changing the shared assets.
+While firing, a game-specific tip light flickers rapidly in electric blue,
+with a 160-DOS-unit range and a large 40-unit corona. Its position uses the
+existing projection of first-person vertex 3; the light flickers in intensity,
+not position. The original short-lived impact sprite owns one blue 140-unit
+light at the struck point, rather than inheriting an ordinary flame's warm
+color and vertical offset. No light is added per bolt segment. Expiry, slot
+reuse and scene clearing remove the impact light; releasing fire or leaving
+gameplay removes the held-tip light. No core renderer additions are required.
+`ApplicationUiTests` exercises native attack creation, all three original bolt
+frames in both chapter banks, visible/changing GPU flashes in darkness, blue
+impact positioning, flame/impact slot reuse, tip flicker and large corona.
+
 **Scythe/hedge:** attack ID 24 shares `0000:C1D0..C373` with the shovel:
 pose 17 creates the same 5-damage contact, with reach 55, Y offset -35,
 radii 15/6 and lifetime 10. The shared animation writes amount entry **8**,
@@ -5311,9 +5476,9 @@ Evidence: [tool physics and barrier handler](scythe-lentils-physics-evidence.txt
 [bridge counter clamp](lentils-hit-clamp-evidence.txt), and the factory/animation
 exports linked above. No numeric-placeholder behavior enum was renamed.
 
-**Intentional boundaries:** ID 6 also covers bones and other tools whose
-placement handlers remain unrecovered; these are rejected before consuming
-the held item. Subsequent recovery of `BEZEICH.TXT` identifies IDs 9, 20, 23
+**Intentional boundaries:** ID 6 supports bear traps, poles, the portable
+coffin, bones, mirrors and vases. Other unrecovered placement behaviors are
+rejected before consuming the held item. Subsequent recovery of `BEZEICH.TXT` identifies IDs 9, 20, 23
 and 24 as Eimer (bucket), Lentils, Folie (foil) and Sense (scythe), respectively;
 only bucket and foil remain disabled among those four. These labels come from each record's separate
 name subtype, not from its attack ID. The author confirms that Lentils are

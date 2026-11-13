@@ -13,15 +13,16 @@ struct PackedLightSourceParams
         ColorAndPadding = { colF.x, colF.y, colF.z, specularAmount };
     }
 
-    inline void SetCorona(float x, float y, float z, float radius, const Color4& color, float multiplier = 1.f)
+    inline void SetCorona(float x, float y, float z, float radius, const Color4& color,
+        float multiplier = 1.f, float depthBias = 0.f)
 	{
 		Vector4 colF = color.ToFloat(multiplier);
 		PositionAndRadius = { x, y, z, radius };
-        ColorAndPadding = { colF.x, colF.y, colF.z, 1.f }; //.w yet unused
+        ColorAndPadding = { colF.x, colF.y, colF.z, depthBias };
 	}
 
     Float4Storage PositionAndRadius;
-    Float4Storage ColorAndPadding; // Light entries: RGB intensity, W specular amount. Corona entries: W unused.
+    Float4Storage ColorAndPadding; // Light W: specular amount. Corona W: world-unit depth-test bias.
 };
 
 
@@ -48,6 +49,8 @@ public:
     }
     float GetSpecularAmount() const { return m_specularAmount; }
     void SetSpecularAmount(float amount);
+    float GetCoronaDepthBias() const { return m_coronaDepthBias; }
+    void SetCoronaDepthBias(float distance);
     float GetEffectiveCoronaSize() const
     {
         return m_coronaSize < 0.f ? (m_radius * 0.2f * DespRelativeInvScaling) : m_coronaSize;
@@ -92,9 +95,10 @@ protected:
     float m_multiplier = 1.f;
     float m_coronaSize = -1.f; // if <0, then use fraction of radius
     float m_heightOffset = 0.f;
-    Color4 m_color, m_coronaColorMod;
+    Color4 m_color, m_coronaColorMod{255,255,255,255};
     bool m_globalBoundsDirty = true;
     float m_specularAmount = 1.f;
+    float m_coronaDepthBias = 0.f;
     BoundingVolume m_globalBounds;
 };
 

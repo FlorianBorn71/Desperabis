@@ -3,7 +3,9 @@
 #include <Sound.h>
 #include <Asset/SoundSample.h>
 #include <wrl/client.h>
+#define XAUDIO2_HELPER_FUNCTIONS
 #include <xaudio2.h>
+#undef XAUDIO2_HELPER_FUNCTIONS
 
 class AudioPlayer final : public Desperabis::AudioHandler
 {
@@ -25,6 +27,7 @@ public:
     void EndAmbientLoopCreation(std::size_t loopLengthFrames) override;
     void StartAmbientPlayback() override;
     void StopAmbientPlayback() override;
+    void SetAmbientIndoor(bool indoors) override;
     void CreateMusicPlayback(const std::vector<std::uint8_t>& pcm, bool looping) override;
     void StartUnderwaterPlayback(std::uint8_t sample, std::uint8_t volume) override;
     void StopUnderwaterPlayback() override;
@@ -46,7 +49,7 @@ private:
         void operator()(IXAudio2Voice* voice) const { voice->DestroyVoice(); }
     };
 
-    std::unique_ptr<IXAudio2SourceVoice, DestroyVoice> CreateChannel();
+    std::unique_ptr<IXAudio2SourceVoice, DestroyVoice> CreateChannel(bool enableFilter = false);
     IXAudio2SourceVoice* GetChannel(std::size_t channel) const;
     const std::vector<byte>& GetSamplePcm(std::uint8_t sample) const;
     void ValidateAmbientWrite(std::size_t offset, std::size_t length) const;
@@ -59,6 +62,7 @@ private:
     std::size_t m_ambientLoopLength = 0;
     bool m_buildingAmbient = false;
     bool m_loopAmbient = true;
+    bool m_ambientIndoors = false;
     std::unique_ptr<IXAudio2SourceVoice, DestroyVoice> m_ambientVoice;
     std::unique_ptr<IXAudio2SourceVoice, DestroyVoice> m_underwaterVoice;
     std::array<std::unique_ptr<IXAudio2SourceVoice, DestroyVoice>, Desperabis::SoundChannelCount> m_channels;

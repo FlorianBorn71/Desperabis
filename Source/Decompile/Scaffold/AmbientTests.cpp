@@ -44,6 +44,7 @@ namespace
         int starts = 0;
         int stops = 0;
         bool failMix = false;
+        std::vector<bool> indoorChanges;
 
         std::uint16_t GetSampleCount() const override { return 129; }
         bool IsChannelPlaying(std::size_t) const override { return false; }
@@ -74,6 +75,7 @@ namespace
             ++starts;
         }
         void StopAmbientPlayback() override { ++stops; }
+        void SetAmbientIndoor(bool indoors) override { indoorChanges.push_back(indoors); }
     };
 
     std::uint32_t Next(std::uint32_t& seed)
@@ -177,6 +179,7 @@ namespace
         std::uint8_t selector = 0;
         std::filesystem::path original;
         bool deferLoad = false;
+        bool loadObjects = false;
     protected:
         std::vector<std::uint8_t> LoadFile(std::string_view filename) override
         {
@@ -190,6 +193,11 @@ namespace
             LevelLoadData data;
             LoadLevelGeometry(request.levelNumber, data);
             Check(data.ambientSound == selector, "Geometry loader lost level-info ambient selector.");
+            if (loadObjects)
+            {
+                LoadLevelObjects(request.levelNumber, data);
+                InitializeLevelPlayerSpawn(data, {0,0,100});
+            }
             CompleteLevelLoad(request.id, std::move(data));
         }
     };
@@ -228,6 +236,46 @@ namespace
             "The core must stop old ambient at request time, before an asynchronous provider completes.");
         core.FailLevelLoad(request.id, "Deferred fixture load failed.");
         Check(audio.starts == count + 1, "Failed asynchronous loading must not restart stale ambient.");
+    }
+
+    void TestIndoorRain(Audio& audio, const std::filesystem::path& original)
+    {
+        Host core;
+        core.original = original;
+        core.audioHandler = &audio;
+        core.loadObjects = true;
+        core.selector = 1;
+        audio.indoorChanges.clear();
+        core.StartLevel(36);
+        Check(audio.indoorChanges == std::vector<bool>{false},
+            "A fresh rainy rooftop must start with outdoor ambience.");
+        const auto starts = audio.starts;
+        const auto stops = audio.stops;
+        auto& entrance = core.worldObjects[38];
+        Check(entrance.collisionType == CollisionType::Teleporter && entrance.generalPurpose1 == 5,
+            "The original rooftop entrance must link to the indoor destination.");
+        Check(core.HandleTeleporterContact(entrance, true).status == InteractionStatus::Applied &&
+            core.playerIndoors && audio.indoorChanges.back(),
+            "Entering through the original rooftop teleporter must soften the rain ambience.");
+        Check(audio.starts == starts && audio.stops == stops,
+            "Indoor rain changes must not restart the ambient loop.");
+        core.TeleportPlayer(20);
+        Check(core.playerIndoors && audio.indoorChanges.back(), "Other indoor rooftop destinations must retain muffling.");
+        core.StartLevel(10);
+        core.TeleportPlayer(2);
+        Check(core.playerIndoors && audio.indoorChanges.back(), "The other rainy level must use the same indoor audio policy.");
+        core.TeleportPlayer(1);
+        Check(!core.playerIndoors && !audio.indoorChanges.back(),
+            "An exterior destination must restore outdoor rain without restarting it.");
+        core.TeleportPlayer(2);
+        core.selector = 3;
+        const auto changes = audio.indoorChanges.size();
+        core.StartLevel(19);
+        Check(audio.indoorChanges.size() == changes,
+            "Non-rain ambience must not use the rain-only indoor policy.");
+        core.selector = 1;
+        core.StartLevel(36);
+        Check(!audio.indoorChanges.back(), "Loading the rooftop again must clear stale indoor rain state.");
     }
 
     void TestPositionalMarkers(const std::filesystem::path& original)
@@ -390,6 +438,7 @@ int main(int argc, char** argv)
         }
         TestRecipes(audio);
         TestLevelLoading(audio, original);
+        TestIndoorRain(audio, original);
         TestPositionalMarkers(original);
         std::cout << "Ambient tests passed: recipes, positional markers, RNG, bounds, original metadata and level lifecycle.\n";
         return 0;

@@ -305,6 +305,34 @@ public:
         audio.m_ambientVoice->GetState(&state);
         Check(state.BuffersQueued == 1 && state.SamplesPlayed > 1024,
             "Ambient must keep looping beyond its first logical-length buffer.");
+        auto* ambientVoice = audio.m_ambientVoice.get();
+        const auto played = state.SamplesPlayed;
+        audio.PlaySample(0, 4, 64);
+        audio.SetAmbientIndoor(true);
+        // Filters become observable after XAudio2's next processing pass.
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        float indoorVolume = 0.f, effectVolume = 0.f;
+        XAUDIO2_FILTER_PARAMETERS indoorFilter{};
+        ambientVoice->GetVolume(&indoorVolume);
+        ambientVoice->GetFilterParameters(&indoorFilter);
+        audio.m_channels[0]->GetVolume(&effectVolume);
+        std::cout << "Indoor ambient gain " << indoorVolume << ", filter " << indoorFilter.Type
+            << "/" << indoorFilter.Frequency << ", effect gain " << effectVolume << ".\n";
+        Check(std::fabs(indoorVolume - 0.1f) < 0.0001f && indoorFilter.Type == LowPassFilter &&
+            std::fabs(indoorFilter.Frequency -
+                XAudio2CutoffFrequencyToRadians(400.f, SoundSample::SampleRate)) < 0.0001f &&
+            std::fabs(effectVolume - 64.f / 255.f) < 0.0001f,
+            "Indoor ambience must use 10-percent gain and a 400-Hz low-pass without changing effect voices.");
+        audio.SetAmbientIndoor(false);
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        ambientVoice->GetVolume(&indoorVolume);
+        ambientVoice->GetFilterParameters(&indoorFilter);
+        ambientVoice->GetState(&state);
+        Check(audio.m_ambientVoice.get() == ambientVoice && state.SamplesPlayed >= played &&
+            state.BuffersQueued == 1 && indoorVolume == 1.f &&
+            indoorFilter.Frequency == XAUDIO2_MAX_FILTER_FREQUENCY,
+            "Going outside must bypass the low-pass and restore gain without replacing or restarting ambience.");
+        audio.StopSample(0);
         Reject<std::out_of_range>([&] { audio.StartUnderwaterPlayback(0, 255); });
         Reject<std::out_of_range>([&] { audio.StartUnderwaterPlayback(5, 255); });
         audio.StartUnderwaterPlayback(1, 64);
@@ -331,16 +359,19 @@ public:
         Check(audio.IsChannelPlaying(0), "Ambient stop must not stop live effects.");
         audio.StartAmbientPlayback();
         audio.BeginAmbientLoopCreation(4096);
-        Check(!audio.m_ambientVoice && audio.IsChannelPlaying(0) && audio.m_ambientLoopLength == 0,
+        Check(!audio.m_ambientVoice && !audio.m_ambientIndoors &&
+            audio.IsChannelPlaying(0) && audio.m_ambientLoopLength == 0,
             "Rebuilding must synchronously release old ambient playback without touching effects.");
         audio.CopyAmbient(1, 0);
         audio.EndAmbientLoopCreation(2048);
         audio.StartAmbientPlayback();
         Reject<std::invalid_argument>([&] { audio.CreateMusicPlayback({}, false); });
         std::vector<byte> music(1024, 128);
+        audio.SetAmbientIndoor(true);
         audio.CreateMusicPlayback(music, false);
         music.clear();
-        Check(audio.m_ambientPcm.size() == 1024 && !audio.m_loopAmbient && !audio.m_buildingAmbient,
+        Check(audio.m_ambientPcm.size() == 1024 && !audio.m_loopAmbient && !audio.m_buildingAmbient &&
+            !audio.m_ambientIndoors,
             "Music must own its PCM independently of the input and preserve non-looping playback.");
         audio.StartAmbientPlayback();
         std::this_thread::sleep_for(std::chrono::milliseconds(250));

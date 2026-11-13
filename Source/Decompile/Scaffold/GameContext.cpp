@@ -366,7 +366,12 @@ namespace Desperabis
         windX = windZ = 0;
         skyEnabled = level->hasSky;
         ClearLightningFlashes();
-        field_D503 = false;
+        playerIndoors = false;
+        rainAmbientActive = data.ambientSound == 1;
+        if (audioHandler && ambientPlaybackActive && rainAmbientActive)
+        {
+            audioHandler->SetAmbientIndoor(false);
+        }
         playerLookHeight = 110;
         playerTargetLookHeight = 110;
         playerBodyHeight = 45;
@@ -1644,13 +1649,17 @@ namespace Desperabis
             GetDirectionDisplacement(player.velocityX, negativeZ, playerHeading, 100);
             player.velocityZ = WrapSignedWord(-static_cast<int>(negativeZ));
             if (destination.behaviorParameter != 0) { playerRenderTable = destination.behaviorParameter; }
-            field_D503 = destination.velocityZ > 0;
+            playerIndoors = destination.velocityZ > 0;
             destination.generalPurpose3 = 0;
         }
         soundListenerX = player.posX;
         soundListenerZ = player.posZ;
         levelElapsedTicks = 0;
         lightingCache.Reset(soundListenerX, soundListenerZ, lightingCache.activeRadius);
+        if (audioHandler && ambientPlaybackActive && rainAmbientActive)
+        {
+            audioHandler->SetAmbientIndoor(playerIndoors);
+        }
     }
 
     InteractionResult GameContext::HandleTeleporterContact(RawGameObject& object, bool interactionPressed)
@@ -2936,6 +2945,8 @@ namespace Desperabis
         if (selectedWeapon == WeaponType::TrapOrPole &&
             inventory[weaponHand - 1].behavior != BehaviorType::BearTrapAmmo &&
             inventory[weaponHand - 1].behavior != BehaviorType::MetalPole &&
+            inventory[weaponHand - 1].behavior != BehaviorType::BonesToGrab &&
+            inventory[weaponHand - 1].behavior != BehaviorType::ActionObjectToGrab &&
             inventory[weaponHand - 1].behavior != BehaviorType::PortableCoffin)
         {
             return WeaponActionStatus::UnimplementedWeapon;
@@ -3091,7 +3102,10 @@ namespace Desperabis
                     object.velocityY = -10;
                     object.winX = object.winZ = object.blendWeightOrSpriteOpacity = 0;
                     object.generalPurpose1 = 0;
-                    object.generalPurpose3 = 0;
+                    if (object.behavior != BehaviorType::ActionObjectToGrab)
+                    {
+                        object.generalPurpose3 = 0;
+                    }
                 }
             }
         }

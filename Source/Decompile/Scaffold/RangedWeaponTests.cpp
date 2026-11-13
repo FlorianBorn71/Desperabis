@@ -623,7 +623,7 @@ namespace
                 "Unrecovered tools must remain explicitly unsupported without mutation.");
         }
         f.Equip(WeaponType::TrapOrPole);
-        f.context.inventory[1].behavior = BehaviorType::BonesToGrab;
+        f.context.inventory[1].behavior = BehaviorType::Behavior_163;
         Check(f.context.AttackWithSelectedWeapon() == WeaponActionStatus::UnimplementedWeapon &&
             f.context.inventory[1].health == 1000, "Unrecovered placeable behaviors must not consume the held item.");
 

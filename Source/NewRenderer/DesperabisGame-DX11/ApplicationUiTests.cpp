@@ -716,6 +716,343 @@ namespace
         }
     }
 
+    void CheckFoggyMoon(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        Target target(device, 360, 240);
+        for (const int number : {19, 30, 36})
+        {
+            LevelScene scene(number);
+            scene.m_createGameObjects = false;
+            scene.m_createMapIcons = false;
+            FORCE_WAIT(scene.CreateScene());
+            const auto objects = FORCE_GET(FileManager::Instance().ReadDataFuture(
+                FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS" + std::to_wstring(number) + L".DAT")));
+            ::RawGameObject moon{};
+            moon.m_level = scene.m_level;
+            bool found = false;
+            for (std::size_t offset = 0; offset + 54 <= objects.size(); offset += 54)
+            {
+                if (Desperabis::DecodeGameObject(objects.data() + offset, 54).behavior != Desperabis::BehaviorType::Moon)
+                {
+                    continue;
+                }
+                std::memcpy(moon.m_rawBytes, objects.data() + offset, 54);
+                found = true;
+                break;
+            }
+            Check(found, "The original sky fixture must contain its moon.");
+            auto instance = std::make_shared<RenderableInstance>();
+            scene.m_level->ApplyRenderProperties(instance, moon);
+            if (moon.m_rawBytes[51] == 255)
+            {
+                Check(!instance->IsValid(), "An authored hidden rooftop moon must not be made visible by the fog-opacity change.");
+                continue;
+            }
+            GamePlay::ConvertToMoon(*instance, moon);
+            GamePlay::ConvertToMoon(*instance, moon);
+            auto& material = instance->GetOrCreateMaterialOverrides().front();
+            const bool foggy = scene.m_level->GetLevelInfo().m_raw.m_data.skyTint == SkyTint::WhiteFog;
+            Check(material.m_opacity == (foggy ? 0.25f : 1.f) &&
+                material.m_transparencyType == TransparencyMode::SkyAlphaBlended,
+                "Only fog-tinted skies must reduce moon opacity, including repeated presentation updates.");
+            if (!foggy) { continue; }
+            const auto moonPosition = instance->GetTransform().GetTranslation();
+            Vector backward(-moonPosition.GetX(), -moonPosition.GetY(), -moonPosition.GetZ(), 0.f);
+            backward.Normalize();
+            auto right = Vector(0,1,0).GetCross(backward);
+            right.Normalize();
+            auto up = backward.GetCross(right);
+            Matrix4 transform, projection;
+            transform.Create(Vector(0,0,0), right, up, backward);
+            projection.CreateProjection(1.5f, Math::Pi / 3.f, 0.001f, 50.f);
+            Camera camera;
+            camera.SetCameraTransformMatrix(transform);
+            camera.SetProjectionMatrix(projection);
+            renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+            VisibilityResult visible;
+            visible.m_mainCamera = &camera;
+            visible.m_fogFalloff = 0.f;
+            visible.m_lightmap = AssetManager::Instance().GetPlainWhiteTexture();
+            visible.m_visibleInstances.m_skyInstances.push_back({instance.get(), 0});
+            visible.m_visibleInstances.m_visibleTransparencyTypes = TransparencyModeMask::SkyAlphaBlendedBit;
+            RenderingSettings settings;
+            ProfilingStats stats;
+            const auto render = [&](float opacity)
+            {
+                material.SetOpacity(opacity);
+                material.ComputeHash();
+                const float black[]{0,0,0,1};
+                context->ClearRenderTargetView(target.colorView.Get(), black);
+                context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+                renderer.RenderSceneElements(visible, settings, stats);
+                return target.Pixels(device, context);
+            };
+            const auto full = render(1.f);
+            const auto fogged = render(0.25f);
+            int checked = 0;
+            for (std::size_t pixel = 0; pixel < full.size(); ++pixel)
+            {
+                for (int channel = 0; channel < 3; ++channel)
+                {
+                    const int bright = (full[pixel] >> (8 * channel)) & 255;
+                    if (bright < 40) { continue; }
+                    const int dim = (fogged[pixel] >> (8 * channel)) & 255;
+                    Check(std::abs(dim - bright * 0.25f) <= 1.f,
+                        "The graveyard's actual moon pixels must contribute only one quarter of their full opacity.");
+                    ++checked;
+                }
+            }
+            Check(checked > 100, "The moon opacity regression must measure visible original sprite pixels.");
+            scene.ClearScene();
+        }
+    }
+
+    void CheckRooftopModels()
+    {
+        LevelScene scene(36);
+        scene.m_createGameObjects = false;
+        scene.m_createMapIcons = false;
+        FORCE_WAIT(scene.CreateScene());
+        class Host final : public Desperabis::GameContext
+        {
+            std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+            {
+                return FORCE_GET(FileManager::Instance().ReadDataFuture(FileManager::Instance().FilenameToNative(
+                    std::wstring(filename.begin(), filename.end()))));
+            }
+            void LoadLevel(const Desperabis::LevelLoadRequest& request) override
+            {
+                Desperabis::LevelLoadData data;
+                LoadLevelGeometry(request.levelNumber, data);
+                LoadLevelObjects(request.levelNumber, data);
+                InitializeLevelPlayerSpawn(data, {0,0,100});
+                CompleteLevelLoad(request.id, std::move(data));
+            }
+        } core;
+        core.StartLevel(36);
+        const auto refresh = [&](int slot, const RenderableInstancePtr& instance)
+        {
+            ::RawGameObject object{};
+            object.m_level = scene.m_level;
+            object.m_objectNumber = slot;
+            Desperabis::EncodeGameObject(core.GetObjectRenderState(slot), object.m_rawBytes, sizeof(object.m_rawBytes));
+            scene.m_level->ApplyRenderProperties(instance, object);
+        };
+        auto roofInstance = std::make_shared<RenderableInstance>();
+        refresh(30, roofInstance);
+        const auto intact = roofInstance->GetRenderable();
+        core.SetObjectHealth(core.worldObjects[30], 1000);
+        Desperabis::Function_DestroyableRoof(core.worldObjects[30], core);
+        refresh(30, roofInstance);
+        Check(roofInstance->IsValid() && roofInstance->GetVisible() &&
+            roofInstance->GetRenderable() != intact,
+            "The native blast must resolve a different valid original broken-roof mesh.");
+        auto strikeInstance = std::make_shared<RenderableInstance>();
+        refresh(36, strikeInstance);
+        Check(!strikeInstance->IsValid(), "The authored strike must remain hidden until activation.");
+        core.SetObjectHealth(core.worldObjects[36], 1000);
+        for (int tick = 0; tick < 40; ++tick)
+        {
+            Desperabis::Function_RoofTopThunderHandler2(core.worldObjects[36], core);
+            refresh(36, strikeInstance);
+            Check(strikeInstance->IsValid() && strikeInstance->GetVisible() &&
+                strikeInstance->GetBlendTargetRenderable() != nullptr &&
+                strikeInstance->GetBlendTargetRenderable() != strikeInstance->GetRenderable(),
+                "The native strike must resolve both original distinct animation meshes after repeated frame changes.");
+        }
+        for (const int slot : {59,64,67,92})
+        {
+            auto instance = std::make_shared<RenderableInstance>();
+            refresh(slot, instance);
+            const auto closed = instance->m_blendWeight;
+            for (int tick = 0; tick < 17; ++tick)
+                Desperabis::HandlePlayerObjectInteraction(core.worldObjects[slot], core);
+            refresh(slot, instance);
+            Check(instance->IsValid() && instance->GetBlendTargetRenderable() != nullptr &&
+                instance->m_blendWeight != closed,
+                "All four opened original rooftop containers must update their lid morph.");
+        }
+        std::cout << "Rooftop: original broken roof, animated strike meshes and four opening container lids passed.\n";
+        scene.ClearScene();
+    }
+
+    void CheckMercuryLamp(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        LevelScene scene(34);
+        scene.m_createGameObjects = false;
+        scene.m_createMapIcons = false;
+        FORCE_WAIT(scene.CreateScene());
+        class Host final : public Desperabis::GameContext
+        {
+            std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+            {
+                return FORCE_GET(FileManager::Instance().ReadDataFuture(FileManager::Instance().FilenameToNative(
+                    std::wstring(filename.begin(), filename.end()))));
+            }
+            void LoadLevel(const Desperabis::LevelLoadRequest& request) override
+            {
+                Desperabis::LevelLoadData data;
+                LoadLevelGeometry(request.levelNumber, data);
+                LoadLevelObjects(request.levelNumber, data);
+                InitializeLevelPlayerSpawn(data, {0,0,100});
+                CompleteLevelLoad(request.id, std::move(data));
+            }
+        } core;
+        core.StartLevel(34);
+        auto raw = [&](int slot)
+        {
+            ::RawGameObject object{};
+            object.m_level = scene.m_level;
+            object.m_objectNumber = slot;
+            Desperabis::EncodeGameObject(core.GetObjectRenderState(slot), object.m_rawBytes, sizeof(object.m_rawBytes));
+            return object;
+        };
+        auto lamp = raw(66);
+        const auto initialLights = scene.GetLightSources().size();
+        scene.UpdateObjectPresentation(66, lamp, nullptr);
+        Check(scene.GetLightSources().size() == initialLights + 2,
+            "Mercury lamp must own only source and wall-hit lights, not a light per beam segment.");
+        const auto sourceLight = scene.GetLightSources()[initialLights];
+        const auto hitLight = scene.GetLightSources()[initialLights + 1];
+        Check(sourceLight->GetRadius() == 0.f && hitLight->GetRadius() == 0.f &&
+            sourceLight->GetCoronaSize() == 0.f,
+            "Dormant mercury lamps must not illuminate surfaces.");
+        core.SetObjectHealth(core.worldObjects[66], 1000);
+        Desperabis::Function_MercuryLamp(core.worldObjects[66], core);
+        lamp = raw(66);
+        scene.UpdateObjectPresentation(66, lamp, nullptr);
+        Check(sourceLight->GetRadius() > 0.f && hitLight->GetRadius() > 0.f,
+            "The original ray must illuminate its source and wall-hit point.");
+        PackedLightSourceParams packed;
+        Check(sourceLight->FillLightParams(packed) && packed.ColorAndPadding.x == 0.f &&
+            std::abs(packed.ColorAndPadding.y - 2.f) < 0.00001f &&
+            std::abs(packed.ColorAndPadding.z - 2.f) < 0.00001f &&
+            sourceLight->FillCoronaParams(packed) && packed.PositionAndRadius.w >= 60.f * DespToFloat &&
+            std::abs(packed.ColorAndPadding.w - 30.f * DespToFloat) < 0.00001f &&
+            packed.ColorAndPadding.x == 0.f && packed.ColorAndPadding.y > 0.f,
+            "The switched-on mercury source must have a cyan light and large cyan corona.");
+        RenderableInstancePtr beam;
+        int beamSlot = 0;
+        for (int slot = 2; slot <= 165; ++slot)
+        {
+            if (core.worldObjects[slot].health <= 0 ||
+                core.worldObjects[slot].collisionType != Desperabis::CollisionType::MercuryRaySegment) { continue; }
+            auto object = raw(slot);
+            auto instance = std::make_shared<RenderableInstance>();
+            scene.m_level->ApplyRenderProperties(instance, object);
+            scene.UpdateObjectPresentation(slot, object, instance.get());
+            if (!beam) { beam = instance; beamSlot = slot; }
+            Check(instance->IsValid() && instance->GetRenderable()->m_drawCalls.size() > 0 &&
+                !instance->m_materialOverride.empty(),
+                "Every native ray segment must resolve visible original beam geometry.");
+            for (const auto& material : instance->m_materialOverride)
+                Check(material.m_transparencyType == TransparencyMode::Additive && !material.m_applyLighting,
+                    "Mercury beams must be additive/emissive rather than dark solid geometry.");
+        }
+        Check(scene.GetLightSources().size() == initialLights + 2,
+            "Creating visible beam segments must not add lights along the beam.");
+        core.worldObjects[66].generalPurpose1 = 0;
+        scene.UpdateObjectPresentation(66, raw(66), nullptr);
+        Check(sourceLight->GetRadius() > 0.f && hitLight->GetRadius() == 0.f,
+            "A ray with no wall hit must remove its previous endpoint illumination.");
+        scene.UpdateObjectPresentation(68, raw(68), nullptr);
+        const auto receiverLight = scene.GetLightSources().back();
+        Check(scene.GetLightSources().size() == initialLights + 3 &&
+            !receiverLight->FillLightParams(packed) && !receiverLight->FillCoronaParams(packed),
+            "An unlit target switch must have neither light nor corona.");
+        auto& receiver = core.worldObjects[68];
+        receiver.posX = core.worldObjects[beamSlot].posX;
+        receiver.posY = core.worldObjects[beamSlot].posY;
+        receiver.posZ = core.worldObjects[beamSlot].posZ;
+        core.worldObjects[66].blendWeightOrSpriteOpacity = 0;
+        Desperabis::Function_MercuryLamp(core.worldObjects[66], core);
+        scene.UpdateObjectPresentation(68, raw(68), nullptr);
+        Check(receiverLight == scene.GetLightSources().back() &&
+            receiverLight->FillLightParams(packed) && std::abs(packed.ColorAndPadding.x - 2.f) < 0.00001f &&
+            packed.ColorAndPadding.y == 0.f && packed.ColorAndPadding.z == 0.f &&
+            receiverLight->GetRadius() > 110.f * DespToFloat &&
+            receiverLight->FillCoronaParams(packed) && packed.PositionAndRadius.w >= 65.f * DespToFloat &&
+            std::abs(packed.ColorAndPadding.w - 30.f * DespToFloat) < 0.00001f &&
+            packed.ColorAndPadding.y == 0.f && packed.ColorAndPadding.z == 0.f,
+            "Actual ray contact must activate a larger pure-red target light with a large pure-red corona.");
+        core.worldObjects[66].blendWeightOrSpriteOpacity = 0;
+        Desperabis::Function_MercuryLamp(core.worldObjects[66], core);
+        scene.UpdateObjectPresentation(68, raw(68), nullptr);
+        Check(receiverLight->GetRadius() > 0.f, "The red target light must persist after subsequent beam rebuilds.");
+        ApplicationUi ui;
+        FORCE_WAIT(ui.Initialize());
+        core.selectedWeapon = Desperabis::WeaponType::TrapOrPole;
+        core.weaponHand = 1;
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        const float black[]{0,0,0,1};
+        RenderingSettings settings;
+        ProfilingStats stats;
+        const auto heldCenter = [&](const Desperabis::WeaponView& view)
+        {
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 0.f, 0);
+            ui.DrawWeapon(view, renderer, *scene.m_level, settings, stats, target.viewport,
+                context, target.colorView.Get(), target.depthView.Get(), nullptr, &scene);
+            const auto pixels = target.Pixels(device, context);
+            int count = 0;
+            double y = 0;
+            for (std::size_t pixel = 0; pixel < pixels.size(); ++pixel)
+                if ((pixels[pixel] & 0xffffff) != 0) { ++count; y += pixel / 360; }
+            Check(count > 10, "Lowered bones and vase must remain visibly rendered as first-person weapons.");
+            return y / count;
+        };
+        for (const int slot : {43,64})
+        {
+            core.inventory[0] = core.worldObjects[slot];
+            core.inventory[0].health = 1000;
+            core.inventory[0].renderPlacementMode = 1;
+            core.inventory[0].doorLockOrGroupBitmask = core.inventory[0].spriteScale;
+            const auto lowered = *core.GetWeaponView();
+            auto previous = lowered;
+            previous.object.posY -= 8;
+            Check(heldCenter(lowered) > heldCenter(previous) + 4,
+                "Bones and vase must actually project lower in the carried view.");
+        }
+        core.DamageObject(core.worldObjects[64], 3000);
+        auto key = raw(64);
+        auto keyInstance = std::make_shared<RenderableInstance>();
+        scene.m_level->ApplyRenderProperties(keyInstance, key);
+        Check(keyInstance->IsValid() && keyInstance->GetVisible(),
+            "Breaking the original vase must resolve visible key geometry, not an invalid vase morph target.");
+        Check(beam != nullptr, "The original lamp must produce beam instances.");
+        const auto origin = beam->GetTransform().GetTranslation();
+        Vector backward(1.f, 0.5f, 1.f, 0.f);
+        backward.Normalize();
+        auto right = Vector(0,1,0).GetCross(backward);
+        right.Normalize();
+        const auto up = backward.GetCross(right);
+        Matrix4 transform, projection;
+        transform.Create(origin + Vector(60.f * DespToFloat,30.f * DespToFloat,60.f * DespToFloat,0.f),
+            right, up, backward);
+        projection.CreateProjection(1.5f, Math::Pi / 3.f, 0.001f, 50.f);
+        Camera camera;
+        camera.SetCameraTransformMatrix(transform);
+        camera.SetProjectionMatrix(projection);
+        VisibilityResult visible;
+        visible.m_mainCamera = &camera;
+        visible.m_scene = &scene;
+        visible.m_fogFalloff = 0.f;
+        visible.m_lightmap = AssetManager::Instance().GetPlainWhiteTexture();
+        visible.m_visibleInstances.m_transparentInstances.push_back({beam.get(),0});
+        visible.m_visibleInstances.m_visibleTransparencyTypes = TransparencyModeMask::AdditiveBit;
+        context->ClearRenderTargetView(target.colorView.Get(), black);
+        context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+        renderer.RenderSceneElements(visible, settings, stats);
+        const auto beamPixels = target.Pixels(device, context);
+        Check(std::count_if(beamPixels.begin(), beamPixels.end(),
+            [](auto pixel) { return (pixel & 0xffffff) != 0; }) > 10,
+            "An original mercury beam segment must produce visible world-space GPU pixels.");
+        scene.ClearScene();
+        Check(scene.GetLightSources().empty(), "Scene teardown must remove both mercury lamp lights.");
+        std::cout << "Mercury lamp: original beam meshes, endpoint-only lights and held-bone GPU pixels passed.\n";
+    }
+
     class FlameScene final : public Scene
     {
     public:
@@ -723,6 +1060,202 @@ namespace
         std::size_t BindingCount() const { return m_fireAnimationInstances.size(); }
         bool HasFlameSlot(int slot) const { return m_fireAnimations[slot].m_torchAnim != nullptr; }
     };
+
+    void CheckElectricBolts(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        for (const int chapterLevel : {10,50})
+        {
+            LevelScene scene(chapterLevel);
+            scene.m_createGameObjects = false;
+            scene.m_createMapIcons = false;
+            FORCE_WAIT(scene.CreateScene());
+            auto terrain = Desperabis::CreateDummyLevel();
+            Desperabis::GameContext core;
+            core.level = &terrain;
+            core.collisionMap = terrain.collisionMap.get();
+            core.SetMenuPage(Desperabis::MenuPage::Gameplay);
+            core.selectedWeapon = core.requestedWeapon = Desperabis::WeaponType::Electricity;
+            core.weaponHand = 2;
+            core.weaponSpriteFrame = 1;
+            core.weaponReady = true;
+            core.weaponAmounts[7] = 100;
+            core.frameTickCount = 1;
+            core.worldObjects[1].health = 1000;
+            core.worldObjects[1].posY = 120;
+            core.worldObjects[1].velocityZ = 100;
+            auto& enemy = core.worldObjects[20];
+            enemy.health = 1000;
+            enemy.collisionType = Desperabis::CollisionType::Skeleton;
+            enemy.collisionMask = 2;
+            enemy.groupIndexOrLock = 200;
+            enemy.posY = 100;
+            enemy.posZ = 100;
+            Check(core.AttackWithSelectedWeapon() == Desperabis::WeaponActionStatus::Applied,
+                "The electric presentation fixture must fire through the native weapon path.");
+            const auto raw = [&](int slot)
+            {
+                ::RawGameObject object{};
+                object.m_level = scene.m_level;
+                object.m_objectNumber = slot;
+                Desperabis::EncodeGameObject(core.worldObjects[slot], object.m_rawBytes, sizeof(object.m_rawBytes));
+                return object;
+            };
+            const auto initialLights = scene.GetLightSources().size();
+            auto impactObject = raw(3);
+            auto impact = std::make_shared<RenderableInstance>();
+            scene.m_level->ApplyRenderProperties(impact, impactObject);
+            Check(impact->IsValid(), "Native electric impacts must resolve their original sprite.");
+            scene.UpdateObjectPresentation(3, impactObject, impact.get());
+            Check(scene.GetLightSources().size() == initialLights + 1 &&
+                impact->GetUsedTransparencyMask() == TransparencyModeMask::AdditiveBit,
+                "Native electric impacts must add one light and use additive sprite rendering.");
+            const auto impactLight = scene.GetLightSources().back();
+            PackedLightSourceParams packed;
+            Check(impactLight->FillLightParams(packed) &&
+                packed.ColorAndPadding.z > packed.ColorAndPadding.y &&
+                packed.ColorAndPadding.y > packed.ColorAndPadding.x &&
+                (impactLight->GetPosition() - GamePlay::PropertyAccessorBase(impactObject).GetPosition()).GetLength() < 0.00001f,
+                "Electric impact lighting must be blue and centered on the actual struck point.");
+
+            Target target(device, 240, 160);
+            renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+            std::vector<std::uint32_t> previous;
+            for (int frame = 1; frame <= 3; ++frame)
+            {
+                core.worldObjects[2].animFrame = static_cast<std::uint8_t>(frame);
+                core.worldObjects[2].modelFrame2 = static_cast<std::uint8_t>(frame % 3 + 1);
+                auto object = raw(2);
+                auto beam = std::make_shared<RenderableInstance>();
+                scene.m_level->ApplyRenderProperties(beam, object);
+                scene.UpdateObjectPresentation(2, object, beam.get());
+                const auto* standard = scene.m_level->GetLevelInfo().GetModelAnim(1)->GetModel(5, frame - 1);
+                Check(beam->IsValid() && beam->GetRenderable() == standard &&
+                    beam->GetBlendTargetRenderable() != nullptr &&
+                    beam->GetUsedTransparencyMask() == TransparencyModeMask::AdditiveBit,
+                    "Each native bolt must use the standard chapter line model and animated morph target.");
+                for (const auto& material : beam->m_materialOverride)
+                {
+                    Check(!material.m_applyLighting,
+                        "Electric bolt lines must remain emissive in dark rooms.");
+                }
+                Check(scene.GetLightSources().size() == initialLights + 1,
+                    "Electric bolt lines must not allocate a light per segment.");
+                Vector backward(1.f,0.5f,1.f,0.f);
+                backward.Normalize();
+                auto right = Vector(0,1,0).GetCross(backward);
+                right.Normalize();
+                const auto origin = beam->GetTransform().GetTranslation();
+                const float distance = (std::max)(0.2f, standard->m_localBounds.GetSphereRadius() * 3.f);
+                auto offset = backward;
+                offset *= distance;
+                Matrix4 transform, projection;
+                transform.Create(origin + offset, right, backward.GetCross(right), backward);
+                projection.CreateProjection(1.5f, Math::Pi / 3.f, 0.001f, 50.f);
+                Camera camera;
+                camera.SetCameraTransformMatrix(transform);
+                camera.SetProjectionMatrix(projection);
+                VisibilityResult visible;
+                visible.m_mainCamera = &camera;
+                visible.m_scene = &scene;
+                visible.m_fogFalloff = 0.f;
+                visible.m_lightmap = AssetManager::Instance().GetPlainWhiteTexture();
+                visible.m_visibleInstances.m_transparentInstances.push_back({beam.get(),0});
+                visible.m_visibleInstances.m_visibleTransparencyTypes = TransparencyModeMask::AdditiveBit;
+                RenderingSettings settings;
+                ProfilingStats stats;
+                const float black[]{0,0,0,1};
+                context->ClearRenderTargetView(target.colorView.Get(), black);
+                context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+                renderer.RenderSceneElements(visible, settings, stats);
+                const auto pixels = target.Pixels(device, context);
+                Check(std::count_if(pixels.begin(), pixels.end(),
+                    [](auto pixel) { return (pixel & 0xffffff) != 0; }) > 10,
+                    "Each original electric line model must produce visible GPU flash pixels.");
+                Check(previous.empty() || previous != pixels,
+                    "Successive original electric bolt shapes must produce different flashes.");
+                previous = pixels;
+            }
+            auto warmObject = impactObject;
+            warmObject.m_rawBytes[3] = 1;
+            scene.UpdateObjectPresentation(3, warmObject);
+            Check(scene.GetLightSources().size() == initialLights + 1 &&
+                scene.GetLightSources().back() != impactLight &&
+                scene.GetLightSources().back()->FillLightParams(packed) &&
+                packed.ColorAndPadding.x > packed.ColorAndPadding.z,
+                "Reusing an impact slot for an ordinary flame must restore warm lighting.");
+            scene.UpdateObjectPresentation(3, impactObject, impact.get());
+            core.SetObjectHealth(core.worldObjects[3], 0);
+            scene.UpdateObjectPresentation(3, raw(3));
+            Check(scene.GetLightSources().size() == initialLights,
+                "Expired electric impacts must remove their light immediately.");
+            scene.ClearScene();
+        }
+        std::cout << "Electric bolts: native attack, six original chapter line models, emissive GPU flashes, blue impact and slot cleanup passed.\n";
+    }
+
+    void CheckCoronaDepthBias(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        FlameScene scene;
+        FORCE_WAIT(scene.CreateScene());
+        Target target(device, 240, 160);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        LightSource light(&scene);
+        light.SetColor({0,255,255});
+        light.SetCoronaSize(0.1f);
+        Camera camera;
+        VisibilityResult visible;
+        visible.m_mainCamera = &camera;
+        visible.m_scene = &scene;
+        visible.m_fogFalloff = 0.f;
+        visible.m_lightmap = AssetManager::Instance().GetPlainWhiteTexture();
+        visible.m_visibleInstances.m_visibleTransparencyTypes = TransparencyModeMask::OpaqueBit;
+        RenderingSettings settings;
+        ProfilingStats stats;
+        const auto countPixels = [](const auto& pixels)
+        {
+            return std::count_if(pixels.begin(), pixels.end(),
+                [](auto pixel) { return (pixel & 0xffffff) != 0; });
+        };
+        for (const bool perspective : {false,true})
+        {
+            Matrix4 projection;
+            if (perspective) { projection.CreateProjection(1.5f, Math::Pi / 2.f, 0.05f, 10.f); }
+            else { projection.CreateOrthographic(3.f, 2.f, 0.05f, 10.f); }
+            camera.SetProjectionMatrix(projection);
+            for (const float distance : {1.f,3.f})
+            {
+                light.SetPosition(Vector(0,0,-distance));
+                const auto render = [&](float depth, float bias)
+                {
+                    light.SetCoronaDepthBias(bias);
+                    visible.m_visibileCoronas.resize(1);
+                    Check(light.FillCoronaParams(visible.m_visibileCoronas.front()), "Corona fixture must be active.");
+                    const float black[]{0,0,0,1};
+                    context->ClearRenderTargetView(target.colorView.Get(), black);
+                    context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, depth, 0);
+                    renderer.RenderSceneElements(visible, settings, stats);
+                    return target.Pixels(device, context);
+                };
+                const float surfaceDepth = projection.TransformPosition(Vector(0,0,-distance + 0.1f)).GetZ();
+                const float wallDepth = projection.TransformPosition(Vector(0,0,-distance + 0.5f)).GetZ();
+                const auto unobstructed = render(1.f, 0.f);
+                Check(countPixels(unobstructed) > 10, "Unobstructed coronas must produce real GPU pixels.");
+                Check(render(1.f, 0.3f) == unobstructed,
+                    "Corona depth bias must not change its visible position, size or color.");
+                Check(countPixels(render(surfaceDepth, 0.f)) == 0 &&
+                    render(surfaceDepth, 0.3f) == unobstructed,
+                    "Per-corona world-depth bias must overcome nearby self-occlusion.");
+                Check(countPixels(render(wallDepth, 0.3f)) == 0,
+                    "Biased coronas must remain occluded by walls farther than their bias.");
+            }
+        }
+        for (const float invalid : {-1.f, std::numeric_limits<float>::infinity(),
+            std::numeric_limits<float>::quiet_NaN()})
+        {
+            CheckRecoverableError<std::invalid_argument>([&] { light.SetCoronaDepthBias(invalid); });
+        }
+        std::cout << "Corona depth bias: unchanged placement, nearby self-occlusion and farther walls passed in both projections.\n";
+    }
 
     void CheckHeldTorch(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
@@ -6685,7 +7218,15 @@ namespace
         scene.SetElectricityLight(true, position);
         auto electricity = scene.GetLightSources().back();
         Check(electricity->FillLightParams(params) && params.ColorAndPadding.z > params.ColorAndPadding.x &&
-            electricity->FillCoronaParams(params), "Electricity must provide one cyan light and tip corona.");
+            electricity->FillCoronaParams(params) && params.PositionAndRadius.w >= 40.f * DespToFloat,
+            "Electricity must provide one blue light and a large tip corona.");
+        electricity->FillLightParams(params);
+        const float initialBlue = params.ColorAndPadding.z;
+        scene.Update(0.02);
+        electricity->FillLightParams(params);
+        Check(std::abs(params.ColorAndPadding.z - initialBlue) > 0.01f &&
+            (electricity->GetPosition() - position).GetLength() < 0.00001f,
+            "The electric tip light must flicker rapidly without shifting away from the held tip.");
         scene.SetElectricityLight(true, position + Vector(1,0,0));
         Check(scene.GetLightSources().back() == electricity &&
             (electricity->GetPosition() - position - Vector(1,0,0)).GetLength() < 0.00001f,
@@ -7904,6 +8445,11 @@ int main(int argc, char* argv[])
         CheckPrimitiveSortingDepth(renderer, device.Get(), context.Get());
         CheckModelSortingDepthOverrides(device.Get(), context.Get());
         CheckLevel24WindmillDoors(renderer, device.Get(), context.Get());
+        CheckFoggyMoon(renderer, device.Get(), context.Get());
+        CheckRooftopModels();
+        CheckMercuryLamp(renderer, device.Get(), context.Get());
+        CheckElectricBolts(renderer, device.Get(), context.Get());
+        CheckCoronaDepthBias(renderer, device.Get(), context.Get());
         CheckHeldTorch(renderer, device.Get(), context.Get());
         CheckSubmarinePortholeGlass(renderer, device.Get(), context.Get());
         CheckForegroundDepth(renderer, device.Get(), context.Get());

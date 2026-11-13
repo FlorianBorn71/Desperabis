@@ -67,6 +67,106 @@ namespace
         void Remove(Scene&) override {}
     };
 
+    bool IsElectricBolt(const RawGameObject& object)
+    {
+        const GamePlay::PropertyAccessorBase properties(object);
+        return object.m_rawBytes[0] == 31 && object.m_rawBytes[1] == 6 &&
+            properties.GetBehaviorType() == GamePlay::BehaviorType::None &&
+            properties.GetDisplayType() == GamePlay::DisplayType::VectorUnlit &&
+            properties.GetCollisionType() == GamePlay::CollisionType::None;
+    }
+
+    bool IsElectricImpact(const RawGameObject& object)
+    {
+        const GamePlay::PropertyAccessorBase properties(object);
+        return object.m_rawBytes[0] == 1 && object.m_rawBytes[1] == 2 && object.m_rawBytes[3] == 2 &&
+            properties.GetBehaviorType() == GamePlay::BehaviorType::LightSource &&
+            properties.GetDisplayType() == GamePlay::DisplayType::SpriteTorchlight;
+    }
+
+    class EmissiveRayContext final : public ObjectPresentationContext
+    {
+    public:
+        bool Matches(const RawGameObject& object) const override
+        {
+            return GamePlay::PropertyAccessorBase(object).GetCollisionType() == GamePlay::CollisionType::MercuryRaySegment ||
+                IsElectricBolt(object);
+        }
+        void Update(const RawGameObject&, RenderableInstance* instance) override
+        {
+            ApplyAdditiveMaterials(instance);
+            if (!instance || !instance->GetRenderable()) { return; }
+            for (auto& material : instance->GetOrCreateMaterialOverrides())
+            {
+                material.m_applyLighting = false;
+                material.ComputeHash();
+            }
+        }
+        void Remove(Scene&) override {}
+    };
+
+    class MercuryLampContext final : public ObjectPresentationContext
+    {
+    public:
+        MercuryLampContext(std::shared_ptr<LightSource> source, std::shared_ptr<LightSource> hit)
+            : m_source(std::move(source)), m_hit(std::move(hit)) {}
+        bool Matches(const RawGameObject& object) const override
+        {
+            return GamePlay::PropertyAccessorBase(object).GetBehaviorType() == GamePlay::BehaviorType::MercuryLamp;
+        }
+        void Update(const RawGameObject& object, RenderableInstance*) override
+        {
+            const GamePlay::PropertyAccessorBase properties(object);
+            const bool active = properties.GetHealth() == 1000;
+            m_source->SetPosition(properties.GetPosition());
+            m_source->SetRadius(active ? 160.f * DespToFloat : 0.f);
+            m_source->SetCoronaSize(active ? 60.f * DespToFloat : 0.f);
+            auto endpoint = object;
+            endpoint.m_rawShorts[6] = object.m_rawShorts[19];
+            endpoint.m_rawShorts[8] = object.m_rawShorts[20];
+            m_hit->SetPosition(GamePlay::PropertyAccessorBase(endpoint).GetPosition());
+            m_hit->SetRadius(active && object.m_rawShorts[18] == 1 ? 110.f * DespToFloat : 0.f);
+            m_source->UpdateGlobalBounds();
+            m_hit->UpdateGlobalBounds();
+        }
+        void Remove(Scene& scene) override
+        {
+            scene.RemoveLightSource(m_source);
+            scene.RemoveLightSource(m_hit);
+        }
+    private:
+        std::shared_ptr<LightSource> m_source, m_hit;
+    };
+
+    bool IsMercuryReceiver(const RawGameObject& object)
+    {
+        const GamePlay::PropertyAccessorBase properties(object);
+        return properties.GetCollisionType() == GamePlay::CollisionType::LightSensor ||
+            (properties.GetCollisionType() == GamePlay::CollisionType::None &&
+                properties.GetBehaviorType() == GamePlay::BehaviorType::None &&
+                object.m_rawBytes[52] == static_cast<std::uint8_t>(GamePlay::CollisionType::LightSensor));
+    }
+
+    class MercuryReceiverContext final : public ObjectPresentationContext
+    {
+    public:
+        explicit MercuryReceiverContext(std::shared_ptr<LightSource> light) : m_light(std::move(light)) {}
+        bool Matches(const RawGameObject& object) const override { return IsMercuryReceiver(object); }
+        void Update(const RawGameObject& object, RenderableInstance*) override
+        {
+            const GamePlay::PropertyAccessorBase properties(object);
+            const bool active = properties.GetHealth() == 1000 &&
+                properties.GetCollisionType() == GamePlay::CollisionType::None;
+            m_light->SetPosition(properties.GetPosition());
+            m_light->SetRadius(active ? 180.f * DespToFloat : 0.f);
+            m_light->SetCoronaSize(active ? 65.f * DespToFloat : 0.f);
+            m_light->UpdateGlobalBounds();
+        }
+        void Remove(Scene& scene) override { scene.RemoveLightSource(m_light); }
+    private:
+        std::shared_ptr<LightSource> m_light;
+    };
+
     class KnotholeDepthContext final : public ObjectPresentationContext
     {
     public:
@@ -100,7 +200,8 @@ namespace
         bool FillLightParams(PackedLightSourceParams&) const override { return false; }
         bool FillCoronaParams(PackedLightSourceParams& dst) const override
         {
-            dst.SetCorona(m_pos.GetX(), m_pos.GetY(), m_pos.GetZ(), GetEffectiveCoronaSize(), m_color, m_multiplier);
+            dst.SetCorona(m_pos.GetX(), m_pos.GetY(), m_pos.GetZ(), GetEffectiveCoronaSize(),
+                m_color, m_multiplier, GetCoronaDepthBias());
             return m_multiplier > 0.f && GetEffectiveCoronaSize() > 0.f;
         }
     };
@@ -203,12 +304,13 @@ namespace
     class ObjectLightContext final : public ObjectPresentationContext
     {
     public:
-        ObjectLightContext(GamePlay::BehaviorType behavior, std::shared_ptr<LightSource> light)
-            : m_behavior(behavior), m_light(std::move(light)) {}
+        ObjectLightContext(GamePlay::BehaviorType behavior, std::shared_ptr<LightSource> light, bool electricImpact)
+            : m_behavior(behavior), m_light(std::move(light)), m_electricImpact(electricImpact) {}
 
         bool Matches(const RawGameObject& object) const override
         {
             return GamePlay::PropertyAccessorBase(object).GetBehaviorType() == m_behavior &&
+                IsElectricImpact(object) == m_electricImpact &&
                 (m_behavior != GamePlay::BehaviorType::FlyingArrow || IsDragonFireball(object));
         }
 
@@ -219,6 +321,11 @@ namespace
             switch (m_behavior)
             {
             case GamePlay::BehaviorType::LightSource:
+                if (m_electricImpact)
+                {
+                    ApplyAdditiveMaterials(instance);
+                    break;
+                }
                 height = instance && instance->GetRenderable() ?
                     instance->GetRenderable()->m_localBounds.GetSphereRadius() * 0.20f : 5.f * DespToFloat;
                 position += Vector(0, height * 0.5f, 0);
@@ -250,6 +357,7 @@ namespace
     private:
         GamePlay::BehaviorType m_behavior;
         std::shared_ptr<LightSource> m_light;
+        bool m_electricImpact;
     };
 }
 
@@ -284,6 +392,38 @@ std::shared_ptr<ObjectPresentationContext> GamePlay::CreateObjectPresentation(
         return context;
     }
     const auto behavior = properties.GetBehaviorType();
+    if (properties.GetCollisionType() == CollisionType::MercuryRaySegment || IsElectricBolt(object))
+    {
+        auto context = std::make_shared<EmissiveRayContext>();
+        context->Update(object, instance);
+        return context;
+    }
+    if (behavior == BehaviorType::MercuryLamp)
+    {
+        auto source = std::make_shared<LightSource>(&scene);
+        auto hit = std::make_shared<LightSource>(&scene);
+        for (const auto& light : {source, hit})
+        {
+            light->SetColor({0,255,255}, 2.f);
+            light->SetCoronaSize(0.f);
+        }
+        auto context = std::make_shared<MercuryLampContext>(source, hit);
+        source->SetCoronaDepthBias(30.f * DespToFloat);
+        context->Update(object, instance);
+        scene.AddLightSource(source);
+        scene.AddLightSource(hit);
+        return context;
+    }
+    if (IsMercuryReceiver(object))
+    {
+        auto light = std::make_shared<LightSource>(&scene);
+        light->SetColor({255,0,0}, 2.f);
+        light->SetCoronaDepthBias(30.f * DespToFloat);
+        auto context = std::make_shared<MercuryReceiverContext>(light);
+        context->Update(object, instance);
+        scene.AddLightSource(light);
+        return context;
+    }
     if (behavior == BehaviorType::Ghost)
     {
         auto light = std::make_shared<LightSource>(&scene);
@@ -307,9 +447,10 @@ std::shared_ptr<ObjectPresentationContext> GamePlay::CreateObjectPresentation(
     {
     case BehaviorType::LightSource:
         light = std::make_shared<FlickeringLight>(&scene);
-        light->SetColor(Color4{255,240,180}, 2.f);
-        light->SetCoronaColorMod(Color4{255,220,140});
+        light->SetColor(IsElectricImpact(object) ? Color4{70,210,255} : Color4{255,240,180}, 2.f);
+        light->SetCoronaColorMod(IsElectricImpact(object) ? Color4{255,255,255} : Color4{255,220,140});
         light->SetRadius(140.f * DespToFloat);
+        if (IsElectricImpact(object)) { light->SetCoronaSize(0.f); }
         break;
     case BehaviorType::PulsatingLight:
         light = std::make_shared<PulsatingLight>(&scene);
@@ -340,7 +481,7 @@ std::shared_ptr<ObjectPresentationContext> GamePlay::CreateObjectPresentation(
     default:
         return {};
     }
-    auto context = std::make_shared<ObjectLightContext>(behavior, light);
+    auto context = std::make_shared<ObjectLightContext>(behavior, light, IsElectricImpact(object));
     context->Update(object, instance);
     scene.AddLightSource(light);
     return context;

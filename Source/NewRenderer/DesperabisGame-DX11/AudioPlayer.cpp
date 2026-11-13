@@ -17,6 +17,15 @@ namespace
             throw std::runtime_error(message.str());
         }
     }
+
+    void ConfigureAmbientEnvironment(IXAudio2SourceVoice& voice, bool indoors)
+    {
+        XAUDIO2_FILTER_PARAMETERS filter{LowPassFilter,
+            indoors ? XAudio2CutoffFrequencyToRadians(400.f, SoundSample::SampleRate) :
+                XAUDIO2_MAX_FILTER_FREQUENCY, 1.f};
+        CheckAudioResult(voice.SetFilterParameters(&filter), "Ambient filter update");
+        CheckAudioResult(voice.SetVolume(indoors ? 0.1f : 1.f), "Ambient volume update");
+    }
 }
 
 AudioPlayer::ComApartment::ComApartment()
@@ -50,7 +59,7 @@ AudioPlayer::AudioPlayer(std::vector<std::shared_ptr<const SoundSample>> samples
     for (auto& channel : m_channels) { channel = CreateChannel(); }
 }
 
-std::unique_ptr<IXAudio2SourceVoice, AudioPlayer::DestroyVoice> AudioPlayer::CreateChannel()
+std::unique_ptr<IXAudio2SourceVoice, AudioPlayer::DestroyVoice> AudioPlayer::CreateChannel(bool enableFilter)
 {
     WAVEFORMATEX format{};
     format.wFormatTag = WAVE_FORMAT_PCM;
@@ -60,7 +69,8 @@ std::unique_ptr<IXAudio2SourceVoice, AudioPlayer::DestroyVoice> AudioPlayer::Cre
     format.nBlockAlign = format.nChannels * format.wBitsPerSample / 8;
     format.nAvgBytesPerSec = format.nSamplesPerSec * format.nBlockAlign;
     IXAudio2SourceVoice* voice = nullptr;
-    CheckAudioResult(m_engine->CreateSourceVoice(&voice, &format), "Audio channel creation");
+    CheckAudioResult(m_engine->CreateSourceVoice(&voice, &format, enableFilter ? XAUDIO2_VOICE_USEFILTER : 0),
+        "Audio channel creation");
     return std::unique_ptr<IXAudio2SourceVoice, DestroyVoice>(voice);
 }
 
@@ -162,6 +172,7 @@ void AudioPlayer::BeginAmbientLoopCreation(std::size_t capacityFrames)
     m_ambientLoopLength = 0;
     m_buildingAmbient = true;
     m_loopAmbient = true;
+    m_ambientIndoors = false;
 }
 
 void AudioPlayer::ValidateAmbientWrite(std::size_t offset, std::size_t length) const
@@ -210,7 +221,8 @@ void AudioPlayer::StartAmbientPlayback()
         throw std::logic_error("Ambient playback requires a completed creation pass.");
     }
     StopAmbientPlayback();
-    auto voice = CreateChannel();
+    auto voice = CreateChannel(true);
+    ConfigureAmbientEnvironment(*voice, m_ambientIndoors);
     XAUDIO2_BUFFER buffer{};
     buffer.AudioBytes = static_cast<UINT32>(m_ambientLoopLength);
     buffer.pAudioData = m_ambientPcm.data();
@@ -226,6 +238,12 @@ void AudioPlayer::StopAmbientPlayback()
     m_ambientVoice.reset();
 }
 
+void AudioPlayer::SetAmbientIndoor(bool indoors)
+{
+    if (m_ambientVoice) { ConfigureAmbientEnvironment(*m_ambientVoice, indoors); }
+    m_ambientIndoors = indoors;
+}
+
 void AudioPlayer::CreateMusicPlayback(const std::vector<std::uint8_t>& pcm, bool looping)
 {
     if (pcm.empty() || pcm.size() > XAUDIO2_MAX_BUFFER_BYTES)
@@ -238,4 +256,5 @@ void AudioPlayer::CreateMusicPlayback(const std::vector<std::uint8_t>& pcm, bool
     m_ambientLoopLength = m_ambientPcm.size();
     m_buildingAmbient = false;
     m_loopAmbient = looping;
+    m_ambientIndoors = false;
 }

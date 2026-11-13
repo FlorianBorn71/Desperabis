@@ -210,6 +210,9 @@ namespace
             Check(FindBehavior(entry.type) == &entry && FindBehavior(entry.name) == &entry,
                 "Behavior enum/name lookup must reference the same descriptor.");
             const bool implemented = entry.type == BehaviorType::Pillar || entry.type == BehaviorType::LightSource ||
+                entry.type == BehaviorType::MercuryLamp || entry.type == BehaviorType::ActionObjectToGrab ||
+                entry.type == BehaviorType::ItemHiddenInBox || entry.type == BehaviorType::RoofTopThunderHandler1 ||
+                entry.type == BehaviorType::DestroyableRoof || entry.type == BehaviorType::RoofTopThunderHandler2 ||
                 entry.type == BehaviorType::KeyInBucket || entry.type == BehaviorType::KnightsCrossbow ||
                 entry.type == BehaviorType::CeilingBladesComingDown || entry.type == BehaviorType::PortableCoffin ||
                 entry.type == BehaviorType::BladesFromSide || entry.type == BehaviorType::DistanceSkyToggle ||
@@ -2099,9 +2102,7 @@ namespace
         key.health = -1;
         Check(HandlePlayerObjectInteraction(key, state).status == InteractionStatus::InactiveObject,
             "Host interaction requests must reject inactive selected objects.");
-        for (const auto type : { CollisionType::BookWithCode,
-            CollisionType::VaseToGrab, CollisionType::MirrorToGrab,
-            CollisionType::SarcophagusWithBones })
+        for (const auto type : { CollisionType::BookWithCode })
         {
             auto unsupported = pickup(type);
             const auto before = unsupported;

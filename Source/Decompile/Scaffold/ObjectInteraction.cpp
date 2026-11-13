@@ -271,10 +271,35 @@ namespace Desperabis
             }
             return { InteractionStatus::Applied };
         }
-        case CollisionType::BookWithCode:
+        case CollisionType::SarcophagusWithBones:
+            state.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+                GameContext::GetSoundVolume(0), object, 1);
+            object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity +
+                object.velocityX * state.frameTickCount);
+            if (object.blendWeightOrSpriteOpacity > 100)
+            {
+                object.blendWeightOrSpriteOpacity = 0;
+                object.collisionType = CollisionType::Switch;
+                if (object.itemValue > 0) { HandleSwitchInteraction(object, state); }
+                object.blendWeightOrSpriteOpacity = 100;
+                object.velocityX = 0;
+                object.collisionMask = 0;
+            }
+            return { InteractionStatus::Applied };
+
         case CollisionType::VaseToGrab:
         case CollisionType::MirrorToGrab:
-        case CollisionType::SarcophagusWithBones:
+        {
+            auto portable = item;
+            portable.collisionType = CollisionType::Weapon;
+            const auto result = StoreInventoryObject(portable, object, state);
+            if (result.status == InteractionStatus::Applied && object.generalPurpose1 > 0)
+            {
+                state.ActivateObjectGroup(WrapSignedWord(object.generalPurpose1));
+            }
+            return result;
+        }
+        case CollisionType::BookWithCode:
             return { InteractionStatus::UnimplementedHandler };
 
         default:

@@ -1679,9 +1679,86 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::ShootArrows, 0x1E07 };
     }
 
-    DispatchResult Function_MercuryLamp(RawGameObject&, GameContext&)
+    DispatchResult Function_MercuryLamp(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::MercuryLamp, 0x1E53 };
+        if (object.health == 1000)
+        {
+            if (object.modelFrame2 > 0) { object.animFrame = object.modelFrame2; }
+            object.modelFrame2 = 0;
+            object.blendWeightOrSpriteOpacity = WrapSignedWord(object.blendWeightOrSpriteOpacity +
+                GetStepToward(object.blendWeightOrSpriteOpacity, 0, context.tickCount));
+            if (object.blendWeightOrSpriteOpacity <= 0)
+            {
+                object.blendWeightOrSpriteOpacity = object.itemValue;
+                object.generalPurpose1 = 0;
+                for (std::size_t slot = 2; slot < context.worldObjects.size(); ++slot)
+                {
+                    if (context.worldObjects[slot].collisionType == CollisionType::MercuryRaySegment)
+                    {
+                        context.SetObjectHealth(context.worldObjects[slot], 0);
+                    }
+                }
+                for (int length = 1; length <= 61; ++length)
+                {
+                    auto ray = object;
+                    ray.animFrame = ray.modelAnim = 2;
+                    ray.modelFrame2 = 0;
+                    ray.displayType = DisplayType::VectorNormal;
+                    ray.itemValue = 6400;
+                    ray.behavior = BehaviorType::None;
+                    ray.collisionRadiusXZ = 10;
+                    ray.collisionRadiusY = 8;
+                    ray.renderPlacementMode = 1;
+                    ray.health = static_cast<std::int16_t>(std::clamp(context.frameTickCount * 30, 1, 500));
+                    ray.winY = WrapSignedWord(ray.winY + 256);
+                    ray.collisionType = CollisionType::MercuryRaySegment;
+                    ray.collisionMask = 0;
+                    std::int16_t dx = 0, dz = 0;
+                    GetClampedDirectionDisplacement(dx, dz, ray.winY, -ray.itemValue);
+                    bool blocked = false;
+                    for (int step = 0; step < length; ++step)
+                    {
+                        const auto previousX = ray.posX, previousZ = ray.posZ;
+                        AddFixedPoint8(ray.posX, ray.velocityX, dx);
+                        AddFixedPoint8(ray.posZ, ray.velocityZ, dz);
+                        if ((context.GetCollisionMapPixelAtWorldXZ(ray.posX, ray.posZ) & 8) != 0)
+                        {
+                            // Renderer-only endpoint metadata; no lights are attached to individual segments.
+                            object.generalPurpose1 = 1;
+                            object.generalPurpose2 = static_cast<std::uint16_t>(previousX);
+                            object.generalPurpose3 = static_cast<std::uint16_t>(previousZ);
+                            blocked = true;
+                            break;
+                        }
+                        ray.collisionMask = 3;
+                        const auto hit = context.FindCollidingObject(ray);
+                        ray.collisionMask = 0;
+                        if (hit == 0) { continue; }
+                        auto& target = context.worldObjects[hit];
+                        if (target.collisionType == CollisionType::MirrorToGrab)
+                        {
+                            ray.winY = static_cast<std::int16_t>((target.winY * 2 + 256 - ray.winY) & 511);
+                            GetClampedDirectionDisplacement(dx, dz, ray.winY, -ray.itemValue);
+                        }
+                        else if (target.collisionType == CollisionType::LightSensor)
+                        {
+                            context.ActivateObjectGroup(target.itemValue);
+                            target.collisionType = CollisionType::None;
+                            target.behaviorParameter = static_cast<std::uint8_t>(CollisionType::LightSensor);
+                            if (target.modelFrame2 > 0) { target.animFrame = target.modelFrame2; }
+                        }
+                        else
+                        {
+                            blocked = true;
+                            break;
+                        }
+                    }
+                    if (blocked) { break; }
+                    context.ReplaceWorldObject(context.FindFreeObjectIndex(), ray);
+                }
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::MercuryLamp, 0x1E53 };
     }
 
     DispatchResult Function_SpearOnGroundTrap(RawGameObject& object, GameContext& context)
@@ -2399,9 +2476,10 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_82, 0x2947 };
     }
 
-    DispatchResult Function_ItemHiddenInBox(RawGameObject&, GameContext&)
+    DispatchResult Function_ItemHiddenInBox(RawGameObject& object, GameContext&)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::ItemHiddenInBox, 0x2A65 };
+        if (object.health == 1000) { object.collisionMask = 1; }
+        return { DispatchStatus::ExecutedCase, BehaviorType::ItemHiddenInBox, 0x2A65 };
     }
 
     namespace
@@ -3496,9 +3574,14 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::RotatingBlades, 0x4997 };
     }
 
-    DispatchResult Function_ActionObjectToGrab(RawGameObject&, GameContext&)
+    DispatchResult Function_ActionObjectToGrab(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::ActionObjectToGrab, 0x49AD };
+        object.collisionType = static_cast<CollisionType>(object.velocityX & 255);
+        object.posY = WrapSignedWord(context.GetTerrainFloorHeight(object.posX, object.posY, object.posZ) +
+            ArithmeticShiftRight(object.collisionRadiusY, 1));
+        object.posX = WrapSignedWord(((object.posX - 12) / 50) * 50 + 25);
+        object.posZ = WrapSignedWord(((object.posZ - 12) / 50) * 50 + 25);
+        return { DispatchStatus::ExecutedCase, BehaviorType::ActionObjectToGrab, 0x49AD };
     }
 
     namespace
@@ -3536,9 +3619,20 @@ namespace Desperabis
         return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_168, 0x4AF2 };
     }
 
-    DispatchResult Function_RoofTopThunderHandler1(RawGameObject&, GameContext&)
+    DispatchResult Function_RoofTopThunderHandler1(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::RoofTopThunderHandler1, 0x4B0E };
+        if (object.health == 1000)
+        {
+            object.generalPurpose1 = static_cast<std::uint16_t>(object.generalPurpose1 - context.tickCount);
+            if (WrapSignedWord(object.generalPurpose1) < 0)
+            {
+                context.PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId),
+                    GameContext::GetSoundVolume(0), 601, 1);
+                context.ActivateObjectGroup(object.itemValue);
+                object.behavior = BehaviorType::None;
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::RoofTopThunderHandler1, 0x4B0E };
     }
 
     DispatchResult Function_ObjectPoseSequence(RawGameObject& object, GameContext& context)
@@ -3765,14 +3859,60 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::StrandedFish, 0x4D7E };
     }
 
-    DispatchResult Function_DestroyableRoof(RawGameObject&, GameContext&)
+    DispatchResult Function_DestroyableRoof(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::DestroyableRoof, 0x4E0D };
+        if (object.health == 1000)
+        {
+            const auto distance = context.GetSoundDistanceAt(object.posX, object.posZ);
+            object.modelAnim = 5;
+            object.animFrame = 4;
+            while (const auto slot = context.FindCollidingObject(object))
+            {
+                auto& target = context.worldObjects[slot];
+                context.SetObjectHealth(target, 20);
+                target.collisionMask = 0;
+            }
+            context.ReplaceSurfaceSelector(object.posX, object.posZ, 28, 160);
+            for (int i = 1; i <= 16; ++i)
+            {
+                RawGameObject emitter = object;
+                emitter.generalPurpose1 = static_cast<std::uint16_t>(context.Random(2) + 7);
+                emitter.posX = WrapSignedWord(object.posX + context.RandomSigned(10));
+                emitter.posY = WrapSignedWord(object.posY + context.Random(20));
+                emitter.posZ = WrapSignedWord(object.posZ + context.RandomSigned(10));
+                emitter.winY = static_cast<std::int16_t>(i * 32);
+                emitter.behaviorParameter = static_cast<std::uint8_t>(context.Random(5));
+                context.SpawnEmitterProjectile(emitter);
+            }
+            for (int i = -2; i <= 4; ++i)
+            {
+                const auto slot = context.FindFreeObjectIndex();
+                RawGameObject smoke;
+                context.InitializeSmokeParticle(smoke, object.posX, WrapSignedWord(object.posY - i * 10),
+                    object.posZ, 20, static_cast<std::int16_t>((i & 1) + 1), 0);
+                context.ReplaceWorldObject(slot, smoke);
+            }
+            if (distance < 200) { context.ApplyPlayerLifeDelta(-context.playerLife); }
+            context.StopAllSoundEffects();
+            context.PlaySoundEffect(static_cast<SoundEffect>(103), GameContext::GetSoundVolume(0), 602, 1);
+            object.behavior = BehaviorType::None;
+            context.playerRenderTable = 16;
+            context.FlashLight({object.posX, object.posY, object.posZ}, {255, 220, 180}, 0.f, 0.75f, 400.f);
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::DestroyableRoof, 0x4E0D };
     }
 
-    DispatchResult Function_RoofTopThunderHandler2(RawGameObject&, GameContext&)
+    DispatchResult Function_RoofTopThunderHandler2(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::RoofTopThunderHandler2, 0x4E28 };
+        if (object.health < 1001)
+        {
+            object.animFrame = static_cast<std::uint8_t>(context.Random(4) + 1);
+            do { object.modelFrame2 = static_cast<std::uint8_t>(context.Random(4) + 1); }
+            while (object.animFrame == object.modelFrame2);
+            object.displayType = DisplayType::VectorLavaTint;
+            if (object.health == 1000) { context.SetObjectHealth(object, 20); }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::RoofTopThunderHandler2, 0x4E28 };
     }
 
     DispatchResult Function_RoofTopThunderHandler3(RawGameObject& object, GameContext& context)
