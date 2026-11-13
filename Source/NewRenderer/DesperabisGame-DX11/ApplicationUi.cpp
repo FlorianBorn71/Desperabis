@@ -486,12 +486,14 @@ Vector WeaponPointWorld(const Desperabis::WeaponView& view, const Vector& point,
 }
 
 Vector ApplicationUi::ElectricityTipWorld(const Desperabis::WeaponView& view,
-    const Desperabis::ModelAnchorGeometry& geometry, const Camera& camera, const D3D11_VIEWPORT& viewport)
+    const Level& level, const Camera& camera, const D3D11_VIEWPORT& viewport)
 {
+    const auto animation = level.GetLevelInfo().GetModelAnim(view.object.modelId - 30);
+    const auto* model = animation ? animation->GetModelSafe(view.object.modelAnim - 1, view.object.animFrame - 1) : nullptr;
+    if (!model) { throw std::runtime_error("Electricity presentation requires its original model geometry."); }
     // Native electricity bolts branch from vertex 3 in both firing frames.
-    const auto& vertex = geometry.animations.at(view.object.modelAnim - 1).at(view.object.animFrame - 1).vertices.at(2);
-    return WeaponPointWorld(view, Vector(-vertex[0] * DespVertToFloat,
-        -vertex[1] * DespVertToFloat, vertex[2] * DespVertToFloat), camera, viewport);
+    const auto& vertex = model->m_sourcePositions.at(2);
+    return WeaponPointWorld(view, Vector(vertex.x, vertex.y, vertex.z), camera, viewport);
 }
 
 Vector ApplicationUi::HeldTorchTipWorld(const Desperabis::WeaponView& view,
@@ -503,6 +505,35 @@ Vector ApplicationUi::HeldTorchTipWorld(const Desperabis::WeaponView& view,
     // VEKT54 4/5 vertex 24 anchors the largest of the four authored flame sprites.
     const auto& vertex = model->m_sourcePositions.at(23);
     return WeaponPointWorld(view, Vector(vertex.x, vertex.y, vertex.z), camera, viewport);
+}
+
+void ApplicationUi::AlignElectricBolts(const Desperabis::GameContext& core, const Level& level,
+    const std::array<std::shared_ptr<RenderableInstance>, 166>& instances, const Vector& tip)
+{
+    for (int slot = 2; slot <= 165; ++slot)
+    {
+        const auto& object = core.GetWorldObjects()[slot];
+        if (object.health <= 0 || !instances[slot]) { continue; }
+        ::RawGameObject raw{};
+        Desperabis::EncodeGameObject(object, raw.m_rawBytes, sizeof(raw.m_rawBytes));
+        if (!GamePlay::IsElectricBolt(raw)) { continue; }
+        const auto animation = level.GetLevelInfo().GetModelAnim(object.modelId - 30);
+        const auto* model = animation ? animation->GetModelSafe(object.modelAnim - 1, object.animFrame - 1) : nullptr;
+        if (!model || model->m_sourcePositions.empty())
+        {
+            throw std::runtime_error("Electric bolt alignment requires its original line model.");
+        }
+        float length = 0.f;
+        for (const auto& position : model->m_sourcePositions) { length = (std::max)(length, position.z); }
+        if (length <= 0.f) { throw std::runtime_error("Electric bolt model requires a positive longitudinal extent."); }
+        const auto native = GamePlay::PropertyAccessorBase(raw).GetTransform();
+        auto correction = native.GetTranslation() - tip;
+        correction *= 1.f / length;
+        Matrix4 aligned;
+        // Shift the root to the held emitter, tapering that correction to zero at the far end.
+        aligned.Create(tip, native.GetRightDir(), native.GetUpDir(), native.GetDirection() + correction);
+        instances[slot]->SetTransformAndUpdate(aligned);
+    }
 }
 
 void ApplicationUi::DrawBossFall(const std::vector<Desperabis::RawGameObject>& objects,

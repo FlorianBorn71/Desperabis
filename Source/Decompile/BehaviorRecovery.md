@@ -5411,13 +5411,32 @@ frame-tick count; absent a target restores the pre-trigger amount. Damage is
 target-minus-beam Y and a rounded square root of the native wrapped signed-word
 horizontal square; an invalid negative square-root domain throws explicitly.
 
-The first-person charged/firing/depleted recipes above remain native. Successful
+The first-person charged/firing models above remain native, but modern
+presentation uses the complete charged idle model (2/3) when empty instead of
+the native depleted frame (5/4), even if a firing or tip-spark latch remains.
+Modern presentation holds both with a fixed 64-unit pitch instead
+of applying the native firing-only pitch/yaw swing, so firing does not drop the
+weapon out of view. Projection center Y stays 125 in charged and depleted states,
+so running out of charge does not make the grip jump down.
+The held model always uses the right-hand side at X +9 DOS units (three times
+the old 3-unit offset), independently of which inventory slot owns it.
+The charged sphere's authored red shades approximate a DOS glass-distortion
+effect, not a red light. Replacing that with modern refraction is deferred.
+Successful
 shots use standard weapon-bank animation 6, choosing two different frames among
 1..3 and morphing between their original line meshes. The renderer applies
 additive, unlit instance materials without changing the shared assets.
+DX11 presentation aligns each live bolt's local origin with the actual held
+vertex-3 tip. An affine correction tapers to zero at the original model's far
+Z extent, preserving its far endpoint and all native targeting/damage/save
+coordinates. Alignment is rebuilt from the native transform each time so it
+cannot accumulate drift.
 While firing, a game-specific tip light flickers rapidly in electric blue,
 with a 160-DOS-unit range and a large 40-unit corona. Its position uses the
-existing projection of first-person vertex 3; the light flickers in intensity,
+existing projection of first-person vertex 3 from the renderer's loaded model,
+not optional GameCore `modelAnchors` (which are loaded only for gameplay
+attachments and dragon anchors). Firing therefore requires no extra geometry
+load into GameCore. The light flickers in intensity,
 not position. The original short-lived impact sprite owns one blue 140-unit
 light at the struck point, rather than inheriting an ordinary flame's warm
 color and vertical offset. No light is added per bolt segment. Expiry, slot
@@ -5426,6 +5445,22 @@ gameplay removes the held-tip light. No core renderer additions are required.
 `ApplicationUiTests` exercises native attack creation, all three original bolt
 frames in both chapter banks, visible/changing GPU flashes in darkness, blue
 impact positioning, flame/impact slot reuse, tip flicker and large corona.
+It also verifies identical empty/charged-idle pixels, including with stale
+firing/spark latches, bottom-edge pixels and matching projection matrices,
+visible firing tips, a stable firing/idle grip,
+tip-root flash pixels and unchanged far endpoints across both chapter banks
+and three aspect ratios. The held `MetalPole` model moves 8 DOS units right;
+GPU centroids verify the shift without changing other placeable weapons.
+Pressing the DX11 no-collision key N also restores charge entry 7 to 360 (100%),
+on either toggle direction; it does not change native resource consumption.
+An electric shot without an eligible target retains its native -4 sentinel and
+charge refund, but no longer hides the first-person model. A separate transient
+tip-spark latch selects the original firing frames without creating a ranged
+beam. The tip light and corona both flicker at one quarter of successful-shot
+intensity; releasing fire clears the latch. This state is reset on save loading
+and New Game, not serialized. Repeated no-target fire is checked in
+`ranged-weapons`, and GPU tests require miss-state pixels to match the
+flickering-tip model at all tested aspect ratios.
 
 **Scythe/hedge:** attack ID 24 shares `0000:C1D0..C373` with the shovel:
 pose 17 creates the same 5-damage contact, with reach 55, Y offset -35,

@@ -10,7 +10,8 @@ namespace Desperabis
     std::optional<WeaponView> GameContext::GetWeaponView() const
     {
         if (GetMenuPage() != MenuPage::Gameplay || IsCutscenePlaying() || worldObjects[1].itemValue > 0 ||
-            weaponAnimationSpeed == -2 || weaponAnimationSpeed == -4 ||
+            weaponAnimationSpeed == -2 ||
+            (weaponAnimationSpeed == -4 && selectedWeapon != WeaponType::Electricity) ||
             (selectedWeapon == WeaponType::None && !field_D500) ||
             selectedWeapon == WeaponType::ShopGold ||
             (weaponSpriteFrame == 0 && selectedWeapon != WeaponType::TrapOrPole &&
@@ -122,19 +123,19 @@ namespace Desperabis
             break;
         case WeaponType::Electricity:
         {
-            const int side = weaponHand == 1 ? 1 : -1;
             sprite(5);
-            const bool charged = weaponAmounts[7] > 0;
-            model(charged ? 2 : 5, charged ? (weaponElectricityFiring ? 4 : 3) : 4,
-                { 3 * side, 220 / 7 + bounce + 15 - pose, 65 + bounce,
-                    weaponElectricityFiring ? 6 * pose : 0, weaponElectricityFiring ? 100 * side : 0, 0 });
-            if (charged && weaponElectricityFiring)
+            const bool sparking = weaponAmounts[7] > 0 &&
+                (weaponElectricityFiring || weaponElectricitySparking);
+            model(2, sparking ? 4 : 3,
+                { 9, 220 / 7 + bounce + 15 - pose, 65 + bounce,
+                    64, 0, 0 });
+            if (sparking)
             {
                 view.object.modelFrame2 = 5;
                 view.object.blendWeightOrSpriteOpacity = -100;
                 view.object.displayType = DisplayType::VectorTorchlight;
             }
-            view.projectionCenterY = 90;
+            view.projectionCenterY = 125.f;
             break;
         }
         case WeaponType::TrapOrPole:
@@ -145,7 +146,7 @@ namespace Desperabis
             if (inventory[weaponHand - 1].health != 1000) { return std::nullopt; }
             view.kind = WeaponView::Kind::Model;
             view.object = inventory[weaponHand - 1];
-            view.object.posX = 0;
+            view.object.posX = view.object.behavior == BehaviorType::MetalPole ? 8 : 0;
             view.object.posY = WrapSignedWord(220 / 10 + pose);
             if (view.object.behavior == BehaviorType::BonesToGrab ||
                 (view.object.behavior == BehaviorType::ActionObjectToGrab &&

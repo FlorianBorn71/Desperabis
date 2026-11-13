@@ -432,9 +432,33 @@ namespace
 
         Fixture miss;
         miss.Equip(WeaponType::Electricity, 100);
+        miss.context.SetMenuPage(MenuPage::Gameplay);
+        miss.context.weaponSpriteFrame = 1;
+        miss.context.weaponAnimationPosition = 15;
+        miss.context.weaponElectricityFiring = true;
         miss.context.AttackWithSelectedWeapon();
         Check(miss.context.weaponAmounts[7] == 100 && miss.context.weaponAnimationSpeed == -4 &&
             miss.context.worldObjects[2].health == 0, "No electric target restores the pre-attack charge.");
+        for (int repeat = 0; repeat < 3; ++repeat)
+        {
+            const auto view = miss.context.GetWeaponView();
+            Check(view && view->object.modelAnim == 2 && view->object.animFrame == 4 &&
+                view->object.modelFrame2 == 5 && view->object.blendWeightOrSpriteOpacity == -100 &&
+                miss.context.weaponElectricitySparking && !miss.context.weaponElectricityFiring,
+                "Missing an electric target must animate the held tip sparks without creating a ranged beam.");
+            miss.context.UpdateWeaponAnimation(1);
+            Check(miss.context.weaponElectricitySparking && !miss.context.weaponElectricityFiring,
+                "The electric no-target sentinel must retain its separate tip-spark latch after normalization.");
+            miss.context.AttackWithSelectedWeapon();
+            Check(miss.context.weaponAmounts[7] == 100,
+                "Holding electric fire without a target must keep refunding the native charge cost.");
+        }
+        miss.context.UpdateWeaponAnimation(1);
+        miss.context.UpdateWeaponAnimation(1);
+        Check(!miss.context.weaponElectricitySparking && !miss.context.weaponElectricityFiring &&
+            miss.context.GetWeaponView()->object.animFrame == 3 &&
+            miss.context.worldObjects[2].health == 0,
+            "Releasing no-target fire must stop tip sparks without having created any ranged beam.");
         miss.Equip(WeaponType::Electricity, 1);
         miss.Enemy(20, 1100);
         miss.context.AttackWithSelectedWeapon();

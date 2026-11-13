@@ -166,6 +166,7 @@ namespace Desperabis
         weaponSpriteFrame = weaponHand = requestedWeaponHand = 0;
         weaponAnimationSpeed = weaponAnimationPosition = weaponAnimationRecoil = 0;
         weaponElectricityFiring = false;
+        weaponElectricitySparking = false;
         weaponReady = true;
         playerLifeMaximum = 360;
         playerLifeDeltaSuppressed = playerHitEffectTicks = 0;

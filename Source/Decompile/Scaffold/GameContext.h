@@ -457,6 +457,7 @@ namespace Desperabis
         std::int16_t weaponAnimationPosition = 0; // DS:DDBD.
         std::int16_t weaponAnimationRecoil = 0; // DS:DDBF, set by digging contacts.
         bool weaponElectricityFiring = false; // Native draw branch latches the command before phase normalization.
+        bool weaponElectricitySparking = false; // Charged no-target fire animates only the held tip.
         std::int16_t playerLookHeight = 110; // DS:D4A4, screen horizon rather than an angle.
         std::int16_t playerTargetLookHeight = 110; // DS:D4B6, keyboard-requested horizon.
         bool playerUnderwater = false; // DS:D4FC; movement follows the submerged floor.

@@ -8,6 +8,15 @@
 #include <Renderer/Camera.h>
 #include <stdexcept>
 
+bool GamePlay::IsElectricBolt(const RawGameObject& object)
+{
+    const PropertyAccessorBase properties(object);
+    return object.m_rawBytes[0] == 31 && object.m_rawBytes[1] == 6 &&
+        properties.GetBehaviorType() == BehaviorType::None &&
+        properties.GetDisplayType() == DisplayType::VectorUnlit &&
+        properties.GetCollisionType() == CollisionType::None;
+}
+
 namespace
 {
     void ApplyAdditiveMaterials(RenderableInstance* instance)
@@ -67,15 +76,6 @@ namespace
         void Remove(Scene&) override {}
     };
 
-    bool IsElectricBolt(const RawGameObject& object)
-    {
-        const GamePlay::PropertyAccessorBase properties(object);
-        return object.m_rawBytes[0] == 31 && object.m_rawBytes[1] == 6 &&
-            properties.GetBehaviorType() == GamePlay::BehaviorType::None &&
-            properties.GetDisplayType() == GamePlay::DisplayType::VectorUnlit &&
-            properties.GetCollisionType() == GamePlay::CollisionType::None;
-    }
-
     bool IsElectricImpact(const RawGameObject& object)
     {
         const GamePlay::PropertyAccessorBase properties(object);
@@ -90,7 +90,7 @@ namespace
         bool Matches(const RawGameObject& object) const override
         {
             return GamePlay::PropertyAccessorBase(object).GetCollisionType() == GamePlay::CollisionType::MercuryRaySegment ||
-                IsElectricBolt(object);
+                GamePlay::IsElectricBolt(object);
         }
         void Update(const RawGameObject&, RenderableInstance* instance) override
         {

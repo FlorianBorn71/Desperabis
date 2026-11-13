@@ -594,10 +594,27 @@ void TestWeaponPresentation()
         firing->object.modelFrame2 == 5 && firing->object.blendWeightOrSpriteOpacity == -100,
         "Electricity must retain its firing branch after the native command normalizes to zero.");
     context.UpdateWeaponAnimation(1);
-    Check(context.GetWeaponView()->object.animFrame == 3, "Electricity must return to its charged idle model on the next frame.");
+    const auto electricIdle = context.GetWeaponView();
+    Check(electricIdle->object.animFrame == 3, "Electricity must return to its charged idle model on the next frame.");
+    Check(electricIdle->object.posX == firing->object.posX && electricIdle->object.posY == firing->object.posY &&
+        electricIdle->object.posZ == firing->object.posZ && electricIdle->object.winX == firing->object.winX &&
+        electricIdle->object.winY == firing->object.winY && electricIdle->object.winZ == firing->object.winZ,
+        "Firing electricity must animate its original mesh without dropping or spinning the held weapon.");
     context.weaponAmounts[7] = 0;
-    Check(context.GetWeaponView()->object.modelAnim == 5 && context.GetWeaponView()->object.animFrame == 4,
-        "Depleted electricity must use the native alternate model bank frame.");
+    context.weaponElectricityFiring = true;
+    context.weaponElectricitySparking = true;
+    const auto electricEmpty = context.GetWeaponView();
+    Check(electricEmpty->object.modelAnim == electricIdle->object.modelAnim &&
+        electricEmpty->object.animFrame == electricIdle->object.animFrame &&
+        electricEmpty->object.modelFrame2 == electricIdle->object.modelFrame2 &&
+        electricEmpty->object.displayType == electricIdle->object.displayType &&
+        electricEmpty->object.blendWeightOrSpriteOpacity == electricIdle->object.blendWeightOrSpriteOpacity,
+        "Empty electricity must use the complete charged idle model even with stale firing or spark latches.");
+    Check(electricEmpty->projectionCenterY == electricIdle->projectionCenterY &&
+        electricEmpty->object.posY == electricIdle->object.posY &&
+        electricEmpty->object.posZ == electricIdle->object.posZ &&
+        electricEmpty->object.winX == electricIdle->object.winX,
+        "Running out of electric charge must not lower or rotate the held weapon.");
     context.weaponAnimationSpeed = 0;
     context.SetMenuPage(MenuPage::Inventory);
     Check(!context.GetWeaponView(), "Inventory must suppress the first-person weapon.");

@@ -224,6 +224,7 @@ namespace Desperabis
         weaponAnimationRecoil = save.SignedWord(w + 9);
         weaponReady = save.bytes[w + 15] != 0;
         weaponElectricityFiring = false;
+        weaponElectricitySparking = false;
         playerHitEffectTicks = 0;
         positionalSoundsSuppressed = false;
         playerRenderTable = save.bytes[NativeSaveGame::RenderTable];

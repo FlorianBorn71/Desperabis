@@ -1172,14 +1172,15 @@ namespace
 			const auto view = g_gameCore->GetWeaponView();
 			const bool firing = view && g_gameCore->selectedWeapon == Desperabis::WeaponType::Electricity &&
 				g_gameCore->weaponElectricityFiring && g_gameCore->weaponAmounts[7] > 0;
+			const bool sparking = view && g_gameCore->selectedWeapon == Desperabis::WeaponType::Electricity &&
+				g_gameCore->weaponElectricitySparking && g_gameCore->weaponAmounts[7] > 0;
 			Vector tip(0,0,0);
-			if (firing)
+			if (firing || sparking)
 			{
-				const auto* level = g_gameCore->GetLevel();
-				if (!level || !level->modelAnchors[1]) { throw std::logic_error("Electricity requires weapon geometry."); }
-				tip = ApplicationUi::ElectricityTipWorld(*view, *level->modelAnchors[1], *g_camera, g_viewport);
+				tip = ApplicationUi::ElectricityTipWorld(*view, *g_scene->m_level, *g_camera, g_viewport);
 			}
-			g_scene->SetElectricityLight(firing, tip);
+			g_scene->SetElectricityLight(firing || sparking, tip, sparking);
+			if (firing) { ApplicationUi::AlignElectricBolts(*g_gameCore, *g_scene->m_level, g_objectInst, tip); }
 			const bool burning = view && view->object.health == 1000 &&
 				g_gameCore->selectedWeapon == Desperabis::WeaponType::TrapOrPole &&
 				view->object.behavior == Desperabis::BehaviorType::MetalPole &&
@@ -1358,6 +1359,7 @@ namespace
 				g_gameCore->GetMenuPage() == Desperabis::MenuPage::Gameplay)
 			{
 				g_gameCore->DEBUG_noPlayerCollision = !g_gameCore->DEBUG_noPlayerCollision;
+				g_gameCore->weaponAmounts[7] = 360;
 				if (g_gameCore->DEBUG_noPlayerCollision) { g_gameCore->ApplyPlayerLifeDelta(0); }
 				g_gameCore->PromptUserMessage(g_gameCore->DEBUG_noPlayerCollision ?
 					"Player collision: off" : "Player collision: on", 90);

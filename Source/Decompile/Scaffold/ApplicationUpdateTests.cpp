@@ -286,6 +286,7 @@ namespace
             host.weaponAnimationSpeed = host.weaponAnimationPosition = 100;
             host.weaponSpriteFrame = host.weaponHand = host.requestedWeaponHand = 2;
             host.weaponElectricityFiring = true;
+            host.weaponElectricitySparking = true;
             host.weaponAnimationRecoil = 99;
             host.weaponReady = false;
             host.SetPaused(true);
@@ -322,7 +323,8 @@ namespace
                 host.selectedWeapon == WeaponType::None && host.requestedWeapon == WeaponType::None &&
                 host.weaponSpriteFrame == 0 && host.weaponHand == 0 && host.requestedWeaponHand == 0 &&
                 host.weaponAnimationSpeed == 0 && host.weaponAnimationPosition == 0 && host.weaponAnimationRecoil == 0 &&
-                host.weaponReady && !host.weaponElectricityFiring && !host.positionalSoundsSuppressed,
+                host.weaponReady && !host.weaponElectricityFiring && !host.weaponElectricitySparking &&
+                !host.positionalSoundsSuppressed,
                 "New Game must reset carried inventory, money, poison, maps, vital meters and weapon commands.");
             Check(host.DEBUG_noPlayerCollision && !host.soundEnabled &&
                 !host.basicPlayerMovementEnabled && !host.behaviorDispatchEnabled,

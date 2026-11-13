@@ -46,7 +46,9 @@ public:
         ID3D11DeviceContext3* deviceContext, ID3D11RenderTargetView* colorView, ID3D11DepthStencilView* depthView,
         const VisibilityResult* world = nullptr, const Scene* animationScene = nullptr);
     static Vector ElectricityTipWorld(const Desperabis::WeaponView& view,
-        const Desperabis::ModelAnchorGeometry& geometry, const Camera& camera, const D3D11_VIEWPORT& viewport);
+        const Level& level, const Camera& camera, const D3D11_VIEWPORT& viewport);
+    static void AlignElectricBolts(const Desperabis::GameContext& core, const Level& level,
+        const std::array<std::shared_ptr<RenderableInstance>, 166>& instances, const Vector& tip);
     static Vector HeldTorchTipWorld(const Desperabis::WeaponView& view,
         const Level& level, const Camera& camera, const D3D11_VIEWPORT& viewport);
     void DrawBossFall(const std::vector<Desperabis::RawGameObject>& objects, RendererDX11& renderer,

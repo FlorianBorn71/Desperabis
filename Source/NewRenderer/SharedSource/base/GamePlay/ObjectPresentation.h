@@ -15,6 +15,7 @@ public:
 
 namespace GamePlay
 {
+    bool IsElectricBolt(const RawGameObject& object);
     std::shared_ptr<ObjectPresentationContext> CreateObjectPresentation(
         Scene& scene, int levelIndex, int slot, const RawGameObject& object, RenderableInstance* instance);
 }

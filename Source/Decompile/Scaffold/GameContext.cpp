@@ -3164,12 +3164,16 @@ namespace Desperabis
             if (targetSlot == 0)
             {
                 weaponAnimationSpeed = -4;
+                weaponElectricityFiring = false;
+                weaponElectricitySparking = true;
                 weaponAmounts[7] = oldAmount;
             }
             else
             {
                 PlaySoundEffect(static_cast<SoundEffect>(45),
                     GetSoundVolume(WrapSignedWord(200 + Random(200))), object, 1);
+                weaponElectricitySparking = false;
+                weaponElectricityFiring = weaponAmounts[7] > 0;
                 object.posX = WrapSignedWord(camera.position[0] + ArithmeticShiftRight(player.velocityX, 1));
                 object.posY = WrapSignedWord(camera.position[1] - 24 +
                     ArithmeticShiftRight(WrapSignedWord(playerLookHeight - 90), 2));
@@ -3221,7 +3225,9 @@ namespace Desperabis
         if (ticks < 0) { throw std::invalid_argument("Weapon animation ticks must be nonnegative."); }
         if (worldObjects[1].itemValue > 0) { return WeaponActionStatus::NoEffect; }
         weaponElectricityFiring = selectedWeapon == WeaponType::Electricity &&
-            weaponAnimationSpeed < -2 && weaponAmounts[7] > 0;
+            weaponAnimationSpeed == -3 && weaponAmounts[7] > 0;
+        weaponElectricitySparking = selectedWeapon == WeaponType::Electricity &&
+            weaponAnimationSpeed == -4 && weaponAmounts[7] > 0;
         const auto decay = [&]
         {
             if (weaponAnimationSpeed > 0)

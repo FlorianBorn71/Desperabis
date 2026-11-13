@@ -12,22 +12,28 @@
 #include <Renderer/LightSource.h>
 #include <cmath>
 
-namespace
+class ElectricTipLight final : public LightSource
 {
-    class ElectricTipLight final : public LightSource
+public:
+    explicit ElectricTipLight(Scene* scene) : LightSource(scene) {}
+    void SetSparksOnly(bool sparksOnly)
     {
-    public:
-        explicit ElectricTipLight(Scene* scene) : LightSource(scene) {}
-        void Update(double elapsedTime) override
-        {
-            m_phase = std::fmod(m_phase + elapsedTime, 2.0 * Math::Pi);
-            m_multiplier = static_cast<float>(2.0 + 0.7 * std::sin(m_phase * 53.0) +
-                0.3 * std::sin(m_phase * 97.0));
-        }
-    private:
-        double m_phase = 0.0;
-    };
-}
+        m_strength = sparksOnly ? 0.25f : 1.f;
+        Update(0.0);
+    }
+    void Update(double elapsedTime) override
+    {
+        m_phase = std::fmod(m_phase + elapsedTime, 2.0 * Math::Pi);
+        const float flicker = static_cast<float>(2.0 + 0.7 * std::sin(m_phase * 53.0) +
+            0.3 * std::sin(m_phase * 97.0));
+        m_multiplier = m_strength * flicker;
+        const auto brightness = static_cast<std::uint8_t>(std::lround(255.f * m_strength * flicker / 3.f));
+        SetCoronaColorMod({brightness, brightness, brightness});
+    }
+private:
+    double m_phase = 0.0;
+    float m_strength = 1.f;
+};
 
 LevelScene::LevelScene(int levelIndex, std::shared_ptr<Level> loadedLevel)
     : m_levelIndex(levelIndex), m_loadedLevel(std::move(loadedLevel))
@@ -118,9 +124,9 @@ void LevelScene::FireEmitted(int slot, const RawGameObject& object, const Vector
     if (auto& context = m_objectPresentations.at(slot)) { context->FireEmitted(position); }
 }
 
-void LevelScene::SetElectricityLight(bool firing, const Vector& tip)
+void LevelScene::SetElectricityLight(bool active, const Vector& tip, bool sparksOnly)
 {
-    if (!firing)
+    if (!active)
     {
         if (m_electricityLight) { RemoveLightSource(m_electricityLight); m_electricityLight.reset(); }
         return;
@@ -134,6 +140,7 @@ void LevelScene::SetElectricityLight(bool firing, const Vector& tip)
         m_electricityLight->SetCoronaSize(40.f * DespToFloat);
         AddLightSource(m_electricityLight);
     }
+    m_electricityLight->SetSparksOnly(sparksOnly);
     m_electricityLight->SetPosition(tip);
     m_electricityLight->UpdateGlobalBounds();
 }

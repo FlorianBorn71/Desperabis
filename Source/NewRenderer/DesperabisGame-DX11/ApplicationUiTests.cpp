@@ -1154,6 +1154,23 @@ namespace
                 Camera camera;
                 camera.SetCameraTransformMatrix(transform);
                 camera.SetProjectionMatrix(projection);
+                core.weaponAnimationPosition = 15;
+                core.weaponElectricityFiring = true;
+                const auto tip = ApplicationUi::ElectricityTipWorld(*core.GetWeaponView(),
+                    *scene.m_level, camera, target.viewport);
+                const auto farthest = std::max_element(standard->m_sourcePositions.begin(), standard->m_sourcePositions.end(),
+                    [](const auto& a, const auto& b) { return a.z < b.z; });
+                const Vector farPoint(farthest->x,farthest->y,farthest->z);
+                const auto nativeEnd = beam->GetTransform().TransformPosition(farPoint);
+                std::array<std::shared_ptr<RenderableInstance>, 166> instances{};
+                instances[2] = beam;
+                ApplicationUi::AlignElectricBolts(core, *scene.m_level, instances, tip);
+                Check((beam->GetTransform().GetTranslation() - tip).GetLength() < 0.00001f &&
+                    (beam->GetTransform().TransformPosition(farPoint) - nativeEnd).GetLength() < 0.00001f,
+                    "Electric flashes must start at the actual held tip without moving their native far endpoint.");
+                ApplicationUi::AlignElectricBolts(core, *scene.m_level, instances, tip);
+                Check((beam->GetTransform().TransformPosition(farPoint) - nativeEnd).GetLength() < 0.00001f,
+                    "Repeated electric alignment must not accumulate presentation drift.");
                 VisibilityResult visible;
                 visible.m_mainCamera = &camera;
                 visible.m_scene = &scene;
@@ -1173,6 +1190,14 @@ namespace
                     "Each original electric line model must produce visible GPU flash pixels.");
                 Check(previous.empty() || previous != pixels,
                     "Successive original electric bolt shapes must produce different flashes.");
+                const auto projectedTip = (camera.GetViewMatrix(0) * projection).TransformPosition(tip);
+                const int tipX = static_cast<int>((projectedTip.GetX() + 1.f) * target.width * 0.5f);
+                const int tipY = static_cast<int>((1.f - projectedTip.GetY()) * target.height * 0.5f);
+                bool touchesTip = false;
+                for (int y = (std::max)(0, tipY - 3); y < (std::min)(static_cast<int>(target.height), tipY + 4); ++y)
+                    for (int x = (std::max)(0, tipX - 3); x < (std::min)(static_cast<int>(target.width), tipX + 4); ++x)
+                        touchesTip |= (pixels[y * target.width + x] & 0xffffff) != 0;
+                Check(touchesTip, "Actual electric flash pixels must touch the visible first-person tip.");
                 previous = pixels;
             }
             auto warmObject = impactObject;
@@ -1190,7 +1215,7 @@ namespace
                 "Expired electric impacts must remove their light immediately.");
             scene.ClearScene();
         }
-        std::cout << "Electric bolts: native attack, six original chapter line models, emissive GPU flashes, blue impact and slot cleanup passed.\n";
+        std::cout << "Electric bolts: native attack, six original chapter line models, tip-root GPU flashes, preserved far endpoints, blue impact and slot cleanup passed.\n";
     }
 
     void CheckCoronaDepthBias(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
@@ -1503,6 +1528,25 @@ namespace
             Check(std::count_if(pixels.begin(), pixels.end(),
                 [](auto pixel) { return (pixel & 0xffffff) != 0; }) > 20,
                 "The picked-up underwater pole must draw visible first-person geometry over occluding world depth.");
+            auto centered = *poleCore.GetWeaponView();
+            centered.object.posX = 0;
+            context->ClearRenderTargetView(poleTarget.colorView.Get(), black);
+            ui.DrawWeapon(centered, renderer, *scene.m_level, poleSettings, poleStats,
+                poleTarget.viewport, context, poleTarget.colorView.Get(), poleTarget.depthView.Get());
+            const auto centeredPixels = poleTarget.Pixels(device, context);
+            const auto centroidX = [&](const auto& rendered)
+            {
+                double sum = 0, count = 0;
+                for (std::size_t i = 0; i < rendered.size(); ++i)
+                    if ((rendered[i] & 0xffffff) != 0) { sum += i % poleTarget.width; ++count; }
+                Check(count > 0, "Held-pole placement requires visible original model pixels.");
+                return sum / count;
+            };
+            const float scale = (std::min)(poleTarget.viewport.Width / Desperabis::WeaponView::Width,
+                poleTarget.viewport.Height / Desperabis::WeaponView::Height);
+            Check(centroidX(pixels) - centroidX(centeredPixels) > 5.f * scale &&
+                centroidX(pixels) - centroidX(centeredPixels) < 50.f * scale,
+                "The held pole must move modestly right of its previous centered placement at every aspect ratio.");
         }
         ui.Deinitialize();
         const Model& model = *scene.m_level->GetLevelInfo().GetModelAnim(2)->GetModel(1, 0);
@@ -7222,11 +7266,31 @@ namespace
             "Electricity must provide one blue light and a large tip corona.");
         electricity->FillLightParams(params);
         const float initialBlue = params.ColorAndPadding.z;
+        electricity->FillCoronaParams(params);
+        const float initialCorona = params.ColorAndPadding.z;
         scene.Update(0.02);
         electricity->FillLightParams(params);
         Check(std::abs(params.ColorAndPadding.z - initialBlue) > 0.01f &&
             (electricity->GetPosition() - position).GetLength() < 0.00001f,
             "The electric tip light must flicker rapidly without shifting away from the held tip.");
+        const float fullBlue = params.ColorAndPadding.z;
+        electricity->FillCoronaParams(params);
+        const float electricCorona = params.ColorAndPadding.z;
+        Check(std::abs(electricCorona - initialCorona) > 0.01f,
+            "The electric tip corona must flicker together with its light.");
+        scene.SetElectricityLight(true, position, true);
+        electricity->FillLightParams(params);
+        Check(std::abs(params.ColorAndPadding.z - fullBlue * 0.25f) < 0.001f,
+            "No-target tip sparks must use one quarter of the ranged shot's light intensity.");
+        electricity->FillCoronaParams(params);
+        const float sparkCorona = params.ColorAndPadding.z;
+        Check(std::abs(sparkCorona - electricCorona * 0.25f) < 0.01f &&
+            scene.GetLightSources().back() == electricity,
+            "No-target tip sparks must dim the same corona without reallocating its light.");
+        scene.Update(0.02);
+        electricity->FillCoronaParams(params);
+        Check(std::abs(params.ColorAndPadding.z - sparkCorona) > 0.001f,
+            "The reduced no-target corona must continue flickering.");
         scene.SetElectricityLight(true, position + Vector(1,0,0));
         Check(scene.GetLightSources().back() == electricity &&
             (electricity->GetPosition() - position - Vector(1,0,0)).GetLength() < 0.00001f,
@@ -8955,6 +9019,9 @@ int main(int argc, char* argv[])
                     Check(count > 5, "Every original weapon must render actual pixels despite occluding world depth.");
                     if (type == Desperabis::WeaponType::Electricity)
                     {
+                        ComPtr<ID3D11Buffer> depletedGlobalsBuffer;
+                        context->VSGetConstantBuffers(0, 1, &depletedGlobalsBuffer);
+                        const auto depletedGlobals = ReadBuffer<float>(device.Get(), context.Get(), depletedGlobalsBuffer.Get());
                         weaponCore.weaponAmounts[7] = 100;
                         weaponCore.weaponElectricityFiring = true;
                         Camera worldCamera;
@@ -8985,6 +9052,9 @@ int main(int argc, char* argv[])
                                 Matrix4 actualModel, actualProjection;
                                 actualModel.Load(instanceData.data()); actualModel = actualModel.GetTransposed();
                                 actualProjection.Load(globals.data() + 64); actualProjection = actualProjection.GetTransposed();
+                                Check(std::equal(depletedGlobals.begin() + 64, depletedGlobals.begin() + 80,
+                                    globals.begin() + 64),
+                                    "Charged and depleted electricity must use the same GPU projection without a downward jump.");
                                 const auto gpuTip = (actualModel * actualProjection).TransformPosition(Vector(0,0,53 * DespVertToFloat));
                                 const float scale = (std::min)(target.viewport.Width / Desperabis::WeaponView::Width,
                                     target.viewport.Height / Desperabis::WeaponView::Height);
@@ -8992,7 +9062,16 @@ int main(int argc, char* argv[])
                                     gpuTip.GetX() * Desperabis::WeaponView::Width * scale * 0.5f;
                                 const float expectedY = target.viewport.Height -
                                     (gpuTip.GetY() + 1.f) * Desperabis::WeaponView::Height * scale * 0.5f;
-                                const auto worldTip = ApplicationUi::ElectricityTipWorld(charged, electricityGeometry, worldCamera, target.viewport);
+                                const auto worldTip = ApplicationUi::ElectricityTipWorld(charged, *weaponLevel, worldCamera, target.viewport);
+                                if (pose == 15)
+                                {
+                                    Check(expectedY < target.viewport.Height - 20.f * scale &&
+                                        expectedY > 0.f && expectedX > 0.f && expectedX < target.viewport.Width,
+                                        "The firing emitter must stay visibly above the bottom edge in both hands.");
+                                    Check(expectedX > target.viewport.Width * 0.5f + 12.f * scale &&
+                                        expectedX < target.viewport.Width * 0.5f + 25.f * scale,
+                                        "The electric weapon must stay on the right with its larger offset regardless of inventory hand.");
+                                }
                                 const auto projected = (worldCamera.GetViewMatrix(0) * projection).TransformPosition(worldTip);
                                 const float actualX = (projected.GetX() + 1.f) * target.viewport.Width * 0.5f;
                                 const float actualY = (1.f - projected.GetY()) * target.viewport.Height * 0.5f;
@@ -9083,9 +9162,20 @@ int main(int argc, char* argv[])
                     }
                     if (type == Desperabis::WeaponType::Electricity)
                     {
+                        const auto checkBottomEdge = [&](const auto& rendered)
+                        {
+                            const auto band = static_cast<std::size_t>((std::max)(1.f,
+                                std::ceil(2.f * (std::min)(target.viewport.Width / Desperabis::WeaponView::Width,
+                                    target.viewport.Height / Desperabis::WeaponView::Height))));
+                            Check(std::any_of(rendered.end() - band * target.width, rendered.end(),
+                                [](auto pixel) { return (pixel & 0xffffff) != 0; }),
+                                "Idle and firing electric weapons must extend to the bottom edge instead of floating above it.");
+                        };
+                        checkBottomEdge(pixels);
                         weaponCore.weaponAnimationPosition = 15;
                         weaponCore.weaponAmounts[7] = 100;
                         std::vector<std::uint32_t> chargedPixels;
+                        std::vector<std::uint32_t> firingPixels;
                         for (const bool firing : { false, true })
                         {
                             weaponCore.weaponElectricityFiring = firing;
@@ -9093,11 +9183,39 @@ int main(int argc, char* argv[])
                             ui.DrawWeapon(*weaponCore.GetWeaponView(), renderer, *weaponLevel, settings, stats, target.viewport,
                                 context.Get(), target.colorView.Get(), target.depthView.Get());
                             const auto energyPixels = target.Pixels(device.Get(), context.Get());
-                            Check(energyPixels != pixels, "Charged electricity must differ from its depleted view.");
-                            if (!firing) { chargedPixels = energyPixels; }
-                            else { Check(energyPixels != chargedPixels, "Electricity firing must render its animated alternate model."); }
+                            checkBottomEdge(energyPixels);
+                            if (!firing)
+                            {
+                                Check(energyPixels == pixels,
+                                    "Empty electricity must render exactly the complete charged idle model.");
+                                chargedPixels = energyPixels;
+                            }
+                            else
+                            {
+                                Check(energyPixels != chargedPixels, "Electricity firing must render its animated alternate model.");
+                                firingPixels = energyPixels;
+                            }
                         }
                         weaponCore.weaponElectricityFiring = false;
+                        weaponCore.weaponElectricitySparking = true;
+                        weaponCore.weaponAnimationSpeed = -4;
+                        const auto missView = weaponCore.GetWeaponView();
+                        Check(missView.has_value(), "An electric shot with no target must not hide the held weapon.");
+                        context->ClearRenderTargetView(target.colorView.Get(), black);
+                        ui.DrawWeapon(*missView, renderer, *weaponLevel, settings, stats, target.viewport,
+                            context.Get(), target.colorView.Get(), target.depthView.Get());
+                        Check(target.Pixels(device.Get(), context.Get()) == firingPixels,
+                            "No-target electric fire must render the original flickering-tip model, not the idle model.");
+                        weaponCore.weaponAmounts[7] = 0;
+                        weaponCore.weaponElectricityFiring = true;
+                        context->ClearRenderTargetView(target.colorView.Get(), black);
+                        ui.DrawWeapon(*weaponCore.GetWeaponView(), renderer, *weaponLevel, settings, stats, target.viewport,
+                            context.Get(), target.colorView.Get(), target.depthView.Get());
+                        Check(target.Pixels(device.Get(), context.Get()) == chargedPixels,
+                            "Losing the last charge must restore the charged idle model despite stale spark or firing latches.");
+                        weaponCore.weaponElectricityFiring = false;
+                        weaponCore.weaponElectricitySparking = false;
+                        weaponCore.weaponAnimationSpeed = 0;
                         weaponCore.weaponAmounts[7] = 0;
                     }
                 }

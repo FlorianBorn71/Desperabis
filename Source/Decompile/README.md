@@ -589,9 +589,22 @@ directory before rebuilding clients: DX11 loads the embedded bytecode in
 While a charged electricity weapon is firing in gameplay, the DX11 host
 maintains one rapidly flickering electric-blue light (160-unit range) and a
 large 40-unit corona at its bolt origin. Native weapon
-model vertex 3 is unchanged between the two firing frames. The application
+model vertex 3 is unchanged between the two firing frames. This vertex comes
+from the renderer's already-loaded weapon model, not the optional GameCore
+anchor cache. The application
 projects it using the first-person weapon viewport, then unprojects through
 the world camera so both hands, animated poses and aspect ratios stay aligned.
+The first-person model uses a stable tilted grip instead of the native
+firing-only rotation; charged and depleted models share the same projection
+center so losing charge does not lower the weapon.
+It is held on the right at X +9 DOS units, regardless of inventory hand.
+Charged no-target fire uses the original flickering-tip model, with the blue
+light and corona at quarter intensity; it refunds charge as before and creates
+no ranged beam.
+Empty electricity uses exactly the charged idle model, including its wooden
+pole and red sphere, rather than the native depleted frame. It never uses the
+firing animation without charge. The sphere's red-shaded DOS distortion
+approximation is unchanged; modern refraction is deferred.
 Stopping, weapon/menu changes, free-camera mode and scene clearing remove the
 electricity light. Transient/emission hooks apply to the GameCore-driven host;
 the remote DOS scene shares particle materials/projectile contexts but does not
@@ -600,6 +613,9 @@ Successful native shots render the standard animation-6 line meshes as
 additive/unlit instance overrides. Their original impact sprite adds a blue
 140-unit light at the struck point, cleaned up with its object lifetime.
 These effects use game-specific presentation and existing renderer facilities.
+World-space line models are anchored to the projected held tip with an affine
+correction that preserves their native far endpoints, targeting and save data.
+Held poles also move slightly right of their previous central placement.
 
 `Level::PopulateScene` requires a presentation callback when creating objects;
 `LevelScene` supplies it and translates the loader's zero-based object ordinal
@@ -648,6 +664,8 @@ uses `ApplyPlayerLifeDelta`, including health notification, on enable, ticks
 and level/save installation; it also clears death-camera and hit state.
 Disabling the cheat immediately restores ordinary damage and slope behavior,
 without disabling object interactions.
+Each DX11 N key press also refills electricity to its 360-unit maximum (100%),
+whether enabling or disabling no-collision; ordinary firing still consumes it.
 The normal standing eye height is 45 native units above terrain; crouched height
 is 28, with the original gradual transitions and changing collision radius.
 `JumpKey` raises a crouched player before jumping; releasing `CrouchKey` does not
