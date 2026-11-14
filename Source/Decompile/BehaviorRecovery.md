@@ -642,7 +642,8 @@ deliberately excluded. Additional confirmed part-1 gaps:
 - **BookWithCode (252):** supported by the picture-only code-book modal above.
   Light sensors (94) are activated by mercury rays, not player contact.
 - **Introduction:** HERZ entry 29 is still skipped rather than played.
-- **Part-1 outro:** completing map 35 currently returns directly to the menu.
+- **Part-1 outro:** completing map 35 plays the recorded crystal-ball ending
+  in scene 91 before returning to the menu; see below.
 
 The park's seven ordinary locked doors use lock IDs **1..7**, and its authored
 keys have matching `itemValue` IDs **1..7**. Original-asset regressions exercise
@@ -655,6 +656,79 @@ first-person model by **8 DOS units**, retaining the complete VEKT67 2/2 asset.
 GPU checks project the shaft's rear endpoint below the weapon viewport and
 keep the blade tip inside it for both idle poses, the lowest projection center,
 and walking-bob extrema.
+
+### Part-1 crystal-ball ending (level 91)
+
+Completing castle level 35 now loads scene 91, plays all 1,458 frames of
+`LEVEL/DEMO7.KOO`, and finishes the part at the main menu. `DEMO10.KOO` is
+byte-identical. This is recorded playback, not the timed-cutscene countdown
+(scene 91's `LEVELS.INF` duration byte is zero). The existing scene music
+binding selects `MUSIC2`.
+
+Native `0000:C558` reads six-byte `(signed X, signed Z, heading byte, action)`
+records. The heading byte selects twice that value in the 512-angle system.
+Action `0x20` lowers target look height by 10 when above 50; `0x10` raises it
+by 10 when below 130; `0x40` invokes ordinary interaction against the current
+collision target. The modern playback runs one neutral gameplay tick, replays
+these cues, then installs the recorded horizontal pose and target heading.
+See [recorded action evidence](recorded-cutscene-actions-evidence.txt).
+Other action bits are rejected explicitly rather than silently ignored.
+
+DEMO7 contains four look-down cues, beginning at zero-based frame 962, taking
+target look height from 110 to 70. Nineteen use cues begin at frame 1167.
+They operate authored invisible switch **slot 34**, whose `itemValue=1`
+activates group 1 and changes the skull from health **1001** to **1000**.
+There is no invented elapsed-time activation trigger. Pausing and zero ticks
+do not advance playback, live gameplay input is ignored, and batched updates
+preserve every intermediate simulation/RNG/action step.
+
+The central table is **slot 21**, `CrystalBallTableInCutScene` (211),
+`VEKT71.3DA` animation/frame 1/1, at `(1000,-1,3499)`. Its sprite primitive
+uses reserved texture slot **14**; the model has no embedded texture there.
+`FACKEL6.AN2` supplies twenty 33-by-33 masks in a 4-by-5 animation. Their
+palette indices 0..7 encode red-channel mask strength, so the existing
+electricity sphere shader can use the original palette without a grayscale
+override or a new shader.
+
+Authored **slot 6** retains the FACKEL6 tracker parameters (`itemValue=6`,
+target selector 2, period 2), but its behavior is disabled in OBJPOS91.
+Fresh scene-91 object loading explicitly enables `TrackFireAnimation` on
+this validated record before loading tracked-texture metadata. This is a
+modern recovery normalization; the exact native initializer enabling that
+marker has not been recovered. Save records are not rewritten. The DX11 host
+synchronizes FACKEL6 to core-selected frames instead of independent render
+timing.
+
+**Slot 18** uses `ANIM14.AN2`, `SkullInCutScene` (212). Native
+`10AC:D78E..D824` clears its opacity unless health equals 1000. When active,
+it advances word 38 by `Random(ticks * velocityZ)`, masks the phase to 511,
+and clamps `3 + signed_high_word(6 * Sine(phase))` to **0..5**. Its original
+speed is 4. See [skull routine evidence](crystal-ball-playback-evidence.txt).
+The presentation adapter maps inactive/zero opacity to fully invisible.
+Existing placement-20 attachment resolution follows parent slot **21** and
+one-based polygon **13**, putting the skull at the table's raised anchor
+without altering its native coordinates or link words. Behavior 211 does
+not require an additional per-frame table controller.
+
+The VEKT71 asset profile tags its slot-14 draw as a generic
+`DrawCallMaterial::m_distortedSphere` material. Unrelated sprites with similar
+primitive bytes are not reclassified. Animated binding preserves its
+alpha-pass classification, while auxiliary light sprites sharing the same
+tracked texture retain their ordinary additive presentation.
+DX11 captures the current scene and uses the
+existing sphere helper, restoring shader/atlas/sampler/blend/depth state.
+Transparent lenses retain world depth testing but do not write depth, so the
+attached skull can subsequently blend over the ball. Mirror passes omit this
+main-framebuffer lens; OpenGL explicitly reports the unsupported effect.
+
+`timed-meteor-cutscene` now also exercises the original scene through the
+complete recording, native switch activation, attachment, animated masks,
+pulsing opacity, input isolation, pause, batching and final unload.
+`level-progression` covers the new 35-to-91 request while preserving the
+26-to-96 ending. WARP tests compare material-driven refraction with the
+existing direct helper, test world-depth occlusion, render all twenty
+original mask frames, and verify that the activated skull changes real
+pixels after the refractive table pass.
 
 ### Native DS:D500 simulation gate: initialization and cutscene hypothesis
 
@@ -3897,8 +3971,8 @@ loads still never apply the cheat.
 [the contact and interaction evidence](player-collision-evidence.txt):
 
 * Contact with signed word **44 = 1000** is a terminal-part exit, regardless
-  of word 46. Training and the first part return to the main menu; the final
-  second-part level starts the recovered ending presentation.
+  of word 46. Training returns to the main menu; the first and second parts
+  start their recovered ending presentations.
 * Otherwise, contact advances only when signed word **46 = 0**.
 * Explicit interaction with **46 > 0** invokes the existing key-unlock helper
   `10AC:3DCE`; a matching key is consumed and the lock cleared. Subsequent
@@ -3906,8 +3980,9 @@ loads still never apply the cheat.
   automatic exits.
 
 `EndLevel` selects the next resource level within the current part; finishing
-`50` or `35` unloads gameplay and selects `MainMenu`, with no active/resumable
-game and no wrap into another part. Completing `26` starts recorded `96`,
+`50` unloads gameplay and selects `MainMenu`, with no active/resumable
+game and no wrap into another part. Completing `35` starts recorded `91`,
+then unloads to `MainMenu`. Completing `26` starts recorded `96`,
 then timed village epilogue `95`, then unloads to `MainMenu`.
 `StartNextGamePart` is a separate development
 operation. Tab/Shift+Tab are sampled by `UpdateApplication`, with a single

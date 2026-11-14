@@ -452,7 +452,10 @@ void RenderContextDX11::RenderDistortedSphere(const RenderableInstance& instance
     m_d3dContext->PSSetShader(m_rendererDX11.m_pixelShaderDistortedSphere.Get(), nullptr, 0);
     m_d3dContext->PSSetConstantBuffers(3, 1, texture->m_atlasDataBuffer.GetAddressOf());
     SetBlendState(TransparencyMode::Opaque);
-    RenderInstance<GeometryPassType::Instances>(&instance, material.m_transparencyType, drawCallIndex);
+    // Replace scene color without making transparent lenses occlude later transparency.
+    m_d3dContext->OMSetDepthStencilState(m_rendererDX11.m_depthState[
+        (int)BlendModeToDepthMode[(int)material.m_transparencyType]].Get(), 0);
+    RenderInstance<GeometryPassType::Instances>(&instance, material.m_transparencyType, drawCallIndex, false);
     m_d3dContext->PSSetShader(previousShader.Get(), nullptr, 0);
     m_d3dContext->PSSetConstantBuffers(3, 1, previousAtlas.GetAddressOf());
     m_d3dContext->PSSetShaderResources(2, 1, previousScene.GetAddressOf());

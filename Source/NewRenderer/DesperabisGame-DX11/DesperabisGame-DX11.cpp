@@ -823,7 +823,9 @@ namespace
 			if (object.health <= 0) { return; }
 			const bool meteor = object.behavior == Desperabis::BehaviorType::Meteor ||
 			    object.behavior == Desperabis::BehaviorType::MeteorImpact;
-			if (!meteor && object.behavior != Desperabis::BehaviorType::WitchMouthAnimation) { return; }
+			const bool crystalMask = object.behavior == Desperabis::BehaviorType::TrackFireAnimation &&
+			    object.itemValue == 6;
+			if (!meteor && !crystalMask && object.behavior != Desperabis::BehaviorType::WitchMouthAnimation) { return; }
 			const int target = meteor ? 15 : 12 + object.groupIndexOrLock;
 			const auto frame = geometry->trackedTextureFrames.at(target);
 			if (frame != 0) { g_scene->SetFireAnimationFrame(target, frame - 1); }

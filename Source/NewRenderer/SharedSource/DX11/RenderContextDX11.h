@@ -14,7 +14,8 @@ public:
     ~RenderContextDX11() = default;
 
     template<GeometryPassType PASSTYPE>
-    void RenderInstance(const RenderableInstance* instance, TransparencyMode transparencyFilter, int drawCallIndex = -1);
+    void RenderInstance(const RenderableInstance* instance, TransparencyMode transparencyFilter,
+        int drawCallIndex = -1, bool applyMaterialEffects = true);
 
     void TrackGlobals();
     void BeginRendering();

@@ -1249,6 +1249,17 @@ namespace Desperabis
             data.objects[slot] = offset < payload.size() ?
                 DecodeGameObject(payload.data() + offset, recordSize) : RawGameObject{};
         }
+        if (levelNumber == 91 && !pendingSaveGame)
+        {
+            // The authored crystal-mask tracker retains its parameters but has its behavior disabled.
+            auto& mask = data.objects[6];
+            if (mask.behavior != BehaviorType::None || mask.itemValue != 6 ||
+                mask.groupIndexOrLock != 2 || mask.behaviorParameter != 2)
+            {
+                throw std::invalid_argument("Crystal-ball scene requires its authored reserved-slot-14 mask tracker.");
+            }
+            mask.behavior = BehaviorType::TrackFireAnimation;
+        }
         if (pendingSaveGame)
         {
             data.objects[1] = DecodeGameObject(pendingSaveGame->bytes.data() + NativeSaveGame::Player, 54);

@@ -62,7 +62,10 @@ namespace
             if (std::filesystem::path(name).extension() == ".KOO")
             {
                 ++pathReads;
-                throw std::runtime_error("The timed meteor scene must not load a recorded demo.");
+                if (name != "LEVEL\\DEMO7.KOO")
+                {
+                    throw std::runtime_error("The timed meteor scene must not load a recorded demo.");
+                }
             }
             std::ifstream file(assets / name, std::ios::binary);
             if (!file) { throw std::runtime_error("Missing cutscene fixture: " + std::string(name)); }
@@ -277,6 +280,74 @@ namespace
             "Automatic scene completion must preserve carried progress and load the next real level.");
     }
 
+    void TestCrystalBallEnding()
+    {
+        Host single, batch;
+        single.original = batch.original = true;
+        single.StartLevel(35);
+        single.EndLevel();
+        batch.StartLevel(91);
+        Check(single.GetLoadedLevelNumber() == 91 && single.IsCutscenePlaying() && single.pathReads == 1,
+            "The castle finale must start the level-91 recording, not return directly to the menu.");
+        Check(single.worldObjects[6].behavior == BehaviorType::TrackFireAnimation &&
+            single.GetLevel()->trackedTextureFrameCounts[6] == 20,
+            "The crystal ball must load its twenty authored masks into reserved texture slot 14.");
+        Input input;
+        input.keys.fill(true);
+        single.Tick({0,0}, input);
+        single.SetPaused(true);
+        single.Tick({10,10}, input);
+        Check(single.levelElapsedTicks == 0, "Pause and zero ticks must freeze the recorded ending.");
+        single.SetPaused(false);
+        bool animated = false, appeared = false;
+        std::array<bool, 6> opacities{};
+        int previousFrame = 0;
+        for (int tick = 0; tick < 1457; ++tick)
+        {
+            const auto result = single.Tick({1,1}, input);
+            Check(result.status == GameTickStatus::Advanced && result.objects.has_value(),
+                "Every recorded crystal-ball frame must advance the world.");
+            for (const auto& dispatched : *result.objects)
+            {
+                Check(dispatched.status != DispatchStatus::UnimplementedHandler,
+                    "The authored crystal-ball scene must have no missing behavior handlers.");
+            }
+            const auto frame = single.GetLevel()->trackedTextureFrames[14];
+            animated |= previousFrame != 0 && frame != previousFrame;
+            previousFrame = frame;
+            const auto& skull = single.worldObjects[18];
+            if (tick < 1167)
+            {
+                Check(skull.health == 1001 && skull.blendWeightOrSpriteOpacity == 0,
+                    "The skull must remain invisible until the recording uses its switch.");
+            }
+            if (skull.health == 1000)
+            {
+                appeared = true;
+                Check(skull.blendWeightOrSpriteOpacity >= 0 && skull.blendWeightOrSpriteOpacity <= 5,
+                    "Skull transparency must stay in the native 0..5 range.");
+                opacities[skull.blendWeightOrSpriteOpacity] = true;
+            }
+            const auto presented = single.GetObjectRenderState(18);
+            Check(presented.posX == 1000 && presented.posZ == 3499 &&
+                skull.generalPurpose3 == 13 && skull.doorLockOrGroupBitmask == 21,
+                "The skull must follow the table's attachment without corrupting its native phase or links.");
+        }
+        batch.Tick({1457,1457}, input);
+        Check(animated && appeared && std::count(opacities.begin(), opacities.end(), true) > 2 &&
+            input.calls == 0 && single.playerTargetLookHeight == 70,
+            "Playback must animate the ball, execute recorded look/use cues, pulse the skull and ignore live input.");
+        Check(std::memcmp(single.worldObjects.data(), batch.worldObjects.data(), sizeof(single.worldObjects)) == 0 &&
+            single.randomSeed == batch.randomSeed && single.GetPlayerHeading() == batch.GetPlayerHeading(),
+            "Batched recorded playback must retain every intermediate event, behavior update and RNG draw.");
+        single.Tick({100,100}, input);
+        Check(!single.IsCutscenePlaying() && !single.GetLoadedLevelNumber() &&
+            single.GetMenuPage() == MenuPage::MainMenu && single.GetRuntimeState() == GameRuntimeState::NoLevel,
+            "The final recorded frame must finish Part 1 without loading Part 2's epilogue.");
+        batch.StartLevel(35);
+        Check(!batch.IsCutscenePlaying(), "Manual loads must discard crystal-ball playback.");
+    }
+
     void TestAftermathTimer()
     {
         GameContext context;
@@ -461,6 +532,7 @@ int main(int argc, char** argv)
         TestTimedCameraAndInput();
         TestClockAndCleanup();
         TestOriginalSceneAndBatching();
+        TestCrystalBallEnding();
         TestAftermathTimer();
         TestRecoveredFireBehaviors();
         TestNativeSavePolicy();

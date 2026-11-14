@@ -1127,18 +1127,25 @@ namespace
                         ((32 + y * 180 / target.height) << 8) | (120u << 16) | 0xff000000u;
                 }
             }
-            const auto render = [&](Texture& mask, float depth)
+            const auto render = [&](Texture& mask, float depth, bool materialEffect = false)
             {
                 context->UpdateSubresource(target.color.Get(), 0, nullptr, background.data(), target.width * 4, 0);
                 context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, depth, 0);
                 auto& material = sphere.GetOrCreateMaterialOverrides().at(0);
                 material.m_texture = &mask;
+                material.m_distortedSphere = materialEffect;
+                material.m_transparencyType = materialEffect ? TransparencyMode::AlphaBlended : TransparencyMode::Opaque;
                 material.ComputeHash();
+                sphere.ComputeTransparencyMask();
                 ComPtr<ID3D11PixelShader> before, after;
                 ComPtr<ID3D11Buffer> atlasBefore, atlasAfter;
                 context->PSGetShader(before.GetAddressOf(), nullptr, nullptr);
                 context->PSGetConstantBuffers(3, 1, atlasBefore.GetAddressOf());
-                draw.RenderDistortedSphere(sphere, 0);
+                if (materialEffect)
+                {
+                    draw.RenderInstance<GeometryPassType::Instances>(&sphere, TransparencyMode::AlphaBlended);
+                }
+                else { draw.RenderDistortedSphere(sphere, 0); }
                 context->PSGetShader(after.GetAddressOf(), nullptr, nullptr);
                 context->PSGetConstantBuffers(3, 1, atlasAfter.GetAddressOf());
                 Check(before == after, "Distorted spheres must restore the previous shader for subsequent geometry.");
@@ -1146,6 +1153,8 @@ namespace
                 return target.Pixels(device, context);
             };
             const auto clear = render(clearMask, 1.f);
+            Check(render(clearMask, 1.f, true) == clear,
+                "World refractive materials must use the same sphere pass as held electricity.");
             const UINT cx = target.width / 2, cy = target.height / 2;
             const float radius = viewport.Height * 0.35f / (2.f * std::tan(0.55f));
             const auto channel = [](std::uint32_t pixel, int component) { return (pixel >> (component * 8)) & 255; };
@@ -1198,6 +1207,8 @@ namespace
             checkAtlas(atlasMasks[1], dark);
             Check(render(clearMask, 0.f) == background,
                 "Opaque foreground depth must occlude a distorted sphere.");
+            Check(render(clearMask, 0.f, true) == background,
+                "World refractive materials must retain opaque scene occlusion.");
             for (auto& pixel : background) { pixel = (pixel & 0xff00ffffu) | (210u << 16); }
             const auto fresh = render(clearMask, 1.f);
             Check(channel(fresh[cy * target.width + cx], 2) >= 208 &&
@@ -1262,6 +1273,128 @@ namespace
             }
         }
         std::cout << "Distorted sphere: full-scene horizontal/vertical inversion, outward sample spread, authored mask darkening, atlas equivalence, fresh copies, clipping, depth, aspect scaling and both weapon banks passed.\n";
+    }
+
+    void CheckCrystalBallEnding(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        class Host final : public Desperabis::GameContext
+        {
+            std::vector<std::uint8_t> LoadFile(std::string_view filename) override
+            {
+                return FORCE_GET(FileManager::Instance().ReadDataFuture(FileManager::Instance().FilenameToNative(
+                    std::wstring(filename.begin(), filename.end()))));
+            }
+            void LoadLevel(const Desperabis::LevelLoadRequest& request) override
+            {
+                Desperabis::LevelLoadData data;
+                LoadLevelGeometry(request.levelNumber, data);
+                LoadLevelObjects(request.levelNumber, data);
+                InitializeLevelPlayerSpawn(data, {0,0,100});
+                CompleteLevelLoad(request.id, std::move(data));
+            }
+        } core;
+        class Input final : public Desperabis::InputHandler
+        {
+            bool IsKeyPressed(Desperabis::InputKey) override { return false; }
+        } input;
+        core.StartLevel(91);
+        auto* level = FORCE_GET(AssetManager::Instance().LoadLevel(91));
+        FlameScene scene;
+        FORCE_WAIT(scene.CreateScene());
+        std::array<RenderableInstancePtr, 2> objects;
+        const auto synchronize = [&]
+        {
+            const int slots[]{21,18};
+            for (std::size_t i = 0; i < objects.size(); ++i)
+            {
+                RawGameObject raw{};
+                raw.m_level = level;
+                Desperabis::EncodeGameObject(core.GetObjectRenderState(slots[i]), raw.m_rawBytes, 54);
+                level->ApplyRenderProperties(objects[i], raw);
+                objects[i]->UpdateGlobalBounds();
+                scene.AssignFireAnimations(*objects[i]);
+            }
+        };
+        for (auto& object : objects)
+        {
+            object = std::make_shared<RenderableInstance>();
+            scene.AddRenderableInstance(object);
+        }
+        synchronize();
+        Check(objects[1]->m_materialOverride.at(0).m_opacity == 0.f,
+            "The inactive crystal-ball skull must be fully invisible.");
+        RawGameObject glowSource{};
+        glowSource.m_level = level;
+        Desperabis::EncodeGameObject(core.GetObjectRenderState(7), glowSource.m_rawBytes, 54);
+        auto glow = std::make_shared<RenderableInstance>();
+        level->ApplyRenderProperties(glow, glowSource);
+        scene.AddRenderableInstance(glow);
+        glow->SetVisible(false);
+        RawGameObject tracker{};
+        tracker.m_level = level;
+        Desperabis::EncodeGameObject(core.worldObjects[6], tracker.m_rawBytes, 54);
+        LevelGameObject controller(&scene, tracker);
+        FORCE_WAIT(GamePlay::CreateObjectBehavior(scene, controller, tracker));
+        Check(scene.HasFlameSlot(14), "The recovered tracker must bind original FACKEL6 masks to the table.");
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        Matrix4 projection, transform;
+        projection.CreateProjection(1.5f, 70.f * Math::Pi / 180.f, 0.01f, 30.f);
+        transform.SetTranslation(Level::DespToPos(1000, 40, 3400));
+        Camera camera;
+        camera.SetProjectionMatrix(projection);
+        camera.SetCameraTransformMatrix(transform);
+        Texture lightmap;
+        lightmap.CreatePlainWhite();
+        lightmap.m_atlasData = {0,0,0.5f,0.5f};
+        RenderingSettings settings;
+        VisibilitySettings visibilitySettings;
+        DefaultVisibilityContext visibility;
+        ProfilingStats stats;
+        const auto render = [&](int frame)
+        {
+            scene.SetFireAnimationFrame(14, frame);
+            scene.HandleFireAnimations(0);
+            scene.ApplyFireAnimationFrames(*objects[0]);
+            const auto& materials = objects[0]->m_materialOverride;
+            const auto lens = std::find_if(materials.begin(), materials.end(),
+                [](const auto& material) { return material.m_distortedSphere; });
+            Check(lens != materials.end() && lens->m_texture &&
+                lens->m_transparencyType == TransparencyMode::AlphaBlended &&
+                objects[0]->HasTransparentMaterials(),
+                "Animated mask updates must retain the table's refractive transparent draw, not make it opaque or additive.");
+            Check(glow->m_materialOverride.at(0).m_transparencyType == TransparencyMode::Additive &&
+                !glow->m_materialOverride.at(0).m_distortedSphere,
+                "The same tracked texture must retain ordinary additive presentation on auxiliary light sprites.");
+            VisibilityResult visible;
+            visibility.ComputeResultFor(&camera, &scene, visible, settings, visibilitySettings, stats);
+            visible.m_ambientColor = {1,1,1};
+            visible.m_ambientNrmlContribution = 0.6f;
+            visible.m_fogFalloff = 0;
+            visible.m_lightmap = &lightmap;
+            const float blue[]{0.08f,0.3f,0.7f,1.f};
+            context->ClearRenderTargetView(target.colorView.Get(), blue);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            return target.Pixels(device, context);
+        };
+        const auto initial = render(0);
+        bool animated = false;
+        for (int frame = 1; frame < 20; ++frame) { animated |= render(frame) != initial; }
+        Check(animated, "Original FACKEL6 frames must change actual refracted scene pixels.");
+        core.Tick({1200,1200}, input);
+        for (int tick = 0; tick < 200 && core.worldObjects[18].blendWeightOrSpriteOpacity < 4; ++tick)
+        {
+            core.Tick({1,1}, input);
+        }
+        Check(core.worldObjects[18].health == 1000 && core.worldObjects[18].blendWeightOrSpriteOpacity >= 4,
+            "The original recording must activate a visibly pulsing skull.");
+        synchronize();
+        const auto withSkull = render(0);
+        Check(withSkull != initial,
+            "The attached original skull must remain visible after the table's refractive pass.");
+        scene.ClearScene();
+        std::cout << "Crystal-ball ending: original refractive table, all 20 mask frames and attached activated skull GPU pixels passed.\n";
     }
 
     void CheckElectricBolts(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
@@ -9521,6 +9654,7 @@ int main(int argc, char* argv[])
         CheckRooftopModels();
         CheckMercuryLamp(renderer, device.Get(), context.Get());
         CheckDistortedSphere(renderer, device.Get(), context.Get());
+        CheckCrystalBallEnding(renderer, device.Get(), context.Get());
         CheckElectricBolts(renderer, device.Get(), context.Get());
         CheckCoronaDepthBias(renderer, device.Get(), context.Get());
         CheckHeldTorch(renderer, device.Get(), context.Get());

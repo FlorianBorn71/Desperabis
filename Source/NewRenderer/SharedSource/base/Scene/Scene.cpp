@@ -195,7 +195,8 @@ void Scene::AddFireAnimationInstance(RenderableInstance& instance, std::size_t m
     {
         GAME_ERROR_AND_RETURN(std::out_of_range("Animated texture slot must be in 0..15."));
     }
-    if (m_fireAnimations[slot].m_additive) { targetMaterial.m_transparencyType = TransparencyMode::Additive; }
+    if (targetMaterial.m_distortedSphere) { targetMaterial.m_transparencyType = TransparencyMode::AlphaBlended; }
+    else if (m_fireAnimations[slot].m_additive) { targetMaterial.m_transparencyType = TransparencyMode::Additive; }
     for (auto& animation : m_fireAnimationInstances)
     {
         if (animation.m_targetInstance == &instance && animation.m_materialIndex == materialIndex)
@@ -276,7 +277,8 @@ void Scene::ApplyFireAnimationFrames(RenderableInstance& instance) const
         const auto frame = slot.m_frame >= 0 ? static_cast<std::size_t>(slot.m_frame) :
             static_cast<std::size_t>(std::fmod(GetSceneTime() * slot.m_speed, slot.m_torchAnim->m_frames.size()));
         material.m_texture = &slot.m_torchAnim->m_frames.at(frame);
-        material.m_transparencyType = slot.m_additive ? TransparencyMode::Additive : TransparencyMode::Opaque;
+        material.m_transparencyType = material.m_distortedSphere ? TransparencyMode::AlphaBlended :
+            (slot.m_additive ? TransparencyMode::Additive : TransparencyMode::Opaque);
         material.ComputeHash();
     }
     for (auto& child : instance.m_subInstances) { ApplyFireAnimationFrames(child); }
@@ -306,7 +308,8 @@ void Scene::HandleFireAnimations(double elapsedTime)
         }
         if (slot.m_frame >= 0)
         {
-            mat.m_transparencyType = slot.m_additive ? TransparencyMode::Additive : TransparencyMode::Opaque;
+            mat.m_transparencyType = mat.m_distortedSphere ? TransparencyMode::AlphaBlended :
+                (slot.m_additive ? TransparencyMode::Additive : TransparencyMode::Opaque);
             mat.m_texture = &slot.m_torchAnim->m_frames[slot.m_frame];
             mat.ComputeHash();
             anim.m_targetInstance->ComputeTransparencyMask();

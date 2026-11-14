@@ -142,6 +142,9 @@ For the first explained case and shared collision-map pointer, see
   surface selectors to 29; the renderer updates static-model fire presentation
   and grid brightness without replacing meshes.
   See [meteor cutscene recovery](BehaviorRecovery.md#timed-meteor-cutscene-after-the-swamp).
+  Part 1 now ends through scene 91: original DEMO7 camera/look/use playback,
+  animated crystal-ball refraction and the switch-activated attached skull,
+  then the main menu. See [crystal-ball ending](BehaviorRecovery.md#part-1-crystal-ball-ending-level-91).
 - `player-movement-evidence.txt`: keyboard/mouse controls, movement/turning,
   terrain support, collision-map correction, and player-object synchronization.
   The controller is identified but not yet implemented.

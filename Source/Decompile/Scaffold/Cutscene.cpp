@@ -1,4 +1,5 @@
 #include "GameContext.h"
+#include "BehaviorDispatch.h"
 
 #include <algorithm>
 #include <cmath>
@@ -117,12 +118,13 @@ namespace Desperabis
         recordedCutsceneFrame = 0;
         cutsceneCameraSlot.reset();
         cinematicDepthShade = 0;
-        if (loadedLevelNumber == 96 && !restoringSave)
+        if ((loadedLevelNumber == 96 || loadedLevelNumber == 91) && !restoringSave)
         {
-            auto path = LoadFile("LEVEL\\DEMO6.KOO");
-            if (path.size() < 9 || path[0] != 96)
+            const bool crystalBall = loadedLevelNumber == 91;
+            auto path = LoadFile(crystalBall ? "LEVEL\\DEMO7.KOO" : "LEVEL\\DEMO6.KOO");
+            if (path.size() < 9 || path[0] != *loadedLevelNumber)
             {
-                throw std::invalid_argument("Ending requires a level-96 DEMO6 recording.");
+                throw std::invalid_argument("Ending recording does not match the loaded scene.");
             }
             const auto size = static_cast<std::size_t>(path[1] | (path[2] << 8));
             if (size == 0 || size % 6 != 0 || path.size() != size + 3)
@@ -131,7 +133,8 @@ namespace Desperabis
             }
             for (std::size_t offset = 3; offset < path.size(); offset += 6)
             {
-                if (path[offset + 5] != 0)
+                const int supportedActions = crystalBall ? 0x70 : 0;
+                if ((path[offset + 5] & ~supportedActions) != 0)
                 {
                     throw std::invalid_argument("Ending recording contains unrecovered action bits.");
                 }
@@ -209,6 +212,20 @@ namespace Desperabis
                     result.playerMovement = movement;
                 }
                 auto& player = worldObjects[1];
+                // C558 replays actions against the collision selected by this tick, then installs the recorded pose.
+                const auto actions = recordedCutscene[offset + 5];
+                if ((actions & 0x20) != 0 && playerTargetLookHeight > 50) { playerTargetLookHeight -= 10; }
+                if ((actions & 0x10) != 0 && playerTargetLookHeight < 130) { playerTargetLookHeight += 10; }
+                if ((actions & 0x40) != 0 && playerCollisionSlot > 0)
+                {
+                    result.interaction = HandlePlayerObjectInteraction(worldObjects.at(playerCollisionSlot), *this);
+                    if (nextLoadRequestId != requestId)
+                    {
+                        result.status = GameTickStatus::LevelEnded;
+                        result.objects.reset();
+                        return result;
+                    }
+                }
                 player.posX = coordinate(offset);
                 player.posZ = coordinate(offset + 2);
                 playerTargetHeading = static_cast<std::int16_t>(recordedCutscene[offset + 4] * 2);
@@ -216,7 +233,8 @@ namespace Desperabis
                 soundListenerZ = player.posZ;
                 if (++recordedCutsceneFrame == recordedCutscene.size() / 6)
                 {
-                    StartLevel(95);
+                    if (loadedLevelNumber == 91) { FinishGamePart(); }
+                    else { StartLevel(95); }
                     result.status = GameTickStatus::LevelEnded;
                     result.objects.reset();
                     return result;

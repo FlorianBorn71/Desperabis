@@ -89,6 +89,16 @@ void ModelAnim::Read(AssetStream& s)
 
             m.Read(s, context);
             GeometryUtils::Convert(m, conversion);
+            if (s.GetSourceFilename() == L"VEKT\\VEKT71.3DA")
+            {
+                for (auto& draw : m.m_drawCalls)
+                {
+                    if (draw.m_material.m_textureSlot != 14) { continue; }
+                    draw.m_material.m_distortedSphere = true;
+                    draw.m_material.m_transparencyType = TransparencyMode::AlphaBlended;
+                    draw.m_material.ComputeHash();
+                }
+            }
             if (depthOffset != 0.f)
             {
                 for (auto& draw : m.m_drawCalls)

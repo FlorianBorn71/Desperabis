@@ -89,6 +89,7 @@ struct DrawCallMaterial
     WaterReflectionType m_reflectionType = WaterReflectionType::Disabled;
     bool m_useAlphaTest = true;
     bool m_applyLighting = true;
+    bool m_distortedSphere = false;
     //bool m_textureRepeat = true;
     char m_textureSlot = -1;
     TextureSlotSource m_textureSlotSource = TextureSlotSource::Model;

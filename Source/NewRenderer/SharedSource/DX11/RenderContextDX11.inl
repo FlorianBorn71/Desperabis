@@ -3,7 +3,8 @@
 #include <DX11/RendererDX11.h>
 
 template<GeometryPassType PASSTYPE>
-void RenderContextDX11::RenderInstance(const RenderableInstance* instance, TransparencyMode transparencyFilter, int drawCallIndex)
+void RenderContextDX11::RenderInstance(const RenderableInstance* instance, TransparencyMode transparencyFilter,
+    int drawCallIndex, bool applyMaterialEffects)
 {
     const Renderable* renderable = instance->GetRenderable();
     NativeModelMeshObjectDX11* nativeMesh = renderable->GetNativeRuntimeObj<NativeModelMeshObjectDX11>();
@@ -112,7 +113,6 @@ void RenderContextDX11::RenderInstance(const RenderableInstance* instance, Trans
         {
             continue;
         }
-
         if (PASSTYPE != GeometryPassType::MirrorReceiver)
         {
             Texture* tex = material.m_texture;
@@ -125,6 +125,17 @@ void RenderContextDX11::RenderInstance(const RenderableInstance* instance, Trans
             NativeTextureObjectDX11* nativeTex = tex->GetNativeRuntimeObj<NativeTextureObjectDX11>();
             if (nativeTex == nullptr) // only gets here for highres-only quality
                 continue;
+
+            if (applyMaterialEffects && material.m_distortedSphere)
+            {
+#ifdef ENABLE_ADVANCED_RENDERING
+                // The lens samples the main scene; do not sample that image inside mirror views.
+                if (m_renderTargetPass == RenderTargetPassType::MainView) { RenderDistortedSphere(*instance, i); }
+#else
+                throw std::runtime_error("Distorted-sphere materials require advanced DX11 rendering.");
+#endif
+                continue;
+            }
 
             if (nativeTex != m_previousTexture)
             {

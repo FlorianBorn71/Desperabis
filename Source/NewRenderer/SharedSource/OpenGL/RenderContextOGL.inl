@@ -67,6 +67,10 @@ void RenderContextOGL::RenderInstance(const RenderableInstance* instance, Transp
         {
             continue;
         }
+        if (material.m_distortedSphere)
+        {
+            throw std::runtime_error("The OpenGL renderer does not support distorted-sphere materials.");
+        }
 
         if (PASSTYPE != GeometryPassType::MirrorReceiver)
         {

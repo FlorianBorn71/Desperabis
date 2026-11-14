@@ -17,6 +17,7 @@ bool DrawCall::IsBatchableWith(const DrawCall& other) const
         || m_material.m_textureSlotSource != other.m_material.m_textureSlotSource
         || m_material.m_useAlphaTest != other.m_material.m_useAlphaTest
         || m_material.m_applyLighting != other.m_material.m_applyLighting
+        || m_material.m_distortedSphere != other.m_material.m_distortedSphere
         || m_material.m_depthOffset != other.m_material.m_depthOffset
         //|| m_material.m_textureRepeat != other.m_material.m_textureRepeat
         || m_material.m_reflectionType != other.m_material.m_reflectionType
@@ -41,6 +42,7 @@ uint64_t DrawCall::ComputeBatchingKey() const
     uint64_t batchingKey = (uint64_t)m_material.m_transparencyType;
     batchingKey ^= (uint64_t)m_material.m_reflectionType << 5;
     if (m_material.m_useAlphaTest) batchingKey |= one << 61;
+    if (m_material.m_distortedSphere) batchingKey |= one << 62;
     if (m_material.m_applyLighting) batchingKey |= one << 60;
     if (m_material.m_textureSlotSource == TextureSlotSource::Level) batchingKey |= one << 59;
     if (m_material.m_texture != nullptr)
@@ -64,6 +66,7 @@ void DrawCallMaterial::ComputeHash()
     m_materialHash = *((uint32_t*)&m_opacity) ^ 0x55555555;
     m_materialHash ^= m_applyLighting ? 17 : 0;
     m_materialHash ^= m_useAlphaTest ? 43 : 0;
+    m_materialHash ^= m_distortedSphere ? 67 : 0;
     m_materialHash ^= m_textureSlotSource == TextureSlotSource::Level ? 31 : 0;
     if (m_depthOffset != 0.f)
     {

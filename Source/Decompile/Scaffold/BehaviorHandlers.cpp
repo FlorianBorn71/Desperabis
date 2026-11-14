@@ -4237,9 +4237,18 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::TutorialTrigger, 0x5083 };
     }
 
-    DispatchResult Function_SkullInCutScene(RawGameObject&, GameContext&)
+    DispatchResult Function_SkullInCutScene(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::SkullInCutScene, 0x50AF };
+        object.blendWeightOrSpriteOpacity = 0;
+        if (object.health == 1000)
+        {
+            object.generalPurpose2 = static_cast<std::uint16_t>(
+                (object.generalPurpose2 + context.Random(WrapSignedWord(context.tickCount * object.velocityZ))) & 511);
+            object.blendWeightOrSpriteOpacity = static_cast<std::int16_t>(std::clamp(
+                3 + WrapSignedWord(static_cast<std::int32_t>(
+                    static_cast<std::uint32_t>(6 * Sine(object.generalPurpose2)) >> 16)), 0, 5));
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::SkullInCutScene, 0x50AF };
     }
 
     DispatchResult Function_Behavior_255(RawGameObject&, GameContext&)

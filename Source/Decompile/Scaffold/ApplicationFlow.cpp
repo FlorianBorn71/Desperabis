@@ -120,7 +120,7 @@ namespace Desperabis
         {
             throw std::logic_error("Ending a level requires ready gameplay.");
         }
-        if (*loadedLevelNumber == 95)
+        if (*loadedLevelNumber == 95 || *loadedLevelNumber == 91)
         {
             FinishGamePart();
             return;
@@ -131,7 +131,11 @@ namespace Desperabis
             NextPlayableLevel(order, static_cast<std::size_t>(current - order.begin()) + 1);
         const bool completed = !next;
         PrepareLevelProgression(!completed);
-        if (completed && *loadedLevelNumber == 26 && activePartHasCredits)
+        if (completed && *loadedLevelNumber == 35)
+        {
+            StartLevel(91);
+        }
+        else if (completed && *loadedLevelNumber == 26 && activePartHasCredits)
         {
             StartLevel(96);
         }

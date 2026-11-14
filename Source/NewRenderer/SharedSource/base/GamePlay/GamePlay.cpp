@@ -770,7 +770,7 @@ namespace GamePlay
 
     float PropertyAccessorBase::GetSpriteTransparency() const
     {
-        if (GetBehaviorType() == BehaviorType::Ghost &&
+        if ((GetBehaviorType() == BehaviorType::Ghost || GetBehaviorType() == BehaviorType::SkullInCutScene) &&
             (GetHealth() != 1000 || m_go.m_rawShorts[21] <= 0))
         {
             return 0.f;
