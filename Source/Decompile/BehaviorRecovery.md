@@ -606,7 +606,63 @@ actual illustration and the full core-generated book recipe, including its
 leading clear, at three aspect ratios, and verify that parchment remains
 visible around the ink.
 The foil's held hand/sheet presentation and geometry-derived fire reveal
-are supported. The Part-1 outro remains separate, deferred work.
+are supported. The Part-1 outro uses the recorded crystal-ball ending below.
+
+### Story introductions and 3D book playback
+
+`Scaffold/StoryBook.cpp` ports the story reader at `0EF0:1797..1BAC`.
+Evidence is in `level35-book-evidence.txt`, `story-page-turn-evidence.txt`
+and `story-glyph-width-evidence.txt`; the localization format is documented in
+[Localization.md](../../Docs/Localization.md).
+
+`LEVELS.INF` byte 103 selects an `@number` section of `LEVEL/TEXTE.TXT`;
+it is not necessarily the map number. A new Crystal Ball game plays selector
+29's section **80**, followed by playable map 30's section **30**. Rescue of
+Grant begins with selector 9's section **81**; map 10 has no separate story.
+New games collect these selector introductions before loading the first
+playable map. Normal progression shows the destination story. Save restores,
+direct/developer loads and Tab navigation bypass stories. The entire HERZ
+order, including selector entries, remains unchanged for save compatibility.
+
+Layout uses the native 300-pixel text column at X=20 on 360x240 parchment.
+The baseline starts at 5, advances 16 before each emitted line, and turns
+the page after a baseline above 210. Each `+` adds six pixels. Glyph advances
+come from the original `SCHRIFT0..2.AN2` frame widths and signed X offsets;
+space advances eight pixels. `#` flushes a line, `=` supplies discretionary
+hyphenation, `_` forces a new page, and `FEh` plus a selector positions the
+original `TXTBILD.AN2` illustration alongside buffered text. CR becomes a
+space, LF is ignored, and full-line localization comments are omitted.
+Untaken `=` characters disappear; a taken one becomes `-`. Invalid assets,
+missing sections/glyphs and unbreakable overlong words fail explicitly.
+
+The host-driven `StoryBook` page freezes simulation; its visual clock/light
+does not consume gameplay RNG. Page sounds retain normal sample variation.
+Any fresh keyboard press advances, including Escape; held keys do not repeat
+and presses during the turn are not queued. The host supplies unbound-key
+edges through `InputHandler::WasAnyKeyPressed`; mapped-key edges also work.
+The last-page press resumes gameplay with the normal transition input gate.
+Native effect **51** (`33h`, page presenter `0EF0:1552`) plays at the start
+of each modern turn. The 0.9-second eased rotation and sound-start timing
+are modern presentation choices, not a reconstruction of DOS frame timing.
+Legacy `^`, `~`, backslash, FCh and `*digit` presentation/autorun/unlock
+annotations are consumed without enabling DOS autorun or chapter gating.
+
+DX11's game-local `BookScene` creates an otherwise empty scene, perspective
+camera and warm flickering light. At rest only the left page is visible;
+the incoming right sheet rotates around the spine onto it. This first
+milestone intentionally uses a **rigid two-sided quad**, not a curved mesh.
+Text and ornaments software-darken original parchment using the native
+0..7 ink shades. Two registered texture objects are reused ping-pong;
+composition/uploads occur only when their generation/page keys change,
+and replacing a slot releases its old GPU runtime. The reverse side uses
+the shared blank parchment. No core-renderer or shader additions are needed.
+
+`LevelProgressionTests.cpp` lays out every authored level story, checks native
+wrapping/paragraphs/hyphenation/comments and exercises new-game ordering,
+page turns, Escape/held/unbound input, paused simulation, save bypass and
+normal progression. WARP tests verify original-size ink alignment, visible
+paper, intermediate poses, landing, flickering illumination, two-slot GPU
+lifetime and wide/portrait framing.
 
 ### Part-1 coverage audit and modern defaults
 
@@ -641,7 +697,8 @@ deliberately excluded. Additional confirmed part-1 gaps:
   vase are supported.
 - **BookWithCode (252):** supported by the picture-only code-book modal above.
   Light sensors (94) are activated by mercury rays, not player contact.
-- **Introduction:** HERZ entry 29 is still skipped rather than played.
+- **Introduction:** HERZ entry 29 supplies story section 80 before map 30;
+  it remains excluded from playable-map loading.
 - **Part-1 outro:** completing map 35 plays the recorded crystal-ball ending
   in scene 91 before returning to the menu; see below.
 
@@ -1801,8 +1858,9 @@ the complete gameplay frame loop, and a missing host level loader throw descript
 `std::logic_error` exceptions. No page silently succeeds, loads resources,
 or substitutes a partial object update for a gameplay loop.
 `InitializeNewGame` now implements the recovered reset subset and uses normal
-host resource loading and decoded HERZ metadata; native chapter
-unlocking and introduction playback remain unported. The existing console remains a behavior probe; it does
+host resource loading and decoded HERZ metadata; story introductions use the
+nonblocking book page above. Native chapter unlocking remains unported.
+The existing console remains a behavior probe; it does
 not call the unimplemented application loop.
 
 [ApplicationFlowTests.cpp](Scaffold/ApplicationFlowTests.cpp) exercises all
@@ -1825,9 +1883,10 @@ immediately after the list marks END/credits. Original lists are:
 
 Names come verbatim from HERZ, not translated constants. New Game and EndLevel
 follow these lists rather than numeric addition or a compiled table.
-By the author's temporary choice, entries with `LEVELS.INF` byte 100 >= 100
-are skipped while their introduction playback remains unported: original 9
-and 29. The full sequence is still saved, so level 10/30 has ordinal 2.
+Entries with `LEVELS.INF` byte 100 >= 100 are presentation selectors rather
+than playable maps: original 9 and 29. New games queue their story sections
+before the first playable map. The full sequence is still saved, so level
+10/30 has ordinal 2.
 Level 97 has selector 2 and is not skipped.
 
 The original writer at `0000:96E9` and loader at `0000:99B6` establish the
@@ -3023,7 +3082,8 @@ adapter; the per-item description/animation path is not yet ported.
 The main menu and part selector remain functional text presentations. Advancing source phase
 by 17 at 33 Hz is a port timing policy, not a measured native inventory-loop
 frequency.
-Books, cutscenes, native chapter artwork/unlock metadata, settings and save/load pages remain
+Story introductions and recorded cutscenes now use nonblocking playback.
+Native chapter artwork/unlock metadata, settings and save/load page UI remain
 unimplemented and can be added as further nonblocking page handlers.
 The host's Tab level navigation remains a development shortcut, not game flow.
 

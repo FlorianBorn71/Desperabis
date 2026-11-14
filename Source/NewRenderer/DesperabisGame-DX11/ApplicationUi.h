@@ -1,4 +1,5 @@
 #pragma once
+#include "StoryBook.h"
 
 #include <ApplicationFlow.h>
 #include <GameContext.h>
@@ -18,10 +19,7 @@ class Scene;
 class ApplicationUi
 {
 public:
-    static constexpr std::array<std::string_view, 3> FontCharacters{
-        "abcdefghijklmnopqrstuvwxyz\x94\x81\x84\xe1",
-        "ABCDEFGHIJKLMNOPQRSTUVWXYZ\x99\x9a\x8e?",
-        "0123456789.:>/-\xb3~\"!$<,+\xef^#*%" };
+    static constexpr auto FontCharacters = Desperabis::NativeFontCharacters;
 
     FUTURE(void) Initialize();
     void Deinitialize();
@@ -30,6 +28,7 @@ public:
     bool UploadCollisionMap(Desperabis::GameContext& core, Renderer& renderer);
     bool UploadGeometryMap(const Desperabis::GameContext& core, Renderer& renderer);
     bool UploadPaperPage(const Desperabis::ApplicationPresentation& presentation, Renderer& renderer);
+    std::vector<Color4> ComposeStoryPage(const std::vector<Desperabis::UiDrawCommand>& commands) const;
     // Reports each failed plane independently; false does not prevent subsequent object presentation.
     static bool SynchronizeLevelGeometry(Level& level, const Desperabis::Level& geometry,
         const std::function<void(const char*, const char*)>& reportError);
@@ -102,6 +101,8 @@ private:
     std::shared_ptr<TextureAnim> m_menuCursor;
     std::shared_ptr<TextMesh> m_textCaret;
     std::vector<Color4> m_mapPaperPixels;
+    std::shared_ptr<class BookScene> m_storyScene;
+    std::array<std::optional<std::pair<std::uint64_t, std::size_t>>, 2> m_storyPageKeys;
     std::shared_ptr<Texture> m_geometryMap;
     const Desperabis::Level* m_geometryMapSource = nullptr;
     std::optional<std::int16_t> m_geometryMapLevelNumber;

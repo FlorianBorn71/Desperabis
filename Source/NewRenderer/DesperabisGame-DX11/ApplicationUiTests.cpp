@@ -1,6 +1,7 @@
 #include "pch.h"
 #include "ApplicationUi.h"
 #include "LightningPresentation.h"
+#include "BookScene.h"
 
 #include <GameContext.h>
 #include <GameMath.h>
@@ -1273,6 +1274,115 @@ namespace
             }
         }
         std::cout << "Distorted sphere: full-scene horizontal/vertical inversion, outward sample spread, authored mask darkening, atlas equivalence, fresh copies, clipping, depth, aspect scaling and both weapon banks passed.\n";
+    }
+
+    void CheckStoryBook(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context,
+        const Level& level, const Font& font, const TextureAnim& hud)
+    {
+        ApplicationUi ui;
+        FORCE_WAIT(ui.Initialize());
+        const auto read = [](const std::wstring& filename)
+        {
+            return FORCE_GET(FileManager::Instance().ReadDataFuture(FileManager::Instance().FilenameToNative(filename)));
+        };
+        std::array<int, 256> advances{};
+        for (std::size_t bank = 0; bank < Desperabis::NativeFontCharacters.size(); ++bank)
+        {
+            Desperabis::ReadStoryFontAdvances(read(L"ANIMS\\SCHRIFT" + std::to_wstring(bank) + L".AN2"),
+                Desperabis::NativeFontCharacters[bank], advances);
+        }
+        const auto bytes = read(L"LEVEL\\TEXTE.TXT");
+        const auto pages = Desperabis::LayoutStorySection(
+            std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()), 80, advances);
+        Check(pages.size() > 2, "Original story GPU tests require multiple pages.");
+        const auto paper = ui.ComposeStoryPage({});
+        const auto first = ui.ComposeStoryPage(pages[0]);
+        const auto second = ui.ComposeStoryPage(pages[1]);
+        Check(std::memcmp(first.data(), second.data(), first.size() * sizeof(Color4)) != 0 &&
+            std::memcmp(first.data(), paper.data(), first.size() * sizeof(Color4)) != 0,
+            "Software composition must burn distinct original story pages into the parchment.");
+        Target target(device, 360, 240);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        RenderingSettings settings;
+        ProfilingStats stats;
+        Desperabis::ApplicationPresentation presentation{Desperabis::MenuPage::StoryBook, {}};
+        presentation.story = Desperabis::UiStoryBook{1,0,0,-1,pages[0],pages[1]};
+        const auto render = [&]
+        {
+            ui.Draw(presentation, renderer, level, font, hud, settings, stats, target.viewport,
+                context, target.colorView.Get(), target.depthView.Get());
+            return target.Pixels(device, context);
+        };
+        const auto resting = render();
+        int ink = 0, matchedInk = 0, parchment = 0;
+        for (std::size_t i = 0; i < first.size(); ++i)
+        {
+            const auto rgb = resting[i] & 0x00ffffffu;
+            if (first[i].r == 0 && first[i].g == 0 && first[i].b == 0)
+            {
+                ++ink;
+                matchedInk += rgb == 0;
+            }
+            else if ((rgb & 255) > 20) { ++parchment; }
+        }
+        Check(ink > 500 && matchedInk > ink * 9 / 10 && parchment > 30000,
+            "The resting 3D page must retain original-size ink alignment and visible parchment.");
+        bool moved = false;
+        for (const double turn : {0.0,0.25,0.5,0.75,0.9})
+        {
+            presentation.story->turn = turn;
+            moved |= render() != resting;
+        }
+        Check(moved, "Intermediate rigid-page poses must draw a real turning sheet.");
+        presentation.story->turn = -1;
+        presentation.story->pageIndex = 1;
+        presentation.story->current = pages[1];
+        presentation.story->next = pages[2];
+        Check(render() != resting, "Landing must retain the next page rather than restore the old page.");
+        presentation.story->seconds = 0.43;
+        const auto flickering = render();
+        presentation.story->seconds = 0;
+        Check(flickering != render(), "The book's dedicated light must visibly flicker on its lit mesh.");
+        Texture blank;
+        blank.m_width = 360;
+        blank.m_height = 240;
+        blank.SetDefaultParams();
+        TextureLoadingContext blankPixels;
+        blankPixels.m_rgbaData = paper;
+        renderer.CreateTexture(blank, blankPixels);
+        BookScene scene(blank);
+        FORCE_WAIT(scene.CreateScene());
+        scene.SetPage(0, first);
+        scene.SetPage(1, second);
+        scene.Draw(*presentation.story, 1.5f, renderer, settings, stats);
+        const auto* texture = scene.GetRenderableInstances()[0]->m_materialOverride[0].m_texture;
+        const auto* otherTexture = texture;
+        presentation.story->pageIndex = 0;
+        scene.Draw(*presentation.story, 1.5f, renderer, settings, stats);
+        texture = scene.GetRenderableInstances()[0]->m_materialOverride[0].m_texture;
+        Check(texture != otherTexture, "Book page slots must be distinct reusable texture objects.");
+        std::weak_ptr<IGraphicsRuntimeObject> oldRuntime = texture->m_runtime;
+        scene.SetPage(0, second);
+        Check(oldRuntime.expired(), "Recomposing a page must release the replaced GPU runtime.");
+        scene.Draw(*presentation.story, 1.5f, renderer, settings, stats);
+        Check(scene.GetRenderableInstances()[0]->m_materialOverride[0].m_texture == texture,
+            "Recomposition must reuse its registered page slot rather than accumulate assets.");
+        for (const auto& size : {std::pair<UINT,UINT>{960,540}, {480,800}})
+        {
+            Target resized(device, size.first, size.second);
+            renderer.ReInitialize(resized.colorView.Get(), resized.depthView.Get(), resized.viewport);
+            const float black[]{0,0,0,1};
+            context->ClearRenderTargetView(resized.colorView.Get(), black);
+            context->ClearDepthStencilView(resized.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
+            scene.Draw(*presentation.story, static_cast<float>(size.first) / size.second, renderer, settings, stats);
+            const auto pixels = resized.Pixels(device, context);
+            std::size_t visible = 0;
+            for (const auto pixel : pixels) { visible += (pixel & 255) > 20; }
+            Check(visible > size.first * size.second / 4 &&
+                (pixels.front() & 0x00ffffff) == 0,
+                "Wide and portrait cameras must preserve the page aspect and black letterbox.");
+        }
+        std::cout << "Story book: native text/ornaments, original-size ink pixels, rigid 3D turn, landing, flickering light and two reusable textures passed.\n";
     }
 
     void CheckCrystalBallEnding(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
@@ -9646,6 +9756,7 @@ int main(int argc, char* argv[])
         }
         const auto items = OriginalItems();
         CheckTextControls(font);
+        CheckStoryBook(renderer, device.Get(), context.Get(), *level, font, *hud);
         CheckSmoothPolygonNormals(renderer, device.Get(), context.Get());
         CheckPrimitiveSortingDepth(renderer, device.Get(), context.Get());
         CheckModelSortingDepthOverrides(device.Get(), context.Get());

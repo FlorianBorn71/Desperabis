@@ -305,6 +305,7 @@ namespace Desperabis
     public:
         virtual ~InputHandler() = default;
         virtual bool IsKeyPressed(InputKey key) = 0;
+        virtual bool WasAnyKeyPressed() { return false; }
     };
 
     class GameContext
@@ -318,9 +319,9 @@ namespace Desperabis
         GameContext& operator=(GameContext&&) noexcept;
 
         // Host-driven API. All calls, including load completion, must run on the game thread.
-        LevelLoadRequest StartLevel(std::int16_t levelNumber);
+        LevelLoadRequest StartLevel(std::int16_t levelNumber, bool showStory = false);
         // Core-owned progression; game-thread calls only, never from lifecycle hooks.
-        void EndLevel(bool finishGamePart = false);
+        void EndLevel(bool finishGamePart = false, bool showStory = true);
         void StartNextGamePart();
         void CompleteLevelLoad(std::uint64_t requestId, LevelLoadData data);
         void FailLevelLoad(std::uint64_t requestId, std::string_view error);
@@ -719,6 +720,13 @@ namespace Desperabis
         std::optional<std::array<std::int16_t, 3>> playerDeathDirection;
         MenuPage menuPage = MenuPage::MainMenu;
         std::vector<UiBitmap> codeBookPictures;
+        void PrepareStoryIntroductions(const std::vector<std::uint8_t>& order, std::uint8_t destination);
+        void BeginLevelStory();
+        std::vector<std::int16_t> pendingStorySections;
+        std::vector<std::vector<UiDrawCommand>> storyPages;
+        std::size_t storyPageIndex = 0;
+        double storySeconds = 0, storyTurn = -1;
+        bool pendingLevelStory = false;
         GameRuntimeState runtimeState = GameRuntimeState::NoLevel;
         std::uint64_t nextLoadRequestId = 0;
         std::optional<LevelLoadRequest> pendingLevelLoad;

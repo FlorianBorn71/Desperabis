@@ -20,12 +20,18 @@ For the first explained case and shared collision-map pointer, see
   `Scaffold/CastlePuzzleTests.cpp`: sliding tiles and numbered-tile triggers,
   combination wheels, clock hands/pendulum/chimes and timed rotating knights.
   The code book software-darkens parchment with raw indexed artwork and caches
-  its unique uploaded texture; raw font glyphs remain available for future book
-  text composition. Tests also cover the one-shot knight crossbow; renderer
+  its unique uploaded texture. The story book also uses the raw font glyphs
+  for original-size text composition. Tests cover the one-shot knight crossbow; renderer
   placement tests cover the centralized, save-safe bookshelf-key lift.
   Flame-tracked furniture contacts are intentionally harmless;
   furniture uses geometric depth rather than DOS sorting offsets.
   See [castle puzzles](BehaviorRecovery.md#castle-sliding-tiles-combination-wheels-and-clock-level-35).
+- `story-page-turn-evidence.txt`, `story-glyph-width-evidence.txt`,
+  `Scaffold/StoryBook.cpp`: native story-section selection, font metrics,
+  wrapping, hyphenation, illustrations and pagination. The host-driven
+  introduction page pauses gameplay; the DX11 book scene turns a lit
+  procedural sheet using two reusable page textures.
+  See [story playback](BehaviorRecovery.md#story-introductions-and-3d-book-playback).
 - `level34-native-evidence.txt`, `level34-ray-support-evidence.txt`,
   `Scaffold/MercuryLampTests.cpp`: coffin bones/dog feeding, portable mirror
   and vase, mercury beam reflection and sensor-controlled door. The renderer

@@ -72,6 +72,13 @@ However, there are some special characters defined which have the following mean
 | þ\<char> (þ = hexcode 0xFE) | Inserts a graphics into the page, where the following character defines which one from a set of images. It's most commonly used for the underline ornament for each headline: There are two versions of the underline ornament, one for 'short' headlines (þK) and one for 'long' headlines (þL). It's recommended to keep all the graphics in place.|
 | = | While line break happens automatically on whitespaces, the '=' character denotes a placement hint for hyphenation in a word. If not needed for a line break, it's ignored.|
 
+The modern renderer reads the packed `LEVEL/TEXTE.TXT` sections selected by
+`LEVELS.INF`, using original font metrics and automatic pagination. It burns
+text and illustrations into the original-size parchment, with a 3D page turn
+on any fresh keyboard press (Escape also advances one page). New games and
+normal progression show the story; save restores and developer navigation
+bypass it. See [story playback recovery](../Source/Decompile/BehaviorRecovery.md#story-introductions-and-3d-book-playback).
+
 ### Patching the .Exe
 
 Patching the strings that are compiled into the .EXE is a very error prone process, because it requires some understanding where to patch, where to set the new string length, and finding the maximum string length. Usually, the new string may not be longer than the original one but there are exceptions (arrays of strings). **Flawed patching may cause the game to crash randomly at any point.**

@@ -1,10 +1,12 @@
 #include "BehaviorDispatch.h"
+#include "StoryBook.h"
 
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <set>
 #include <stdexcept>
 #include <vector>
 
@@ -31,7 +33,9 @@ namespace
     {
     public:
         std::array<bool, static_cast<std::size_t>(InputKey::Count)> keys{};
+        bool anyKeyPressed = false;
         bool IsKeyPressed(InputKey key) override { return keys.at(static_cast<std::size_t>(key)); }
+        bool WasAnyKeyPressed() override { return anyKeyPressed; }
         void Set(InputKey key, bool down) { keys.at(static_cast<std::size_t>(key)) = down; }
     };
 
@@ -39,9 +43,16 @@ namespace
     {
     public:
         int stops = 0;
+        int plays = 0;
+        std::uint8_t lastSample = 0, lastVolume = 0;
         std::uint16_t GetSampleCount() const override { return 129; }
         bool IsChannelPlaying(std::size_t) const override { return false; }
-        void PlaySample(std::size_t, std::uint8_t, std::uint8_t) override {}
+        void PlaySample(std::size_t, std::uint8_t sample, std::uint8_t volume) override
+        {
+            ++plays;
+            lastSample = sample;
+            lastVolume = volume;
+        }
         void StopAllSamples() override { ++stops; }
     };
 
@@ -338,7 +349,7 @@ namespace
             host.StartNewGame(static_cast<std::int16_t>(part + 1));
             const auto* previous = host.GetLevel();
             Check(host.GetLoadedLevelNumber() == starts[part] && host.GetRuntimeState() == GameRuntimeState::Ready &&
-                host.GetMenuPage() == MenuPage::Gameplay && host.GetLevel()->geometryWidth > 0 &&
+                host.GetMenuPage() == MenuPage::StoryBook && host.GetLevel()->geometryWidth > 0 &&
                 host.worldObjects[1].health > 0, "New Game must install each part's original assets and player.");
             host.inventory[2].health = 1000;
             host.StartNewGame(static_cast<std::int16_t>(part + 1));
@@ -346,6 +357,123 @@ namespace
                 host.GetLevel() != previous && host.inventory[2].health == 0,
                 "Restarting the same part must actually reload its assets and discard carried inventory.");
         }
+    }
+
+    void TestStoryBook()
+    {
+        std::array<int, 256> advances{};
+        const auto read = [](const std::filesystem::path& filename)
+        {
+            std::ifstream file(filename, std::ios::binary);
+            if (!file) { throw std::runtime_error("Missing native story fixture."); }
+            return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(file), {});
+        };
+        for (std::size_t bank = 0; bank < NativeFontCharacters.size(); ++bank)
+        {
+            ReadStoryFontAdvances(read(originalAssets / ("ANIMS\\SCHRIFT" + std::to_string(bank) + ".AN2")),
+                NativeFontCharacters[bank], advances);
+        }
+        const auto bytes = read(originalAssets / "LEVEL\\TEXTE.TXT");
+        const std::string text(bytes.begin(), bytes.end());
+        const auto info = read(originalAssets / "LEVEL\\LEVELS.INF");
+        std::set<std::uint8_t> sections;
+        for (std::size_t offset = 103; offset < info.size(); offset += 124)
+        {
+            if (info[offset] != 0) { sections.insert(info[offset]); }
+        }
+        for (const auto section : sections)
+        {
+            Check(!LayoutStorySection(text, section, advances).empty(),
+                "Every authored level/intro story must produce readable pages.");
+        }
+        const auto introduction = LayoutStorySection(text, 80, advances);
+        Check(introduction.size() > 2, "The original Part-1 introduction must paginate, not truncate.");
+        bool illustrated = false;
+        for (const auto& page : introduction)
+        {
+            for (const auto& command : page)
+            {
+                if (const auto* picture = std::get_if<UiBitmap>(&command)) { illustrated |= picture->frame == 0; }
+                if (const auto* line = std::get_if<UiText>(&command))
+                {
+                    int width = 0;
+                    auto visible = std::string_view(line->text);
+                    while (!visible.empty() && visible.back() == ' ') { visible.remove_suffix(1); }
+                    for (const unsigned char c : visible) { width += advances[c]; }
+                    if (width > 300 || line->x != 20 || line->y > 226 || line->text.find('=') != std::string::npos)
+                    {
+                        throw std::runtime_error("Native layout bounds: width=" + std::to_string(width) +
+                            ", y=" + std::to_string(line->y) + ", line=" + line->text);
+                    }
+                }
+            }
+        }
+        Check(illustrated, "The Part-1 introduction must retain its ornate initial.");
+        const auto commented = LayoutStorySection("@1\r\n// invisible note\r\nab=cd#++x#_y#", 1, advances);
+        Check(commented.size() == 2 && std::get<UiText>(commented[0][0]).text == "abcd" &&
+            std::get<UiText>(commented[0][1]).y == 49 && std::get<UiText>(commented[1][0]).y == 21,
+            "Comments and untaken hyphens must be invisible; explicit page breaks reset native baselines.");
+        auto uniform = advances;
+        uniform.fill(10);
+        const auto wrapped = LayoutStorySection("@10\nWrong#\n@1\n" + std::string(29, 'a') + "=bbbbbb#++x#", 1, uniform);
+        Check(std::get<UiText>(wrapped[0][0]).text == std::string(29, 'a') + "-" &&
+            std::get<UiText>(wrapped[0][1]).text == "bbbbbb" &&
+            std::get<UiText>(wrapped[0][2]).y == 65,
+            "Exact section markers, taken hyphenation, forced lines and six-pixel spacing must compose correctly.");
+        ExpectError<std::runtime_error>([&] { LayoutStorySection("@1\n" + std::string(40, 'a'), 1, uniform); });
+        Host host;
+        host.original = originalAssets;
+        host.StartNewGame(2);
+        Check(host.GetApplicationPresentation().story.has_value(), "New Game must expose a book presentation.");
+        EffectsOnlyAudio audio;
+        const auto effects = read(originalAssets / "SAMP\\S_TAB.PRB");
+        host.LoadSoundEffects(effects.data(), effects.size());
+        host.audioHandler = &audio;
+        Input input;
+        host.UpdateApplication(0, input);
+        std::size_t visited = 0;
+        for (int page = 0; page < 100; ++page)
+        {
+            const auto view = host.GetApplicationPresentation().story;
+            if (!view) { break; }
+            ++visited;
+            if (page == 0) { input.anyKeyPressed = true; }
+            else { input.Set(InputKey::UiCancelKey, true); }
+            Check(!host.UpdateApplication(0, input).tick, "Book input must not simulate the loaded level.");
+            input.anyKeyPressed = false;
+            if (host.GetMenuPage() != MenuPage::StoryBook) { break; }
+            const auto seed = host.randomSeed;
+            input.anyKeyPressed = true;
+            host.UpdateApplication(0.45, input);
+            input.anyKeyPressed = false;
+            Check(host.GetApplicationPresentation().story->pageIndex == view->pageIndex,
+                "The old page must remain current during the turn.");
+            host.UpdateApplication(0.45, input);
+            Check(host.GetApplicationPresentation().story->pageIndex == view->pageIndex + 1,
+                "Landing must advance exactly one page.");
+            host.UpdateApplication(0.5, input);
+            Check(host.GetApplicationPresentation().story->turn == -1 && host.randomSeed == seed,
+                "Holding a key or animating a turn cannot consume gameplay RNG or start another turn.");
+            input.Set(InputKey::UiCancelKey, false);
+            host.UpdateApplication(0, input);
+        }
+        Check(host.GetMenuPage() == MenuPage::Gameplay && host.levelElapsedTicks == 0 &&
+            visited == introduction.size() + LayoutStorySection(text, 30, advances).size(),
+            "The complete introduction and level story must finish without advancing gameplay.");
+        const auto paperSamples = effects.begin() + 4 + 50 * 5 + 1;
+        Check(audio.plays == visited - 1 && audio.lastVolume == 255 &&
+            std::find(paperSamples, paperSamples + effects[4 + 50 * 5], audio.lastSample) !=
+                paperSamples + effects[4 + 50 * 5],
+            "Every turn must play native effect 51, not the unrelated effect 17.");
+        host.audioHandler = nullptr;
+        host.StartLevel(31);
+        Check(host.GetMenuPage() == MenuPage::Gameplay, "Development loads must bypass the story.");
+        const auto saved = host.CaptureSaveGame("Story restore");
+        host.LoadGame(saved);
+        Check(host.GetMenuPage() == MenuPage::Gameplay, "Restoring a save must bypass the story.");
+        host.EndLevel();
+        Check(host.GetLoadedLevelNumber() == 32 && host.GetMenuPage() == MenuPage::StoryBook,
+            "Normal progression must show the destination level's story.");
     }
 
     void TestOriginalExit(const std::filesystem::path& original)
@@ -386,6 +514,7 @@ int main(int argc, char** argv)
         TestInventoryAndAsyncLoading();
         TestCoreNavigationInput();
         TestOriginalNewGame(argv[1]);
+        TestStoryBook();
         TestOriginalExit(argv[1]);
         std::cout << "Level progression tests passed.\n";
         return 0;

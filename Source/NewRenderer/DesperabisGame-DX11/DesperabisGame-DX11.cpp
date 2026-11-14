@@ -529,6 +529,9 @@ namespace
 		bool uiCancel = false;
 		bool debugNextLevel = false;
 		bool debugNextGamePart = false;
+		bool anyKeyPressed = false;
+
+		bool WasAnyKeyPressed() override { return anyKeyPressed; }
 
 		bool IsKeyPressed(Desperabis::InputKey key) override
 		{
@@ -1081,6 +1084,13 @@ namespace
 		auto IsKeyPressed = [hasFocus](int key) { return hasFocus && (GetAsyncKeyState(key) & 0x8000) != 0; };
 
 		GameInput input;
+		static std::array<bool, 256> previousKeys{};
+		for (int keyCode = VK_BACK; keyCode < 256; ++keyCode)
+		{
+			const bool down = IsKeyPressed(keyCode);
+			input.anyKeyPressed |= down && !previousKeys[keyCode];
+			previousKeys[keyCode] = down;
+		}
 		if (!g_useFreeCam)
 		{
 			input.forward = IsKeyPressed('W') || IsKeyPressed(VK_UP);

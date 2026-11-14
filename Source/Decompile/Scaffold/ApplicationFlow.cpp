@@ -114,7 +114,7 @@ namespace Desperabis
         SetMenuPage(MenuPage::MainMenu);
     }
 
-    void GameContext::EndLevel(bool finishGamePart)
+    void GameContext::EndLevel(bool finishGamePart, bool showStory)
     {
         if (runtimeState != GameRuntimeState::Ready || menuPage != MenuPage::Gameplay || !loadedLevelNumber)
         {
@@ -143,7 +143,7 @@ namespace Desperabis
         {
             FinishGamePart();
         }
-        else { StartLevel(*next); }
+        else { StartLevel(*next, showStory); }
     }
 
     void GameContext::StartNextGamePart()
@@ -222,7 +222,8 @@ namespace Desperabis
         positionalSoundsSuppressed = false;
         field_D500 = true;
         paused = false;
-        StartLevel(*start);
+        PrepareStoryIntroductions(part.levels, *start);
+        StartLevel(*start, true);
     }
 
     InteractionResult GameContext::HandleLevelEndContact(RawGameObject& object, bool interactionPressed)
@@ -318,7 +319,33 @@ namespace Desperabis
             else if (runtimeState == GameRuntimeState::Ready && levelNavigationPressed &&
                 isDown(InputKey::DebugNextLevelKey))
             {
-                EndLevel();
+                EndLevel(false, false);
+            }
+            break;
+        case MenuPage::StoryBook:
+            storySeconds += delta;
+            if (storyTurn >= 0)
+            {
+                storyTurn = std::min(1.0, storyTurn + delta / 0.9);
+                if (storyTurn == 1)
+                {
+                    ++storyPageIndex;
+                    storyTurn = -1;
+                }
+            }
+            else if (input.WasAnyKeyPressed() ||
+                std::any_of(pressed.begin(), pressed.end(), [](bool value) { return value; }))
+            {
+                if (storyPageIndex + 1 == storyPages.size())
+                {
+                    storyPages.clear();
+                    SetMenuPage(MenuPage::Gameplay);
+                }
+                else
+                {
+                    storyTurn = 0;
+                    PlaySoundEffect(static_cast<SoundEffect>(51), 255, 0, 1);
+                }
             }
             break;
         case MenuPage::Inventory:
@@ -558,6 +585,13 @@ namespace Desperabis
     ApplicationPresentation GameContext::GetApplicationPresentation() const
     {
         ApplicationPresentation result{ menuPage, {} };
+        if (menuPage == MenuPage::StoryBook)
+        {
+            result.story = UiStoryBook{nextLoadRequestId, storyPageIndex, storySeconds, storyTurn,
+                storyPages.at(storyPageIndex), storyPageIndex + 1 < storyPages.size() ?
+                    storyPages.at(storyPageIndex + 1) : std::vector<UiDrawCommand>{}};
+            return result;
+        }
         if (menuPage == MenuPage::Gameplay)
         {
             if (IsCutscenePlaying()) { return result; }

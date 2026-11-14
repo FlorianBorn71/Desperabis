@@ -1,4 +1,5 @@
 #include "pch.h"
+#include "BookScene.h"
 #include "ApplicationUi.h"
 
 #include <GameContext.h>
@@ -433,6 +434,37 @@ namespace
         context.EndRenderTargetScope();
         context.EndRendering();
     }
+}
+
+std::vector<Color4> ApplicationUi::ComposeStoryPage(const std::vector<Desperabis::UiDrawCommand>& commands) const
+{
+    if (m_mapPaperPixels.size() != 360 * 240) { throw std::logic_error("Story composition requires original parchment."); }
+    auto pixels = m_mapPaperPixels;
+    for (const auto& command : commands)
+    {
+        if (const auto* text = std::get_if<Desperabis::UiText>(&command))
+        {
+            int x = static_cast<int>(text->x);
+            for (const char c : text->text)
+            {
+                if (c == ' ') { x += 8; continue; }
+                const auto glyph = m_nativeGlyphs.find(c);
+                if (glyph == m_nativeGlyphs.end()) { throw std::runtime_error("Unavailable story glyph."); }
+                const auto& bitmap = glyph->second.bitmap;
+                BlitPaperBitmap(pixels, bitmap, x + bitmap.offsetX, static_cast<int>(text->y) + bitmap.offsetY);
+                x += glyph->second.advance;
+            }
+        }
+        else if (const auto* picture = std::get_if<Desperabis::UiBitmap>(&command);
+            picture && picture->source == Desperabis::UiBitmapSource::TextIllustration)
+        {
+            const auto& bitmap = m_textPictures.at(picture->frame);
+            BlitPaperBitmap(pixels, bitmap, static_cast<int>(picture->bounds.x),
+                static_cast<int>(picture->bounds.y) + bitmap.offsetY);
+        }
+        else { throw std::invalid_argument("Unsupported story composition command."); }
+    }
+    return pixels;
 }
 
 std::vector<ApplicationUi::IndexedBitmap> ApplicationUi::ReadIndexedBitmaps(const std::vector<byte>& bytes)
@@ -982,6 +1014,8 @@ void ApplicationUi::DrawWeapon(const Desperabis::WeaponView& view, RendererDX11&
 void ApplicationUi::Deinitialize()
 {
     Clear();
+    m_storyScene.reset();
+    m_storyPageKeys = {};
     m_hud = {};
     m_mirroredHud = {};
     m_inventoryIcons = {};
@@ -1252,6 +1286,30 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
 {
     using namespace Desperabis;
     if (!m_hud[0]) { throw std::logic_error("Application UI assets have not been initialized."); }
+    if (presentation.story)
+    {
+        if (!m_storyScene)
+        {
+            m_storyScene = std::make_shared<BookScene>(*m_mapPaper);
+            FORCE_WAIT(m_storyScene->CreateScene());
+        }
+        const auto& story = *presentation.story;
+        const auto prepare = [&](std::size_t index, const std::vector<UiDrawCommand>& commands)
+        {
+            const auto key = std::make_pair(story.generation, index);
+            const auto slot = index % 2;
+            if (m_storyPageKeys[slot] == key) { return; }
+            m_storyScene->SetPage(slot, ComposeStoryPage(commands));
+            m_storyPageKeys[slot] = key;
+        };
+        prepare(story.pageIndex, story.current);
+        if (!story.next.empty()) { prepare(story.pageIndex + 1, story.next); }
+        const float black[]{0,0,0,1};
+        deviceContext->ClearRenderTargetView(colorView, black);
+        deviceContext->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1.f, 0);
+        m_storyScene->Draw(story, viewport.Width / viewport.Height, renderer, settings, stats);
+        return;
+    }
     if (!hud.IsValidFrame(1, 0)) { throw std::runtime_error("Application UI requires the original HUD bank."); }
     const float canvasScale = (std::min)(viewport.Width / ApplicationPresentation::Width,
         viewport.Height / ApplicationPresentation::Height);

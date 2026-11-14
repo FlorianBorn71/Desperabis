@@ -96,6 +96,7 @@
     <ClCompile Include="DesperabisGame-DX11.cpp" />
     <ClCompile Include="AudioPlayer.cpp" />
     <ClCompile Include="ApplicationUi.cpp" />
+    <ClCompile Include="BookScene.cpp" />
     <ClCompile Include="LightningPresentation.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>

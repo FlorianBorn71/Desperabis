@@ -39,6 +39,7 @@ namespace Desperabis
         ResourcePresentationFirst = 200,
         ResourcePresentationLast = 299,
         CodeBook = 300, // Host modal for the native blocking book reader, not a DOS page number.
+        StoryBook = 301,
         Quit = 0xffff
     };
 
@@ -137,10 +138,19 @@ namespace Desperabis
 
     using UiDrawCommand = std::variant<UiFill, UiText, UiBitmap, UiHealthMeter, UiModel, UiMap>;
 
+    struct UiStoryBook
+    {
+        std::uint64_t generation;
+        std::size_t pageIndex;
+        double seconds, turn;
+        std::vector<UiDrawCommand> current, next;
+    };
+
     struct ApplicationPresentation
     {
         static constexpr float Width = 360, Height = 240;
         MenuPage page;
         std::vector<UiDrawCommand> commands;
+        std::optional<UiStoryBook> story;
     };
 }

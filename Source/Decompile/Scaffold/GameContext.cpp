@@ -263,7 +263,7 @@ namespace Desperabis
         std::memcpy(bytes, &object, sizeof(object));
     }
 
-    LevelLoadRequest GameContext::StartLevel(std::int16_t levelNumber)
+    LevelLoadRequest GameContext::StartLevel(std::int16_t levelNumber, bool showStory)
     {
         if (levelNumber <= 0) { throw std::invalid_argument("Level numbers must be positive."); }
         if (pendingLevelLoad) { throw std::logic_error("A level load is already in progress."); }
@@ -272,6 +272,12 @@ namespace Desperabis
             throw std::overflow_error("Level load request IDs are exhausted.");
         }
         const LevelLoadRequest request{ ++nextLoadRequestId, levelNumber };
+        pendingLevelStory = showStory;
+        if (!showStory) { pendingStorySections.clear(); }
+        storyPages.clear();
+        storyPageIndex = 0;
+        storySeconds = 0;
+        storyTurn = -1;
         pendingLevelLoad = request;
         levelLoadError.clear();
         runtimeState = GameRuntimeState::Loading;
@@ -412,11 +418,13 @@ namespace Desperabis
             UpdateModelAttachments();
         }
         BeginCutscene(restoringSave);
+        if (pendingLevelStory && !restoringSave) { BeginLevelStory(); }
+        pendingLevelStory = false;
         pendingLevelLoad.reset();
         levelLoadError.clear();
         hasActiveGame = true;
         runtimeState = GameRuntimeState::Ready;
-        SetMenuPage(MenuPage::Gameplay);
+        SetMenuPage(storyPages.empty() ? MenuPage::Gameplay : MenuPage::StoryBook);
         applicationPageChanged = true;
         applicationTickAccumulator = 0;
         for (std::size_t slot = 1; slot < worldObjects.size(); ++slot)
@@ -1485,7 +1493,7 @@ namespace Desperabis
         InitializeNewGame(chapter);
         if (runtimeState == GameRuntimeState::LoadFailed) { throw std::runtime_error(levelLoadError); }
         if (runtimeState != GameRuntimeState::Loading) { hasActiveGame = true; }
-        SetMenuPage(MenuPage::Gameplay);
+        SetMenuPage(storyPages.empty() ? MenuPage::Gameplay : MenuPage::StoryBook);
     }
 
     void GameContext::RunApplication()

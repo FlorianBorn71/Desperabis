@@ -314,7 +314,8 @@ namespace
             const auto transition = Tap(host, input, InputKey::UiConfirmKey);
             Check(!transition.tick && transition.worldDeltaSeconds == 0 && transition.timing.behaviorTicks == 0 &&
                 host.GetLoadedLevelNumber() == starts[part] && host.requests.size() == 2 &&
-                host.GetRuntimeState() == GameRuntimeState::Ready && host.GetMenuPage() == MenuPage::Gameplay &&
+                host.GetRuntimeState() == GameRuntimeState::Ready &&
+                host.GetMenuPage() == (part == 0 ? MenuPage::Gameplay : MenuPage::StoryBook) &&
                 !host.IsPaused(), "Part acceptance must load once, unpause, and not simulate the transition frame.");
             Check(host.inventory[4].health == 0 && host.gold == 0 && host.arrowPoison == 0 && !host.hasMap &&
                 host.playerLifeMaximum == 360 && host.playerLife == 360 * 65536 &&
@@ -333,6 +334,14 @@ namespace
             Check(host.weaponAmounts == defaults.weaponAmounts &&
                 host.weaponInventorySlots == defaults.weaponInventorySlots,
                 "New Game must restore native resource defaults, not carry ammunition from the old game.");
+            for (int page = 0; host.GetMenuPage() == MenuPage::StoryBook && page < 100; ++page)
+            {
+                Check(!host.UpdateApplication(0.1, input).tick,
+                    "The introduction must pause simulation before the starting level.");
+                Tap(host, input, InputKey::UiCancelKey);
+                if (host.GetMenuPage() == MenuPage::StoryBook) { host.UpdateApplication(0.9, input); }
+            }
+            Check(host.GetMenuPage() == MenuPage::Gameplay, "The complete introduction must finish in gameplay.");
             Check(host.UpdateApplication(1.0 / 33, input).tick.has_value() && host.requests.size() == 2 &&
                 host.GetLoadedLevelNumber() == starts[part],
                 "The next frame must resume simulation without a held Tab skipping the chosen starting level.");
@@ -342,7 +351,7 @@ namespace
             {
                 for (int i = 0; i < 6; ++i) { Tap(host, input, InputKey::DebugNextLevelKey); }
                 Check(host.GetLoadedLevelNumber() == 16,
-                    "Skipping the unported HERZ introduction followed by six advances must reach the forest.");
+                    "Completing the HERZ introduction followed by six debug advances must reach the forest.");
             }
         }
         Host cancelled;

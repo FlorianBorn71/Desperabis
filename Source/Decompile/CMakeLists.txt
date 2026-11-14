@@ -18,6 +18,7 @@ add_library(behavior-recovery STATIC
     Scaffold/ApplicationFlow.h
     Scaffold/ApplicationFlow.cpp
     Scaffold/Cutscene.cpp
+    Scaffold/StoryBook.cpp
     Scaffold/SaveGame.cpp
     Scaffold/SaveGame.h
     Scaffold/BehaviorDispatch.cpp

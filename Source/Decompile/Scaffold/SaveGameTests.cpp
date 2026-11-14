@@ -59,6 +59,25 @@ namespace
         void LoadLevel(const LevelLoadRequest&) override { if (!deferred) { Complete(); } }
     };
 
+    void FinishStory(GameContext& host)
+    {
+        class StoryInput final : public InputHandler
+        {
+        public:
+            bool confirm = false;
+            bool IsKeyPressed(InputKey key) override { return confirm && key == InputKey::UiConfirmKey; }
+        } input;
+        for (int page = 0; host.GetMenuPage() == MenuPage::StoryBook && page < 100; ++page)
+        {
+            input.confirm = true;
+            host.UpdateApplication(0, input);
+            input.confirm = false;
+            host.UpdateApplication(0, input);
+            if (host.GetMenuPage() == MenuPage::StoryBook) { host.UpdateApplication(0.9, input); }
+        }
+        Check(host.GetMenuPage() == MenuPage::Gameplay, "The complete story must finish before testing gameplay.");
+    }
+
     void TestOriginal(const std::filesystem::path& path, const std::filesystem::path& assets)
     {
         const auto bytes = Read(path);
@@ -104,6 +123,7 @@ namespace
         host.StartNewGame(2);
         const auto checkMap = [&]
         {
+            FinishStory(host);
             const auto presentation = host.GetApplicationPresentation();
             Check(host.hasMap && std::any_of(presentation.commands.begin(), presentation.commands.end(),
                 [](const UiDrawCommand& command)
@@ -265,16 +285,20 @@ namespace
         host.StartNewGame(1);
         Check(host.GetLoadedLevelNumber() == 30 && host.GetGameParts()[0].name == names[0],
             "Custom HERZ data, not a compiled list, must select labels and part starts.");
+        FinishStory(host);
         host.EndLevel();
         Check(host.GetLoadedLevelNumber() == 34, "Custom HERZ order must control progression.");
+        FinishStory(host);
         const auto custom = NativeSaveGame::Decode(host.CaptureSaveGame("Custom order"));
         Check(custom.LevelOrder() == std::vector<std::uint8_t>{ 30, 34 } && custom.Word(227) == 2,
             "Native saves must retain the actual HERZ sequence and ordinal.");
         host.EndLevel();
         Check(host.GetMenuPage() == MenuPage::MainMenu, "Custom part completion must use its list boundary.");
         host.StartNewGame(2);
+        FinishStory(host);
         host.EndLevel();
         Check(host.GetLoadedLevelNumber() == 16, "Reordered HERZ lists must not use numeric level addition.");
+        FinishStory(host);
         auto front = std::find_if(host.worldObjects.begin(), host.worldObjects.end(),
             [](const auto& object) { return object.behavior == BehaviorType::ExtinguishLava; });
         Check(front != host.worldObjects.end(), "Expected an original forest flooding front.");
