@@ -326,7 +326,7 @@ namespace Desperabis
             storySeconds += delta;
             if (storyTurn >= 0)
             {
-                storyTurn = std::min(1.0, storyTurn + delta / 0.9);
+                storyTurn = std::min(1.0, storyTurn + delta / 1.2);
                 if (storyTurn == 1)
                 {
                     ++storyPageIndex;

@@ -339,7 +339,11 @@ namespace
                 Check(!host.UpdateApplication(0.1, input).tick,
                     "The introduction must pause simulation before the starting level.");
                 Tap(host, input, InputKey::UiCancelKey);
-                if (host.GetMenuPage() == MenuPage::StoryBook) { host.UpdateApplication(0.9, input); }
+                if (host.GetMenuPage() == MenuPage::StoryBook)
+                {
+                    host.UpdateApplication(0.6, input);
+                    host.UpdateApplication(0.6, input);
+                }
             }
             Check(host.GetMenuPage() == MenuPage::Gameplay, "The complete introduction must finish in gameplay.");
             Check(host.UpdateApplication(1.0 / 33, input).tick.has_value() && host.requests.size() == 2 &&

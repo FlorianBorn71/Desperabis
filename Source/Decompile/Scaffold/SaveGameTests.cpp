@@ -73,7 +73,11 @@ namespace
             host.UpdateApplication(0, input);
             input.confirm = false;
             host.UpdateApplication(0, input);
-            if (host.GetMenuPage() == MenuPage::StoryBook) { host.UpdateApplication(0.9, input); }
+            if (host.GetMenuPage() == MenuPage::StoryBook)
+            {
+                host.UpdateApplication(0.6, input);
+                host.UpdateApplication(0.6, input);
+            }
         }
         Check(host.GetMenuPage() == MenuPage::Gameplay, "The complete story must finish before testing gameplay.");
     }

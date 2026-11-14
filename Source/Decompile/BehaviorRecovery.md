@@ -642,15 +642,28 @@ and presses during the turn are not queued. The host supplies unbound-key
 edges through `InputHandler::WasAnyKeyPressed`; mapped-key edges also work.
 The last-page press resumes gameplay with the normal transition input gate.
 Native effect **51** (`33h`, page presenter `0EF0:1552`) plays at the start
-of each modern turn. The 0.9-second eased rotation and sound-start timing
+of each modern turn. The 1.2-second eased rotation and sound-start timing
 are modern presentation choices, not a reconstruction of DOS frame timing.
 Legacy `^`, `~`, backslash, FCh and `*digit` presentation/autorun/unlock
 annotations are consumed without enabling DOS autorun or chapter gating.
 
 DX11's game-local `BookScene` creates an otherwise empty scene, perspective
-camera and warm flickering light. At rest only the left page is visible;
-the incoming right sheet rotates around the spine onto it. This first
-milestone intentionally uses a **rigid two-sided quad**, not a curved mesh.
+camera and warm flickering light from the right, shading the inward-facing
+curl. At rest only the left page is visible;
+the incoming right sheet curls around the spine onto it. The two-sided sheet
+has 40 vertical strips with smooth per-vertex normals. The first half bends
+the sheet into a semicylinder. The second half rolls that curl toward the
+outer edge, progressively laying the new page flat behind it; the remaining
+curled portion keeps its semicircular shape while its radius shrinks. The
+landing uses a stronger nonlinear ease-out, matching the initial roll speed
+and reaching zero speed and acceleration at the end of the 1.2-second turn.
+Arc-length placement preserves sheet width, and fixed nonuniform UV samples
+concentrate strips near the shrinking outer curl without sliding the text.
+The spine stays pinned, the sheet stays above the underlying page, and both
+endpoints are flat. Forty-nine eased poses
+share one immutable GPU buffer and use existing model-position interpolation
+between frames, so turning allocates no new GPU geometry. Normals are stored
+per pose, using the renderer's native inward-facing convention.
 Text and ornaments software-darken original parchment using the native
 0..7 ink shades. Two registered texture objects are reused ping-pong;
 composition/uploads occur only when their generation/page keys change,

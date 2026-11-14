@@ -1333,7 +1333,7 @@ namespace
             presentation.story->turn = turn;
             moved |= render() != resting;
         }
-        Check(moved, "Intermediate rigid-page poses must draw a real turning sheet.");
+        Check(moved, "Intermediate curled-page poses must draw a real turning sheet.");
         presentation.story->turn = -1;
         presentation.story->pageIndex = 1;
         presentation.story->current = pages[1];
@@ -1367,6 +1367,128 @@ namespace
         scene.Draw(*presentation.story, 1.5f, renderer, settings, stats);
         Check(scene.GetRenderableInstances()[0]->m_materialOverride[0].m_texture == texture,
             "Recomposition must reuse its registered page slot rather than accumulate assets.");
+        const auto& turning = *scene.GetRenderableInstances()[1];
+        const auto sharedMeshRuntime = turning.GetRenderable()->m_runtime;
+        float previousFlatWidth = 0;
+        for (int step = 0; step <= 100; ++step)
+        {
+            const double turn = step / 100.0;
+            presentation.story->turn = turn;
+            scene.Draw(*presentation.story, 1.5f, renderer, settings, stats);
+            const auto& points = turning.GetRenderable()->m_sourcePositions;
+            Check(points.size() > 8 && points.size() % 2 == 0,
+                "The turning sheet must contain vertical subdivisions, not a single rigid quad.");
+            const auto& hinge = points[points.size() - 2];
+            Check(std::abs(hinge.x) < 0.00001f && std::abs(hinge.z) < 0.00001f,
+                "Curling must keep the entire spine anchored.");
+            float length = 0;
+            for (std::size_t i = 2; i < points.size(); i += 2)
+            {
+                const float dx = points[i].x - points[i - 2].x;
+                const float dz = points[i].z - points[i - 2].z;
+                length += std::sqrt(dx * dx + dz * dz);
+                Check(points[i].z >= -0.00001f &&
+                    points[i].x == points[i + 1].x && points[i].z == points[i + 1].z &&
+                    points[i].y == 1.2f && points[i + 1].y == -1.2f,
+                    "Vertical strips must stay joined and above the underlying page.");
+            }
+            Check(std::abs(length - 3.6f) < 0.002f,
+                "Bending must preserve sheet length rather than stretching or shrinking the text.");
+            if (turn == 0 || turn == 1)
+            {
+                Check(std::abs(points.front().x - (turn == 0 ? 3.6f : -3.6f)) < 0.00001f,
+                    "The curved animation must start and finish at the original flat-page endpoints.");
+                for (const auto& point : points)
+                {
+                    Check(std::abs(point.z) < 0.00001f, "Both turn endpoints must be completely flat.");
+                }
+            }
+            else if (turn == 0.5)
+            {
+                const auto& tip = points.front();
+                float bow = 0;
+                for (const auto& point : points)
+                {
+                    bow = (std::max)(bow, std::abs(point.x * tip.z - point.z * tip.x) /
+                        std::sqrt(tip.x * tip.x + tip.z * tip.z));
+                }
+                Check(bow > 1.1f, "The middle of the turn must have a deep U-shaped bow.");
+                const auto& outerNeighbor = points[2];
+                const auto& innerNeighbor = points[points.size() - 4];
+                const float outerX = tip.x - outerNeighbor.x, outerZ = tip.z - outerNeighbor.z;
+                const float innerX = innerNeighbor.x - hinge.x, innerZ = innerNeighbor.z - hinge.z;
+                const float tangentDot = (outerX * innerX + outerZ * innerZ) /
+                    std::sqrt((outerX * outerX + outerZ * outerZ) * (innerX * innerX + innerZ * innerZ));
+                Check(tangentDot < -0.95f, "A near-U turn must have nearly opposite spine and free-edge tangents.");
+            }
+            if (turn > 0.5 && turn < 1)
+            {
+                const auto& tip = points.front();
+                const float radius = tip.z * 0.5f;
+                float flatWidth = 0;
+                for (const auto& point : points)
+                {
+                    if (point.z < 0.00001f)
+                    {
+                        flatWidth = (std::max)(flatWidth, -point.x);
+                    }
+                    else
+                    {
+                        const float dx = point.x - tip.x, dz = point.z - radius;
+                        Check(std::abs(std::sqrt(dx * dx + dz * dz) - radius) < 0.0001f,
+                            "The remaining sheet must keep a semicircular rolling curl instead of rotating rigidly.");
+                    }
+                }
+                Check(flatWidth >= previousFlatWidth, "The landed portion must grow continuously as the curl rolls out.");
+                previousFlatWidth = flatWidth;
+                if (turn == 0.75)
+                {
+                    Check(flatWidth > 2.2f && tip.z > 0.4f,
+                        "The second half must leave most of the sheet flat while its outer edge is still curled.");
+                }
+                if (turn == 0.9)
+                {
+                    Check(tip.z < 0.06f, "The final part of the roll must ease into a slow, shallow landing.");
+                }
+            }
+            Check(turning.GetRenderable()->m_runtime == sharedMeshRuntime,
+                "Turning must reuse cached geometry rather than allocate GPU buffers every frame.");
+        }
+        presentation.story->turn = 0.5136;
+        scene.Draw(*presentation.story, 1.5f, renderer, settings, stats);
+        Check(turning.GetBlendTargetRenderable() && turning.m_blendWeight > 0 && turning.m_blendWeight < 1 &&
+            turning.GetBlendTargetRenderable()->m_runtime == sharedMeshRuntime,
+            "Intermediate times must interpolate compatible cached curved poses.");
+        scene.SetPage(0, paper);
+        scene.SetPage(1, paper);
+        const auto light = scene.GetLightSources().front();
+        const auto lightPosition = light->GetPosition();
+        const auto foldBrightness = [&](double turn)
+        {
+            presentation.story->turn = turn;
+            const float black[]{0,0,0,1};
+            context->ClearRenderTargetView(target.colorView.Get(), black);
+            context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 1, 0);
+            scene.Draw(*presentation.story, 1.5f, renderer, settings, stats);
+            const auto pixels = target.Pixels(device, context);
+            double brightness = 0;
+            for (int y = 80; y < 160; ++y)
+            {
+                for (int x = 300; x < 340; ++x)
+                {
+                    const auto pixel = pixels[y * 360 + x];
+                    brightness += (pixel & 255) + ((pixel >> 8) & 255) + ((pixel >> 16) & 255);
+                }
+            }
+            return brightness;
+        };
+        const auto rightFlat = foldBrightness(-1), rightCurl = foldBrightness(0.5);
+        light->SetPosition(Vector(-lightPosition.GetX(),lightPosition.GetY(),lightPosition.GetZ()));
+        const auto leftFlat = foldBrightness(-1), leftCurl = foldBrightness(0.5);
+        light->SetPosition(lightPosition);
+        Check(rightCurl * leftFlat < 0.85 * leftCurl * rightFlat,
+            "Right-side lighting must shade the inward fold more strongly than the resting parchment.");
+        presentation.story->turn = -1;
         for (const auto& size : {std::pair<UINT,UINT>{960,540}, {480,800}})
         {
             Target resized(device, size.first, size.second);
@@ -1382,7 +1504,7 @@ namespace
                 (pixels.front() & 0x00ffffff) == 0,
                 "Wide and portrait cameras must preserve the page aspect and black letterbox.");
         }
-        std::cout << "Story book: native text/ornaments, original-size ink pixels, rigid 3D turn, landing, flickering light and two reusable textures passed.\n";
+        std::cout << "Story book: native ink pixels, length-preserving rolling curl, progressive flat landing, anchored spine, cached poses, flickering light and two reusable textures passed.\n";
     }
 
     void CheckCrystalBallEnding(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)

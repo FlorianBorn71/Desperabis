@@ -11,36 +11,95 @@
 FUTURE(void) BookScene::CreateScene()
 {
     ModelLoadingContext positions;
-    positions.m_vertexPos = {{-3.6f,1.2f,0,1}, {0,1.2f,0,1},
-        {-3.6f,-1.2f,0,1}, {0,-1.2f,0,1}};
     ModelConversionContext geometry(positions);
-    const Vector2 uv[]{{0,0}, {1,0}, {0,1}, {1,1}};
-    for (int face = 0; face < 2; ++face)
+    constexpr int positionsPerFrame = (PageStrips + 1) * 2;
+    static_assert(TurnFrames * positionsPerFrame * sizeof(VertexPosition) <= 64 * 1024,
+        "Cached book poses must fit the DX11 position constant buffer.");
+    std::array<float, PageStrips + 1> textureUs;
+    for (int column = 0; column <= PageStrips; ++column)
     {
-        for (std::uint16_t i = 0; i < 4; ++i)
-        {
-            ModelVertex vertex{};
-            vertex.SetTextured(i, {255,255,255,0}, uv[i]);
-#ifdef ENABLE_ADVANCED_RENDERING
-            // The lighting shader expects inward-facing native-model normals.
-            vertex.Normal = {0,0,face == 0 ? -1.f : 1.f};
-#endif
-            geometry.m_vertices.push_back(vertex);
-            geometry.AddToBounds(positions.m_vertexPos[i], 0);
-        }
+        const double u = static_cast<double>(column) / PageStrips;
+        // Keep extra strips near the free edge as the rolling curl shrinks.
+        textureUs[column] = static_cast<float>(u * u);
     }
-    geometry.m_sortedIndices = {0,1,2,2,1,3, 4,6,5,6,7,5};
-    m_pageMesh = std::make_shared<Renderable>();
-    m_pageMesh->m_runtime = Renderer::Instance().CreateModelBuffers(geometry);
-    geometry.GenerateBoundingVolume(m_pageMesh->m_localBounds);
-    for (int face = 0; face < 2; ++face)
+    for (int frame = 0; frame < TurnFrames; ++frame)
     {
-        DrawCall draw;
-        draw.m_firstIndex = face * 6;
-        draw.m_primitiveCount = 2;
-        draw.m_material.m_useAlphaTest = false;
-        draw.m_material.ComputeHash();
-        m_pageMesh->m_drawCalls.push_back(draw);
+        const double t = static_cast<double>(frame) / (TurnFrames - 1);
+        double eased = t * t * (3 - 2 * t);
+        if (t > 0.5)
+        {
+            // Match the curl's initial speed, then settle with zero speed and acceleration.
+            const double remaining = 2 * (1 - t);
+            eased = 1 - 0.5 * remaining * remaining * remaining * (2.5 - 1.5 * remaining);
+        }
+        const double curl = static_cast<double>(Math::Pi) * (std::min)(2 * eased, 1.0);
+        const double laidLength = 3.6 * (std::max)(2 * eased - 1, 0.0);
+        const double radius = curl > 0 ? (3.6 - laidLength) / curl : 0;
+        const double rootAngle = static_cast<double>(Math::Pi) - curl;
+        std::array<double, PageStrips + 1> tangents;
+        auto mesh = std::make_shared<Renderable>();
+        mesh->m_vertexOfs = frame * positionsPerFrame;
+        mesh->m_numPositions = positionsPerFrame;
+        for (int column = 0; column <= PageStrips; ++column)
+        {
+            const double distance = 3.6 * (1 - static_cast<double>(textureUs[column]));
+            double x = -distance, z = 0, tangent = rootAngle;
+            if (frame == 0) { x = distance; }
+            else if (distance > laidLength)
+            {
+                tangent += (distance - laidLength) / radius;
+                x = -laidLength - radius * (std::sin(tangent) - std::sin(rootAngle));
+                z = radius * (std::cos(rootAngle) - std::cos(tangent));
+            }
+            tangents[column] = tangent;
+            for (int row = 0; row < 2; ++row)
+            {
+                const VertexPosition position{static_cast<float>(x),row == 0 ? 1.2f : -1.2f,
+                    static_cast<float>(z),1};
+                positions.m_vertexPos.push_back(position);
+                mesh->m_sourcePositions.push_back(position);
+                geometry.AddToBounds(position, 0);
+            }
+        }
+        for (int face = 0; face < 2; ++face)
+        {
+            const auto firstVertex = static_cast<std::uint16_t>(geometry.m_vertices.size());
+            for (std::uint16_t i = 0; i < positionsPerFrame; ++i)
+            {
+                ModelVertex vertex{};
+                vertex.SetTextured(i, {255,255,255,0}, {textureUs[i / 2],static_cast<float>(i % 2)});
+#ifdef ENABLE_ADVANCED_RENDERING
+                const double tangent = tangents[i / 2];
+                const float side = face == 0 ? -1.f : 1.f;
+                // The lighting shader expects inward-facing native-model normals.
+                vertex.Normal = {side * static_cast<float>(std::sin(tangent)),0,
+                    side * static_cast<float>(std::cos(tangent))};
+#endif
+                geometry.m_vertices.push_back(vertex);
+            }
+            DrawCall draw;
+            draw.m_firstIndex = static_cast<int>(geometry.m_sortedIndices.size());
+            draw.m_primitiveCount = PageStrips * 2;
+            draw.m_material.m_useAlphaTest = false;
+            draw.m_material.ComputeHash();
+            mesh->m_drawCalls.push_back(draw);
+            for (int column = 0; column < PageStrips; ++column)
+            {
+                const auto a = static_cast<std::uint16_t>(firstVertex + column * 2);
+                const auto b = static_cast<std::uint16_t>(a + 2);
+                const auto c = static_cast<std::uint16_t>(a + 1);
+                const auto d = static_cast<std::uint16_t>(a + 3);
+                if (face == 0) { geometry.m_sortedIndices.insert(geometry.m_sortedIndices.end(), {a,b,c,c,b,d}); }
+                else { geometry.m_sortedIndices.insert(geometry.m_sortedIndices.end(), {a,c,b,c,d,b}); }
+            }
+        }
+        m_pageMeshes[frame] = std::move(mesh);
+    }
+    const auto runtime = Renderer::Instance().CreateModelBuffers(geometry);
+    for (auto& mesh : m_pageMeshes)
+    {
+        mesh->m_runtime = runtime;
+        geometry.GenerateBoundingVolume(mesh->m_localBounds);
     }
     for (auto& page : m_pages)
     {
@@ -49,12 +108,12 @@ FUTURE(void) BookScene::CreateScene()
         page.m_height = 240;
         page.SetDefaultParams();
     }
-    m_left = std::make_shared<RenderableInstance>(m_pageMesh.get());
-    m_turning = std::make_shared<RenderableInstance>(m_pageMesh.get());
+    m_left = std::make_shared<RenderableInstance>(m_pageMeshes.back().get());
+    m_turning = std::make_shared<RenderableInstance>(m_pageMeshes.front().get());
     AddRenderableInstance(m_left);
     AddRenderableInstance(m_turning);
     m_light = std::make_shared<LightSource>(this);
-    m_light->SetPosition(Vector(-1.5f,2.5f,3.8f));
+    m_light->SetPosition(Vector(3.0f,2.5f,3.8f));
     m_light->SetRadius(12.f);
     m_light->SetCoronaSize(0);
     m_light->SetSpecularAmount(0);
@@ -100,13 +159,16 @@ void BookScene::Draw(const Desperabis::UiStoryBook& view, float aspect, Renderer
     m_turning->SetVisible(view.turn >= 0);
     if (view.turn >= 0)
     {
+        const float pose = static_cast<float>(view.turn) * (TurnFrames - 1);
+        const int frame = static_cast<int>(pose);
+        m_turning->SetRenderable(m_pageMeshes[frame].get(),
+            frame + 1 < TurnFrames ? m_pageMeshes[frame + 1].get() : nullptr);
+        m_turning->m_blendWeight = pose - frame;
         setMaterials(*m_turning, m_pages[(view.pageIndex + 1) % 2]);
         auto& back = m_turning->GetOrCreateMaterialOverrides().at(1);
         back.m_texture = m_paper;
         back.ComputeHash();
-        const float t = static_cast<float>(view.turn);
-        const float eased = t * t * (3.f - 2.f * t);
-        m_turning->SetTransform(Vector(1.8f,0,0.002f), Vector((1.f - eased) * Math::Pi,0,0));
+        m_turning->SetTransform(Vector(1.8f,0,0.002f), Vector(0,0,0));
     }
     m_light->SetColor({255,235,205}, 1.15f + 0.035f *
         static_cast<float>(std::sin(view.seconds * 13.7) + std::sin(view.seconds * 23.3)));

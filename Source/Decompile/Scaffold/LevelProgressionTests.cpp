@@ -444,11 +444,14 @@ namespace
             if (host.GetMenuPage() != MenuPage::StoryBook) { break; }
             const auto seed = host.randomSeed;
             input.anyKeyPressed = true;
-            host.UpdateApplication(0.45, input);
+            host.UpdateApplication(0.6, input);
             input.anyKeyPressed = false;
             Check(host.GetApplicationPresentation().story->pageIndex == view->pageIndex,
                 "The old page must remain current during the turn.");
-            host.UpdateApplication(0.45, input);
+            host.UpdateApplication(0.3, input);
+            Check(host.GetApplicationPresentation().story->pageIndex == view->pageIndex,
+                "The slower turn must still be in progress after 0.9 seconds.");
+            host.UpdateApplication(0.3, input);
             Check(host.GetApplicationPresentation().story->pageIndex == view->pageIndex + 1,
                 "Landing must advance exactly one page.");
             host.UpdateApplication(0.5, input);
