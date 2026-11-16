@@ -1,4 +1,5 @@
 #include "GameContext.h"
+#include "StringResources.h"
 #include "BehaviorDispatch.h"
 #include "GameMath.h"
 
@@ -4303,12 +4304,22 @@ namespace Desperabis
         if (WrapSignedWord(object.generalPurpose3) > 0)
         {
             const auto slot = object.generalPurpose3;
-            if (!level || slot >= level->textureMessages.size() ||
-                object.itemValue < 0 || static_cast<std::size_t>(object.itemValue) >= level->textureMessages[slot].size())
+            if (!level || slot >= level->textureFileIndices.size())
             {
-                throw std::out_of_range("Text prompt references an unavailable texture or row.");
+                throw std::out_of_range("Text prompt references an unavailable texture slot.");
             }
-            PromptUserMessage(level->textureMessages[slot][object.itemValue], WrapSignedWord(object.generalPurpose1));
+            // DOS stored Pascal strings inside texture rows, not visible picture pixels:
+            // generalPurpose3 chose the level texture slot; itemValue chose its zero-based row.
+            // Keep the authored selector, but resolve translator-editable JSON instead.
+            // Legacy lookup, retained for comparison with the executable:
+            // PromptUserMessage(level->textureMessages[slot][object.itemValue], WrapSignedWord(object.generalPurpose1));
+            const auto texture = level->textureFileIndices[slot];
+            if (texture != 39 && texture != 38)
+            {
+                throw std::out_of_range("Text prompt references an unmapped message texture.");
+            }
+            const auto id = IndexedStringId(texture == 39 ? "tutorial_" : "ending_", object.itemValue);
+            PromptUserMessage(GetString(id), WrapSignedWord(object.generalPurpose1));
         }
         if (behaviorDispatchEnabled && object.behaviorParameter > 0) { SetObjectHealth(object, 0); }
         return { InteractionStatus::Applied };
@@ -4335,19 +4346,11 @@ namespace Desperabis
     void GameContext::DescribeShopItem(RawGameObject& object)
     {
         if (object.collisionType != CollisionType::BuyItem || WrapSignedWord(object.generalPurpose3) >= 1) { return; }
-        if (!level || object.generalPurpose1 >= level->objectDescriptions.size())
-        {
-            throw std::out_of_range("Shop description references an unavailable BEZEICH.TXT entry.");
-        }
-        auto text = level->objectDescriptions[object.generalPurpose1];
-        if (!text.empty()) { text.erase(0, 1); }
-        if (text.size() > 50) { text.clear(); }
+        // BEZEICH.TXT used one-based lines, a leading style marker and '=' for the price.
+        // JSON preserves the object index but uses named placeholders and no style prefix.
+        const auto text = FormatString(IndexedStringId("item_", object.generalPurpose1),
+            {{"price", std::to_string(object.doorLockOrGroupBitmask)}});
         object.generalPurpose3 = 40;
-        const auto price = text.find('=');
-        if (price != std::string::npos)
-        {
-            text.replace(price, 1, std::to_string(object.doorLockOrGroupBitmask));
-        }
         PromptUserMessage(text, WrapSignedWord(-3 * static_cast<int>(text.size())));
         PlaySoundEffect(static_cast<SoundEffect>(object.soundEffectId), 255, 514, 1);
     }

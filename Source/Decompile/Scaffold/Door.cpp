@@ -1,5 +1,6 @@
 #include "BehaviorDispatch.h"
 #include "GameMath.h"
+#include "StringResources.h"
 
 #include <iterator>
 #include <stdexcept>
@@ -76,7 +77,7 @@ namespace Desperabis
         const auto lock = object.doorLockOrGroupBitmask;
         if (lock < 0)
         {
-            if (!context.IsUserMessageActive()) { context.PromptUserMessage("abgeschlossen", 60); }
+            if (!context.IsUserMessageActive()) { context.PromptUserMessage(GetString("door_locked"), 60); }
             return { InteractionStatus::NoEffect };
         }
         if (lock > 0)
@@ -94,12 +95,12 @@ namespace Desperabis
             }
             if (selectedKey == 0)
             {
-                if (!context.IsUserMessageActive()) { context.PromptUserMessage("abgeschlossen", 60); }
+                if (!context.IsUserMessageActive()) { context.PromptUserMessage(GetString("door_locked"), 60); }
                 return { InteractionStatus::NoEffect };
             }
             if (selectedKey != lock)
             {
-                context.PromptUserMessage("Falscher Schl\x81ssel", 90);
+                context.PromptUserMessage(GetString("door_wrong_key"), 90);
                 return { InteractionStatus::NoEffect };
             }
             // Emptying the slot also removes a held key; refreshing its HUD icon stays with the host.

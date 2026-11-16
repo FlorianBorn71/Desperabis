@@ -8,6 +8,86 @@ This repo comes with a tool to create custom localizations for the game. There a
 
 To make the process easy, all relevant assets have been extracted and converted to standard formats and put into the respective localization folder. The conversion tool takes it from there, converts back to Desperabis proprietary binary formats and packages everything up again.
 
+## Modern game string resources
+
+The DX11 game uses [AdditionalAssets/Strings.json](../Source/NewRenderer/AdditionalAssets/Strings.json)
+for menus, chapter names, inventory/HUD labels, door/shop messages, item
+descriptions, tutorial instructions and the final-level recognition message.
+Book/story text remains in the original text assets. Developer UI, technical
+diagnostics, user-entered save names, speech audio and text baked into artwork
+are not part of this catalog.
+
+One UTF-8 JSON file groups message catalogs by locale (`en-us` and `de-de`).
+Within each locale, stable IDs map to `message` and translator `description`:
+
+```json
+{
+  "en-us": {
+    "hud_gold": {
+      "message": "Gold: {amount}",
+      "description": "Gameplay gold display. Keep the {amount} placeholder."
+    }
+  },
+  "de-de": {
+    "hud_gold": {
+      "message": "Gold: {amount}",
+      "description": "Gameplay gold display. Keep the {amount} placeholder."
+    }
+  }
+}
+```
+
+Translate `message`, not the IDs. Keep `description` as translator context;
+JSON does not permit comments, so this field records where/how a string is used.
+The file is **UTF-8**, unlike the legacy DOS localization files below.
+Use `\n` for line breaks and `<highlight>...</highlight>` for highlighted
+key names. Preserve named placeholders such as `{amount}` and `{price}`;
+their positions may change and repeated placeholders are supported.
+Native font limitations still apply: Latin letters, digits, spaces, German
+umlauts/eszett and punctuation from `0123456789.:>/-|~"!$<,+^#*%`.
+Additional alphabets need font support first; unsupported non-ASCII letters
+are rejected rather than silently replaced.
+
+`tutorial_00` through `tutorial_13` retain the zero-based row IDs from
+`TUR39.256`. The final level uses `TUR38.256` with its own `ending_00`, because
+its row zero is unrelated to tutorial row zero. Object `generalPurpose3`
+still chooses the texture slot and `itemValue` still chooses the row; only
+the text source changes. The old texture lookup is commented out in
+`GameContext::HandleTextPromptContact` for reverse-engineering reference.
+`item_XX` IDs preserve the **one-based** `BEZEICH.TXT` index. Shop descriptions
+130..141 use `generalPurpose1`, and the old `=` price marker becomes `{price}`.
+Entries 142..151 are inventory cursor-over item names, **not** shop descriptions.
+Chapter IDs
+are one-based menu positions; their playable level order still comes from HERZ.
+
+The catalog lives alongside modern textures and shaders, separate from the
+legacy DOS patching/localization flow below. `GenerateBuiltInCpps` embeds it as
+`Strings.json` in `SharedSource/IO/builtin/BuiltInStrings.cpp`, using the same
+built-in file registry as the additional textures (`BuiltInTextures.cpp`).
+Shaders remain in their separate DX11 bundle. Run the generator from its project
+directory after editing the JSON, then rebuild the game/tests. No loose
+localization file needs to be shipped beside the executable.
+
+The default locale is `en-us`. The loader accepts an explicit locale
+(`de-de` for German), leaving an entry point for a future external language
+setting; that settings file and language-selection UI are not implemented yet.
+All locales must contain the same IDs. Missing locales/IDs, duplicate fields,
+malformed JSON and unsupported letters report explicit errors rather than
+silently switching languages.
+
+For contributors, restore the pinned header-only JSON parser before the first
+Visual Studio or CMake build, from the repository root:
+
+```powershell
+nuget restore Source\packages.config -PackagesDirectory Source\packages -NonInteractive
+```
+
+The DX11 host calls `LoadStringResourcesJson` with bytes read through its
+built-in file manager, independent of the working directory. Standalone core
+hosts can also call `LoadStringResources(path, locale)`; core tests default to
+`Localization/strings.json` in their working directory. CMake stages the same
+multilingual additional asset there for CTest only.
+
 ## How to start
 
 1) Create your own localization folder, by creating a copy of [the folder for the English localization](Data/SourceAssets/Localization/English). In this folder, you will find all relevant files that have language-specific content.

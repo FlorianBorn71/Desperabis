@@ -1301,7 +1301,7 @@ namespace
         Check(host.Tick({ 0,1 }, input).status == GameTickStatus::Advanced, "Locked-door prompt tick failed.");
         const auto firstText = host.userMessage;
         const auto firstNotification = host.promptCalls;
-        Check(firstText == "abgeschlossen" && host.userMessageTicks == 60 &&
+        Check(firstText == "Locked" && host.userMessageTicks == 60 &&
             host.IsUserMessageActive() && firstNotification == 2,
             "The core must call the app's virtual hook directly for level reset and door prompts.");
         input.pressed = false;

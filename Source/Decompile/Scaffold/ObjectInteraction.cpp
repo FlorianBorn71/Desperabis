@@ -1,5 +1,6 @@
 #include "BehaviorDispatch.h"
 #include "GameMath.h"
+#include "StringResources.h"
 
 #include <stdexcept>
 
@@ -236,7 +237,7 @@ namespace Desperabis
             const auto price = object.doorLockOrGroupBitmask;
             if (price > 0 && state.gold < price)
             {
-                state.PromptUserMessage("Nicht genug Gold", 90);
+                state.PromptUserMessage(GetString("shop_insufficient_gold"), 90);
                 return { InteractionStatus::NoEffect };
             }
             if (price > 0) { state.gold = WrapSignedWord(state.gold - price); }

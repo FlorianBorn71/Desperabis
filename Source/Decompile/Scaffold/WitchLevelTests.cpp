@@ -132,7 +132,7 @@ namespace
         Check(HandlePlayerObjectInteraction(medicine, host).status == InteractionStatus::NoEffect &&
             host.gold == medicine.doorLockOrGroupBitmask - 1 && medicine.health == 1000 &&
             std::memcmp(&stock, &host.worldObjects[medicine.itemValue], sizeof(stock)) == 0 &&
-            host.message == "Nicht genug Gold",
+            host.message == "Not enough gold",
             "Insufficient funds must report failure without consuming gold, proxy or stock.");
 
         host.gold = 100;
@@ -193,7 +193,7 @@ namespace
         host.playerCollisionSlot = 11;
         Function_WitchHead(host.worldObjects[5], host);
         const auto& samples = host.soundEffects[item.soundEffectId - 1];
-        Check(host.message == "Die Medizin kostet 20 Goldst\x81" "cke" &&
+        Check(host.message == "The medicine costs 20 gold coins" &&
             host.duration == -3 * static_cast<int>(host.message.size()) && item.generalPurpose3 == 40 &&
             audio.calls == 1 && audio.volume == 255 &&
             std::find(samples.samples.begin(), samples.samples.end(), audio.sample) != samples.samples.end() &&
@@ -216,15 +216,15 @@ namespace
         Check(audio.calls == 2, "Returning after cooldown must permit another spoken selection.");
         host.audioHandler = nullptr;
 
-        const std::string custom = " \r\n(Prix = et =\r\n@\r\n";
-        host.level->LoadObjectDescriptions(reinterpret_cast<const std::uint8_t*>(custom.data()), custom.size());
-        item.generalPurpose1 = 2; item.generalPurpose3 = 0; item.doorLockOrGroupBitmask = -7;
+        host.level->objectDescriptions.clear();
+        item.generalPurpose1 = 134; item.generalPurpose3 = 0; item.doorLockOrGroupBitmask = -7;
         host.DescribeShopItem(item);
-        Check(host.message == "Prix -7 et =", "Blank lines and only the first price placeholder must be preserved.");
-        host.level->objectDescriptions[2] = "(Not for sale";
+        Check(host.message == "The medicine costs -7 gold coins",
+            "Shop prices must use catalog placeholders, independent of the legacy description file.");
+        item.generalPurpose1 = 130;
         item.generalPurpose3 = 0;
         host.DescribeShopItem(item);
-        Check(host.message == "Not for sale" && item.generalPurpose3 == 40,
+        Check(host.message == "This is not for sale." && item.generalPurpose3 == 40,
             "Descriptions without price placeholders still need a cooldown.");
     }
 

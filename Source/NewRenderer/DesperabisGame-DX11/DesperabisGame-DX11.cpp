@@ -6,6 +6,7 @@
 #include <GameContext.h>
 #include <BehaviorDispatch.h>
 #include <GameMath.h>
+#include <StringResources.h>
 #include "AudioPlayer.h"
 #include "ApplicationUi.h"
 #include "LightningPresentation.h"
@@ -1002,6 +1003,8 @@ namespace
 		}
 
 		g_gameCore = std::make_unique<GameAppContext>();
+		const auto strings = ReadGameFile(L"Strings.json");
+		Desperabis::LoadStringResourcesJson(std::string_view(reinterpret_cast<const char*>(strings.data()), strings.size()));
 		g_gameCore->LoadGameParts();
 		g_fireballFrames = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\SCHUSS1.AN2");
 		g_hudAnimations = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\AMA_ANI.AN2");

@@ -98,6 +98,12 @@
     <ClCompile Include="..\SharedSource\IO\builtin\BuiltInMapIcons.cpp">
       <Filter>Desperabis - Source\IO</Filter>
     </ClCompile>
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInTextures.cpp">
+      <Filter>Desperabis - Source\IO</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInStrings.cpp">
+      <Filter>Desperabis - Source\IO</Filter>
+    </ClCompile>
     <ClCompile Include="..\SharedSource\IO\BuiltInCppGenerator.cpp">
       <Filter>Desperabis - Source\IO</Filter>
     </ClCompile>

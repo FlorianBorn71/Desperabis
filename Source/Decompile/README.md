@@ -485,10 +485,16 @@ row contains a length-prefixed DOS string, not rendered text pixels. Object
 `generalPurpose3` selects the texture slot, `itemValue` the zero-based row, and
 `generalPurpose1` the signed prompt duration. Tutorial level 50 uses slot 10,
 `TUR39.256`, with fourteen rows. Negative durations request bottom placement;
-backslashes separate lines. `HandleTextPromptContact` sends the original bytes
-through `PromptUserMessage` and uses `SetObjectHealth` for one-shot removal when
+backslashes originally separated lines. Modern `HandleTextPromptContact`
+resolves `tutorial_XX` from the row, or `ending_XX` for final-level `TUR38`,
+through the runtime JSON catalog instead of displaying the packed texture
+bytes. The old lookup remains commented out for reference.
+It uses `SetObjectHealth` for one-shot removal when
 `behaviorParameter` and the native DS:04CD gate are nonzero.
 See `tutorial-*-evidence.txt` for native dispatch, contact and string-transfer code.
+Menus, chapter labels, HUD/inventory and shop/door prompts also use the catalog;
+story text is unchanged. See [modern string resources](../../Docs/Localization.md#modern-game-string-resources)
+for translator format, deployment and the required NuGet dependency restore.
 
 Player contact also handles `DestroyOnCollide` (10), including the tutorial's
 spider web: native `DamageObject(object, 0)` disables collision and advances to

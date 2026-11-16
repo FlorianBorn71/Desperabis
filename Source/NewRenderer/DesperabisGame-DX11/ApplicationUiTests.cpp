@@ -1,4 +1,5 @@
 #include "pch.h"
+#include <StringResources.h>
 #include "ApplicationUi.h"
 #include "LightningPresentation.h"
 #include "BookScene.h"
@@ -9861,6 +9862,14 @@ int main(int argc, char* argv[])
         FileManagerBuiltIn files;
         NullPhysicsModule physics;
         files.Initialize();
+        const auto strings = FORCE_GET(files.ReadDataFuture(files.FilenameToNative(L"Strings.json")));
+        Check(!strings.empty(), "The multilingual catalog must be included in the built-in assets.");
+        const std::string_view catalog(reinterpret_cast<const char*>(strings.data()), strings.size());
+        Desperabis::LoadStringResourcesJson(catalog, "de-de");
+        Check(Desperabis::GetString("inventory_health") == "Gesundheit:" &&
+            Desperabis::GetString("item_142") == "Folie", "Built-in German labels must be selectable.");
+        Desperabis::LoadStringResourcesJson(catalog);
+        Check(Desperabis::GetString("inventory_health") == "Health:", "The default built-in locale must be en-us.");
         RendererDX11 renderer;
         FORCE_WAIT(renderer.Initialize(device.Get(), context.Get(), initial.colorView.Get(), initial.depthView.Get(), initial.viewport));
         FORCE_WAIT(AssetManager::Instance().Initialize());
@@ -10036,7 +10045,7 @@ int main(int argc, char* argv[])
             auto meterOnly = healthLabel;
             for (const auto& command : core.GetApplicationPresentation().commands)
             {
-                if (const auto* text = std::get_if<Desperabis::UiText>(&command); text && text->text == "Gesundheit:")
+                if (const auto* text = std::get_if<Desperabis::UiText>(&command); text && text->text == "Health:")
                 {
                     healthLabel.commands.push_back(*text);
                 }

@@ -1,5 +1,6 @@
 #include "GameContext.h"
 #include "BehaviorDispatch.h"
+#include "StringResources.h"
 
 #include <cmath>
 #include <cstring>
@@ -305,10 +306,10 @@ namespace
             Move(host, input, InputKey::UiUpKey, 4);
             Move(host, input, InputKey::UiDownKey, part);
             constexpr std::array<int, 3> starts{ 50, 30, 10 };
-            Check(hasText(host, host.GetGameParts()[0].name) && hasText(host, host.GetGameParts()[1].name) &&
-                hasText(host, host.GetGameParts()[2].name) && focusedPart(host, static_cast<std::size_t>(part)) &&
+            Check(hasText(host, GetString("chapter_01")) && hasText(host, GetString("chapter_02")) &&
+                hasText(host, GetString("chapter_03")) && focusedPart(host, static_cast<std::size_t>(part)) &&
                 !hasText(host, "Starts at level " + std::to_string(starts[part])),
-                "Part selection must use HERZ labels and omit the level-start prompt.");
+                "Part selection must use localized labels with the HERZ order and omit the level-start prompt.");
             input.Set(InputKey::AttackKey, true);
             input.Set(InputKey::DebugNextLevelKey, true);
             const auto transition = Tap(host, input, InputKey::UiConfirmKey);
@@ -907,7 +908,7 @@ namespace
             {
                 Check(text->layout == UiTextLayout::Native,
                     "Inventory text must retain native glyph offsets and advances, not top-aligned modern metrics.");
-                Check(text->text == "Gesundheit:" || text->text == "50%" || text->text == "12",
+                Check(text->text == "Health:" || text->text == "50%" || text->text == "12",
                     "Native inventory must not contain invented instructions, resource names or action captions.");
             }
         }

@@ -1,5 +1,6 @@
 #include "BehaviorDispatch.h"
 #include "GameMath.h"
+#include "StringResources.h"
 
 #include <filesystem>
 #include <fstream>
@@ -26,11 +27,11 @@ namespace
         int destroyed = 0;
         int lifeChanges = 0;
 
-        LevelLoadData ReadLevel()
+        LevelLoadData ReadLevel(std::int16_t number = 50)
         {
             LevelLoadData data;
-            LoadLevelGeometry(50, data);
-            LoadLevelObjects(50, data);
+            LoadLevelGeometry(number, data);
+            LoadLevelObjects(number, data);
             return data;
         }
 
@@ -83,6 +84,7 @@ namespace
             "Original length-prefixed DOS text must be decoded, not rendered as pixels.");
         Check(rows[9].find('\\') != std::string::npos && rows[9].find('\xfb') != std::string::npos,
             "Native line breaks and control bytes must survive decoding.");
+        data.level->textureMessages[10].clear();
         host.level = data.level.get();
         int contacts = 0;
         int behaviors = 0;
@@ -109,9 +111,9 @@ namespace
                     "Tutorial colliders must present text without Enter.");
                 ++contacts;
             }
-            Check(host.calls == calls + 1 && host.message == rows[original.itemValue] &&
+            Check(host.calls == calls + 1 && host.message == GetString(IndexedStringId("tutorial_", original.itemValue)) &&
                 host.duration == WrapSignedWord(original.generalPurpose1),
-                "Every original trigger must use its own row and signed duration.");
+                "Every original trigger must resolve its JSON row without texture text, retaining its signed duration.");
             Check(object.health == (original.behaviorParameter ? 0 : original.health),
                 "One-shot triggers must deactivate; repeatable triggers must survive.");
         }
@@ -143,7 +145,7 @@ namespace
             "Native DS:04CD gates removal, not text presentation.");
         host.behaviorDispatchEnabled = true;
         DispatchObjectCase(trigger, host);
-        Check(trigger.health == 0 && host.message == rows[3], "Removing the item must unlock the correct prompt.");
+        Check(trigger.health == 0 && host.message == GetString("tutorial_03"), "Removing the item must unlock the correct prompt.");
 
         trigger = data.objects[6];
         calls = host.calls;
@@ -155,6 +157,79 @@ namespace
         try { host.HandleTextPromptContact(trigger); }
         catch (const std::out_of_range&) { rejected = true; }
         Check(rejected, "An unavailable prompt row must fail explicitly.");
+
+        auto ending = host.ReadLevel(26);
+        host.level = ending.level.get();
+        ending.level->textureMessages[10].clear();
+        int endingPrompts = 0;
+        for (auto object : ending.objects)
+        {
+            if (object.collisionType != CollisionType::TriggerTextPrompt || object.health <= 0) { continue; }
+            host.HandleTextPromptContact(object);
+            Check(host.message == "Kjarthan!" && host.message != GetString("tutorial_00"),
+                "Ending row zero must use its own catalog namespace, not tutorial row zero.");
+            ++endingPrompts;
+        }
+        Check(endingPrompts == 1, "The original finale must exercise its one recognition prompt.");
+    }
+
+    void TestStringResources()
+    {
+        const auto catalogPath = std::filesystem::path("Localization") / "strings.json";
+        LoadStringResources(catalogPath, "de-de");
+        Check(GetString("inventory_health") == "Gesundheit:" &&
+            GetString("tutorial_02") == "Nimm den Schl\x81ssel" &&
+            GetString("item_142") == "Folie" &&
+            FormatString("item_134", {{"price", "20"}}) == "Die Medizin kostet 20 Goldst\x81" "cke",
+            "German menus, instructions, inventory names and shop prices must use the original font encoding.");
+        LoadStringResources(catalogPath);
+        Check(GetString("inventory_health") == "Health:" && GetString("tutorial_02") == "Pick up the key.",
+            "Omitting a locale must select en-us, even after German was selected.");
+        LoadStringResourcesJson(R"({"en-us": {
+            "prompt": {"message":"Dr\u00fccke <highlight>Return</highlight>\n{amount} Gold", "description":"Test prompt"},
+            "tutorial_02": {"message":"Translated pickup", "description":"Replacement instruction"}
+        }})");
+        Check(FormatString("prompt", {{"amount", "20"}}) == "Dr\x81" "cke \xfbReturn\xfa\n20 Gold",
+            "UTF-8, readable highlight markup, line breaks and named placeholders must reach the native font.");
+        for (const auto* invalid : {
+            R"({"en-us":{"a":{"message":"first","description":"x"},"a":{"message":"second","description":"y"}}})",
+            R"({"en-us":{"a":{"message":"bad","message":"duplicate","description":"x"}}})",
+            R"({"en-us":{"a":{"message":"missing translator context"}}})",
+            R"({"en-us":{"a":{"message":"\u4e00","description":"Unsupported glyph"}}})",
+            R"({"en-us":{"a":{"message":"<highlight>unclosed","description":"Broken markup"}}})",
+            R"({"en-us":{"a":{"message":"Hello","description":"x"}},"de-de":{"b":{"message":"Hallo","description":"y"}}})",
+            R"({"en-us":)" })
+        {
+            bool rejected = false;
+            try { LoadStringResourcesJson(invalid); }
+            catch (const std::exception&) { rejected = true; }
+            Check(rejected && GetString("prompt").find("Gold") != std::string::npos,
+                "Invalid catalogs must report errors and leave the previous table intact.");
+        }
+        bool rejected = false;
+        try { FormatString("prompt", {}); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        Check(rejected, "Missing interpolation arguments must not leak placeholders onto the screen.");
+        rejected = false;
+        try { GetString("missing"); }
+        catch (const std::out_of_range&) { rejected = true; }
+        Check(rejected, "Missing resource IDs must fail explicitly.");
+        rejected = false;
+        try { LoadStringResources(catalogPath, "fr-fr"); }
+        catch (const std::runtime_error&) { rejected = true; }
+        Check(rejected && GetString("prompt").find("Gold") != std::string::npos,
+            "Missing locales must fail explicitly without replacing the active catalog.");
+        Host host;
+        Level level;
+        level.textureFileIndices[10] = 39;
+        host.level = &level;
+        RawGameObject trigger;
+        trigger.generalPurpose3 = 10;
+        trigger.itemValue = 2;
+        host.HandleTextPromptContact(trigger);
+        Check(host.message == "Translated pickup",
+            "Replacing the runtime catalog must change actual behavior output without texture text or recompilation.");
+        LoadStringResources(catalogPath);
     }
 
     void TestMalformedTexture()
@@ -238,6 +313,7 @@ int main(int argc, char* argv[])
         TestOriginalTriggers(argv[1]);
         TestMalformedTexture();
         TestWebAndFireContact(argv[1]);
+        TestStringResources();
         std::cout << "Tutorial prompt tests passed.\n";
         return 0;
     }

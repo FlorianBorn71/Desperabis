@@ -1332,15 +1332,20 @@ implementations. Evidence:
   `09BE` removes the proxy **even when the inventory is full**; in that
   case the paid-for stock remains available in the world. Stacking,
   ammunition, poison and duplicate-weapon handling reuse ordinary pickups.
-  The port additionally reports insufficient funds with `Nicht genug Gold`;
+  The port additionally reports insufficient funds with the localized
+  `shop_insufficient_gold` message (English: `Not enough gold`);
   the native affordability helper itself only returns false.
 - `WitchHead` (207, `10AC:CF64..D1D8`) tracks the player when its nodding
   pose permits rotation, tilts toward any selected contact, and randomly
-  runs its blink/morph cycle. Selecting a shop proxy formats the first `=`
-  in its localized description with the price and plays its original
-  byte-5 sample at full volume, source 514, limit 1. Preserve physical
-  blank lines in `BEZEICH.TXT`, its leading metadata character, and the
-  native 50-character description limit. Word 40 becomes 40 on description;
+  runs its blink/morph cycle. Native selection formats the first `=`
+  in its description with the price and plays its original byte-5 sample
+  at full volume, source 514, limit 1. The DOS format preserves physical
+  blank lines in `BEZEICH.TXT`, a leading metadata character, and a
+  50-character description limit. The modern port instead resolves
+  `item_XX` from the same one-based object word 36, substitutes `{price}`
+  from JSON, and allows longer text without the DOS style prefix/length
+  restriction; sound and cooldown behavior are unchanged.
+  Word 40 becomes 40 on description;
   it only counts down while the proxy's Manhattan player distance exceeds
   50, preventing speech from repeatedly restarting while selecting it.
 - Behavior 209 is now `WitchMouthAnimation`, not another fire emitter:

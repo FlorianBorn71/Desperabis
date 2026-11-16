@@ -1,5 +1,6 @@
 #include "GameContext.h"
 #include "BehaviorDispatch.h"
+#include "StringResources.h"
 
 #include <algorithm>
 #include <cmath>
@@ -441,7 +442,7 @@ namespace Desperabis
                         try
                         {
                             auto bytes = ReadSaveFile(static_cast<std::uint8_t>(saveFocus + 1));
-                            if (!bytes) { saveError = "This slot is empty."; }
+                            if (!bytes) { saveError = GetString("save_empty"); }
                             else { LoadGame(std::move(*bytes)); }
                         }
                         catch (const std::runtime_error& error) { saveError = error.what(); }
@@ -467,7 +468,7 @@ namespace Desperabis
                 }
                 if (wasPressed(InputKey::UiConfirmKey))
                 {
-                    if (saveName.empty()) { saveError = "Enter a save name."; }
+                    if (saveName.empty()) { saveError = GetString("save_name_required"); }
                     else
                     {
                         try
@@ -598,7 +599,7 @@ namespace Desperabis
             if (runtimeState == GameRuntimeState::Ready && selectedWeapon == WeaponType::ShopGold &&
                 worldObjects[1].itemValue <= 0)
             {
-                result.commands.emplace_back(UiText{9, 6, "Gold: " + std::to_string(gold), 0.65f,
+                result.commands.emplace_back(UiText{9, 6, FormatString("hud_gold", {{"amount", std::to_string(gold)}}), 0.65f,
                     {204, 153, 85}, UiTextAlignment::Left, UiTextLayout::Native});
             }
             if (hasMap && runtimeState == GameRuntimeState::Ready && collisionMap)
@@ -648,35 +649,36 @@ namespace Desperabis
         }
         if (menuPage == MenuPage::MainMenu || menuPage == MenuPage::AlternateMainMenu)
         {
-            text(55, 8, "Desperabis", normal, 0.9f);
-            text(80, 32, "Resume game", runtimeState == GameRuntimeState::Ready && CanResumeGame() ? normal : dark, 0.8f);
-            text(80, 60, "New game", runtimeState == GameRuntimeState::Loading ? dark : normal, 0.8f);
-            text(80, 88, "Load game", runtimeState == GameRuntimeState::Loading ? dark : normal, 0.8f);
-            text(80, 116, "Save game", runtimeState == GameRuntimeState::Ready && CanResumeGame() &&
+            text(55, 8, GetString("menu_title"), normal, 0.9f);
+            text(80, 32, GetString("menu_resume"), runtimeState == GameRuntimeState::Ready && CanResumeGame() ? normal : dark, 0.8f);
+            text(80, 60, GetString("menu_new"), runtimeState == GameRuntimeState::Loading ? dark : normal, 0.8f);
+            text(80, 88, GetString("menu_load"), runtimeState == GameRuntimeState::Loading ? dark : normal, 0.8f);
+            text(80, 116, GetString("menu_save"), runtimeState == GameRuntimeState::Ready && CanResumeGame() &&
                 !IsCutscenePlaying() ? normal : dark, 0.8f);
-            text(80, 144, "Quit", normal, 0.8f);
+            text(80, 144, GetString("menu_quit"), normal, 0.8f);
             sword(48, 37.f + mainMenuFocus * 28.f);
             return result;
         }
         if (menuPage == MenuPage::ChapterSelection)
         {
-            text(55, 8, "New game", normal, 0.9f);
+            text(55, 8, GetString("menu_new"), normal, 0.9f);
             for (std::size_t part = 0; part < gameParts.size(); ++part)
             {
-                text(80, 32.f + static_cast<float>(part) * 30.f, gameParts[part].name, normal, 0.8f);
+                text(80, 32.f + static_cast<float>(part) * 30.f,
+                    GetString(IndexedStringId("chapter_", static_cast<int>(part) + 1)), normal, 0.8f);
             }
             sword(48, 37.f + chapterFocus * 30.f);
             return result;
         }
         if (menuPage == MenuPage::LoadGame || menuPage == MenuPage::SaveGame)
         {
-            text(55, 8, menuPage == MenuPage::LoadGame ? "Load game" : "Save game", normal, 0.9f);
+            text(55, 8, GetString(menuPage == MenuPage::LoadGame ? "menu_load" : "menu_save"), normal, 0.9f);
             for (std::size_t slot = 0; slot < saveSlots.size(); ++slot)
             {
                 const auto& entry = saveSlots[slot];
                 const bool editing = editingSaveName && slot == saveFocus;
                 text(80, 32.f + static_cast<float>(slot) * 17.5f,
-                    editing ? saveName : !entry.error.empty() ? "Unreadable save" : entry.occupied ? entry.name : "",
+                    editing ? saveName : !entry.error.empty() ? GetString("save_unreadable") : entry.occupied ? entry.name : "",
                     normal, 0.8f);
                 std::get<UiText>(draw.back()).caret = editing && saveCaretSeconds < 0.5;
             }
@@ -739,8 +741,9 @@ namespace Desperabis
         }
         if (playerLifeMaximum <= 0) { throw std::logic_error("Inventory requires a positive player-life maximum."); }
         const auto life = std::clamp(playerLife / 65536, 0, static_cast<int>(playerLifeMaximum));
-        text(234, 14, "Gesundheit:", {}, 1);
-        text(236, 46, std::to_string(static_cast<int>(std::nearbyint(100.0 * life / playerLifeMaximum))) + "%", {}, 1);
+        text(234, 14, GetString("inventory_health"), {}, 1);
+        text(236, 46, FormatString("percent", {{"amount",
+            std::to_string(static_cast<int>(std::nearbyint(100.0 * life / playerLifeMaximum)))}}), {}, 1);
         draw.emplace_back(UiHealthMeter{ 225, 27, static_cast<std::int16_t>(std::min(life / 4, 90)) });
         int medicine = 0;
         int fireballs = 0;
@@ -771,14 +774,15 @@ namespace Desperabis
         resource(250, 105, -18, -21, UiBitmapSource::InventoryIcons, 5, 0, gold, std::to_string(gold));
         const auto medicinePercent = static_cast<int>(std::nearbyint(medicine * 29491.0 * 100 / (360.0 * 65536)));
         resource(290, 105, -17, -37, UiBitmapSource::InventoryIcons, 2, 1, medicine,
-            std::to_string(medicinePercent) + "%");
+            FormatString("percent", {{"amount", std::to_string(medicinePercent)}}));
         resource(250, 170, -15, -33, UiBitmapSource::Hud, 1, 4, weaponAmounts[3], std::to_string(weaponAmounts[3]));
         resource(290, 170, -20, -37, UiBitmapSource::InventoryIcons, 0, 2, fireballs, std::to_string(fireballs));
         draw.emplace_back(UiModel{ { 308, 117, 40, 40 }, 31, 5, 3, 0, 0, DisplayType::VectorUnlit,
             { 0, 0, 0 }, 210, 128, weaponAmounts[7] > 0 ? UiColor{} : UiColor{ 64, 64, 64 } });
         if (weaponAmounts[7] > 0)
         {
-            text(330, 176, std::to_string(static_cast<int>(std::nearbyint(weaponAmounts[7] / 3.6))) + "%",
+            text(330, 176, FormatString("percent", {{"amount",
+                std::to_string(static_cast<int>(std::nearbyint(weaponAmounts[7] / 3.6)))}}),
                 {}, 1, UiTextAlignment::Center);
         }
         if (hasMap)

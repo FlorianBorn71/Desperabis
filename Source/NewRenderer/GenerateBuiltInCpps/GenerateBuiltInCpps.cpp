@@ -65,13 +65,9 @@ int main(int argc, char** argv)
         // shaders:
         std::filesystem::path csoPath = cwd;
 		csoPath.append("..\\AdditionalAssets\\shaderbins");
-        std::filesystem::path additionalAssetPath = cwd;
-        additionalAssetPath.append("..\\AdditionalAssets");
-
         std::filesystem::path cppOutPath = cwd;
         cppOutPath.append("..\\SharedSource\\DX11");
 		assert(std::filesystem::exists(cppOutPath));
-        assert(std::filesystem::exists(additionalAssetPath));
         assert(std::filesystem::exists(csoPath));
 
 		std::vector<std::filesystem::path> listOfFiles;
@@ -89,16 +85,39 @@ int main(int argc, char** argv)
 		listOfFiles.push_back(csoPath / "InFlames_VS.cso"); outFiles.push_back("InFlames_VS.cso");
 		listOfFiles.push_back(csoPath / "InFlames_PS.cso"); outFiles.push_back("InFlames_PS.cso");
 
-        listOfFiles.push_back(additionalAssetPath / "textures/water-normal.dds"); outFiles.push_back("textures/water-normal.dds");
-        listOfFiles.push_back(additionalAssetPath / "textures/mainlens.dds"); outFiles.push_back("textures/mainlens.dds");
-        listOfFiles.push_back(additionalAssetPath / "textures/flare13.dds"); outFiles.push_back("textures/flare13.dds");
-
         BuiltInCppFileGenerator::GenerateCpp(
             cppOutPath / "BuiltInShaders_Release.cpp",
             "RegisterFiles_BuiltInShaders",
             listOfFiles,
             outFiles
         );
+    }
+
+    //////////////////////////////////////////////////////////////////////
+    // Additional textures and strings (renderer-independent)
+    //////////////////////////////////////////////////////////////////////
+    if (true)
+    {
+        const auto additionalAssetPath = cwd / "..\\AdditionalAssets";
+        const auto cppOutPath = cwd / "..\\SharedSource\\IO\\builtin";
+        assert(std::filesystem::exists(additionalAssetPath));
+        assert(std::filesystem::exists(cppOutPath));
+
+        std::cout << "Generate Textures\n";
+        const std::vector<std::filesystem::path> textures{
+            additionalAssetPath / "textures\\water-normal.dds",
+            additionalAssetPath / "textures\\mainlens.dds",
+            additionalAssetPath / "textures\\flare13.dds" };
+        const std::vector<std::string> textureNames{
+            "textures/water-normal.dds", "textures/mainlens.dds", "textures/flare13.dds" };
+        BuiltInCppFileGenerator::GenerateCpp(
+            cppOutPath / "BuiltInTextures.cpp", "RegisterFiles_BuiltInTextures", textures, textureNames);
+
+        std::cout << "Generate Strings\n";
+        const std::vector<std::filesystem::path> strings{ additionalAssetPath / "Strings.json" };
+        const std::vector<std::string> stringNames{ "Strings.json" };
+        BuiltInCppFileGenerator::GenerateCpp(
+            cppOutPath / "BuiltInStrings.cpp", "RegisterFiles_BuiltInStrings", strings, stringNames);
     }
 
     //////////////////////////////////////////////////////////////////////

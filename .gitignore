@@ -16,6 +16,9 @@ Bin/Desperabis-Game-DX11.exe
 # Packing tool
 **/_temp/
 
+# Restored native dependencies
+/Source/packages/
+
 # Original game save files
 /Game/Original/STAND*.[sS][pP][lL]
 /Game/English/STAND*.[sS][pP][lL]

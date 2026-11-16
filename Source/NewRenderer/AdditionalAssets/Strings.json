@@ -1,0 +1,662 @@
+{
+  "en-us": {
+    "menu_title": {
+      "message": "Desperabis",
+      "description": "Title at the top of the main menu. Game name."
+    },
+    "menu_resume": {
+      "message": "Resume game",
+      "description": "Main menu: return to the active game; disabled when no game is available."
+    },
+    "menu_new": {
+      "message": "New game",
+      "description": "Main menu action and chapter-selection heading."
+    },
+    "menu_load": {
+      "message": "Load game",
+      "description": "Main menu action and load-slot screen heading."
+    },
+    "menu_save": {
+      "message": "Save game",
+      "description": "Main menu action and save-slot screen heading."
+    },
+    "menu_quit": {
+      "message": "Quit",
+      "description": "Main menu action: exit the game."
+    },
+    "chapter_01": {
+      "message": "Training",
+      "description": "First New Game choice. Native HERZ part 1: tutorial, level 50."
+    },
+    "chapter_02": {
+      "message": "The Crystal Ball",
+      "description": "Second New Game choice. Native HERZ part 2: first story campaign."
+    },
+    "chapter_03": {
+      "message": "The Rescue Of Grant",
+      "description": "Third New Game choice. Native HERZ part 3: second story campaign. Grant is a character name."
+    },
+    "save_unreadable": {
+      "message": "Unreadable save",
+      "description": "Save/load slot label when its file cannot be decoded. User-entered save names are not translated."
+    },
+    "save_empty": {
+      "message": "This slot is empty.",
+      "description": "Load screen feedback after selecting an unused save slot."
+    },
+    "save_name_required": {
+      "message": "Enter a save name.",
+      "description": "Save screen feedback after confirming an empty name."
+    },
+    "inventory_health": {
+      "message": "Health:",
+      "description": "Inventory label above the life meter; compact right-hand column."
+    },
+    "hud_gold": {
+      "message": "Gold: {amount}",
+      "description": "Gameplay HUD while holding gold near the shop. Keep the {amount} placeholder; its position may change."
+    },
+    "percent": {
+      "message": "{amount}%",
+      "description": "Inventory health, medicine and electricity percentages. Keep {amount}; change spacing/percent position as needed."
+    },
+    "door_locked": {
+      "message": "Locked",
+      "description": "Centered prompt when trying a locked door without unlocking it."
+    },
+    "door_wrong_key": {
+      "message": "Wrong key",
+      "description": "Centered prompt when the held key does not match the door."
+    },
+    "shop_insufficient_gold": {
+      "message": "Not enough gold",
+      "description": "Centered prompt after trying to buy an item costing more gold than the player has."
+    },
+    "tutorial_00": {
+      "message": "Enter the room right in front of you.",
+      "description": "Training entrance. TUR39 row 0, selected by object.itemValue (zero-based). Do not renumber tutorial IDs."
+    },
+    "tutorial_01": {
+      "message": "Stand right in front of the door.\nPress <highlight>Return</highlight>.",
+      "description": "Training: first door. TUR39 row 1. Newline splits the centered prompt; highlight marks the key name."
+    },
+    "tutorial_02": {
+      "message": "Pick up the key.",
+      "description": "Training: key pickups. TUR39 row 2."
+    },
+    "tutorial_03": {
+      "message": "The key now is in your inventory.\nYou can now open the door.",
+      "description": "Training: after picking up the key. TUR39 row 3."
+    },
+    "tutorial_04": {
+      "message": "Pull the lever on the wall\nto briefly open the door.",
+      "description": "Training: timed lever-operated door. TUR39 row 4."
+    },
+    "tutorial_05": {
+      "message": "In this room there is a secret\npassage hidden behind the wall.",
+      "description": "Training: secret passage room. TUR39 row 5."
+    },
+    "tutorial_06": {
+      "message": "Pull all levers.",
+      "description": "Training: multiple-lever puzzle. TUR39 row 6."
+    },
+    "tutorial_07": {
+      "message": "Move through the fire quickly to\ntake least possible damage.",
+      "description": "Training: fire obstacle. TUR39 row 7."
+    },
+    "tutorial_08": {
+      "message": "Now take the healing potion\nto restore your health.",
+      "description": "Training: healing potion pickup after the fire. TUR39 row 8."
+    },
+    "tutorial_09": {
+      "message": "Press F2 to bring up the inventory\nand drag the healing potion onto\nthe <highlight>knife and fork</highlight> icon.",
+      "description": "Training: using medicine in the inventory. TUR39 row 9. Preserve F2 and highlight tags. Three centered lines."
+    },
+    "tutorial_10": {
+      "message": "Pick up all weapons in this room.\nYou will need them...",
+      "description": "Training: weapons room. TUR39 row 10."
+    },
+    "tutorial_11": {
+      "message": "Climb the ladder using\nthe JUMP hotkey.",
+      "description": "Training: ladder. TUR39 row 11. JUMP refers to the configured jump action."
+    },
+    "tutorial_12": {
+      "message": "Jump into the water.",
+      "description": "Training: water entrance. TUR39 row 12."
+    },
+    "tutorial_13": {
+      "message": "Pull the lever under water\nand dive to the exit.",
+      "description": "Training: underwater exit lever. TUR39 row 13."
+    },
+    "ending_00": {
+      "message": "Kjarthan!",
+      "description": "Final level 26: Grant recognizes Kjarthan. TUR38 row 0. Character name/exclamation, NOT tutorial row 0; separate prefix prevents a collision."
+    },
+    "item_01": {
+      "message": "Poison",
+      "description": "Item description 1 (BEZEICH.TXT, one-based)."
+    },
+    "item_02": {
+      "message": "Medicine",
+      "description": "Item description 2 (BEZEICH.TXT, one-based)."
+    },
+    "item_03": {
+      "message": "Gold",
+      "description": "Item description 3 (BEZEICH.TXT, one-based)."
+    },
+    "item_06": {
+      "message": "Key",
+      "description": "Item description 6 (BEZEICH.TXT, one-based)."
+    },
+    "item_45": {
+      "message": "Map",
+      "description": "Item description 45 (BEZEICH.TXT, one-based)."
+    },
+    "item_100": {
+      "message": "End",
+      "description": "Item description 100 (BEZEICH.TXT, one-based)."
+    },
+    "item_101": {
+      "message": "Arrow",
+      "description": "Item description 101 (BEZEICH.TXT, one-based)."
+    },
+    "item_102": {
+      "message": "Fire power",
+      "description": "Item description 102 (BEZEICH.TXT, one-based)."
+    },
+    "item_103": {
+      "message": "Stone",
+      "description": "Item description 103 (BEZEICH.TXT, one-based)."
+    },
+    "item_104": {
+      "message": "Lentils",
+      "description": "Item description 104 (BEZEICH.TXT, one-based)."
+    },
+    "item_105": {
+      "message": "Blade",
+      "description": "Item description 105 (BEZEICH.TXT, one-based)."
+    },
+    "item_106": {
+      "message": "Sword",
+      "description": "Item description 106 (BEZEICH.TXT, one-based)."
+    },
+    "item_107": {
+      "message": "Crossbow",
+      "description": "Item description 107 (BEZEICH.TXT, one-based)."
+    },
+    "item_108": {
+      "message": "Trap",
+      "description": "Item description 108 (BEZEICH.TXT, one-based)."
+    },
+    "item_109": {
+      "message": "Conductor ball",
+      "description": "Item description 109 (BEZEICH.TXT, one-based)."
+    },
+    "item_110": {
+      "message": "Shovel",
+      "description": "Item description 110 (BEZEICH.TXT, one-based)."
+    },
+    "item_111": {
+      "message": "Bones",
+      "description": "Item description 111 (BEZEICH.TXT, one-based)."
+    },
+    "item_112": {
+      "message": "Foil",
+      "description": "Item description 112 (BEZEICH.TXT, one-based)."
+    },
+    "item_113": {
+      "message": "Vase",
+      "description": "Item description 113 (BEZEICH.TXT, one-based)."
+    },
+    "item_114": {
+      "message": "Mirror",
+      "description": "Item description 114 (BEZEICH.TXT, one-based)."
+    },
+    "item_115": {
+      "message": "Lentils",
+      "description": "Item description 115 (BEZEICH.TXT, one-based)."
+    },
+    "item_116": {
+      "message": "Pail",
+      "description": "Item description 116 (BEZEICH.TXT, one-based)."
+    },
+    "item_117": {
+      "message": "Coffin",
+      "description": "Item description 117 (BEZEICH.TXT, one-based)."
+    },
+    "item_118": {
+      "message": "Scythe",
+      "description": "Item description 118 (BEZEICH.TXT, one-based)."
+    },
+    "item_119": {
+      "message": "Pole",
+      "description": "Item description 119 (BEZEICH.TXT, one-based)."
+    },
+    "item_120": {
+      "message": "Torch",
+      "description": "Item description 120 (BEZEICH.TXT, one-based)."
+    },
+    "item_121": {
+      "message": "Burning torch",
+      "description": "Item description 121 (BEZEICH.TXT, one-based)."
+    },
+    "item_130": {
+      "message": "This is not for sale.",
+      "description": "Shop description 130; no price placeholder."
+    },
+    "item_131": {
+      "message": "One arrow costs {price} gold coins",
+      "description": "Shop description 131. Keep {price}; supplied from the object's authored cost."
+    },
+    "item_132": {
+      "message": "The fireballs cost {price} gold coins",
+      "description": "Shop description 132. Keep {price}."
+    },
+    "item_133": {
+      "message": "One stone costs {price} gold coins",
+      "description": "Shop description 133. Keep {price}."
+    },
+    "item_134": {
+      "message": "The medicine costs {price} gold coins",
+      "description": "Shop description 134. Keep {price}."
+    },
+    "item_135": {
+      "message": "The blade costs {price} gold coins",
+      "description": "Shop description 135. Keep {price}."
+    },
+    "item_136": {
+      "message": "The sword costs {price} gold coins",
+      "description": "Shop description 136. Keep {price}."
+    },
+    "item_137": {
+      "message": "The crossbow costs {price} gold coins",
+      "description": "Shop description 137. Keep {price}."
+    },
+    "item_138": {
+      "message": "The rat trap costs {price} gold coins",
+      "description": "Shop description 138. Keep {price}."
+    },
+    "item_139": {
+      "message": "The conductor ball costs {price} gold coins",
+      "description": "Shop description 139. Keep {price}."
+    },
+    "item_140": {
+      "message": "The shovel costs {price} gold coins",
+      "description": "Shop description 140. Keep {price}."
+    },
+    "item_141": {
+      "message": "The arrow poison costs {price} gold coins",
+      "description": "Shop description 141. Keep {price}."
+    },
+    "item_142": {
+      "message": "Foil",
+      "description": "Inventory cursor-over item name 142 (BEZEICH.TXT, one-based); not a shop description."
+    },
+    "item_143": {
+      "message": "Vase",
+      "description": "Inventory cursor-over item name 143 (BEZEICH.TXT, one-based)."
+    },
+    "item_144": {
+      "message": "Mirror",
+      "description": "Inventory cursor-over item name 144 (BEZEICH.TXT, one-based)."
+    },
+    "item_145": {
+      "message": "Lentils",
+      "description": "Inventory cursor-over item name 145 (BEZEICH.TXT, one-based)."
+    },
+    "item_146": {
+      "message": "Bucket",
+      "description": "Inventory cursor-over item name 146 (BEZEICH.TXT, one-based)."
+    },
+    "item_147": {
+      "message": "Coffin",
+      "description": "Inventory cursor-over item name 147 (BEZEICH.TXT, one-based)."
+    },
+    "item_148": {
+      "message": "Scythe",
+      "description": "Inventory cursor-over item name 148 (BEZEICH.TXT, one-based)."
+    },
+    "item_149": {
+      "message": "Pole",
+      "description": "Inventory cursor-over item name 149 (BEZEICH.TXT, one-based)."
+    },
+    "item_150": {
+      "message": "Torch",
+      "description": "Inventory cursor-over item name 150 (BEZEICH.TXT, one-based)."
+    },
+    "item_151": {
+      "message": "Burning torch",
+      "description": "Inventory cursor-over item name 151 (BEZEICH.TXT, one-based)."
+    }
+  },
+  "de-de": {
+    "menu_title": {
+      "message": "Desperabis",
+      "description": "Title at the top of the main menu. Game name."
+    },
+    "menu_resume": {
+      "message": "Spiel fortsetzen",
+      "description": "Main menu: return to the active game; disabled when no game is available."
+    },
+    "menu_new": {
+      "message": "Neues Spiel",
+      "description": "Main menu action and chapter-selection heading."
+    },
+    "menu_load": {
+      "message": "Spiel laden",
+      "description": "Main menu action and load-slot screen heading."
+    },
+    "menu_save": {
+      "message": "Spiel speichern",
+      "description": "Main menu action and save-slot screen heading."
+    },
+    "menu_quit": {
+      "message": "Beenden",
+      "description": "Main menu action: exit the game."
+    },
+    "chapter_01": {
+      "message": "Trainingslevel",
+      "description": "First New Game choice. Native HERZ part 1: tutorial, level 50."
+    },
+    "chapter_02": {
+      "message": "Die Kristallkugel",
+      "description": "Second New Game choice. Native HERZ part 2: first story campaign."
+    },
+    "chapter_03": {
+      "message": "Die Rettung von Grant",
+      "description": "Third New Game choice. Native HERZ part 3: second story campaign. Grant is a character name."
+    },
+    "save_unreadable": {
+      "message": "Unlesbarer Spielstand",
+      "description": "Save/load slot label when its file cannot be decoded. User-entered save names are not translated."
+    },
+    "save_empty": {
+      "message": "Dieser Platz ist leer.",
+      "description": "Load screen feedback after selecting an unused save slot."
+    },
+    "save_name_required": {
+      "message": "Gib einen Namen ein.",
+      "description": "Save screen feedback after confirming an empty name."
+    },
+    "inventory_health": {
+      "message": "Gesundheit:",
+      "description": "Inventory label above the life meter; compact right-hand column."
+    },
+    "hud_gold": {
+      "message": "Gold: {amount}",
+      "description": "Gameplay HUD while holding gold near the shop. Keep the {amount} placeholder; its position may change."
+    },
+    "percent": {
+      "message": "{amount}%",
+      "description": "Inventory health, medicine and electricity percentages. Keep {amount}; change spacing/percent position as needed."
+    },
+    "door_locked": {
+      "message": "abgeschlossen",
+      "description": "Centered prompt when trying a locked door without unlocking it."
+    },
+    "door_wrong_key": {
+      "message": "Falscher Schlüssel",
+      "description": "Centered prompt when the held key does not match the door."
+    },
+    "shop_insufficient_gold": {
+      "message": "Nicht genug Gold",
+      "description": "Centered prompt after trying to buy an item costing more gold than the player has."
+    },
+    "tutorial_00": {
+      "message": "Betrete den Raum vor Dir",
+      "description": "Training entrance. TUR39 row 0, selected by object.itemValue (zero-based). Do not renumber tutorial IDs."
+    },
+    "tutorial_01": {
+      "message": "Stelle Dich unmittelbar vor die Tür.\nDrücke <highlight>Enter</highlight>",
+      "description": "Training: first door. TUR39 row 1. Newline splits the centered prompt; highlight marks the key name."
+    },
+    "tutorial_02": {
+      "message": "Nimm den Schlüssel",
+      "description": "Training: key pickups. TUR39 row 2."
+    },
+    "tutorial_03": {
+      "message": "Der Schlüssel liegt nun im Inventar.\nDie Tür lässt sich nun öffnen",
+      "description": "Training: after picking up the key. TUR39 row 3."
+    },
+    "tutorial_04": {
+      "message": "Ziehe den Hebel an der Wand\ndamit sich die Tür öffnet",
+      "description": "Training: timed lever-operated door. TUR39 row 4."
+    },
+    "tutorial_05": {
+      "message": "In diesem Raum ist ein Geheimgang\nhinter einer Wand",
+      "description": "Training: secret passage room. TUR39 row 5."
+    },
+    "tutorial_06": {
+      "message": "Ziehe alle Hebel",
+      "description": "Training: multiple-lever puzzle. TUR39 row 6."
+    },
+    "tutorial_07": {
+      "message": "Bewege Dich schnell durchs Feuer\num wenig Schaden zu nehmen",
+      "description": "Training: fire obstacle. TUR39 row 7."
+    },
+    "tutorial_08": {
+      "message": "Nimm nun die Medizinflasche\num die Lebensenergie wieder aufzufrischen",
+      "description": "Training: healing potion pickup after the fire. TUR39 row 8."
+    },
+    "tutorial_09": {
+      "message": "Wechsle mit F2 ins Inventar-Fenster\nund bewege die Medizinflasche auf\ndas Symbol <highlight>Messer und Gabel</highlight>",
+      "description": "Training: using medicine in the inventory. TUR39 row 9. Preserve F2 and highlight tags. Three centered lines."
+    },
+    "tutorial_10": {
+      "message": "Nimm alle Waffen aus diesem Raum.\nDu wirst sie brauchen...",
+      "description": "Training: weapons room. TUR39 row 10."
+    },
+    "tutorial_11": {
+      "message": "Klettere die Leiter mit\nder Sprungtaste hoch.",
+      "description": "Training: ladder. TUR39 row 11. Sprungtaste refers to the configured jump action."
+    },
+    "tutorial_12": {
+      "message": "Spring ins Wasser.",
+      "description": "Training: water entrance. TUR39 row 12."
+    },
+    "tutorial_13": {
+      "message": "Ziehe unter Wasser den Hebel\nund tauche zum Ausgang.",
+      "description": "Training: underwater exit lever. TUR39 row 13."
+    },
+    "ending_00": {
+      "message": "Kjarthan!",
+      "description": "Final level 26: Grant recognizes Kjarthan. TUR38 row 0. Character name/exclamation, NOT tutorial row 0; separate prefix prevents a collision."
+    },
+    "item_01": {
+      "message": "Gift",
+      "description": "Item description 1 (BEZEICH.TXT, one-based)."
+    },
+    "item_02": {
+      "message": "Medizin",
+      "description": "Item description 2 (BEZEICH.TXT, one-based)."
+    },
+    "item_03": {
+      "message": "Gold",
+      "description": "Item description 3 (BEZEICH.TXT, one-based)."
+    },
+    "item_06": {
+      "message": "Schlüssel",
+      "description": "Item description 6 (BEZEICH.TXT, one-based)."
+    },
+    "item_45": {
+      "message": "Karte",
+      "description": "Item description 45 (BEZEICH.TXT, one-based)."
+    },
+    "item_100": {
+      "message": "Ende",
+      "description": "Item description 100 (BEZEICH.TXT, one-based)."
+    },
+    "item_101": {
+      "message": "Pfeil",
+      "description": "Item description 101 (BEZEICH.TXT, one-based)."
+    },
+    "item_102": {
+      "message": "Feuerkraft",
+      "description": "Item description 102 (BEZEICH.TXT, one-based)."
+    },
+    "item_103": {
+      "message": "Stein",
+      "description": "Item description 103 (BEZEICH.TXT, one-based)."
+    },
+    "item_104": {
+      "message": "Linsen",
+      "description": "Item description 104 (BEZEICH.TXT, one-based)."
+    },
+    "item_105": {
+      "message": "Dolch",
+      "description": "Item description 105 (BEZEICH.TXT, one-based)."
+    },
+    "item_106": {
+      "message": "Schwert",
+      "description": "Item description 106 (BEZEICH.TXT, one-based)."
+    },
+    "item_107": {
+      "message": "Armbrust",
+      "description": "Item description 107 (BEZEICH.TXT, one-based)."
+    },
+    "item_108": {
+      "message": "Falle",
+      "description": "Item description 108 (BEZEICH.TXT, one-based)."
+    },
+    "item_109": {
+      "message": "Konduktorkugel",
+      "description": "Item description 109 (BEZEICH.TXT, one-based)."
+    },
+    "item_110": {
+      "message": "Schaufel",
+      "description": "Item description 110 (BEZEICH.TXT, one-based)."
+    },
+    "item_111": {
+      "message": "Knochen",
+      "description": "Item description 111 (BEZEICH.TXT, one-based)."
+    },
+    "item_112": {
+      "message": "Folie",
+      "description": "Item description 112 (BEZEICH.TXT, one-based)."
+    },
+    "item_113": {
+      "message": "Vase",
+      "description": "Item description 113 (BEZEICH.TXT, one-based)."
+    },
+    "item_114": {
+      "message": "Spiegel",
+      "description": "Item description 114 (BEZEICH.TXT, one-based)."
+    },
+    "item_115": {
+      "message": "Linsen",
+      "description": "Item description 115 (BEZEICH.TXT, one-based)."
+    },
+    "item_116": {
+      "message": "Eimer",
+      "description": "Item description 116 (BEZEICH.TXT, one-based)."
+    },
+    "item_117": {
+      "message": "Sarg",
+      "description": "Item description 117 (BEZEICH.TXT, one-based)."
+    },
+    "item_118": {
+      "message": "Sense",
+      "description": "Item description 118 (BEZEICH.TXT, one-based)."
+    },
+    "item_119": {
+      "message": "Stange",
+      "description": "Item description 119 (BEZEICH.TXT, one-based)."
+    },
+    "item_120": {
+      "message": "Fackel",
+      "description": "Item description 120 (BEZEICH.TXT, one-based)."
+    },
+    "item_121": {
+      "message": "brennende Fackel",
+      "description": "Item description 121 (BEZEICH.TXT, one-based)."
+    },
+    "item_130": {
+      "message": "Das ist unverkäuflich",
+      "description": "Shop description 130; no price placeholder."
+    },
+    "item_131": {
+      "message": "Ein Pfeil kostet {price} Goldstücke",
+      "description": "Shop description 131. Keep {price}; supplied from the object's authored cost."
+    },
+    "item_132": {
+      "message": "Die Feuerbälle kosten {price} Goldstücke",
+      "description": "Shop description 132. Keep {price}."
+    },
+    "item_133": {
+      "message": "Ein Stein kostet {price} Goldstücke",
+      "description": "Shop description 133. Keep {price}."
+    },
+    "item_134": {
+      "message": "Die Medizin kostet {price} Goldstücke",
+      "description": "Shop description 134. Keep {price}."
+    },
+    "item_135": {
+      "message": "Der Dolch kostet {price} Goldstücke",
+      "description": "Shop description 135. Keep {price}."
+    },
+    "item_136": {
+      "message": "Das Schwert kostet {price} Goldstücke",
+      "description": "Shop description 136. Keep {price}."
+    },
+    "item_137": {
+      "message": "Die Armbrust kostet {price} Goldstücke",
+      "description": "Shop description 137. Keep {price}."
+    },
+    "item_138": {
+      "message": "Die Rattenfalle kostet {price} Goldstücke",
+      "description": "Shop description 138. Keep {price}."
+    },
+    "item_139": {
+      "message": "Die Konduktorkugel kostet {price} Goldstücke",
+      "description": "Shop description 139. Keep {price}."
+    },
+    "item_140": {
+      "message": "Die Schaufel kostet {price} Goldstücke",
+      "description": "Shop description 140. Keep {price}."
+    },
+    "item_141": {
+      "message": "Das Pfeilgift kostet {price} Goldstücke",
+      "description": "Shop description 141. Keep {price}."
+    },
+    "item_142": {
+      "message": "Folie",
+      "description": "Inventory cursor-over item name 142 (BEZEICH.TXT, one-based); not a shop description."
+    },
+    "item_143": {
+      "message": "Vase",
+      "description": "Inventory cursor-over item name 143 (BEZEICH.TXT, one-based)."
+    },
+    "item_144": {
+      "message": "Spiegel",
+      "description": "Inventory cursor-over item name 144 (BEZEICH.TXT, one-based)."
+    },
+    "item_145": {
+      "message": "Linsen",
+      "description": "Inventory cursor-over item name 145 (BEZEICH.TXT, one-based)."
+    },
+    "item_146": {
+      "message": "Eimer",
+      "description": "Inventory cursor-over item name 146 (BEZEICH.TXT, one-based)."
+    },
+    "item_147": {
+      "message": "Sarg",
+      "description": "Inventory cursor-over item name 147 (BEZEICH.TXT, one-based)."
+    },
+    "item_148": {
+      "message": "Sense",
+      "description": "Inventory cursor-over item name 148 (BEZEICH.TXT, one-based)."
+    },
+    "item_149": {
+      "message": "Stange",
+      "description": "Inventory cursor-over item name 149 (BEZEICH.TXT, one-based)."
+    },
+    "item_150": {
+      "message": "Fackel",
+      "description": "Inventory cursor-over item name 150 (BEZEICH.TXT, one-based)."
+    },
+    "item_151": {
+      "message": "brennende Fackel",
+      "description": "Inventory cursor-over item name 151 (BEZEICH.TXT, one-based)."
+    }
+  }
+}

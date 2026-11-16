@@ -111,6 +111,12 @@
     <ClCompile Include="..\SharedSource\IO\builtin\BuiltInMapIcons.cpp">
       <Filter>IO\builtin</Filter>
     </ClCompile>
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInTextures.cpp">
+      <Filter>IO\builtin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInStrings.cpp">
+      <Filter>IO\builtin</Filter>
+    </ClCompile>
     <ClCompile Include="Source\graphicsplugin_desperabis_d3d11.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

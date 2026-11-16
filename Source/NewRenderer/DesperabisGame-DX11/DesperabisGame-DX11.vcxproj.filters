@@ -82,6 +82,12 @@
     <ClCompile Include="..\SharedSource\IO\builtin\BuiltInMapIcons.cpp">
       <Filter>Shared\IO\builtin</Filter>
     </ClCompile>
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInTextures.cpp">
+      <Filter>Shared\IO\builtin</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SharedSource\IO\builtin\BuiltInStrings.cpp">
+      <Filter>Shared\IO\builtin</Filter>
+    </ClCompile>
     <ClCompile Include="..\SharedSource\IO\builtin\BuiltInSAMP.cpp">
       <Filter>Shared\IO\builtin</Filter>
     </ClCompile>

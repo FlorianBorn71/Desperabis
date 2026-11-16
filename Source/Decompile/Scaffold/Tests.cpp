@@ -1110,7 +1110,7 @@ namespace
                 const bool valid = health > 0 && type == CollisionType::Key;
                 Check((HandlePlayerObjectInteraction(door, state).status == InteractionStatus::Applied) == valid,
                     "Unlocking must accept exactly the live key records.");
-                Check(valid || (state.userMessage == "abgeschlossen" && state.userMessageTicks == 60),
+                Check(valid || (state.userMessage == "Locked" && state.userMessageTicks == 60),
                     "No eligible key must generate the locked feedback.");
             }
         }
@@ -1124,7 +1124,7 @@ namespace
         state.PromptUserMessage("existing prompt", 17);
         const auto locked = ObjectBytes(door);
         Check(HandlePlayerObjectInteraction(door, state).status == InteractionStatus::NoEffect &&
-            state.userMessage == "Falscher Schl\x81ssel" && state.userMessageTicks == 90 &&
+            state.userMessage == "Wrong key" && state.userMessageTicks == 90 &&
             key.health == 1000 && ObjectBytes(door) == locked,
             "Wrong keys must overwrite active prompts without consuming keys or changing the door.");
         auto& lastKey = state.inventory[13];
@@ -1136,14 +1136,14 @@ namespace
             "A last eligible zero-ID key must take the no-key path and respect active feedback.");
         state.userMessageTicks = -3;
         HandlePlayerObjectInteraction(door, state);
-        Check(state.userMessage == "abgeschlossen" && state.userMessageTicks == 60,
+        Check(state.userMessage == "Locked" && state.userMessageTicks == 60,
             "Expired locked feedback must be replaced with a new 60-tick prompt.");
         door.doorLockOrGroupBitmask = -7;
         key.itemValue = -7;
         state.PromptUserMessage("", 0);
         HandlePlayerObjectInteraction(door, state);
         Check(door.doorLockOrGroupBitmask == -7 && key.health == 1000 &&
-            state.userMessage == "abgeschlossen", "Negative locks must reject even matching negative key IDs.");
+            state.userMessage == "Locked", "Negative locks must reject even matching negative key IDs.");
         for (const int health : { 999, 1001 })
         {
             door = MakeTestDoor();

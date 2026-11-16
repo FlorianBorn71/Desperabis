@@ -19,6 +19,8 @@ add_library(behavior-recovery STATIC
     Scaffold/ApplicationFlow.cpp
     Scaffold/Cutscene.cpp
     Scaffold/StoryBook.cpp
+    Scaffold/StringResources.cpp
+    Scaffold/StringResources.h
     Scaffold/SaveGame.cpp
     Scaffold/SaveGame.h
     Scaffold/BehaviorDispatch.cpp
@@ -37,6 +39,12 @@ add_library(behavior-recovery STATIC
     Scaffold/PlayerInteraction.cpp
 )
 target_include_directories(behavior-recovery PUBLIC Scaffold)
+set(JSON_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../packages/nlohmann.json.3.12.0/build/native/include")
+if(NOT EXISTS "${JSON_INCLUDE}/nlohmann/json.hpp")
+    message(FATAL_ERROR "Restore dependencies from the repository root: nuget restore Source\\packages.config -PackagesDirectory Source\\packages -NonInteractive")
+endif()
+target_include_directories(behavior-recovery SYSTEM PRIVATE "${JSON_INCLUDE}")
+configure_file("../NewRenderer/AdditionalAssets/Strings.json" "Localization/strings.json" COPYONLY)
 target_compile_features(behavior-recovery PUBLIC cxx_std_17)
 add_library(Desperabis::GameCore ALIAS behavior-recovery)
 set_target_properties(behavior-recovery PROPERTIES OUTPUT_NAME Desperabis-GameCore)
