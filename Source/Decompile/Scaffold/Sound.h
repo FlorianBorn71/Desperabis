@@ -52,6 +52,7 @@ namespace Desperabis
         virtual void StartAmbientPlayback() { throw std::logic_error("Ambient audio is unsupported."); }
         virtual void StopAmbientPlayback() { throw std::logic_error("Ambient audio is unsupported."); }
         virtual void SetAmbientIndoor(bool) { throw std::logic_error("Indoor ambient audio is unsupported."); }
+        virtual void SetAmbientGain(float) { throw std::logic_error("Ambient gain control is unsupported."); }
         virtual void CreateMusicPlayback(const std::vector<std::uint8_t>&, bool)
         { throw std::logic_error("Music audio is unsupported."); }
         virtual void StartUnderwaterPlayback(std::uint8_t, std::uint8_t)

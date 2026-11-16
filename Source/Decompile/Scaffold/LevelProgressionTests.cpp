@@ -45,6 +45,8 @@ namespace
         int stops = 0;
         int plays = 0;
         std::uint8_t lastSample = 0, lastVolume = 0;
+        int musicCreations = 0, ambientCreations = 0, ambientStarts = 0, ambientStops = 0;
+        std::vector<std::uint8_t> music;
         std::uint16_t GetSampleCount() const override { return 129; }
         bool IsChannelPlaying(std::size_t) const override { return false; }
         void PlaySample(std::size_t, std::uint8_t sample, std::uint8_t volume) override
@@ -54,6 +56,16 @@ namespace
             lastVolume = volume;
         }
         void StopAllSamples() override { ++stops; }
+        std::size_t GetSampleLength(std::uint8_t) const override { return 64; }
+        void BeginAmbientLoopCreation(std::size_t) override { ++ambientCreations; }
+        void CopyAmbient(std::uint8_t, std::size_t) override {}
+        void MixAmbient(std::uint8_t, std::size_t, std::uint8_t) override {}
+        void EndAmbientLoopCreation(std::size_t) override {}
+        void StartAmbientPlayback() override { ++ambientStarts; }
+        void StopAmbientPlayback() override { ++ambientStops; }
+        void SetAmbientGain(float) override {}
+        void CreateMusicPlayback(const std::vector<std::uint8_t>& pcm, bool) override
+        { ++musicCreations; music = pcm; }
     };
 
     class Host final : public GameContext
@@ -65,6 +77,7 @@ namespace
         int creations = 0, destructions = 0;
         std::filesystem::path original;
         std::string message;
+        std::string lastMusic;
 
         static LevelLoadData MakeLevel()
         {
@@ -105,6 +118,7 @@ namespace
 
         std::vector<std::uint8_t> LoadFile(std::string_view filename) override
         {
+            if (filename.substr(0, 10) == "SAMP\\MUSIC") { lastMusic = filename; }
             std::ifstream stream((original.empty() ? originalAssets : original) / std::string(filename), std::ios::binary);
             if (!stream) { throw std::runtime_error("Missing original fixture: " + std::string(filename)); }
             return { std::istreambuf_iterator<char>(stream), {} };
@@ -387,6 +401,10 @@ namespace
                 "Every authored level/intro story must produce readable pages.");
         }
         const auto introduction = LayoutStorySection(text, 80, advances);
+        const auto ending = LayoutStorySection(text, 95, advances);
+        Check(ending.size() >= 2 && ending.back().size() == 1 &&
+            std::get<UiBitmap>(ending.back().front()).source == UiBitmapSource::BookCover,
+            "The native closing marker must produce a separate cover, not another parchment page.");
         Check(introduction.size() > 2, "The original Part-1 introduction must paginate, not truncate.");
         bool illustrated = false;
         for (const auto& page : introduction)
@@ -423,17 +441,35 @@ namespace
         ExpectError<std::runtime_error>([&] { LayoutStorySection("@1\n" + std::string(40, 'a'), 1, uniform); });
         Host host;
         host.original = originalAssets;
-        host.StartNewGame(2);
-        Check(host.GetApplicationPresentation().story.has_value(), "New Game must expose a book presentation.");
         EffectsOnlyAudio audio;
         const auto effects = read(originalAssets / "SAMP\\S_TAB.PRB");
         host.LoadSoundEffects(effects.data(), effects.size());
         host.audioHandler = &audio;
+        host.StartNewGame(2);
+        Check(host.GetApplicationPresentation().story.has_value() && audio.musicCreations == 1 &&
+            host.lastMusic == "SAMP\\MUSIC20.WAV" && audio.ambientCreations == 0,
+            "The Part-1 introduction must play MUSIC20, not the already loaded park's environmental ambience.");
         Input input;
         host.UpdateApplication(0, input);
         std::size_t visited = 0;
+        bool castleSeen = false;
         for (int page = 0; page < 100; ++page)
         {
+            if (host.GetMenuPage() == MenuPage::CastleIntroduction)
+            {
+                Check(!castleSeen && visited == introduction.size() &&
+                    std::get<UiBitmap>(host.GetApplicationPresentation().commands.back()).source ==
+                        UiBitmapSource::CastleIntroduction,
+                    "The metadata-selected castle must appear after section 80 and before the park story.");
+                castleSeen = true;
+                Check(audio.musicCreations == 1 && audio.ambientCreations == 0 && audio.ambientStops == 0,
+                    "The castle must retain its introductory music without restarting it or starting park ambience.");
+                input.anyKeyPressed = true;
+                host.UpdateApplication(0, input);
+                input.anyKeyPressed = false;
+                host.UpdateApplication(0, input);
+                continue;
+            }
             const auto view = host.GetApplicationPresentation().story;
             if (!view) { break; }
             ++visited;
@@ -441,6 +477,12 @@ namespace
             else { input.Set(InputKey::UiCancelKey, true); }
             Check(!host.UpdateApplication(0, input).tick, "Book input must not simulate the loaded level.");
             input.anyKeyPressed = false;
+            if (host.GetMenuPage() == MenuPage::CastleIntroduction)
+            {
+                input.Set(InputKey::UiCancelKey, false);
+                host.UpdateApplication(0, input);
+                continue;
+            }
             if (host.GetMenuPage() != MenuPage::StoryBook) { break; }
             const auto seed = host.randomSeed;
             input.anyKeyPressed = true;
@@ -460,14 +502,16 @@ namespace
             input.Set(InputKey::UiCancelKey, false);
             host.UpdateApplication(0, input);
         }
-        Check(host.GetMenuPage() == MenuPage::Gameplay && host.levelElapsedTicks == 0 &&
+        Check(castleSeen && host.GetMenuPage() == MenuPage::Gameplay && host.levelElapsedTicks == 0 &&
             visited == introduction.size() + LayoutStorySection(text, 30, advances).size(),
             "The complete introduction and level story must finish without advancing gameplay.");
+        Check(audio.ambientCreations == 1 && audio.ambientStarts == 2 && audio.ambientStops == 1,
+            "The park's environmental loop must start only after its silent story pages finish.");
         const auto paperSamples = effects.begin() + 4 + 50 * 5 + 1;
-        Check(audio.plays == visited - 1 && audio.lastVolume == 255 &&
+        Check(audio.plays == visited - 2 && audio.lastVolume == 255 &&
             std::find(paperSamples, paperSamples + effects[4 + 50 * 5], audio.lastSample) !=
                 paperSamples + effects[4 + 50 * 5],
-            "Every turn must play native effect 51, not the unrelated effect 17.");
+            "Paper turns must play effect 51; castle-image transitions must not rustle paper.");
         host.audioHandler = nullptr;
         host.StartLevel(31);
         Check(host.GetMenuPage() == MenuPage::Gameplay, "Development loads must bypass the story.");
@@ -477,6 +521,54 @@ namespace
         host.EndLevel();
         Check(host.GetLoadedLevelNumber() == 32 && host.GetMenuPage() == MenuPage::StoryBook,
             "Normal progression must show the destination level's story.");
+        for (const bool deferred : {false, true})
+        {
+            Host preview;
+            preview.synchronous = !deferred;
+            preview.StartEndingBookPreview();
+            if (deferred)
+            {
+                Check(preview.GetRuntimeState() == GameRuntimeState::Loading,
+                    "The ending preview must wait for deferred scene loading.");
+                preview.CompleteLevelLoad(preview.GetPendingLevelLoad()->id, Host::MakeLevel());
+            }
+            Input keys;
+            preview.UpdateApplication(0, keys);
+            const auto view = preview.GetApplicationPresentation().story;
+            Check(view && view->pageIndex == ending.size() - 2 && view->rigidTurn &&
+                !preview.IsCutscenePlaying(),
+                "Startup preview must show the last paper page and select a rigid next cover.");
+            const auto seed = preview.randomSeed;
+            keys.anyKeyPressed = true;
+            preview.UpdateApplication(0, keys);
+            keys.anyKeyPressed = false;
+            preview.UpdateApplication(0.6, keys);
+            Check(preview.GetApplicationPresentation().story->turn > 0 &&
+                preview.GetApplicationPresentation().story->pageIndex == view->pageIndex,
+                "The rigid cover must animate without prematurely replacing the underlying paper.");
+            preview.UpdateApplication(0.6, keys);
+            const auto closed = preview.GetApplicationPresentation().story;
+            Check(closed && closed->current.size() == 1 && !closed->rigidTurn &&
+                std::get<UiBitmap>(closed->current.front()).source == UiBitmapSource::BookCover &&
+                preview.randomSeed == seed,
+                "Landing must retain the closed cover without simulating the cutscene.");
+            if (deferred)
+            {
+                keys.anyKeyPressed = true;
+                preview.UpdateApplication(0, keys);
+            }
+            else
+            {
+                for (int second = 0; second < 4; ++second) { preview.UpdateApplication(1, keys); }
+                preview.UpdateApplication(0.999, keys);
+                Check(preview.GetMenuPage() == MenuPage::StoryBook,
+                    "The closed cover must remain visible for approximately five seconds.");
+                preview.UpdateApplication(0.002, keys);
+            }
+            Check(preview.GetMenuPage() == MenuPage::MainMenu &&
+                preview.GetRuntimeState() == GameRuntimeState::NoLevel && !preview.hasActiveGame,
+                "Dismissing the closed ending book must clean up rather than resume the epilogue.");
+        }
     }
 
     void TestOriginalExit(const std::filesystem::path& original)

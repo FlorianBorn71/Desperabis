@@ -2,6 +2,7 @@
 #include "AudioPlayer.h"
 
 #include <stdexcept>
+#include <cmath>
 
 #pragma comment(lib, "xaudio2.lib")
 #pragma comment(lib, "ole32.lib")
@@ -18,13 +19,13 @@ namespace
         }
     }
 
-    void ConfigureAmbientEnvironment(IXAudio2SourceVoice& voice, bool indoors)
+    void ConfigureAmbientEnvironment(IXAudio2SourceVoice& voice, bool indoors, float gain)
     {
         XAUDIO2_FILTER_PARAMETERS filter{LowPassFilter,
             indoors ? XAudio2CutoffFrequencyToRadians(400.f, SoundSample::SampleRate) :
                 XAUDIO2_MAX_FILTER_FREQUENCY, 1.f};
         CheckAudioResult(voice.SetFilterParameters(&filter), "Ambient filter update");
-        CheckAudioResult(voice.SetVolume(indoors ? 0.1f : 1.f), "Ambient volume update");
+        CheckAudioResult(voice.SetVolume(gain * (indoors ? 0.1f : 1.f)), "Ambient volume update");
     }
 }
 
@@ -222,7 +223,7 @@ void AudioPlayer::StartAmbientPlayback()
     }
     StopAmbientPlayback();
     auto voice = CreateChannel(true);
-    ConfigureAmbientEnvironment(*voice, m_ambientIndoors);
+    ConfigureAmbientEnvironment(*voice, m_ambientIndoors, m_ambientGain);
     XAUDIO2_BUFFER buffer{};
     buffer.AudioBytes = static_cast<UINT32>(m_ambientLoopLength);
     buffer.pAudioData = m_ambientPcm.data();
@@ -240,8 +241,18 @@ void AudioPlayer::StopAmbientPlayback()
 
 void AudioPlayer::SetAmbientIndoor(bool indoors)
 {
-    if (m_ambientVoice) { ConfigureAmbientEnvironment(*m_ambientVoice, indoors); }
+    if (m_ambientVoice) { ConfigureAmbientEnvironment(*m_ambientVoice, indoors, m_ambientGain); }
     m_ambientIndoors = indoors;
+}
+
+void AudioPlayer::SetAmbientGain(float gain)
+{
+    if (!std::isfinite(gain) || gain < 0.f || gain > 1.f)
+    {
+        throw std::invalid_argument("Ambient gain must be finite and between zero and one.");
+    }
+    if (m_ambientVoice) { ConfigureAmbientEnvironment(*m_ambientVoice, m_ambientIndoors, gain); }
+    m_ambientGain = gain;
 }
 
 void AudioPlayer::CreateMusicPlayback(const std::vector<std::uint8_t>& pcm, bool looping)

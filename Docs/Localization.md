@@ -151,6 +151,7 @@ However, there are some special characters defined which have the following mean
 | #, #+, #++, ...| Formatting: Inserts new line(s), where the number of '+' defines the paragraph spacing.|
 | þ\<char> (þ = hexcode 0xFE) | Inserts a graphics into the page, where the following character defines which one from a set of images. It's most commonly used for the underline ornament for each headline: There are two versions of the underline ornament, one for 'short' headlines (þK) and one for 'long' headlines (þL). It's recommended to keep all the graphics in place.|
 | = | While line break happens automatically on whitespaces, the '=' character denotes a placement hint for hyphenation in a word. If not needed for a line break, it's ignored.|
+| 0xFC (packed text) | Ends the final chapter with the original book cover. The cover turns as a rigid sheet rather than curling like paper. |
 
 The modern renderer reads the packed `LEVEL/TEXTE.TXT` sections selected by
 `LEVELS.INF`, using original font metrics and automatic pagination. It burns
@@ -158,6 +159,9 @@ text and illustrations into the original-size parchment, with a 3D page turn
 on any fresh keyboard press (Escape also advances one page). New games and
 normal progression show the story; save restores and developer navigation
 bypass it. See [story playback recovery](../Source/Decompile/BehaviorRecovery.md#story-introductions-and-3d-book-playback).
+Part 1's selector metadata inserts the original castle still image after its
+opening book section and before the park story. The closed ending cover
+automatically exits after five seconds; a fresh key can dismiss it sooner.
 
 ### Patching the .Exe
 

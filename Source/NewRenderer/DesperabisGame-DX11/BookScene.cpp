@@ -8,19 +8,21 @@
 #include <cmath>
 #include <stdexcept>
 
-FUTURE(void) BookScene::CreateScene()
+void BookScene::CreatePages(bool rigid)
 {
     ModelLoadingContext positions;
     ModelConversionContext geometry(positions);
-    constexpr int positionsPerFrame = (PageStrips + 1) * 2;
-    static_assert(TurnFrames * positionsPerFrame * sizeof(VertexPosition) <= 64 * 1024,
+    const int strips = rigid ? 1 : PageStrips;
+    const int positionsPerFrame = (strips + 1) * 2;
+    static_assert(TurnFrames * (PageStrips + 1) * 2 * sizeof(VertexPosition) <= 64 * 1024,
         "Cached book poses must fit the DX11 position constant buffer.");
+    auto& meshes = rigid ? m_coverMeshes : m_pageMeshes;
     std::array<float, PageStrips + 1> textureUs;
-    for (int column = 0; column <= PageStrips; ++column)
+    for (int column = 0; column <= strips; ++column)
     {
-        const double u = static_cast<double>(column) / PageStrips;
+        const double u = static_cast<double>(column) / strips;
         // Keep extra strips near the free edge as the rolling curl shrinks.
-        textureUs[column] = static_cast<float>(u * u);
+        textureUs[column] = static_cast<float>(rigid ? u : u * u);
     }
     for (int frame = 0; frame < TurnFrames; ++frame)
     {
@@ -40,11 +42,18 @@ FUTURE(void) BookScene::CreateScene()
         auto mesh = std::make_shared<Renderable>();
         mesh->m_vertexOfs = frame * positionsPerFrame;
         mesh->m_numPositions = positionsPerFrame;
-        for (int column = 0; column <= PageStrips; ++column)
+        for (int column = 0; column <= strips; ++column)
         {
             const double distance = 3.6 * (1 - static_cast<double>(textureUs[column]));
             double x = -distance, z = 0, tangent = rootAngle;
-            if (frame == 0) { x = distance; }
+            if (rigid)
+            {
+                const double angle = static_cast<double>(Math::Pi) * eased;
+                x = distance * std::cos(angle);
+                z = distance * std::sin(angle);
+                tangent = static_cast<double>(Math::Pi) - angle;
+            }
+            else if (frame == 0) { x = distance; }
             else if (distance > laidLength)
             {
                 tangent += (distance - laidLength) / radius;
@@ -79,11 +88,11 @@ FUTURE(void) BookScene::CreateScene()
             }
             DrawCall draw;
             draw.m_firstIndex = static_cast<int>(geometry.m_sortedIndices.size());
-            draw.m_primitiveCount = PageStrips * 2;
+            draw.m_primitiveCount = strips * 2;
             draw.m_material.m_useAlphaTest = false;
             draw.m_material.ComputeHash();
             mesh->m_drawCalls.push_back(draw);
-            for (int column = 0; column < PageStrips; ++column)
+            for (int column = 0; column < strips; ++column)
             {
                 const auto a = static_cast<std::uint16_t>(firstVertex + column * 2);
                 const auto b = static_cast<std::uint16_t>(a + 2);
@@ -93,14 +102,20 @@ FUTURE(void) BookScene::CreateScene()
                 else { geometry.m_sortedIndices.insert(geometry.m_sortedIndices.end(), {a,c,b,c,d,b}); }
             }
         }
-        m_pageMeshes[frame] = std::move(mesh);
+        meshes[frame] = std::move(mesh);
     }
     const auto runtime = Renderer::Instance().CreateModelBuffers(geometry);
-    for (auto& mesh : m_pageMeshes)
+    for (auto& mesh : meshes)
     {
         mesh->m_runtime = runtime;
         geometry.GenerateBoundingVolume(mesh->m_localBounds);
     }
+}
+
+FUTURE(void) BookScene::CreateScene()
+{
+    CreatePages(false);
+    CreatePages(true);
     for (auto& page : m_pages)
     {
         AssetManager::Instance().RegisterAsset(page);
@@ -154,6 +169,10 @@ void BookScene::Draw(const Desperabis::UiStoryBook& view, float aspect, Renderer
         materials.at(1).m_texture = &front;
         for (auto& material : materials) { material.ComputeHash(); }
     };
+    const auto* currentBitmap = view.current.size() == 1 ?
+        std::get_if<Desperabis::UiBitmap>(&view.current.front()) : nullptr;
+    m_left->SetRenderable(currentBitmap && currentBitmap->source == Desperabis::UiBitmapSource::BookCover ?
+        m_coverMeshes.back().get() : m_pageMeshes.back().get());
     setMaterials(*m_left, m_pages[view.pageIndex % 2]);
     m_left->SetTransform(Vector(1.8f,0,0), Vector(0,0,0));
     m_turning->SetVisible(view.turn >= 0);
@@ -161,8 +180,9 @@ void BookScene::Draw(const Desperabis::UiStoryBook& view, float aspect, Renderer
     {
         const float pose = static_cast<float>(view.turn) * (TurnFrames - 1);
         const int frame = static_cast<int>(pose);
-        m_turning->SetRenderable(m_pageMeshes[frame].get(),
-            frame + 1 < TurnFrames ? m_pageMeshes[frame + 1].get() : nullptr);
+        const auto& meshes = view.rigidTurn ? m_coverMeshes : m_pageMeshes;
+        m_turning->SetRenderable(meshes[frame].get(),
+            frame + 1 < TurnFrames ? meshes[frame + 1].get() : nullptr);
         m_turning->m_blendWeight = pose - frame;
         setMaterials(*m_turning, m_pages[(view.pageIndex + 1) % 2]);
         auto& back = m_turning->GetOrCreateMaterialOverrides().at(1);

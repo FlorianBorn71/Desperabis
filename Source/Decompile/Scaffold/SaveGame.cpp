@@ -168,7 +168,7 @@ namespace Desperabis
         {
             const auto offset = static_cast<std::size_t>(order[i]) * 124;
             if (info.size() < offset + 124) { throw std::runtime_error("HERZ references a missing level-info record."); }
-            // Presentation selectors are not ported yet; keep their indices in HERZ/SPL, but skip playback.
+            // Story/presentation selectors are consumed separately, never installed as playable maps.
             if (info[offset + 100] >= 100) { continue; }
             return order[i];
         }

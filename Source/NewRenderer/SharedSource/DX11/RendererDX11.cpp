@@ -193,6 +193,17 @@ FUTURE(void) RendererDX11::Initialize(ID3D11Device3* device, ID3D11DeviceContext
 
     // they are all opaque:
     m_blendState[(int)TransparencyMode::Water] = m_blendState[(int)TransparencyMode::Opaque];
+    CD3D11_BLEND_DESC vignetteBlend(D3D11_DEFAULT);
+    auto& vignetteTarget = vignetteBlend.RenderTarget[0];
+    vignetteTarget.BlendEnable = TRUE;
+    vignetteTarget.SrcBlend = D3D11_BLEND_ZERO;
+    vignetteTarget.DestBlend = D3D11_BLEND_SRC_COLOR;
+    vignetteTarget.RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_RED |
+        D3D11_COLOR_WRITE_ENABLE_GREEN | D3D11_COLOR_WRITE_ENABLE_BLUE;
+    if (FAILED(device->CreateBlendState(&vignetteBlend, &m_vignetteBlendState)))
+    {
+        throw std::runtime_error("Could not create the multiplicative vignette blend state.");
+    }
 
     CD3D11_RASTERIZER_DESC waterRasterizer(D3D11_DEFAULT);
     waterRasterizer.CullMode = D3D11_CULL_NONE;
@@ -221,8 +232,68 @@ FUTURE(void) RendererDX11::Initialize(ID3D11Device3* device, ID3D11DeviceContext
     m_isReady = true;
 }
 
+void RendererDX11::RenderVignette(ProfilingStats& stats)
+{
+    if (m_vignetteTint.r == 255 && m_vignetteTint.g == 255 && m_vignetteTint.b == 255) { return; }
+    if (!m_isReady || !m_d3dContext || !m_mainRT)
+    {
+        throw std::logic_error("Vignette rendering requires an initialized renderer.");
+    }
+    const Texture* texture = m_vignetteTexture ? m_vignetteTexture :
+        AssetManager::Instance().GetPlainWhiteTexture();
+    if (!texture || !texture->GetNativeRuntimeObj<NativeTextureObjectDX11>())
+    {
+        throw std::logic_error("Vignette rendering requires an initialized renderer and texture.");
+    }
+    if (!m_vignetteMesh || m_vignetteMeshTexture != texture ||
+        m_vignetteExtent.x != m_mainViewport.Width || m_vignetteExtent.y != m_mainViewport.Height)
+    {
+        m_vignetteMesh = TextMesh::CreateTexturedQuad(*texture, m_mainViewport.Width, m_mainViewport.Height);
+        m_vignetteMeshTexture = texture;
+        m_vignetteExtent = {m_mainViewport.Width, m_mainViewport.Height};
+    }
+    m_vignetteMesh->CreateRuntimes(*this);
+    const auto* mesh = m_vignetteMesh->GetNativeRuntimeObj<NativeTextMeshObjectDX11>();
+    auto* target = GetRenderTarget<RenderTargetDX11>(RenderTargetPassType::MainView);
+    target->BindAsTarget(false);
+    ComPtr<ID3D11BlendState> oldBlend;
+    ComPtr<ID3D11DepthStencilState> oldDepth;
+    ComPtr<ID3D11RasterizerState> oldRasterizer;
+    FLOAT blendFactor[4];
+    UINT sampleMask, stencil;
+    m_d3dContext->OMGetBlendState(&oldBlend, blendFactor, &sampleMask);
+    m_d3dContext->OMGetDepthStencilState(&oldDepth, &stencil);
+    m_d3dContext->RSGetState(&oldRasterizer);
+    m_d3dContext->OMSetBlendState(m_vignetteBlendState.Get(), nullptr, 0xffffffffu);
+    m_d3dContext->OMSetDepthStencilState(m_depthState[(int)DepthWriteMode::None].Get(), 0);
+    m_d3dContext->RSSetState(m_waterRasterizerState.Get());
+    m_d3dContext->GSSetShader(nullptr, nullptr, 0);
+    m_textShader.Bind(m_d3dContext.Get());
+    m_textShader.UpdateConstants(m_d3dContext.Get(), m_mainViewport.Width, m_mainViewport.Height,
+        {0,0}, m_vignetteTint, 1, true);
+    m_d3dContext->PSSetSamplers(0, 1, m_samplerStateClamp.GetAddressOf());
+    for (const auto& batch : mesh->m_batches)
+    {
+        const auto* native = batch.m_atlasTexture->GetNativeRuntimeObj<NativeTextureObjectDX11>();
+        m_d3dContext->PSSetShaderResources(0, 1, native->m_nativeTexView.GetAddressOf());
+        const UINT stride = sizeof(TextVertex), offset = 0;
+        m_d3dContext->IASetVertexBuffers(0, 1, batch.m_vertexBuffer.GetAddressOf(), &stride, &offset);
+        m_d3dContext->IASetIndexBuffer(batch.m_indexBuffer.Get(), DXGI_FORMAT_R32_UINT, 0);
+        m_d3dContext->DrawIndexed(batch.m_indexCount, 0, 0);
+        ++stats.m_numDrawCalls;
+        stats.m_numTriangles += static_cast<int>(batch.m_indexCount / 3);
+    }
+    m_d3dContext->OMSetBlendState(oldBlend.Get(), blendFactor, sampleMask);
+    m_d3dContext->OMSetDepthStencilState(oldDepth.Get(), stencil);
+    m_d3dContext->RSSetState(oldRasterizer.Get());
+}
+
 void RendererDX11::Deinitialize()
 {
+    m_vignetteMesh.reset();
+    m_vignetteMeshTexture = m_vignetteTexture = nullptr;
+    m_vignetteTint = {255,255,255,255};
+    m_vignetteBlendState.Reset();
     m_waterRasterizerState.Reset();
     m_scissorRasterizerState.Reset();
     m_itemPreview.reset();

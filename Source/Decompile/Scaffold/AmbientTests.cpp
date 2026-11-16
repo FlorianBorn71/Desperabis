@@ -76,6 +76,7 @@ namespace
         }
         void StopAmbientPlayback() override { ++stops; }
         void SetAmbientIndoor(bool indoors) override { indoorChanges.push_back(indoors); }
+        void SetAmbientGain(float) override {}
     };
 
     std::uint32_t Next(std::uint32_t& seed)

@@ -38,6 +38,11 @@ textures and strings. The disabled "Shared Desp files" generation block retains
 the recipe for rebuilding the original bundles from `Data\SourceAssets\Original`;
 normal generator runs do not rewrite them.
 
+To regenerate only the audio bundle, pass
+`--samples <original-SAMP-directory> <output-BuiltInSAMP.cpp>`.
+This includes S_TAB.PRB, SOUND1..129.SMP and all shipped MUSIC tracks
+(1, 6, 10, 11, 14 and 20), including the menu and castle cues.
+
 `FileManagerBuiltIn::Initialize` registers all enabled bundles under their
 original virtual filenames. Reads first use that in-memory registry and only
 then search configured external data directories for files not embedded.

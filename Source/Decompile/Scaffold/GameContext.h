@@ -10,6 +10,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -337,6 +338,7 @@ namespace Desperabis
         std::optional<RecordedCutsceneCamera> GetRecordedCutsceneCamera() const;
         bool IsMuseumIntroPlaying() const;
         void StartMuseumIntro();
+        void StartEndingBookPreview();
         void UpdateIntroCredits(RawGameObject& object);
         bool IsBossFallPlaying() const { return bossFall.has_value(); }
         void BeginBossFall(int bossSlot, int trapSlot);
@@ -380,6 +382,8 @@ namespace Desperabis
 
         MenuPage GetMenuPage() const;
         void SetMenuPage(MenuPage page);
+        // Interactive hosts opt in; headless/native recovery retains immediate transitions.
+        bool screenTransitionsEnabled = false;
         // Legacy blocking recovery driver. Interactive hosts use UpdateApplication instead.
         void RunApplication();
         void RunApplicationStep();
@@ -737,11 +741,39 @@ namespace Desperabis
         std::vector<UiBitmap> codeBookPictures;
         void PrepareStoryIntroductions(const std::vector<std::uint8_t>& order, std::uint8_t destination);
         void BeginLevelStory();
-        std::vector<std::int16_t> pendingStorySections;
+        struct StorySection
+        {
+            std::int16_t number;
+            std::optional<MenuPage> presentation;
+            std::optional<std::uint8_t> music;
+        };
+        std::vector<StorySection> pendingStorySections;
         std::vector<std::vector<UiDrawCommand>> storyPages;
+        std::vector<std::optional<std::uint8_t>> storyPageAudio;
         std::size_t storyPageIndex = 0;
         double storySeconds = 0, storyTurn = -1;
+        double storyPageSeconds = 0;
+        bool IsCastleStoryPage(std::size_t index) const;
+        void AdvanceStoryPage();
+        void CompleteStoryBook();
+        void CommitMenuPage(MenuPage page);
+        enum class ScreenFade { None, Out, Black, In, DeathRed, DeathBlack };
+        ScreenFade screenFade = ScreenFade::None;
+        double screenFadeSeconds = 0, screenFadeDuration = 0;
+        UiColor screenTint;
+        std::function<void()> pendingScreenChange;
+        bool applyingScreenChange = false;
+        bool fadeScreenAudio = false;
+        float screenAudioGain = 1.f;
+        std::optional<std::uint8_t> levelAmbientSound, activeAmbientSelector;
+        void RefreshScreenAudio();
+        void SetScreenAudioGain(float gain);
+        bool QueueScreenChange(std::function<void()> change, double duration);
+        bool UpdateScreenFade(double delta);
+        void BeginScreenFadeIn(double duration);
         bool pendingLevelStory = false;
+        bool pendingEndingBookPreview = false;
+        bool storyEndsGame = false;
         GameRuntimeState runtimeState = GameRuntimeState::NoLevel;
         std::uint64_t nextLoadRequestId = 0;
         std::optional<LevelLoadRequest> pendingLevelLoad;

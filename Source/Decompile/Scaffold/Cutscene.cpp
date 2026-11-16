@@ -389,7 +389,7 @@ namespace Desperabis
                 if (++recordedCutsceneFrame == recordedCutscene.size() / 6)
                 {
                     if (loadedLevelNumber == 91 || loadedLevelNumber == 98) { FinishGamePart(); }
-                    else { StartLevel(95); }
+                    else { EndLevel(); }
                     result.status = GameTickStatus::LevelEnded;
                     result.objects.reset();
                     return result;

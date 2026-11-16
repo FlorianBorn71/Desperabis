@@ -37,6 +37,8 @@ void ApplicationUi::SynchronizeSubmarineView(const Desperabis::GameContext& core
         const auto mode = occupied ? PlayerLight::Mode::Submarine :
             (core.playerUnderwater ? PlayerLight::Mode::Blue : PlayerLight::Mode::Normal);
         if (light->GetMode() != mode) { light->SetMode(mode); }
+        // Fades freeze scene time, but the camera-following light must already illuminate the new level.
+        light->Update(0);
     }
 }
 
@@ -443,6 +445,15 @@ std::vector<Color4> ApplicationUi::ComposeStoryPage(const std::vector<Desperabis
     auto pixels = m_mapPaperPixels;
     for (const auto& command : commands)
     {
+        if (const auto* bitmap = std::get_if<Desperabis::UiBitmap>(&command);
+            bitmap && bitmap->source == Desperabis::UiBitmapSource::BookCover)
+        {
+            if (commands.size() != 1 || m_bookCoverPixels.size() != 360 * 240)
+            {
+                throw std::logic_error("Book cover composition requires the original cover without paper ink.");
+            }
+            return m_bookCoverPixels;
+        }
         if (const auto* text = std::get_if<Desperabis::UiText>(&command))
         {
             int x = static_cast<int>(text->x);
@@ -602,6 +613,18 @@ FUTURE(void) ApplicationUi::Initialize()
     {
         m_mapPaperPixels[i] = paperPalette->GetEntryCustomAlpha(paper[i + 4], 255);
     }
+    const auto coverPalette = CO_AWAIT AssetManager::Instance().LoadAsset<Palette>(L"GRAFIK\\BACKGR4.PAL");
+    const auto cover = CO_AWAIT read(L"GRAFIK\\BACKGR4.256");
+    if (cover.size() != 4 + 360 * 240 || cover[0] != 103 || cover[1] != 1 ||
+        cover[2] != 239 || cover[3] != 0)
+    {
+        throw std::runtime_error("Expected the original 360x240 book cover.");
+    }
+    m_bookCoverPixels.resize(360 * 240);
+    for (std::size_t i = 0; i < m_bookCoverPixels.size(); ++i)
+    {
+        m_bookCoverPixels[i] = coverPalette->GetEntryCustomAlpha(cover[i + 4], 255);
+    }
     m_weapons = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\WAFFEN.AN2");
     m_introCredits = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\VORSPANN.AN2");
     if (m_introCredits->m_countX != 2 || m_introCredits->m_countY != 5)
@@ -678,6 +701,12 @@ FUTURE(void) ApplicationUi::Initialize()
     fontPalette->BuildGrayscale();
     const auto menuPalette = CO_AWAIT AssetManager::Instance().LoadAsset<Palette>(L"GRAFIK\\BACKGR2.PAL");
     m_menuBackground = CO_AWAIT AssetManager::Instance().LoadAsset<Texture>(L"GRAFIK\\BACKGR2.256", menuPalette);
+    const auto castlePalette = CO_AWAIT AssetManager::Instance().LoadAsset<Palette>(L"GRAFIK\\BACKGR6.PAL");
+    m_castleIntroduction = CO_AWAIT AssetManager::Instance().LoadAsset<Texture>(L"GRAFIK\\BACKGR6.256", castlePalette);
+    if (m_castleIntroduction->m_width != 360 || m_castleIntroduction->m_height != 480)
+    {
+        throw std::runtime_error("Expected the original 360x480 castle introduction.");
+    }
     m_menuCursor = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\CURSOR.AN2", fontPalette);
     if (m_menuBackground->m_width != 360 || m_menuBackground->m_height != 480 ||
         m_menuCursor->m_countX != 2 || m_menuCursor->m_countY != 5)
@@ -1034,10 +1063,12 @@ void ApplicationUi::Deinitialize()
     m_mapPaper.reset();
     m_textPictures.clear();
     m_menuBackground.reset();
+    m_castleIntroduction.reset();
     m_menuCursor.reset();
     m_introCredits.reset();
     m_textCaret.reset();
     m_mapPaperPixels.clear();
+    m_bookCoverPixels.clear();
 }
 
 void ApplicationUi::Clear()
@@ -1500,7 +1531,8 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
             {
                 throw std::runtime_error("Unavailable native inventory resource bank " + std::to_string(iconFile) + ".");
             }
-            const auto frame = bitmap->source == UiBitmapSource::MapPaper ? BitmapFrame{ *m_mapPaper } :
+            const auto frame = bitmap->source == UiBitmapSource::CastleIntroduction ? BitmapFrame{ *m_castleIntroduction } :
+                bitmap->source == UiBitmapSource::MapPaper ? BitmapFrame{ *m_mapPaper } :
                 bitmap->source == UiBitmapSource::MenuBackground ? BitmapFrame{ *m_menuBackground } :
                     ResolveBitmap(*bitmap, level, *selectedHud,
                         bank == m_inventoryIcons.end() ? nullptr : bank->second.at(bitmap->shade).get(),
@@ -1542,7 +1574,8 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
                 std::to_string(bitmap->flipHorizontal) + ":" + std::to_string(bitmap->shade);
             if (key != cached.key)
             {
-                if (bitmap->source == UiBitmapSource::MapPaper || bitmap->source == UiBitmapSource::MenuBackground)
+                if (bitmap->source == UiBitmapSource::MapPaper || bitmap->source == UiBitmapSource::MenuBackground ||
+                    bitmap->source == UiBitmapSource::CastleIntroduction)
                 {
                     const std::array<Vector2, 4> uv{{ { 0,0 }, { 1,0 }, { 0,1 }, { 1,1 } }};
                     cached.mesh = TextMesh::CreateTexturedQuad(texture, width, height, uv);

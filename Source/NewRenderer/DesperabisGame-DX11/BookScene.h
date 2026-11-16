@@ -20,6 +20,8 @@ private:
     static constexpr int PageStrips = 40;
     static constexpr int TurnFrames = 49;
     std::array<std::shared_ptr<Renderable>, TurnFrames> m_pageMeshes;
+    std::array<std::shared_ptr<Renderable>, TurnFrames> m_coverMeshes;
+    void CreatePages(bool rigid);
     std::array<Texture, 2> m_pages;
     RenderableInstancePtr m_left, m_turning;
     std::shared_ptr<LightSource> m_light;

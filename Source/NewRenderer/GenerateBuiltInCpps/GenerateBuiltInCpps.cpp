@@ -14,8 +14,12 @@ int main(int argc, char** argv)
         std::vector<std::string> names;
         files.push_back(source / "S_TAB.PRB");
         names.push_back("SAMP\\S_TAB.PRB");
-        files.push_back(source / "MUSIC1.WAV");
-        names.push_back("SAMP\\MUSIC1.WAV");
+        for (const int track : {1, 6, 10, 11, 14, 20})
+        {
+            const auto name = "MUSIC" + std::to_string(track) + ".WAV";
+            files.push_back(source / name);
+            names.push_back("SAMP\\" + name);
+        }
         for (int sample = 1; sample <= 129; ++sample)
         {
             const auto name = "SOUND" + std::to_string(sample) + ".SMP";

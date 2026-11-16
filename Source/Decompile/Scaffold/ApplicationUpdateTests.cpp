@@ -242,6 +242,125 @@ namespace
         Check(host.GetMenuPage() == MenuPage::Presentation20, "Future presentation pages must not silently skip.");
     }
 
+    void TestScreenFades()
+    {
+        Host host;
+        Input input;
+        Ready(host, input);
+        host.screenTransitionsEnabled = true;
+        const auto seed = host.randomSeed;
+        input.Set(InputKey::InventoryKey, true);
+        host.UpdateApplication(0, input);
+        Check(host.GetMenuPage() == MenuPage::Gameplay, "Opening inventory must retain gameplay until black.");
+        host.UpdateApplication(0.075, input);
+        const auto halfway = host.GetApplicationPresentation().screenTint;
+        Check(halfway.r >= 127 && halfway.r <= 128 && halfway.g == halfway.r && halfway.b == halfway.r &&
+            host.GetMenuPage() == MenuPage::Gameplay && host.randomSeed == seed && host.levelElapsedTicks == 0,
+            "Quick fades must darken the outgoing screen without simulating gameplay.");
+        input.Set(InputKey::UiCancelKey, true);
+        host.UpdateApplication(0.075, input);
+        Check(host.GetMenuPage() == MenuPage::Inventory && host.GetApplicationPresentation().screenTint.r == 0,
+            "The screen must change only at the black midpoint.");
+        host.UpdateApplication(0.15, input);
+        host.UpdateApplication(0, input);
+        Check(host.GetMenuPage() == MenuPage::Inventory && host.GetApplicationPresentation().screenTint.r == 255,
+            "Fade-in must end at exact white and consume input pressed during the transition.");
+        input.keys.fill(false);
+        host.UpdateApplication(0, input);
+        input.Set(InputKey::UiCancelKey, true);
+        host.UpdateApplication(0, input);
+        host.UpdateApplication(0.15, input);
+        Check(host.GetMenuPage() == MenuPage::Gameplay && host.GetApplicationPresentation().screenTint.r == 0,
+            "Closing inventory must also cross black before returning to gameplay.");
+        host.UpdateApplication(0.15, input);
+
+        Host next;
+        Input loadingInput;
+        Ready(next, loadingInput);
+        next.StartLevel(30);
+        next.UpdateApplication(0, loadingInput);
+        next.screenTransitionsEnabled = true;
+        next.synchronous = false;
+        const auto requestCount = next.requests.size();
+        next.EndLevel();
+        next.UpdateApplication(0.3, loadingInput);
+        Check(next.requests.size() == requestCount && next.GetLoadedLevelNumber() == 30,
+            "Level changes must not destroy or replace the outgoing world before it fades out.");
+        next.UpdateApplication(0.3, loadingInput);
+        next.UpdateApplication(1, loadingInput);
+        Check(next.GetRuntimeState() == GameRuntimeState::Loading &&
+            next.GetApplicationPresentation().screenTint.r == 0,
+            "Deferred level loading must hold a fully black screen.");
+        auto data = Host::MakeLevel();
+        data.level->nativeInfo[103] = 31;
+        next.CompleteLevelLoad(next.GetPendingLevelLoad()->id, std::move(data));
+        next.UpdateApplication(0.3, loadingInput);
+        Check(next.GetMenuPage() == MenuPage::StoryBook && next.GetApplicationPresentation().screenTint.r > 0 &&
+            next.GetApplicationPresentation().screenTint.r < 255,
+            "The destination story must fade in only after level loading completes.");
+        next.UpdateApplication(0.3, loadingInput);
+        Check(next.GetApplicationPresentation().screenTint.r == 255,
+            "Book fade-in must finish at exact neutral white.");
+        for (int page = 0; !next.GetApplicationPresentation().story->next.empty() && page < 50; ++page)
+        {
+            loadingInput.Set(InputKey::UiConfirmKey, true);
+            next.UpdateApplication(0, loadingInput);
+            loadingInput.Set(InputKey::UiConfirmKey, false);
+            next.UpdateApplication(0.6, loadingInput);
+            next.UpdateApplication(0.6, loadingInput);
+        }
+        loadingInput.Set(InputKey::UiConfirmKey, true);
+        next.UpdateApplication(0, loadingInput);
+        next.UpdateApplication(0.3, loadingInput);
+        Check(next.GetMenuPage() == MenuPage::StoryBook && next.GetApplicationPresentation().screenTint.r < 255,
+            "The final book page must remain intact while fading out to gameplay.");
+        next.UpdateApplication(0.3, loadingInput);
+        Check(next.GetMenuPage() == MenuPage::Gameplay && next.GetApplicationPresentation().screenTint.r == 0,
+            "Book-to-level transitions must reveal gameplay only at black.");
+        next.UpdateApplication(0.6, loadingInput);
+
+        Host failed;
+        Input failedInput;
+        Ready(failed, failedInput);
+        failed.StartLevel(30);
+        failed.UpdateApplication(0, failedInput);
+        failed.screenTransitionsEnabled = true;
+        failed.fail = true;
+        failed.EndLevel();
+        ExpectError<std::runtime_error>([&] { failed.UpdateApplication(0.6, failedInput); });
+        failed.UpdateApplication(0.6, failedInput);
+        Check(failed.GetRuntimeState() == GameRuntimeState::LoadFailed &&
+            !failed.GetLevelLoadError().empty() && failed.GetApplicationPresentation().screenTint.r == 255,
+            "Deferred transition failures must remain explicit and cannot leave a permanent black mask.");
+
+        Host death;
+        Input dyingInput;
+        Ready(death, dyingInput);
+        death.screenTransitionsEnabled = true;
+        death.ApplyPlayerLifeDelta(-death.playerLife);
+        dyingInput.Set(InputKey::MainMenuKey, true);
+        death.UpdateApplication(1, dyingInput);
+        auto tint = death.GetApplicationPresentation().screenTint;
+        Check(death.GetMenuPage() == MenuPage::Gameplay && tint.r > tint.g && tint.g > 5,
+            "Death must slowly tint the world red and ignore menu input.");
+        death.UpdateApplication(1, dyingInput);
+        death.UpdateApplication(0.5, dyingInput);
+        tint = death.GetApplicationPresentation().screenTint;
+        Check(tint.r == 96 && tint.g == 5 && tint.b == 5,
+            "Death must reach the specified dark-red endpoint before fading to black.");
+        death.UpdateApplication(0.5, dyingInput);
+        tint = death.GetApplicationPresentation().screenTint;
+        Check(tint.r > 0 && tint.r < 96 && death.GetMenuPage() == MenuPage::Gameplay,
+            "The dark-red screen must fade fully out before game cleanup.");
+        death.UpdateApplication(0.5, dyingInput);
+        Check(death.GetMenuPage() == MenuPage::MainMenu && death.GetRuntimeState() == GameRuntimeState::NoLevel &&
+            death.GetApplicationPresentation().screenTint.r == 0 && !death.CanResumeGame(),
+            "Death must clear the world and resume/save availability at black.");
+        death.UpdateApplication(0.6, dyingInput);
+        Check(death.GetApplicationPresentation().screenTint.r == 255,
+            "The main menu must fade back in after death.");
+    }
+
     void TestNewGameSelection()
     {
         const auto hasText = [](const GameContext& host, const std::string& value)
@@ -335,7 +454,8 @@ namespace
             Check(host.weaponAmounts == defaults.weaponAmounts &&
                 host.weaponInventorySlots == defaults.weaponInventorySlots,
                 "New Game must restore native resource defaults, not carry ammunition from the old game.");
-            for (int page = 0; host.GetMenuPage() == MenuPage::StoryBook && page < 100; ++page)
+            for (int page = 0; (host.GetMenuPage() == MenuPage::StoryBook ||
+                host.GetMenuPage() == MenuPage::CastleIntroduction) && page < 100; ++page)
             {
                 Check(!host.UpdateApplication(0.1, input).tick,
                     "The introduction must pause simulation before the starting level.");
@@ -934,6 +1054,7 @@ int main(int argc, char** argv)
         TestFrameTimingAndRoutes();
         TestGatesLoadingAndQuit();
         TestNewGameSelection();
+        TestScreenFades();
         TestSaveLoadMenus();
         TestInventorySelectionAndNavigation();
         TestRepeatPulseAndInputLeakage();

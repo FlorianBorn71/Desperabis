@@ -1316,6 +1316,60 @@ namespace
         std::cout << "Distorted sphere: full-scene horizontal/vertical inversion, outward sample spread, authored mask darkening, atlas equivalence, fresh copies, clipping, depth, aspect scaling and both weapon banks passed.\n";
     }
 
+    void CheckVignette(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        for (const auto& size : {std::pair<UINT,UINT>{64,48}, {120,64}, {48,96}})
+        {
+            Target target(device, size.first, size.second);
+            renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+            for (const auto tint : {Color4{255,255,255,255}, Color4{128,128,128,255},
+                Color4{96,5,5,255}, Color4{0,0,0,255}})
+            {
+                const float base[]{200.f/255,160.f/255,120.f/255,77.f/255};
+                context->ClearRenderTargetView(target.colorView.Get(), base);
+                context->ClearDepthStencilView(target.depthView.Get(), D3D11_CLEAR_DEPTH, 0, 0);
+                renderer.SetVignette(nullptr, tint);
+                ProfilingStats stats{};
+                renderer.RenderVignette(stats);
+                Check(stats.m_numDrawCalls == (tint.r == 255 ? 0 : 1),
+                    "White must skip the fullscreen mask entirely; active fades require exactly one draw.");
+                const auto pixels = target.Pixels(device, context);
+                for (const auto pixel : pixels)
+                {
+                    Check(std::abs(static_cast<int>(pixel & 255) - 200 * tint.r / 255.0) <= 1 &&
+                        std::abs(static_cast<int>((pixel >> 8) & 255) - 160 * tint.g / 255.0) <= 1 &&
+                        std::abs(static_cast<int>((pixel >> 16) & 255) - 120 * tint.b / 255.0) <= 1 &&
+                        (pixel >> 24) == 77,
+                        "The final fullscreen quad must multiply every RGB pixel, preserve alpha and ignore depth.");
+                }
+            }
+        }
+        Texture texture;
+        texture.m_width = 4;
+        texture.m_height = 1;
+        texture.SetDefaultParams();
+        TextureLoadingContext data;
+        data.m_rgbaData = {{255,255,255,255},{255,255,255,255},{64,64,64,255},{64,64,64,255}};
+        renderer.CreateTexture(texture, data);
+        Target target(device, 80, 40);
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        const float white[]{1,1,1,1};
+        context->ClearRenderTargetView(target.colorView.Get(), white);
+        renderer.SetVignette(&texture, {128,128,128,255});
+        ProfilingStats stats{};
+        renderer.RenderVignette(stats);
+        const auto masked = target.Pixels(device, context);
+        Check(std::abs(static_cast<int>(masked[20 * 80 + 4] & 255) - 128) <= 1 &&
+            std::abs(static_cast<int>(masked[20 * 80 + 75] & 255) - 32) <= 1,
+            "Vignette textures and tint must both participate in multiplicative shading.");
+        renderer.SetVignette(&texture, {255,255,255,255});
+        renderer.RenderVignette(stats);
+        Check(stats.m_numDrawCalls == 1 && target.Pixels(device, context) == masked,
+            "White tint must disable even a nonwhite vignette texture without altering the framebuffer.");
+        renderer.SetVignette(nullptr, {255,255,255,255});
+        std::cout << "Vignette: RGB multiplication, texture masks, alpha preservation, white no-op and resize passed.\n";
+    }
+
     void CheckStoryBook(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context,
         const Level& level, const Font& font, const TextureAnim& hud)
     {
@@ -1499,6 +1553,29 @@ namespace
         Check(turning.GetBlendTargetRenderable() && turning.m_blendWeight > 0 && turning.m_blendWeight < 1 &&
             turning.GetBlendTargetRenderable()->m_runtime == sharedMeshRuntime,
             "Intermediate times must interpolate compatible cached curved poses.");
+        presentation.story->rigidTurn = true;
+        for (const double turn : {0.0,0.25,0.5136,0.75,1.0})
+        {
+            presentation.story->turn = turn;
+            scene.Draw(*presentation.story, 1.5f, renderer, settings, stats);
+            const auto& points = turning.GetRenderable()->m_sourcePositions;
+            Check(points.size() == 4 && turning.GetRenderable()->m_runtime != sharedMeshRuntime,
+                "The hard cover must use a separate cached four-corner quad, not the rolling strip mesh.");
+            const auto& edge = points.front();
+            Check(std::abs(std::hypot(edge.x, edge.z) - 3.6f) < 0.0001f &&
+                std::abs(points[2].x) < 0.00001f && std::abs(points[2].z) < 0.00001f &&
+                edge.x == points[1].x && edge.z == points[1].z &&
+                std::abs(edge.y - points[1].y - 2.4f) < 0.00001f,
+                "The cover must stay rectangular and rotate at fixed radius around its anchored spine.");
+            if (turn == 0.5136)
+            {
+                Check(turning.GetBlendTargetRenderable() &&
+                    turning.GetBlendTargetRenderable()->m_sourcePositions.size() == 4 &&
+                    turning.m_blendWeight > 0 && turning.m_blendWeight < 1,
+                    "Rigid covers must still use existing cached-pose interpolation.");
+            }
+        }
+        presentation.story->rigidTurn = false;
         scene.SetPage(0, paper);
         scene.SetPage(1, paper);
         const auto light = scene.GetLightSources().front();
@@ -1544,7 +1621,55 @@ namespace
                 (pixels.front() & 0x00ffffff) == 0,
                 "Wide and portrait cameras must preserve the page aspect and black letterbox.");
         }
-        std::cout << "Story book: native ink pixels, length-preserving rolling curl, progressive flat landing, anchored spine, cached poses, flickering light and two reusable textures passed.\n";
+        renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
+        const auto ending = Desperabis::LayoutStorySection(
+            std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()), 95, advances);
+        const auto cover = ui.ComposeStoryPage(ending.back());
+        const auto coverBytes = read(L"GRAFIK\\BACKGR4.256");
+        const auto coverPalette = FORCE_GET(AssetManager::Instance().LoadAsset<Palette>(L"GRAFIK\\BACKGR4.PAL"));
+        for (std::size_t i = 0; i < cover.size(); ++i)
+        {
+            const auto expected = coverPalette->GetEntryCustomAlpha(coverBytes.at(i + 4), 255);
+            Check(std::memcmp(&cover[i], &expected, sizeof(Color4)) == 0,
+                "The cover must retain every original indexed pixel rather than darkening the parchment.");
+        }
+        presentation.story = Desperabis::UiStoryBook{2,0,0,0.75,ending[ending.size() - 2],ending.back(),true};
+        const auto rigidPixels = render();
+        presentation.story->rigidTurn = false;
+        Check(render() != rigidPixels, "GPU output must distinguish rigid cover rotation from paper rolling.");
+        presentation.story->rigidTurn = true;
+        presentation.story->turn = 1;
+        const auto landedCover = render();
+        presentation.story->pageIndex = 1;
+        presentation.story->current = ending.back();
+        presentation.story->next.clear();
+        presentation.story->turn = -1;
+        const auto closedCover = render();
+        int coverPixels = 0;
+        double coverError = 0;
+        for (std::size_t i = 0; i < closedCover.size(); ++i)
+        {
+            coverPixels += (closedCover[i] & 0x00ffffff) != 0;
+            for (const int shift : {0,8,16})
+            {
+                coverError += std::abs(static_cast<int>((closedCover[i] >> shift) & 255) -
+                    static_cast<int>((landedCover[i] >> shift) & 255));
+            }
+        }
+        std::cout << "Book cover: " << coverPixels << " visible pixels, mean landing channel error " <<
+            coverError / (360 * 240 * 3) << ".\n";
+        // The turning quad's small depth offset avoids z-fighting with the underlying paper.
+        Check(coverPixels > 20000 && coverError / (360 * 240 * 3) < 1 && closedCover != resting,
+            "The rigid cover must land on the same visible original cover retained by the resting book.");
+        presentation = {Desperabis::MenuPage::CastleIntroduction, {
+            Desperabis::UiFill{{0,0,360,240},{0,0,0,255}},
+            Desperabis::UiBitmap{{0,0,360,240}, Desperabis::UiBitmapSource::CastleIntroduction,
+                0,0,0,{},Desperabis::UiBitmapLayout::Stretch}}};
+        const auto castle = render();
+        Check(std::count_if(castle.begin(), castle.end(), [](auto pixel) { return (pixel & 0x00ffffff) != 0; }) > 80000 &&
+            castle != closedCover && castle != resting,
+            "The original castle must occupy the native logical screen, not a curled or portrait-shaped book page.");
+        std::cout << "Story book: original ink and cover pixels, rolling paper, rigid hinged cover, cached poses, lighting and two reusable textures passed.\n";
     }
 
     void CheckCrystalBallEnding(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
@@ -2366,6 +2491,12 @@ namespace
         core.controlledVehicleSlot = 16;
         core.worldObjects[16].doorLockOrGroupBitmask = 1;
         core.playerUnderwater = true;
+        const auto lightCamera = renderer.GetOrCreateCamera();
+        const auto previousLightCamera = lightCamera->GetCameraTransformMatrix(0);
+        auto movedLightCamera = previousLightCamera;
+        movedLightCamera.SetTranslation(Vector(100,50,100));
+        lightCamera->SetCameraTransformMatrix(movedLightCamera);
+        scene.GetPlayerLight()->SetPosition(Vector(0,0,0));
         ApplicationUi::SynchronizeSubmarineView(core, scene, vehicleInstances, true);
         Check(vehicleInstances[16]->m_foreground && vehicleInstances[60]->m_foreground &&
             !vehicleInstances[9]->m_foreground && scene.GetPlayerLight()->GetMode() == PlayerLight::Mode::Submarine,
@@ -2375,6 +2506,9 @@ namespace
             std::abs(submarineLight.PositionAndRadius.w - 1600.f * DespToFloat) < 0.00001f &&
             std::abs(submarineLight.ColorAndPadding.z - 4.5f) < 0.00001f && submarineLight.ColorAndPadding.w == 1.f,
             "The submarine light must retain blue specularity with multiplier 4.5 and radius 1600 DOS units.");
+        Check(submarineLight.PositionAndRadius.x == 100 && submarineLight.PositionAndRadius.z == 100,
+            "The newly loaded world light must follow the actual camera even before any positive scene update during fade-in.");
+        lightCamera->SetCameraTransformMatrix(previousLightCamera);
         scene.GetPlayerLight()->Update(1.5);
         ApplicationUi::SynchronizeSubmarineView(core, scene, vehicleInstances, true);
         Check(scene.GetPlayerLight()->FillLightParams(submarineLight) &&
@@ -2969,6 +3103,17 @@ namespace
         };
         const auto off = render(PlayerLight::Mode::Off);
         const auto blue = render(PlayerLight::Mode::Blue);
+        renderer.SetVignette(nullptr, {128,128,128,255});
+        renderer.RenderVignette(stats);
+        const auto fadedWorld = target.Pixels(device, context);
+        for (const int component : {0, 1, 2})
+        {
+            const auto before = (blue[120 * 360 + 225] >> (8 * component)) & 255;
+            const auto after = (fadedWorld[120 * 360 + 225] >> (8 * component)) & 255;
+            Check(std::abs(static_cast<double>(after) - before * 128.0 / 255.0) <= 1,
+                "Lit world geometry must remain visible and be multiplied by the fade mask before simulation resumes.");
+        }
+        renderer.SetVignette(nullptr, {255,255,255,255});
         const auto channel = [](const auto& pixels, int x, int component)
         {
             return static_cast<int>((pixels[120 * 360 + x] >> (8 * component)) & 255);
@@ -9927,6 +10072,7 @@ int main(int argc, char* argv[])
         const auto items = OriginalItems();
         CheckTextControls(font);
         CheckStoryBook(renderer, device.Get(), context.Get(), *level, font, *hud);
+        CheckVignette(renderer, device.Get(), context.Get());
         CheckSmoothPolygonNormals(renderer, device.Get(), context.Get());
         CheckPrimitiveSortingDepth(renderer, device.Get(), context.Get());
         CheckModelSortingDepthOverrides(device.Get(), context.Get());

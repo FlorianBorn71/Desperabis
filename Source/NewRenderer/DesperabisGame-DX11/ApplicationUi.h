@@ -98,10 +98,12 @@ private:
     const Texture* m_heldWeaponTexture = nullptr;
     std::shared_ptr<Texture> m_mapPaper, m_collisionMap;
     std::shared_ptr<Texture> m_menuBackground;
+    std::shared_ptr<Texture> m_castleIntroduction;
     std::shared_ptr<TextureAnim> m_menuCursor;
     std::shared_ptr<TextureAnim> m_introCredits;
     std::shared_ptr<TextMesh> m_textCaret;
     std::vector<Color4> m_mapPaperPixels;
+    std::vector<Color4> m_bookCoverPixels;
     std::shared_ptr<class BookScene> m_storyScene;
     std::array<std::optional<std::pair<std::uint64_t, std::size_t>>, 2> m_storyPageKeys;
     std::shared_ptr<Texture> m_geometryMap;

@@ -67,7 +67,8 @@ namespace
             bool confirm = false;
             bool IsKeyPressed(InputKey key) override { return confirm && key == InputKey::UiConfirmKey; }
         } input;
-        for (int page = 0; host.GetMenuPage() == MenuPage::StoryBook && page < 100; ++page)
+        for (int page = 0; (host.GetMenuPage() == MenuPage::StoryBook ||
+            host.GetMenuPage() == MenuPage::CastleIntroduction) && page < 100; ++page)
         {
             input.confirm = true;
             host.UpdateApplication(0, input);

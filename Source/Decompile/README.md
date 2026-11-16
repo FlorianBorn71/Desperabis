@@ -288,8 +288,9 @@ For the first explained case and shared collision-map pointer, see
 - `Scaffold/PlayerInteraction.cpp`: per-update collision-selection/input-interface/
   interaction path. World/player overlap queries are in `GameContext.cpp`.
 - `museum-intro-evidence.txt`: view-dependent museum frames, neon switching,
-  timed VORSPANN credits and the native opacity ramp. DX11 starts the core's
-  level-98/DEMO0 tour before the main menu; Escape skips it. See
+  timed VORSPANN credits and the native opacity ramp. `StartMuseumIntro` runs
+  the level-98/DEMO0 tour; Escape skips it. DX11 temporarily starts with
+  `StartEndingBookPreview` to inspect the rigid closing cover instead. See
   [museum startup tour](BehaviorRecovery.md#museum-startup-tour-level-98).
 - `inventory-evidence.txt`: inventory/counter initialization, cleanup,
   input-gated calls, and the original copy-helper contract.

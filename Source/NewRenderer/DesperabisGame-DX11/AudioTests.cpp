@@ -14,6 +14,8 @@
 
 // This fixture registers only SAMP; no graphics resources or device are needed.
 void RegisterFiles_BuiltInShaders() {}
+void RegisterFiles_BuiltInTextures() {}
+void RegisterFiles_BuiltInStrings() {}
 void RegisterFiles_BuiltInANIMS() {}
 void RegisterFiles_BuiltInGRAFIK() {}
 void RegisterFiles_BuiltInLEVEL() {}
@@ -332,6 +334,24 @@ public:
             state.BuffersQueued == 1 && indoorVolume == 1.f &&
             indoorFilter.Frequency == XAUDIO2_MAX_FILTER_FREQUENCY,
             "Going outside must bypass the low-pass and restore gain without replacing or restarting ambience.");
+        audio.SetAmbientGain(0.5f);
+        audio.SetAmbientIndoor(true);
+        ambientVoice->GetVolume(&indoorVolume);
+        Check(std::fabs(indoorVolume - 0.05f) < 0.0001f,
+            "The screen fade must multiply indoor attenuation, not replace it.");
+        audio.SetAmbientIndoor(false);
+        ambientVoice->GetVolume(&indoorVolume);
+        Check(indoorVolume == 0.5f && audio.m_ambientVoice.get() == ambientVoice,
+            "Crossing the indoor boundary must preserve fade gain without restarting the voice.");
+        audio.SetAmbientGain(0);
+        ambientVoice->GetVolume(&indoorVolume);
+        audio.m_channels[0]->GetVolume(&effectVolume);
+        Check(indoorVolume == 0 && std::fabs(effectVolume - 64.f / 255.f) < 0.0001f,
+            "The black midpoint must silence only ambient/music, leaving effects untouched.");
+        Reject<std::invalid_argument>([&] { audio.SetAmbientGain(-0.1f); });
+        Reject<std::invalid_argument>([&] { audio.SetAmbientGain(1.1f); });
+        Reject<std::invalid_argument>([&] { audio.SetAmbientGain(std::numeric_limits<float>::quiet_NaN()); });
+        audio.SetAmbientGain(1);
         audio.StopSample(0);
         Reject<std::out_of_range>([&] { audio.StartUnderwaterPlayback(0, 255); });
         Reject<std::out_of_range>([&] { audio.StartUnderwaterPlayback(5, 255); });
@@ -412,9 +432,13 @@ int main(int argc, char** argv)
         TestRenderer renderer;
         FileManagerBuiltIn files;
         files.Initialize();
-        Check(FORCE_GET(files.ReadDataFuture(L"SAMP/MUSIC1.WAV")) ==
-            ReadFile(std::filesystem::path(argv[1]) / "MUSIC1.WAV"),
-            "The embedded final-ending soundtrack must retain every original RIFF byte.");
+        for (const int track : {1, 6, 10, 11, 14, 20})
+        {
+            const auto name = L"MUSIC" + std::to_wstring(track) + L".WAV";
+            Check(FORCE_GET(files.ReadDataFuture(files.FilenameToNative(L"SAMP\\" + name))) ==
+                ReadFile(std::filesystem::path(argv[1]) / name),
+                "Each embedded cutscene/menu/castle soundtrack must retain every original RIFF byte.");
+        }
         FORCE_WAIT(TestAwaitMacros());
         Check(FORCE_GET(AwaitValue()) == 42, "FORCE_GET lost its return value.");
         Reject<std::runtime_error>([] { FORCE_WAIT(AwaitFailure()); });

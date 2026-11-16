@@ -87,6 +87,7 @@ namespace Desperabis
 
     void GameContext::FinishGamePart()
     {
+        if (QueueScreenChange([this] { FinishGamePart(); }, 0.6)) { return; }
         bossFall.reset();
         cutscenePlaying = false;
         cutsceneCameraSlot.reset();
@@ -98,6 +99,8 @@ namespace Desperabis
         StopAllSoundEffects();
         if (audioHandler && ambientPlaybackActive) { audioHandler->StopAmbientPlayback(); }
         ambientPlaybackActive = false;
+        activeAmbientSelector.reset();
+        levelAmbientSound.reset();
         windX = windZ = 0;
         skyEnabled = false;
         ClearLightningFlashes();
@@ -124,7 +127,21 @@ namespace Desperabis
         {
             throw std::logic_error("Ending a level requires ready gameplay.");
         }
-        if (*loadedLevelNumber == 95 || *loadedLevelNumber == 91)
+        if (QueueScreenChange([this, finishGamePart, showStory] { EndLevel(finishGamePart, showStory); }, 0.6)) { return; }
+        if (*loadedLevelNumber == 96)
+        {
+            StartLevel(95);
+            return;
+        }
+        if (*loadedLevelNumber == 95)
+        {
+            pendingStorySections = {{95, {}}};
+            BeginLevelStory();
+            cutscenePlaying = false;
+            SetMenuPage(MenuPage::StoryBook);
+            return;
+        }
+        if (*loadedLevelNumber == 91)
         {
             FinishGamePart();
             return;
@@ -252,6 +269,138 @@ namespace Desperabis
         return { InteractionStatus::NoEffect };
     }
 
+    bool GameContext::QueueScreenChange(std::function<void()> change, double duration)
+    {
+        if (!screenTransitionsEnabled || applyingScreenChange) { return false; }
+        if (screenFade != ScreenFade::None) { return true; }
+        pendingScreenChange = std::move(change);
+        screenFade = ScreenFade::Out;
+        screenFadeSeconds = 0;
+        screenFadeDuration = duration;
+        fadeScreenAudio = duration >= 0.6;
+        return true;
+    }
+
+    void GameContext::SetScreenAudioGain(float gain)
+    {
+        if (audioHandler && ambientPlaybackActive) { audioHandler->SetAmbientGain(gain); }
+        screenAudioGain = gain;
+    }
+
+    void GameContext::RefreshScreenAudio()
+    {
+        if (!audioHandler || !soundEnabled) { return; }
+        std::optional<std::uint8_t> selector;
+        if (menuPage == MenuPage::StoryBook || menuPage == MenuPage::CastleIntroduction)
+        {
+            if (storyPageIndex < storyPageAudio.size()) { selector = storyPageAudio[storyPageIndex]; }
+        }
+        else if (menuPage == MenuPage::Gameplay) { selector = levelAmbientSound; }
+        else if (!hasActiveGame && (menuPage == MenuPage::MainMenu || menuPage == MenuPage::AlternateMainMenu))
+        {
+            // 0000:A681 selects MUSIC14; returning from a pause menu must not restart level audio.
+            selector = std::uint8_t{114};
+        }
+        else { return; }
+        if (selector && ambientPlaybackActive && activeAmbientSelector == selector) { return; }
+        if (!selector)
+        {
+            if (ambientPlaybackActive) { audioHandler->StopAmbientPlayback(); }
+            ambientPlaybackActive = false;
+            activeAmbientSelector.reset();
+            musicAmbientLoaded = false;
+            return;
+        }
+        CreateAmbientLoop(*selector);
+        if (*selector == 1) { audioHandler->SetAmbientIndoor(playerIndoors); }
+        audioHandler->SetAmbientGain(screenAudioGain);
+        if (*selector != 102) { audioHandler->StartAmbientPlayback(); }
+        ambientPlaybackActive = true;
+        activeAmbientSelector = selector;
+    }
+
+    void GameContext::BeginScreenFadeIn(double duration)
+    {
+        screenFade = ScreenFade::In;
+        screenFadeSeconds = 0;
+        screenFadeDuration = duration;
+        screenTint = {0, 0, 0, 255};
+    }
+
+    bool GameContext::UpdateScreenFade(double delta)
+    {
+        if (screenFade == ScreenFade::None) { return false; }
+        double remaining = delta;
+        do
+        {
+            if (screenFade == ScreenFade::Black)
+            {
+                if (runtimeState == GameRuntimeState::Loading) { return true; }
+                BeginScreenFadeIn(screenFadeDuration);
+            }
+            const auto phase = screenFade;
+            const double step = std::min(remaining, screenFadeDuration - screenFadeSeconds);
+            screenFadeSeconds += step;
+            remaining -= step;
+            if (phase == ScreenFade::DeathRed || phase == ScreenFade::DeathBlack)
+            {
+                applicationTickAccumulator += step * TicksPerSecond;
+                const auto ticks = static_cast<int>(applicationTickAccumulator);
+                applicationTickAccumulator -= ticks;
+                for (int tick = 0; tick < ticks; ++tick) { UpdatePlayerDeathCamera(); }
+            }
+            else { applicationTickAccumulator = 0; }
+            const double t = std::clamp(screenFadeSeconds / screenFadeDuration, 0.0, 1.0);
+            const double eased = t * t * (3 - 2 * t);
+            const UiColor darkRed{96, 5, 5, 255}, black{0, 0, 0, 255}, white{};
+            const UiColor from = phase == ScreenFade::In ? black :
+                phase == ScreenFade::DeathBlack ? darkRed : white;
+            const UiColor to = phase == ScreenFade::In ? white :
+                phase == ScreenFade::DeathRed ? darkRed : black;
+            const auto channel = [eased](std::uint8_t a, std::uint8_t b)
+            {
+                return static_cast<std::uint8_t>(std::lround(a + (b - a) * eased));
+            };
+            screenTint = {channel(from.r, to.r), channel(from.g, to.g), channel(from.b, to.b), 255};
+            if (fadeScreenAudio)
+            {
+                const double deathProgress = ((phase == ScreenFade::DeathBlack ? 2.5 : 0.0) + screenFadeSeconds) / 3.5;
+                const double gain = phase == ScreenFade::In ? eased :
+                    phase == ScreenFade::DeathRed || phase == ScreenFade::DeathBlack ?
+                        1 - deathProgress * deathProgress * (3 - 2 * deathProgress) : 1 - eased;
+                SetScreenAudioGain(static_cast<float>(gain));
+            }
+            if (screenFadeSeconds < screenFadeDuration) { break; }
+            if (phase == ScreenFade::In)
+            {
+                screenFade = ScreenFade::None;
+                screenTint = {};
+                break;
+            }
+            if (phase == ScreenFade::DeathRed)
+            {
+                screenFade = ScreenFade::DeathBlack;
+                screenFadeSeconds = 0;
+                screenFadeDuration = 1;
+                continue;
+            }
+            screenFade = ScreenFade::Black;
+            screenFadeSeconds = 0;
+            if (phase == ScreenFade::DeathBlack) { screenFadeDuration = 0.6; }
+            auto change = std::move(pendingScreenChange);
+            applyingScreenChange = true;
+            try { change(); }
+            catch (...)
+            {
+                applyingScreenChange = false;
+                BeginScreenFadeIn(screenFadeDuration);
+                throw;
+            }
+            applyingScreenChange = false;
+        } while (remaining > 0);
+        return true;
+    }
+
     ApplicationUpdateResult GameContext::UpdateApplication(double elapsedSeconds, InputHandler& input)
     {
         if (!std::isfinite(elapsedSeconds) || elapsedSeconds < 0)
@@ -276,6 +425,25 @@ namespace Desperabis
         const auto pageAtStart = menuPage;
         // No real-time catch-up for UI repeat/pulse or world simulation after a long host stall.
         const double delta = std::min(elapsedSeconds, 1.0);
+        if (screenTransitionsEnabled && screenFade == ScreenFade::None &&
+            menuPage == MenuPage::Gameplay && runtimeState == GameRuntimeState::Ready &&
+            hasActiveGame && playerLife <= 0 && !cutscenePlaying)
+        {
+            screenFade = ScreenFade::DeathRed;
+            screenFadeSeconds = 0;
+            screenFadeDuration = 2.5;
+            fadeScreenAudio = true;
+            pendingScreenChange = [this] { FinishGamePart(); };
+        }
+        if (UpdateScreenFade(delta))
+        {
+            for (std::size_t i = 0; i < InputKeyCount; ++i)
+            {
+                applicationBlockedKeys[i] = applicationBlockedKeys[i] || snapshot.keys[i];
+            }
+            queuedText.clear();
+            return {};
+        }
         if (menuPage == MenuPage::MainMenu || menuPage == MenuPage::AlternateMainMenu ||
             menuPage == MenuPage::ChapterSelection || menuPage == MenuPage::LoadGame || menuPage == MenuPage::SaveGame)
         {
@@ -336,13 +504,18 @@ namespace Desperabis
             break;
         case MenuPage::StoryBook:
             storySeconds += delta;
+            storyPageSeconds += delta;
+            if (storyEndsGame && storyPageIndex + 1 == storyPages.size() && storyPageSeconds >= 5)
+            {
+                CompleteStoryBook();
+                break;
+            }
             if (storyTurn >= 0)
             {
                 storyTurn = std::min(1.0, storyTurn + delta / 1.2);
                 if (storyTurn == 1)
                 {
-                    ++storyPageIndex;
-                    storyTurn = -1;
+                    AdvanceStoryPage();
                 }
             }
             else if (input.WasAnyKeyPressed() ||
@@ -350,14 +523,25 @@ namespace Desperabis
             {
                 if (storyPageIndex + 1 == storyPages.size())
                 {
-                    storyPages.clear();
-                    SetMenuPage(MenuPage::Gameplay);
+                    CompleteStoryBook();
+                }
+                else if (IsCastleStoryPage(storyPageIndex + 1))
+                {
+                    if (!QueueScreenChange([this] { AdvanceStoryPage(); }, 0.6)) { AdvanceStoryPage(); }
                 }
                 else
                 {
                     storyTurn = 0;
                     PlaySoundEffect(static_cast<SoundEffect>(51), 255, 0, 1);
                 }
+            }
+            break;
+        case MenuPage::CastleIntroduction:
+            storyPageSeconds += delta;
+            if (storyPageSeconds >= 5 || input.WasAnyKeyPressed() ||
+                std::any_of(pressed.begin(), pressed.end(), [](bool value) { return value; }))
+            {
+                if (!QueueScreenChange([this] { AdvanceStoryPage(); }, 0.6)) { AdvanceStoryPage(); }
             }
             break;
         case MenuPage::Inventory:
@@ -537,7 +721,7 @@ namespace Desperabis
         {
             recordedCameraFrame = cameraFrame;
         }
-        if (result.tick->status == GameTickStatus::LevelEnded || menuPage != pageAtStart)
+        if (result.tick->status == GameTickStatus::LevelEnded || menuPage != pageAtStart || screenFade != ScreenFade::None)
         {
             result.worldDeltaSeconds = 0;
             result.timing = { 0, 0 };
@@ -606,11 +790,26 @@ namespace Desperabis
     ApplicationPresentation GameContext::GetApplicationPresentation() const
     {
         ApplicationPresentation result{ menuPage, {} };
+        result.screenTint = screenTint;
+        if (screenFade == ScreenFade::Black && runtimeState == GameRuntimeState::Loading) { return result; }
+        if (menuPage == MenuPage::CastleIntroduction)
+        {
+            result.commands = {UiFill{{0, 0, 360, 240}, {0, 0, 0, 255}},
+                UiBitmap{{0, 0, 360, 240}, UiBitmapSource::CastleIntroduction,
+                    0, 0, 0, {}, UiBitmapLayout::Stretch}};
+            return result;
+        }
         if (menuPage == MenuPage::StoryBook)
         {
             result.story = UiStoryBook{nextLoadRequestId, storyPageIndex, storySeconds, storyTurn,
-                storyPages.at(storyPageIndex), storyPageIndex + 1 < storyPages.size() ?
+                storyPages.at(storyPageIndex), storyPageIndex + 1 < storyPages.size() && !IsCastleStoryPage(storyPageIndex + 1) ?
                     storyPages.at(storyPageIndex + 1) : std::vector<UiDrawCommand>{}};
+            result.story->rigidTurn = std::any_of(result.story->next.begin(), result.story->next.end(),
+                [](const UiDrawCommand& command)
+                {
+                    const auto* bitmap = std::get_if<UiBitmap>(&command);
+                    return bitmap && bitmap->source == UiBitmapSource::BookCover;
+                });
             return result;
         }
         if (menuPage == MenuPage::Gameplay)

@@ -274,8 +274,11 @@ namespace Desperabis
         }
         const LevelLoadRequest request{ ++nextLoadRequestId, levelNumber };
         pendingLevelStory = showStory;
+        storyEndsGame = false;
+        if (!showStory) { pendingEndingBookPreview = false; }
         if (!showStory) { pendingStorySections.clear(); }
         storyPages.clear();
+        storyPageAudio.clear();
         storyPageIndex = 0;
         storySeconds = 0;
         storyTurn = -1;
@@ -295,6 +298,7 @@ namespace Desperabis
                 if (audioHandler && ambientPlaybackActive) { audioHandler->StopAmbientPlayback(); }
                 ambientPlaybackActive = false;
                 musicAmbientLoaded = false;
+                activeAmbientSelector.reset();
             }
             ClearLightningFlashes();
             LoadLevel(request);
@@ -342,15 +346,9 @@ namespace Desperabis
         LightingCache newLighting;
         newLighting.Reset(data.objects[1].posX, data.objects[1].posZ);
 
-        if (audioHandler && data.ambientSound)
-        {
-            if (soundEnabled)
-            {
-                CreateAmbientLoop(*data.ambientSound);
-                if (*data.ambientSound != 102) { audioHandler->StartAmbientPlayback(); }
-                ambientPlaybackActive = true;
-            }
-        }
+        // The standalone preview skips scene 96, which normally supplies selector 102's music.
+        levelAmbientSound = pendingEndingBookPreview && data.ambientSound == 102 ?
+            std::optional<std::uint8_t>{std::uint8_t{101}} : data.ambientSound;
 
         for (std::size_t slot = 1; slot < worldObjects.size(); ++slot)
         {
@@ -422,11 +420,18 @@ namespace Desperabis
         BeginCutscene(restoringSave);
         if (pendingLevelStory && !restoringSave) { BeginLevelStory(); }
         pendingLevelStory = false;
-        pendingLevelLoad.reset();
-        levelLoadError.clear();
         hasActiveGame = loadedLevelNumber != 98;
         runtimeState = GameRuntimeState::Ready;
-        SetMenuPage(storyPages.empty() ? MenuPage::Gameplay : MenuPage::StoryBook);
+        if (screenTransitionsEnabled && screenFade == ScreenFade::None)
+        {
+            fadeScreenAudio = true;
+            SetScreenAudioGain(0);
+        }
+        CommitMenuPage(storyPages.empty() ? MenuPage::Gameplay : MenuPage::StoryBook);
+        RefreshScreenAudio();
+        pendingLevelLoad.reset();
+        levelLoadError.clear();
+        if (screenTransitionsEnabled && screenFade == ScreenFade::None) { BeginScreenFadeIn(0.6); }
         applicationPageChanged = true;
         applicationTickAccumulator = 0;
         for (std::size_t slot = 1; slot < worldObjects.size(); ++slot)
@@ -443,6 +448,7 @@ namespace Desperabis
         }
         if (error.empty()) { throw std::invalid_argument("Level loading failures require an error message."); }
         levelLoadError = error;
+        pendingEndingBookPreview = false;
         cutscenePlaying = false;
         pendingSaveGame.reset();
         pendingLevelLoad.reset();
@@ -1400,7 +1406,17 @@ namespace Desperabis
     void GameContext::SetMenuPage(MenuPage page)
     {
         if (page == menuPage) { return; }
+        const bool book = page == MenuPage::StoryBook || menuPage == MenuPage::StoryBook ||
+            page == MenuPage::CastleIntroduction || menuPage == MenuPage::CastleIntroduction;
+        if (QueueScreenChange([this, page] { SetMenuPage(page); }, book ? 0.6 : 0.15)) { return; }
+        CommitMenuPage(page);
+    }
+
+    void GameContext::CommitMenuPage(MenuPage page)
+    {
+        if (page == menuPage) { return; }
         menuPage = page;
+        RefreshScreenAudio();
         RefreshUnderwaterPresentation();
         applicationPageChanged = true;
         applicationTickAccumulator = 0;
@@ -1492,6 +1508,7 @@ namespace Desperabis
             throw std::invalid_argument("A new game requires a part number in 1..3.");
         }
         if (pendingLevelLoad) { throw std::logic_error("A level load is already in progress."); }
+        if (QueueScreenChange([this, chapter] { StartNewGame(chapter); }, 0.6)) { return; }
         InitializeNewGame(chapter);
         if (runtimeState == GameRuntimeState::LoadFailed) { throw std::runtime_error(levelLoadError); }
         if (runtimeState != GameRuntimeState::Loading) { hasActiveGame = true; }
@@ -1535,7 +1552,7 @@ namespace Desperabis
             menuPage = ShowUnrecoveredPage(menuPage);
             positionalSoundsSuppressed = true;
             break;
-        case MenuPage::Presentation26:
+        case MenuPage::CastleIntroduction:
         case MenuPage::Presentation32:
             ShowUnrecoveredPage(menuPage);
             menuPage = MenuPage::Gameplay;
@@ -4071,7 +4088,8 @@ namespace Desperabis
             }
             if (!format || !data) { throw std::invalid_argument("Music is missing PCM format or sample data."); }
             audioHandler->CreateMusicPlayback(
-                {bytes.begin() + data->first, bytes.begin() + data->first + data->second}, environment != 101);
+                {bytes.begin() + data->first, bytes.begin() + data->first + data->second},
+                environment != 101 && environment != 114);
             musicAmbientLoaded = true;
             return;
         }

@@ -28,6 +28,7 @@ public:
     void StartAmbientPlayback() override;
     void StopAmbientPlayback() override;
     void SetAmbientIndoor(bool indoors) override;
+    void SetAmbientGain(float gain) override;
     void CreateMusicPlayback(const std::vector<std::uint8_t>& pcm, bool looping) override;
     void StartUnderwaterPlayback(std::uint8_t sample, std::uint8_t volume) override;
     void StopUnderwaterPlayback() override;
@@ -63,6 +64,7 @@ private:
     bool m_buildingAmbient = false;
     bool m_loopAmbient = true;
     bool m_ambientIndoors = false;
+    float m_ambientGain = 1.f;
     std::unique_ptr<IXAudio2SourceVoice, DestroyVoice> m_ambientVoice;
     std::unique_ptr<IXAudio2SourceVoice, DestroyVoice> m_underwaterVoice;
     std::array<std::unique_ptr<IXAudio2SourceVoice, DestroyVoice>, Desperabis::SoundChannelCount> m_channels;

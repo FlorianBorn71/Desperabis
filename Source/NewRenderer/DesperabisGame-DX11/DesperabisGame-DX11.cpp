@@ -1047,7 +1047,8 @@ namespace
 		g_camera = Renderer::Instance().GetOrCreateCamera();
 		UpdateProjection();
 
-		g_gameCore->StartMuseumIntro();
+		g_gameCore->screenTransitionsEnabled = true;
+		g_gameCore->StartEndingBookPreview();
 		SyncGameObjects();
 		g_gameCore->UpdateHealthBar();
 
@@ -1251,6 +1252,8 @@ namespace
 	void Render()
 	{
 		const auto presentation = g_gameCore->GetApplicationPresentation();
+		const auto& tint = presentation.screenTint;
+		g_renderer.SetVignette(nullptr, {tint.r,tint.g,tint.b,255});
 		if (std::any_of(presentation.commands.begin(), presentation.commands.end(),
 			[](const auto& command) {
 			    const auto* map = std::get_if<Desperabis::UiMap>(&command);
@@ -1308,6 +1311,7 @@ namespace
 		    g_applicationUi.DrawBossFall(g_gameCore->GetBossFallView(), g_renderer, *g_scene->m_level,
 		        g_renderSettings, g_profilingStats, g_viewport, g_d3dContext.Get(),
 		        g_renderTargetView.Get(), g_depthStencilView.Get());
+		    g_renderer.RenderVignette(g_profilingStats);
 		    g_profilingStats.Update();
 		    g_swapChain->Present(1, 0);
 		    return;
@@ -1350,6 +1354,7 @@ namespace
 				g_renderSettings, g_profilingStats, g_viewport, g_d3dContext.Get(),
 				g_renderTargetView.Get(), g_depthStencilView.Get());
 		}
+		g_renderer.RenderVignette(g_profilingStats);
 		g_profilingStats.Update();
 
 		g_swapChain->Present(1, 0);

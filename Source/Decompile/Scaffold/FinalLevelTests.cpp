@@ -28,13 +28,17 @@ namespace
 
     struct Input final : InputHandler
     {
-        bool IsKeyPressed(InputKey) override { return false; }
+        bool anyKeyPressed = false;
+        bool cancelPressed = false;
+        bool IsKeyPressed(InputKey key) override { return key == InputKey::UiCancelKey && cancelPressed; }
+        bool WasAnyKeyPressed() override { return anyKeyPressed; }
     };
 
     struct Audio final : AudioHandler
     {
         int creations = 0, starts = 0, stops = 0;
         bool looping = true;
+        float gain = 1.f;
         std::vector<std::uint8_t> music;
         std::vector<std::pair<std::uint8_t, std::uint8_t>> samples;
         int sampleStops = 0;
@@ -51,12 +55,19 @@ namespace
         }
         void StartAmbientPlayback() override { ++starts; }
         void StopAmbientPlayback() override { ++stops; }
+        void SetAmbientGain(float value) override { gain = value; }
+        std::size_t GetSampleLength(std::uint8_t) const override { return 64; }
+        void BeginAmbientLoopCreation(std::size_t) override {}
+        void CopyAmbient(std::uint8_t, std::size_t) override {}
+        void MixAmbient(std::uint8_t, std::size_t, std::uint8_t) override {}
+        void EndAmbientLoopCreation(std::size_t) override {}
     };
 
     struct Host final : GameContext
     {
         std::filesystem::path assets;
         std::optional<std::vector<std::uint8_t>> musicOverride, recordingOverride;
+        std::string lastMusic;
         int flashes = 0, destroyed = 0, paths = 0;
         explicit Host(const std::filesystem::path& path) : assets(path) {}
         void OnObjectDestroyed(int) override { ++destroyed; }
@@ -70,6 +81,7 @@ namespace
     protected:
         std::vector<std::uint8_t> LoadFile(std::string_view name) override
         {
+            if (name.substr(0, 10) == "SAMP\\MUSIC") { lastMusic = name; }
             if (std::filesystem::path(name).extension() == ".KOO") { ++paths; }
             if (name == "SAMP\\MUSIC1.WAV" && musicOverride) { return *musicOverride; }
             if (name == "LEVEL\\DEMO6.KOO" && recordingOverride) { return *recordingOverride; }
@@ -312,6 +324,7 @@ namespace
         Host core(assets);
         Audio audio;
         core.audioHandler = &audio;
+        Reject<std::logic_error>([&] { core.CreateAmbientLoop(102); });
         const std::vector<std::uint8_t> wave{
             'R','I','F','F',40,0,0,0,'W','A','V','E',
             'f','m','t',' ',16,0,0,0,1,0,1,0,
@@ -401,11 +414,133 @@ namespace
         EncodeGameObject(core.worldObjects[3], current.data(), current.size());
         Check(original == current, "The reveal must retain its hidden source cloud templates.");
         core.Tick({1,1}, input);
-        Check(core.GetRuntimeState() == GameRuntimeState::NoLevel,
-            "The camera anchor must not delay the native 630-tick ending completion.");
+        Check(core.GetMenuPage() == MenuPage::StoryBook && !core.IsCutscenePlaying(),
+            "The camera anchor must not delay the final book after the native 630-tick epilogue.");
         core.StartLevel(96);
         Check(core.GetPlayerCamera().position != revealPosition,
             "A later cutscene must not inherit the previous ending camera anchor.");
+    }
+
+    void TestEndingBookPreview(const std::filesystem::path& assets)
+    {
+        Host core(assets);
+        Audio audio;
+        core.audioHandler = &audio;
+        core.screenTransitionsEnabled = true;
+        const auto table = core.Read("SAMP\\S_TAB.PRB");
+        core.LoadSoundEffects(table.data(), table.size());
+        core.StartEndingBookPreview();
+        const auto story = core.GetApplicationPresentation().story;
+        Check(story && story->rigidTurn && !core.IsCutscenePlaying() && core.paths == 0,
+            "The standalone ending book must open without playing the preceding recorded cutscene.");
+        Check(audio.creations == 1 && audio.starts == 1 && !audio.looping && audio.music.size() > 800000,
+            "A cold-start ending preview must load and start the original non-looping ending music.");
+        core.CreateAmbientLoop(102);
+        Check(audio.creations == 1 && audio.starts == 1,
+            "Preview initialization must leave a valid track available for ordinary music reuse.");
+        Input input;
+        core.UpdateApplication(0.6, input);
+        Check(core.GetApplicationPresentation().screenTint.r == 255,
+            "The real-asset ending preview must fade in to neutral white.");
+        input.anyKeyPressed = true;
+        core.UpdateApplication(0, input);
+        input.anyKeyPressed = false;
+        core.UpdateApplication(0.6, input);
+        core.UpdateApplication(0.6, input);
+        for (int second = 0; second < 4; ++second) { core.UpdateApplication(1, input); }
+        core.UpdateApplication(0.999, input);
+        Check(core.GetMenuPage() == MenuPage::StoryBook && audio.stops == 0,
+            "The closed cover and its music must remain for five seconds before automatic fade-out.");
+        core.UpdateApplication(0.002, input);
+        for (int second = 0; second < 2; ++second) { core.UpdateApplication(1, input); }
+        Check(core.GetMenuPage() == MenuPage::StoryBook && audio.stops == 0 &&
+            core.GetApplicationPresentation().screenTint.r >= 127 && audio.gain > 0.49f && audio.gain < 0.51f,
+            "The final cover must take four seconds to fade out, including its non-looping music.");
+        for (int second = 0; second < 2; ++second) { core.UpdateApplication(1, input); }
+        Check(core.GetMenuPage() == MenuPage::MainMenu && audio.stops == 1 &&
+            core.GetApplicationPresentation().screenTint.r == 0 && audio.gain == 0 &&
+            core.lastMusic == "SAMP\\MUSIC14.WAV" && !audio.looping,
+            "At black the final cover must clean up and switch to the original one-shot menu music.");
+        for (int second = 0; second < 4; ++second) { core.UpdateApplication(1, input); }
+        Check(core.GetApplicationPresentation().screenTint.r == 255 && audio.gain == 1,
+            "The main menu and its music must fade in slowly after the final cover.");
+    }
+
+    void TestScreenAudio(const std::filesystem::path& assets)
+    {
+        Host museum(assets);
+        Audio audio;
+        Input input;
+        museum.audioHandler = &audio;
+        museum.screenTransitionsEnabled = true;
+        museum.StartLevel(98);
+        Check(museum.lastMusic == "SAMP\\MUSIC1.WAV" && audio.looping && audio.gain == 0,
+            "The museum must start its own looping MUSIC1 under the initial black fade.");
+        museum.UpdateApplication(0.6, input);
+        input.cancelPressed = true;
+        museum.UpdateApplication(1.0 / 33, input);
+        input.cancelPressed = false;
+        museum.UpdateApplication(0.3, input);
+        Check(museum.GetMenuPage() == MenuPage::Gameplay && audio.gain > 0.49f && audio.gain < 0.51f &&
+            audio.creations == 1,
+            "Skipping a cutscene must fade its existing music with the outgoing picture, not switch early.");
+        museum.UpdateApplication(0.3, input);
+        Check(museum.GetMenuPage() == MenuPage::MainMenu && audio.gain == 0 &&
+            museum.lastMusic == "SAMP\\MUSIC14.WAV" && !audio.looping && audio.creations == 2,
+            "The museum-to-menu black midpoint must select one-shot MUSIC14.");
+        museum.UpdateApplication(0.6, input);
+        museum.UpdateApplication(1, input);
+        Check(audio.gain == 1 && audio.creations == 2 && audio.starts == 2,
+            "The main-menu cue must fade in once without being restarted on subsequent updates.");
+
+        Host crystalBall(assets);
+        Audio crystalAudio;
+        crystalBall.audioHandler = &crystalAudio;
+        crystalBall.StartLevel(91);
+        Check(crystalBall.lastMusic == "SAMP\\MUSIC1.WAV" && !crystalAudio.looping,
+            "The crystal-ball recording must use scene 91's selector 101, not a nonexistent MUSIC2.");
+
+        Host ending(assets);
+        Audio endingAudio;
+        const auto effects = ending.Read("SAMP\\S_TAB.PRB");
+        ending.LoadSoundEffects(effects.data(), effects.size());
+        ending.audioHandler = &endingAudio;
+        ending.screenTransitionsEnabled = true;
+        ending.StartLevel(96);
+        ending.UpdateApplication(0.6, input);
+        for (int tick = 0; tick < 498; ++tick) { ending.Tick({1,1}, input); }
+        ending.UpdateApplication(0.3, input);
+        Check(ending.GetLoadedLevelNumber() == 96 && endingAudio.gain > 0.49f && endingAudio.gain < 0.51f,
+            "Natural recorded-cutscene completion must fade music before loading the epilogue.");
+        ending.UpdateApplication(0.3, input);
+        Check(ending.GetLoadedLevelNumber() == 95 && endingAudio.gain == 0 &&
+            endingAudio.creations == 1 && endingAudio.starts == 1 && endingAudio.stops == 0,
+            "Selector 102 must retain the existing ending voice at black rather than restart its track.");
+        ending.UpdateApplication(0.6, input);
+        Check(endingAudio.gain == 1 && endingAudio.creations == 1,
+            "The epilogue must restore gain on the same ending track.");
+
+        Host death(assets);
+        Audio deathAudio;
+        death.audioHandler = &deathAudio;
+        death.screenTransitionsEnabled = true;
+        death.StartLevel(50);
+        death.UpdateApplication(0.6, input);
+        death.ApplyPlayerLifeDelta(-death.playerLife);
+        death.UpdateApplication(1, input);
+        const auto firstGain = deathAudio.gain;
+        death.UpdateApplication(1, input);
+        death.UpdateApplication(0.5, input);
+        const auto redGain = deathAudio.gain;
+        Check(firstGain < 1 && firstGain > redGain && redGain > 0 && deathAudio.creations == 0,
+            "Death must continuously reduce environmental audio throughout the slow red phase.");
+        death.UpdateApplication(0.5, input);
+        Check(deathAudio.gain > 0 && deathAudio.gain < redGain,
+            "Death audio must continue fading without a gain jump when dark red becomes black.");
+        death.UpdateApplication(0.5, input);
+        Check(death.GetMenuPage() == MenuPage::MainMenu && deathAudio.gain == 0 &&
+            death.lastMusic == "SAMP\\MUSIC14.WAV",
+            "Death must switch from silent environmental audio to the menu cue only at black.");
     }
 
     void TestEnding(const std::filesystem::path& assets)
@@ -431,6 +566,7 @@ namespace
                 core.Tick({10,10}, input);
                 core.SetPaused(false);
             }
+
             const auto result = core.Tick({1,1}, input);
             if (result.objects) { CheckSupported(*result.objects); }
             if (frame == 497)
@@ -453,7 +589,19 @@ namespace
             const auto result = core.Tick({1,1}, input);
             if (result.objects) { CheckSupported(*result.objects); }
         }
-        Check(core.GetRuntimeState() == GameRuntimeState::NoLevel && audio.stops == 1 &&
+        Check(core.GetMenuPage() == MenuPage::StoryBook && audio.stops == 0,
+            "The complete epilogue must show the final chapter without interrupting its music.");
+        core.UpdateApplication(0, input);
+        bool coverTurn = false;
+        for (int page = 0; page < 20 && core.GetMenuPage() == MenuPage::StoryBook; ++page)
+        {
+            coverTurn |= core.GetApplicationPresentation().story->rigidTurn;
+            input.anyKeyPressed = true;
+            core.UpdateApplication(0, input);
+            input.anyKeyPressed = false;
+            for (int frame = 0; frame < 4; ++frame) { core.UpdateApplication(0.3, input); }
+        }
+        Check(coverTurn && core.GetRuntimeState() == GameRuntimeState::NoLevel && audio.stops == 1 &&
             core.GetMenuPage() == MenuPage::MainMenu, "The complete ending must return cleanly to the main menu.");
     }
 }
@@ -469,7 +617,9 @@ int main(int argc, char** argv)
         TestRecordedBatching(argv[1]);
         TestEndingInputs(argv[1]);
         TestVillageReveal(argv[1]);
+        TestEndingBookPreview(argv[1]);
         TestEnding(argv[1]);
+        TestScreenAudio(argv[1]);
         std::cout << "Final boss, breakable floor, rescue, recorded ending and music passed.\n";
         return 0;
     }

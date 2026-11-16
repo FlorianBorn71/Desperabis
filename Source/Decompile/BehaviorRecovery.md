@@ -709,7 +709,7 @@ and `story-glyph-width-evidence.txt`; the localization format is documented in
 
 `LEVELS.INF` byte 103 selects an `@number` section of `LEVEL/TEXTE.TXT`;
 it is not necessarily the map number. A new Crystal Ball game plays selector
-29's section **80**, followed by playable map 30's section **30**. Rescue of
+29's section **80**, the castle still image, then playable map 30's section **30**. Rescue of
 Grant begins with selector 9's section **81**; map 10 has no separate story.
 New games collect these selector introductions before loading the first
 playable map. Normal progression shows the destination story. Save restores,
@@ -732,12 +732,19 @@ does not consume gameplay RNG. Page sounds retain normal sample variation.
 Any fresh keyboard press advances, including Escape; held keys do not repeat
 and presses during the turn are not queued. The host supplies unbound-key
 edges through `InputHandler::WasAnyKeyPressed`; mapped-key edges also work.
-The last-page press resumes gameplay with the normal transition input gate.
+The last-page press resumes gameplay with the normal transition input gate,
+or finishes the game when the last page is the closed ending cover.
+The closed cover automatically exits after five seconds, with a fresh key
+allowing an earlier exit; the timer starts after the rigid cover lands.
 Native effect **51** (`33h`, page presenter `0EF0:1552`) plays at the start
 of each modern turn. The 1.2-second eased rotation and sound-start timing
 are modern presentation choices, not a reconstruction of DOS frame timing.
-Legacy `^`, `~`, backslash, FCh and `*digit` presentation/autorun/unlock
+Legacy `^`, `~`, backslash and `*digit` presentation/autorun/unlock
 annotations are consumed without enabling DOS autorun or chapter gating.
+FCh is the closing-cover marker (`0EF0:1946..1955`): it ends the text layout
+with a separate original `BACKGR4.256`/`BACKGR4.PAL` cover. After level 95's
+630-tick epilogue, section **95** now plays before returning to the main menu.
+Music continues through the book and is stopped with the final cleanup.
 
 DX11's game-local `BookScene` creates an otherwise empty scene, perspective
 camera and warm flickering light from the right, shading the inward-facing
@@ -761,6 +768,16 @@ Text and ornaments software-darken original parchment using the native
 composition/uploads occur only when their generation/page keys change,
 and replacing a slot releases its old GPU runtime. The reverse side uses
 the shared blank parchment. No core-renderer or shader additions are needed.
+Only the closing cover uses a stiff four-corner quad with cached hinged
+rotation poses; it never uses the rolling paper mesh. Its reverse is blank
+parchment, and the closed book retains the same rigid mesh and cover artwork.
+`StartEndingBookPreview` loads scene 95 but suppresses its cutscene, starting
+on the final paper page. DX11 temporarily uses this preview at startup instead
+of `StartMuseumIntro`: press a key to close the cover; it then exits automatically.
+The preview also supports deferred level loading.
+Its standalone load explicitly starts non-looping `MUSIC1`, since scene 96
+has not run to supply the track normally reused by scene 95. Ordinary
+selector-102 music reuse still requires an already loaded track.
 
 `LevelProgressionTests.cpp` lays out every authored level story, checks native
 wrapping/paragraphs/hyphenation/comments and exercises new-game ordering,
@@ -768,6 +785,69 @@ page turns, Escape/held/unbound input, paused simulation, save bypass and
 normal progression. WARP tests verify original-size ink alignment, visible
 paper, intermediate poses, landing, flickering illumination, two-slot GPU
 lifetime and wide/portrait framing.
+
+### Chapter still images and screen fades
+
+The castle is not selected by a hardcoded part number. HERZ entry **29** has
+`LEVELS.INF` byte 103 = **80** and byte 102 = **26**. The introduction queue
+retains that image after its story section, before the next playable map's
+story. Native `0000:EA01..EA15` dispatches page 26 to `A41D(5,-1)`;
+the image is `GRAFIK/BACKGR6.256` with its own palette. The former placeholder
+`Presentation26` is now `CastleIntroduction`, with author approval.
+The original still-image helper at `A41D..A4F0` derives a negative timeout
+from load timing, adds 70 native ticks, and accepts a fresh key. The modern
+presentation instead holds for five seconds or a fresh key. It maps the
+360x480 double-scan image to the 360x240 logical canvas, just like menu art.
+It does not curl, compose onto parchment, or play the paper-turn sample.
+
+Interactive DX11 enables `GameContext::screenTransitionsEnabled`; headless
+and native recovery drivers retain immediate flow by default. Core-owned
+transitions hold the outgoing screen while fading out, apply the change
+only at black, wait at black for deferred loading, and fade the destination in.
+Book/level and chapter-image boundaries take **0.6 seconds per direction**;
+inventory/menu boundaries take **0.15 seconds per direction**. The final
+closed-cover return to the menu takes **4 seconds per direction**. Smoothstep
+color interpolation reaches exact black/white endpoints. World simulation,
+book clocks and navigation freeze during transitions, and input pressed
+during a fade is consumed rather than replayed. Load failures still propagate
+and clear the black mask; they are not converted into successful loads.
+On death, the camera's native fall continues while the screen darkens over
+**2.5 seconds** to RGB **(96,5,5)**, then fades to black over **1 second**.
+The core cleans up the game at black and fades the menu in over **0.6 seconds**.
+Ambient/music gain follows outgoing and incoming fades, including the complete
+3.5-second death sequence; quick inventory/menu fades retain the current audio.
+Gain multiplies the rain's indoor attenuation, without changing its low-pass,
+restarting the voice or affecting sound-effect/underwater channels.
+
+Destination environmental ambience starts only when gameplay is selected, not
+while its book pages are shown. Presentation-only HERZ entries retain their own
+music selectors: Part 1's entry 29 selects **120 / MUSIC20**, retained through
+section 80 and the castle picture; the following park story is silent.
+Returning from the museum, death or a finished part selects **MUSIC14 once**,
+not the museum's looping **MUSIC1**. Native `0000:A67A..A688` guards against
+reloading track 14 and calls `1E48:C379(14)`.
+[Native audio selection evidence](screen-audio-evidence.txt), `0000:06AA..0709`,
+confirms selectors 100/101 -> MUSIC1, 102 -> reuse, and 103..150 -> track
+selector minus 100. Consequently scenes 91 and 96 both use non-looping MUSIC1;
+95 preserves 96's track. No MUSIC2 asset is requested.
+
+The fade-in visibility issue was not mask depth writing: scene-time freezing
+left the camera-following player light at its initial position. First-person
+view synchronization now positions that light with zero elapsed time before
+visibility collection, without advancing gameplay, physics or light pulses.
+
+Shared DX11 renderer `SetVignette(texture, tint)` / `RenderVignette(stats)`
+is a final, reusable fullscreen RGB-multiplication pass, after world, weapons,
+HUD, book and menus. A null texture means plain white. Exact white RGB
+disables the pass completely, even with a nonwhite mask: no draw or mask
+allocation occurs. Other values multiply destination RGB by sampled texture
+RGB and tint; framebuffer alpha is preserved. The pass reuses the existing
+textured-quad shaders, caches geometry, handles resizing and restores blend,
+depth and rasterizer state. No HLSL or built-in shader regeneration is needed.
+Core and real-audio ending tests cover fade timing, held-input gating, loading
+and failure paths, book/level boundaries, death cleanup and the cover timeout.
+WARP checks full-frame multiplication, textured masks, alpha preservation,
+white no-op draw counts, native castle pixels and resizing.
 
 ### Part-1 coverage audit and modern defaults
 
@@ -824,8 +904,9 @@ and walking-bob extrema.
 Completing castle level 35 now loads scene 91, plays all 1,458 frames of
 `LEVEL/DEMO7.KOO`, and finishes the part at the main menu. `DEMO10.KOO` is
 byte-identical. This is recorded playback, not the timed-cutscene countdown
-(scene 91's `LEVELS.INF` duration byte is zero). The existing scene music
-binding selects `MUSIC2`.
+(scene 91's `LEVELS.INF` duration byte is zero). Scene 91's audio selector
+101 selects non-looping `MUSIC1`; the native playback wrapper's argument 2
+is not a music-file number.
 
 Native `0000:C558` reads six-byte `(signed X, signed Z, heading byte, action)`
 records. The heading byte selects twice that value in the 512-angle system.
@@ -4305,7 +4386,8 @@ Music selector **101** decodes mono unsigned 8-bit, 11025-Hz `MUSIC1.WAV` as a
 non-looping track; selector **102** preserves it across 96 -> 95 without restart.
 The RIFF parser walks chunk lengths/padding (the original has an extended fmt
 and fact chunk), validates format and data, and submits only owned PCM.
-The DX11 sample embedding generator also includes MUSIC1, so production playback
+The DX11 sample embedding generator includes all shipped music tracks
+(1, 6, 10, 11, 14 and 20), so production playback
 does not depend on mounting MUSIC.DAT or finding loose source assets.
 
 The pit presentation uses authored staged root **47** and linked parts **48..57**,

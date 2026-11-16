@@ -30,6 +30,10 @@ public:
     void SetItemPreview(std::shared_ptr<const RenderableInstance> instance, bool isSprite, const D3D11_VIEWPORT& viewport);
     // One-shot camera-space presentation after world effects, before pickup preview and HUD text.
     void SetWeaponDraw(std::function<void(const VisibilityResult&, const RenderingSettings&, ProfilingStats&)> draw) { m_weaponDraw = std::move(draw); }
+    // Final fullscreen RGB multiplication. The caller retains the texture; nullptr selects plain white.
+    // White tint disables the pass, regardless of texture. Render after all scene and UI draws.
+    void SetVignette(const Texture* texture, const Color4& tint) { m_vignetteTexture = texture; m_vignetteTint = tint; }
+    void RenderVignette(ProfilingStats& stats);
     VisibilityResult::VisibleWaterLevel PrepareWeaponReflection(const VisibilityResult& world, float height,
         const RenderingSettings& settings, ProfilingStats& stats);
 
@@ -95,6 +99,12 @@ private:
     ComPtr<ID3D11DepthStencilState> m_depthState[(int)DepthWriteMode::DepthModeCount];
     ComPtr<ID3D11RasterizerState> m_waterRasterizerState;
     ComPtr<ID3D11RasterizerState> m_scissorRasterizerState;
+    ComPtr<ID3D11BlendState> m_vignetteBlendState;
+    const Texture* m_vignetteTexture = nullptr;
+    Color4 m_vignetteTint = {255,255,255,255};
+    std::shared_ptr<TextMesh> m_vignetteMesh;
+    const Texture* m_vignetteMeshTexture = nullptr;
+    Vector2 m_vignetteExtent = {};
 
     std::atomic_int32_t m_runtimeIdCounter = 0;
     bool m_isStereo = false;

@@ -29,7 +29,7 @@ namespace Desperabis
         Presentation22 = 22,
         Presentation23 = 23,
         Presentation25 = 25,
-        Presentation26 = 26,
+        CastleIntroduction = 26,
         Presentation31 = 31,
         Presentation32 = 32,
         Presentation33 = 33,
@@ -92,7 +92,7 @@ namespace Desperabis
         bool caret = false;
     };
 
-    enum class UiBitmapSource { Hud, LevelSprite, ModelTexture, InventoryIcons, MapPaper, MenuBackground, MenuCursor, TextIllustration, IntroCredits };
+    enum class UiBitmapSource { Hud, LevelSprite, ModelTexture, InventoryIcons, MapPaper, MenuBackground, MenuCursor, TextIllustration, IntroCredits, BookCover, CastleIntroduction };
     enum class UiBitmapLayout { Fit, TopLeft, SpriteAnchor, Center, Stretch };
 
     struct UiBitmap
@@ -144,6 +144,7 @@ namespace Desperabis
         std::size_t pageIndex;
         double seconds, turn;
         std::vector<UiDrawCommand> current, next;
+        bool rigidTurn = false;
     };
 
     struct ApplicationPresentation
@@ -152,5 +153,6 @@ namespace Desperabis
         MenuPage page;
         std::vector<UiDrawCommand> commands;
         std::optional<UiStoryBook> story;
+        UiColor screenTint;
     };
 }

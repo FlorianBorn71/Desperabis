@@ -1,7 +1,26 @@
 # Desperabis Game (DX11)
 
 Standalone DX11 host with core-owned nonblocking gameplay, inventory and a
-first-pass main menu. On startup it loads level 10.
+first-pass main menu. Startup temporarily uses the core's
+`StartEndingBookPreview`: the last ending paper page is shown without replaying
+the cutscene. Press a key to close the rigid cover; it returns to the main menu
+after five seconds (or another fresh key).
+Ordinary paper turns retain their rolling curl. Restore `StartMuseumIntro`
+at the startup call site to return to the museum tour.
+Part 1 restores the metadata-selected castle image between its opening book
+and park story. Core-owned fades use 0.6 seconds per direction for book/level
+boundaries and 0.15 seconds for inventory/menu navigation. Death slowly fades
+through dark red to black before the main menu.
+The final closed cover uses a slower four-second fade each way back to the menu.
+Environmental ambience waits until gameplay, not its preceding book text.
+The opening Part-1 book/castle uses MUSIC20; the main menu after the museum uses
+MUSIC14 once. Cutscene/death transitions fade ambient/music with the picture,
+while quick inventory/menu navigation leaves the current track running.
+Player-light positioning remains live during frozen fade-in frames so world
+geometry is already illuminated before gameplay resumes.
+The shared DX11 renderer's `SetVignette(texture, tint)` and final
+`RenderVignette(stats)` pass multiply the complete framebuffer; null texture
+selects white, and white tint skips the pass entirely.
 
 Flame markers (`TrackFireAnimation`, 202) load `FACKEL<n>.AN2` into reserved
 texture slots 13..15. Native sprite bank 6 uses its one-based animation row to

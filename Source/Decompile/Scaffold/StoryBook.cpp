@@ -111,7 +111,14 @@ namespace Desperabis
                 continue;
             }
             if (c == '\r') { c = ' '; }
-            else if (c < 32 || c == '^' || c == '~' || c == '\\' || c == 252) { continue; }
+            else if (c < 32 || c == '^' || c == '~' || c == '\\') { continue; }
+            if (c == 252)
+            {
+                if (!line.empty()) { flush(true); }
+                nextPage();
+                pages.back().emplace_back(UiBitmap{{0, 0, 360, 240}, UiBitmapSource::BookCover});
+                break;
+            }
             if (c == '*')
             {
                 if (++i == body.size() || body[i] < '1' || body[i] > '9')
@@ -161,14 +168,17 @@ namespace Desperabis
             if (offset + 124 > info.size()) { throw std::runtime_error("Story introduction references missing level metadata."); }
             if (info[offset + 100] >= 100 && info[offset + 103] != 0)
             {
-                pendingStorySections.push_back(info[offset + 103]);
+                pendingStorySections.push_back({info[offset + 103],
+                    info[offset + 102] == static_cast<std::uint8_t>(MenuPage::CastleIntroduction) ?
+                        std::optional<MenuPage>{MenuPage::CastleIntroduction} : std::nullopt,
+                    info[offset + 100]});
             }
         }
     }
 
     void GameContext::BeginLevelStory()
     {
-        if (level->nativeInfo[103] != 0) { pendingStorySections.push_back(level->nativeInfo[103]); }
+        if (level->nativeInfo[103] != 0) { pendingStorySections.push_back({level->nativeInfo[103], {}}); }
         if (pendingStorySections.empty()) { return; }
         std::array<int, 256> advances{};
         for (std::size_t bank = 0; bank < NativeFontCharacters.size(); ++bank)
@@ -179,12 +189,85 @@ namespace Desperabis
         const auto bytes = LoadFile("LEVEL\\TEXTE.TXT");
         const std::string_view text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         StoryPages pages;
-        for (const auto section : pendingStorySections)
+        storyPageAudio.clear();
+        for (const auto& section : pendingStorySections)
         {
-            auto chapter = LayoutStorySection(text, section, advances);
+            auto chapter = LayoutStorySection(text, section.number, advances);
+            const auto music = section.music ? section.music :
+                levelAmbientSound && *levelAmbientSound >= 100 ? levelAmbientSound : std::nullopt;
+            storyPageAudio.insert(storyPageAudio.end(), chapter.size(), music);
             pages.insert(pages.end(), std::make_move_iterator(chapter.begin()), std::make_move_iterator(chapter.end()));
+            if (section.presentation == MenuPage::CastleIntroduction)
+            {
+                pages.push_back({UiBitmap{{0, 0, 360, 240}, UiBitmapSource::CastleIntroduction}});
+                storyPageAudio.push_back(music);
+            }
         }
         pendingStorySections.clear();
         storyPages = std::move(pages);
+        storyPageIndex = 0;
+        storySeconds = 0;
+        storyTurn = -1;
+        storyPageSeconds = 0;
+        storyEndsGame = !storyPages.empty() && std::any_of(storyPages.back().begin(), storyPages.back().end(),
+            [](const UiDrawCommand& command)
+            {
+                const auto* bitmap = std::get_if<UiBitmap>(&command);
+                return bitmap && bitmap->source == UiBitmapSource::BookCover;
+            });
+        if (pendingEndingBookPreview)
+        {
+            if (!storyEndsGame || storyPages.size() < 2)
+            {
+                throw std::runtime_error("Ending preview requires a final paper page and closing cover.");
+            }
+            storyPageIndex = storyPages.size() - 2;
+            cutscenePlaying = false;
+            pendingEndingBookPreview = false;
+        }
+    }
+
+    void GameContext::StartEndingBookPreview()
+    {
+        if (runtimeState == GameRuntimeState::Loading)
+        {
+            throw std::logic_error("Cannot preview the ending during a pending level load.");
+        }
+        pendingStorySections = {{95, {}}};
+        pendingEndingBookPreview = true;
+        StartLevel(95, true);
+    }
+
+    bool GameContext::IsCastleStoryPage(std::size_t index) const
+    {
+        if (index >= storyPages.size() || storyPages[index].size() != 1) { return false; }
+        const auto* bitmap = std::get_if<UiBitmap>(&storyPages[index].front());
+        return bitmap && bitmap->source == UiBitmapSource::CastleIntroduction;
+    }
+
+    void GameContext::AdvanceStoryPage()
+    {
+        if (storyPageIndex + 1 == storyPages.size())
+        {
+            CompleteStoryBook();
+            return;
+        }
+        const auto nextPage = IsCastleStoryPage(storyPageIndex + 1) ?
+            MenuPage::CastleIntroduction : MenuPage::StoryBook;
+        if (menuPage != nextPage && QueueScreenChange([this] { AdvanceStoryPage(); }, 0.6)) { return; }
+        ++storyPageIndex;
+        storyTurn = -1;
+        storyPageSeconds = 0;
+        SetMenuPage(nextPage);
+        RefreshScreenAudio();
+    }
+
+    void GameContext::CompleteStoryBook()
+    {
+        if (QueueScreenChange([this] { CompleteStoryBook(); }, storyEndsGame ? 4.0 : 0.6)) { return; }
+        storyPages.clear();
+        storyPageAudio.clear();
+        if (storyEndsGame) { FinishGamePart(); }
+        else { SetMenuPage(MenuPage::Gameplay); }
     }
 }
