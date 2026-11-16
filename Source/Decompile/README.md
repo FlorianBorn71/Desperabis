@@ -287,6 +287,10 @@ For the first explained case and shared collision-map pointer, see
   grouped-switch arming, and known object-local interactions.
 - `Scaffold/PlayerInteraction.cpp`: per-update collision-selection/input-interface/
   interaction path. World/player overlap queries are in `GameContext.cpp`.
+- `museum-intro-evidence.txt`: view-dependent museum frames, neon switching,
+  timed VORSPANN credits and the native opacity ramp. DX11 starts the core's
+  level-98/DEMO0 tour before the main menu; Escape skips it. See
+  [museum startup tour](BehaviorRecovery.md#museum-startup-tour-level-98).
 - `inventory-evidence.txt`: inventory/counter initialization, cleanup,
   input-gated calls, and the original copy-helper contract.
 - `Scaffold/BehaviorMap.json`: case addresses and direct global/call dependencies.
@@ -706,6 +710,13 @@ is 28, with the original gradual transitions and changing collision radius.
 `JumpKey` raises a crouched player before jumping; releasing `CrouchKey` does not
 automatically stand. Water contact forces crouching; underwater play is bottom
 walking/crouching, not free swimming.
+Recorded KOO cameras have load-time Gaussian/spline smoothing controlled by
+`cutsceneSmoothingSeconds` (default 0.5, zero disables), including terrain-derived
+camera height. Hosts use the optional
+floating-point `GetRecordedCutsceneCamera()` for presentation while native
+simulation and recorded interactions remain unchanged. See
+[recorded camera smoothing](BehaviorRecovery.md#smoothed-recorded-cutscene-cameras).
+
 `GetPlayerCamera()` returns eye position, not object-center Y; do not add another
 host eye offset. `LookUpKey`, `LookDownKey` and `CenterLookKey` control the
 native horizon with terrain-ahead adjustment and per-frame smoothing.

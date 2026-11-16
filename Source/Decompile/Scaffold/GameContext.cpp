@@ -285,6 +285,7 @@ namespace Desperabis
         try
         {
             cutscenePlaying = false;
+            introCredit.reset();
             applicationTickAccumulator = 0;
             ResetUnderwater();
             StopAllSoundEffects();
@@ -423,7 +424,7 @@ namespace Desperabis
         pendingLevelStory = false;
         pendingLevelLoad.reset();
         levelLoadError.clear();
-        hasActiveGame = true;
+        hasActiveGame = loadedLevelNumber != 98;
         runtimeState = GameRuntimeState::Ready;
         SetMenuPage(storyPages.empty() ? MenuPage::Gameplay : MenuPage::StoryBook);
         applicationPageChanged = true;

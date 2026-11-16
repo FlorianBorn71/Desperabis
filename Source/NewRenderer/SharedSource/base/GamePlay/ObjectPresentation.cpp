@@ -324,6 +324,10 @@ namespace
             float height = 0.f;
             switch (m_behavior)
             {
+            case GamePlay::BehaviorType::NeonLights:
+                m_light->SetRadius(properties.GetDisplayType() == GamePlay::DisplayType::VectorUnlit ?
+                    150.f * DespToFloat : 0.f);
+                break;
             case GamePlay::BehaviorType::LightSource:
                 if (m_electricImpact)
                 {
@@ -450,6 +454,11 @@ std::shared_ptr<ObjectPresentationContext> GamePlay::CreateObjectPresentation(
     std::shared_ptr<LightSource> light;
     switch (behavior)
     {
+    case BehaviorType::NeonLights:
+        light = std::make_shared<LightSource>(&scene);
+        light->SetColor({255,255,255}, 1.5f);
+        light->SetCoronaSize(0.f);
+        break;
     case BehaviorType::LightSource:
         light = std::make_shared<FlickeringLight>(&scene);
         light->SetColor(IsElectricImpact(object) ? Color4{70,210,255} : Color4{255,240,180}, 2.f);

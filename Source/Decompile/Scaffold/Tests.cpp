@@ -301,7 +301,8 @@ namespace
                 entry.type == BehaviorType::FallingGroundFragment || entry.type == BehaviorType::BossPitTrap ||
                 entry.type == BehaviorType::EndingSequenceTrigger || entry.type == BehaviorType::FloodingWater ||
                 entry.type == BehaviorType::RandomAttachmentYaw || entry.type == BehaviorType::ObjectPoseSequence ||
-                entry.type == BehaviorType::CutSceneCloud ||
+                entry.type == BehaviorType::CutSceneCloud || entry.type == BehaviorType::FlipTRexHead ||
+                entry.type == BehaviorType::NeonLights || entry.type == BehaviorType::IntroCredits ||
                 entry.type == BehaviorType::WitchMouthAnimation || entry.type == BehaviorType::DisabledSentinel;
             Check(result.status == (implemented ?
                 DispatchStatus::ExecutedCase : entry.hasSpecificCase ?

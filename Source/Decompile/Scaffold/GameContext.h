@@ -332,6 +332,12 @@ namespace Desperabis
         void SetPaused(bool paused);
         bool IsPaused() const;
         bool IsCutscenePlaying() const;
+        // Gaussian width in seconds, sampled on KOO load. Zero retains native playback.
+        double cutsceneSmoothingSeconds = 0.5;
+        std::optional<RecordedCutsceneCamera> GetRecordedCutsceneCamera() const;
+        bool IsMuseumIntroPlaying() const;
+        void StartMuseumIntro();
+        void UpdateIntroCredits(RawGameObject& object);
         bool IsBossFallPlaying() const { return bossFall.has_value(); }
         void BeginBossFall(int bossSlot, int trapSlot);
         std::vector<RawGameObject> GetBossFallView() const;
@@ -656,6 +662,15 @@ namespace Desperabis
         std::optional<std::uint16_t> cutsceneCameraSlot;
         std::vector<std::uint8_t> recordedCutscene;
         std::size_t recordedCutsceneFrame = 0;
+        void PrepareRecordedCutsceneCamera();
+        std::vector<std::array<double, 5>> recordedCameraTrack; // X, Z, unwrapped yaw, pitch, terrain eye Y.
+        double recordedCameraFrame = 0, recordedCameraEaseFrames = 0;
+        struct IntroCredit
+        {
+            std::uint8_t frame;
+            int duration, remaining;
+        };
+        std::optional<IntroCredit> introCredit;
         bool musicAmbientLoaded = false;
         void EnsureGameParts();
         const std::vector<std::uint8_t>& CurrentLevelOrder();

@@ -2335,9 +2335,12 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::TriggerDebris, 0x2618 };
     }
 
-    DispatchResult Function_FlipTRexHead(RawGameObject&, GameContext&)
+    DispatchResult Function_FlipTRexHead(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::FlipTRexHead, 0x2651 };
+        const auto view = GetVectorAngle(WrapSignedWord(object.posX - context.soundListenerX),
+            WrapSignedWord(context.soundListenerZ - object.posZ));
+        object.animFrame = ((object.winY + view) & 511) <= 256 ? 2 : 1;
+        return { DispatchStatus::ExecutedCase, BehaviorType::FlipTRexHead, 0x2651 };
     }
 
     DispatchResult Function_LightRayKillsGhost(RawGameObject& object, GameContext& context)
@@ -2948,9 +2951,40 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::EndingSequenceTrigger, 0x349A };
     }
 
-    DispatchResult Function_NeonLights(RawGameObject&, GameContext&)
+    DispatchResult Function_NeonLights(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::NeonLights, 0x3636 };
+        for (int tick = 0; tick < context.tickCount; ++tick)
+        {
+            if (object.itemValue > 0)
+            {
+                object.displayType = DisplayType::VectorUnlit;
+                if (object.itemValue > 1 && context.Random(object.itemValue) == 0) { object.itemValue = 0; }
+                if (tick + 1 == context.tickCount)
+                {
+                    for (int x = 0; x <= 1; ++x)
+                    {
+                        for (int z = 0; z <= 1; ++z)
+                        {
+                            context.lightingCache.AddAtWorldXZ(WrapSignedWord(object.posX + x * 50 - 25),
+                                WrapSignedWord(object.posZ + z * 50 - 25), 50);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                object.displayType = DisplayType::VectorBrightness5;
+                if (context.Random(50) == 0)
+                {
+                    object.generalPurpose1 = static_cast<std::uint16_t>(context.Random(100) + 10);
+                }
+                if (context.Random(WrapSignedWord(object.generalPurpose1 + 1)) == 0)
+                {
+                    object.itemValue = static_cast<std::int16_t>(context.Random(3) + 2);
+                }
+            }
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::NeonLights, 0x3636 };
     }
 
     DispatchResult Function_FloatingDebris(RawGameObject& object, GameContext& context)
@@ -4251,9 +4285,10 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::SkullInCutScene, 0x50AF };
     }
 
-    DispatchResult Function_Behavior_255(RawGameObject&, GameContext&)
+    DispatchResult Function_IntroCredits(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_255, 0x50C1 };
+        context.UpdateIntroCredits(object);
+        return { DispatchStatus::ExecutedCase, BehaviorType::IntroCredits, 0x50C1 };
     }
 
     DispatchResult Function_Behavior_300(RawGameObject& object, GameContext&)

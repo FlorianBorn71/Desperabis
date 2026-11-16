@@ -188,7 +188,8 @@ namespace
             throw std::logic_error("Text illustrations must be composed onto their paper page.");
         }
         const TextureAnim* animation = command.source == UiBitmapSource::InventoryIcons ? icons :
-            command.source == UiBitmapSource::MenuCursor ? &cursor : &hud;
+            (command.source == UiBitmapSource::MenuCursor || command.source == UiBitmapSource::IntroCredits) ?
+                &cursor : &hud;
         if (command.source == UiBitmapSource::LevelSprite)
         {
             if (command.shade != 0) { throw std::logic_error("Level-sprite UI pictures require their original palette."); }
@@ -602,6 +603,11 @@ FUTURE(void) ApplicationUi::Initialize()
         m_mapPaperPixels[i] = paperPalette->GetEntryCustomAlpha(paper[i + 4], 255);
     }
     m_weapons = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\WAFFEN.AN2");
+    m_introCredits = CO_AWAIT AssetManager::Instance().LoadAsset<TextureAnim>(L"ANIMS\\VORSPANN.AN2");
+    if (m_introCredits->m_countX != 2 || m_introCredits->m_countY != 5)
+    {
+        throw std::runtime_error("Expected the original ten museum credit images.");
+    }
     m_textPictures = ReadIndexedBitmaps(CO_AWAIT read(L"ANIMS\\TXTBILD.AN2"));
     m_scytheModel = CO_AWAIT AssetManager::Instance().LoadAsset<ModelAnim>(L"VEKT\\VEKT67.3DA");
     if (m_weapons->m_countX != 4 || m_weapons->m_countY != 3)
@@ -1029,6 +1035,7 @@ void ApplicationUi::Deinitialize()
     m_textPictures.clear();
     m_menuBackground.reset();
     m_menuCursor.reset();
+    m_introCredits.reset();
     m_textCaret.reset();
     m_mapPaperPixels.clear();
 }
@@ -1313,7 +1320,13 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
     if (!hud.IsValidFrame(1, 0)) { throw std::runtime_error("Application UI requires the original HUD bank."); }
     const float canvasScale = (std::min)(viewport.Width / ApplicationPresentation::Width,
         viewport.Height / ApplicationPresentation::Height);
-    const float anchor = presentation.page == MenuPage::Gameplay ? 1.f : 0.5f;
+    const bool introCredits = std::any_of(presentation.commands.begin(), presentation.commands.end(),
+        [](const UiDrawCommand& command)
+        {
+            const auto* bitmap = std::get_if<UiBitmap>(&command);
+            return bitmap && bitmap->source == UiBitmapSource::IntroCredits;
+        });
+    const float anchor = presentation.page == MenuPage::Gameplay && !introCredits ? 1.f : 0.5f;
     const float offsetX = viewport.TopLeftX + (viewport.Width - ApplicationPresentation::Width * canvasScale) * anchor;
     const float offsetY = viewport.TopLeftY + (viewport.Height - ApplicationPresentation::Height * canvasScale) * anchor;
     if (presentation.page == MenuPage::CodeBook)
@@ -1491,7 +1504,7 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
                 bitmap->source == UiBitmapSource::MenuBackground ? BitmapFrame{ *m_menuBackground } :
                     ResolveBitmap(*bitmap, level, *selectedHud,
                         bank == m_inventoryIcons.end() ? nullptr : bank->second.at(bitmap->shade).get(),
-                        *m_menuCursor);
+                        bitmap->source == UiBitmapSource::IntroCredits ? *m_introCredits : *m_menuCursor);
             const auto& texture = frame.texture;
             if (texture.m_width == 0 || texture.m_height == 0)
             {

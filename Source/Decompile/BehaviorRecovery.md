@@ -6,6 +6,98 @@ each recovered case an editable, named home without hiding missing behavior.
 
 ## Game context and application flow
 
+### Smoothed recorded cutscene cameras
+
+Every KOO cutscene uses the same load-time camera preparation, including
+DEMO0 (museum), DEMO6 (ending transition) and DEMO7 (crystal ball).
+`GameContext::cutsceneSmoothingSeconds` defaults to **0.5 seconds**: it is the
+Gaussian standard deviation, with a three-sigma window on either side.
+Larger values produce broader, stronger smoothing. Set it before loading;
+zero restores the exact native camera path. Negative/nonfinite settings fail
+explicitly. Original KOO files are never modified.
+
+The loader decodes X/Z, unwraps the 512-unit heading across its zero boundary,
+and converts the accumulated look controls into a pitch-angle stream.
+Native 0x20 lowers the target horizon toward 50; 0x10 raises it toward 130.
+Returning to target 110 produces a level view. There is no separate recorded
+center-look bit in the recovered C558 routine; 0x80 invokes another operation,
+and remains unsupported rather than being misinterpreted as center-look.
+
+Terrain eye Y is sampled along the original recorded X/Z at load time, using
+the native terrain query and standing body-height offset. Each sample carries
+the previous eye Y into stacked/repeated-floor selection. The resulting fifth
+channel uses the same filter and spline as position and orientation, rather
+than reading the live, quantized player height during rendering.
+
+All five channels receive symmetric Gaussian filtering, removing keyboard
+starts/stops and wall-bounce jitter without a causal filter's trailing lag.
+The renderer samples a C2-continuous cubic B-spline with floating-point
+coordinates at host frame rate, not just at 33 Hz. A quintic time warp brings
+velocity and acceleration smoothly from/to rest at the ends. Pause/menu
+time does not advance this camera, including its fractional-frame position.
+KOO files themselves still have no Y track and are not rewritten.
+
+`GetRecordedCutsceneCamera()` is **presentation only**. Native player positions,
+heading, look controls, interactions, object behavior, RNG, credits and recording
+duration retain their original per-tick simulation. This preserves recorded
+switch/door uses, including the crystal-ball skull trigger. Strong smoothing
+rounds corners and can move the view off the exact recorded line; it is not a
+new collision-constrained camera planner. No renderer-core changes are needed.
+
+`timed-meteor-cutscene` measures bounce-acceleration reduction, shortest-arc yaw,
+smooth up/down/neutral pitch, stronger/weaker/disabled settings, sub-tick motion,
+host-frame-rate independence, pause/resume, quantized terrain-height smoothing
+and unchanged native world/RNG.
+
+### Museum startup tour (level 98)
+
+The museum is **98**, not 90 (the witch shop). `StartMuseumIntro` runs the
+4,939 six-byte frames of `LEVEL/DEMO0.KOO` at the core's 33 Hz clock, about
+150 seconds. The recording supplies X/Z/heading, fourteen downward and twelve
+upward look cues, and three interaction cues. Its first native pose and
+smoothed camera track are prepared before rendering. Scene 98 has no
+`LEVELS.INF` timed duration.
+
+[Native museum evidence](museum-intro-evidence.txt) recovers all three formerly
+unimplemented authored behaviors:
+
+- **71 `FlipTRexHead`**: choose frame 2 when
+  `(yaw + angle(objectX-cameraX, cameraZ-objectZ)) & 511 <= 256`, otherwise
+  frame 1. This is side-dependent artwork, not a physical head rotation.
+- **116 `NeonLights`**: word 34 equal to one is permanently lit. Higher values
+  randomly turn off; an off fixture uses word 36's random restart interval.
+  Lit display mode is 5, dark mode 35. Native light contributions cover four
+  nearby lighting-cache cells. The modern object presentation owns one white,
+  corona-free point light per fixture and switches it with the displayed mode;
+  no core-renderer changes are needed.
+- **255 `IntroCredits`** (renamed with the author's approval): add behavior
+  ticks to word 36; when it exceeds word 34, present word 46's image for
+  word 42 ticks, increment word 46, and subtract word 34. Authored values are
+  period 440, initial phase 200, duration 350 and initial image index zero.
+  Native bounds are **1..10**: index zero deliberately shows nothing, so the
+  first visible image begins at tick 681, not 241. The ten original
+  `ANIMS/VORSPANN.AN2` images retain their palette and signed anchors about
+  native screen point (180,125). Opacity fades over sixteen ticks at each end.
+  The modern UI uses existing bitmap/alpha rendering, not new text strings.
+
+The existing door, crab, idle-animation and tracked-animation handlers cover
+the remaining active museum objects. The original-scene test runs the entire
+tour and rejects any failed or unimplemented behavior.
+
+The DX11 host starts this core-owned intro instead of automatically starting
+Part 2. **Escape only** skips; F1, confirm, inventory, movement, attacks and
+debug level-navigation keys do not interrupt it. Loading ignores controls
+until ready, requiring a fresh Escape afterward. Natural completion and skip
+share the existing end-of-part world/audio cleanup and return to the main
+menu with New Game selected and no resumable museum game. Held keys cannot
+activate the menu. Manual level changes discard playback/credit state.
+
+`timed-meteor-cutscene` covers all 4,939 original museum frames, all ten credit
+images and their timing/fades, steady/flickering lights, facing, use cues,
+single/batched equivalence, input isolation, Escape, deferred loads and
+explicit load failure. `ApplicationUiTests` covers actual credit pixels and
+alpha at native/wide/portrait sizes plus light reuse, toggling and retirement.
+
 ### Coffin bones, portable mirror and mercury lamp (level 34)
 
 Recovered from [native dispatch/helpers](level34-native-evidence.txt) and

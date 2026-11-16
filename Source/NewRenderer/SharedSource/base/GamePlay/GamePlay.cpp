@@ -305,7 +305,7 @@ namespace GamePlay
         BT_ENUM2STRING(RandomAttachmentYaw);
         BT_ENUM2STRING(Meteor);
         BT_ENUM2STRING(MeteorImpact);
-        BT_ENUM2STRING(Behavior_255);
+        BT_ENUM2STRING(IntroCredits);
         BT_ENUM2STRING(FlipTRexHead);
         BT_ENUM2STRING(NeonLights);
         BT_ENUM2STRING(SpawnInCrater);

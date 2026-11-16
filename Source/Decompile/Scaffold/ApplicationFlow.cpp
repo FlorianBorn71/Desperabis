@@ -91,6 +91,8 @@ namespace Desperabis
         cutscenePlaying = false;
         cutsceneCameraSlot.reset();
         recordedCutscene.clear();
+        recordedCameraTrack.clear();
+        introCredit.reset();
         musicAmbientLoaded = false;
         ResetUnderwater();
         StopAllSoundEffects();
@@ -113,6 +115,7 @@ namespace Desperabis
         runtimeState = GameRuntimeState::NoLevel;
         paused = false;
         SetMenuPage(MenuPage::MainMenu);
+        mainMenuFocus = 1;
     }
 
     void GameContext::EndLevel(bool finishGamePart, bool showStory)
@@ -305,6 +308,14 @@ namespace Desperabis
         switch (menuPage)
         {
         case MenuPage::Gameplay:
+            if (IsMuseumIntroPlaying())
+            {
+                if (runtimeState == GameRuntimeState::Ready && wasPressed(InputKey::UiCancelKey))
+                {
+                    FinishGamePart();
+                }
+                break;
+            }
             if (IsBossFallPlaying()) { break; }
             if (wasPressed(InputKey::MainMenuKey)) { SetMenuPage(MenuPage::MainMenu); }
             else if (wasPressed(InputKey::InventoryKey) && runtimeState == GameRuntimeState::Ready &&
@@ -507,9 +518,14 @@ namespace Desperabis
             return result;
         }
         result.worldDeltaSeconds = delta;
+        const double cameraFrame = recordedCameraFrame + delta * TicksPerSecond;
         applicationTickAccumulator += delta * TicksPerSecond;
         const auto ticks = static_cast<std::int16_t>(applicationTickAccumulator);
-        if (ticks == 0) { return result; }
+        if (ticks == 0)
+        {
+            if (cutscenePlaying) { recordedCameraFrame = cameraFrame; }
+            return result;
+        }
         applicationTickAccumulator -= ticks;
         result.timing = { ticks, ticks };
         for (std::size_t i = 0; i < InputKeyCount; ++i)
@@ -517,6 +533,10 @@ namespace Desperabis
             snapshot.keys[i] = snapshot.keys[i] && !applicationBlockedKeys[i];
         }
         result.tick = Tick(result.timing, snapshot);
+        if (result.tick->status == GameTickStatus::Advanced && cutscenePlaying)
+        {
+            recordedCameraFrame = cameraFrame;
+        }
         if (result.tick->status == GameTickStatus::LevelEnded || menuPage != pageAtStart)
         {
             result.worldDeltaSeconds = 0;
@@ -595,6 +615,16 @@ namespace Desperabis
         }
         if (menuPage == MenuPage::Gameplay)
         {
+            if (IsMuseumIntroPlaying() && introCredit && introCredit->remaining > 0)
+            {
+                // A5E7 fades in over sixteen native ticks and fades out over the last sixteen.
+                const int shade = std::clamp(std::min(introCredit->duration - introCredit->remaining,
+                    introCredit->remaining) / 2, 0, 8);
+                result.commands.emplace_back(UiBitmap{{180, 125, 0, 0}, UiBitmapSource::IntroCredits,
+                    0, static_cast<std::uint8_t>(introCredit->frame / 5),
+                    static_cast<std::uint8_t>(introCredit->frame % 5),
+                    {255, 255, 255, static_cast<std::uint8_t>(shade * 255 / 8)}, UiBitmapLayout::SpriteAnchor});
+            }
             if (IsCutscenePlaying()) { return result; }
             if (runtimeState == GameRuntimeState::Ready && selectedWeapon == WeaponType::ShopGold &&
                 worldObjects[1].itemValue <= 0)

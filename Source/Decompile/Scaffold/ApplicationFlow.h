@@ -92,7 +92,7 @@ namespace Desperabis
         bool caret = false;
     };
 
-    enum class UiBitmapSource { Hud, LevelSprite, ModelTexture, InventoryIcons, MapPaper, MenuBackground, MenuCursor, TextIllustration };
+    enum class UiBitmapSource { Hud, LevelSprite, ModelTexture, InventoryIcons, MapPaper, MenuBackground, MenuCursor, TextIllustration, IntroCredits };
     enum class UiBitmapLayout { Fit, TopLeft, SpriteAnchor, Center, Stretch };
 
     struct UiBitmap

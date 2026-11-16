@@ -8,7 +8,143 @@
 
 namespace Desperabis
 {
+    namespace
+    {
+        constexpr double RecordedTicksPerSecond = 33.0;
+        constexpr double RadiansPerHeadingUnit = 6.2831853071795864769 / 512.0;
+
+        double EaseCameraEndpoint(double fraction)
+        {
+            // Match stationary velocity/acceleration at the endpoint and unit speed at the join.
+            return fraction * fraction * fraction * (6 + fraction * (-8 + fraction * 3));
+        }
+    }
+
+    void GameContext::PrepareRecordedCutsceneCamera()
+    {
+        recordedCameraTrack.clear();
+        recordedCameraFrame = recordedCameraEaseFrames = 0;
+        if (!std::isfinite(cutsceneSmoothingSeconds) || cutsceneSmoothingSeconds < 0)
+        {
+            throw std::invalid_argument("Cutscene smoothing requires finite nonnegative seconds.");
+        }
+        if (cutsceneSmoothingSeconds == 0) { return; }
+        const auto count = recordedCutscene.size() / 6;
+        std::vector<std::array<double, 5>> source(count);
+        int look = playerTargetLookHeight;
+        int heading = recordedCutscene[4] * 2;
+        auto eyeY = GetPlayerCamera().position[1];
+        for (std::size_t frame = 0; frame < count; ++frame)
+        {
+            const auto offset = frame * 6;
+            const auto coordinate = [&](std::size_t index)
+            {
+                return WrapSignedWord(recordedCutscene[index] | (recordedCutscene[index + 1] << 8));
+            };
+            const auto actions = recordedCutscene[offset + 5];
+            if ((actions & 0x20) != 0 && look > 50) { look -= 10; }
+            if ((actions & 0x10) != 0 && look < 130) { look += 10; }
+            // Unwrap before filtering: 510 -> 0 is a two-unit turn, not almost a full revolution.
+            const int next = recordedCutscene[offset + 4] * 2;
+            heading += ((next - heading + 256) & 511) - 256;
+            const auto x = coordinate(offset), z = coordinate(offset + 2);
+            // Carry the previous eye height through stacked/repeated-floor selection.
+            eyeY = WrapSignedWord(GetTerrainFloorHeight(x, eyeY, z) + playerBodyHeight);
+            source[frame] = {static_cast<double>(x), static_cast<double>(z),
+                heading * RadiansPerHeadingUnit, std::atan((110.0 - look) / 100.0), static_cast<double>(eyeY)};
+        }
+        const double sigma = std::min(cutsceneSmoothingSeconds, count / RecordedTicksPerSecond) *
+            RecordedTicksPerSecond;
+        recordedCameraEaseFrames = std::min(sigma, (count - 1) * 0.5);
+        const auto radius = static_cast<int>(std::min(static_cast<double>(count - 1), std::ceil(sigma * 3)));
+        std::vector<double> weights(radius * 2 + 1);
+        double total = 0;
+        for (int step = -radius; step <= radius; ++step)
+        {
+            const double distance = step == 0 ? 0 : step / sigma;
+            total += weights[step + radius] = std::exp(-0.5 * distance * distance);
+        }
+        recordedCameraTrack.resize(count);
+        for (std::size_t frame = 0; frame < count; ++frame)
+        {
+            for (int step = -radius; step <= radius; ++step)
+            {
+                const auto index = std::clamp<int>(static_cast<int>(frame) + step, 0, static_cast<int>(count) - 1);
+                for (std::size_t channel = 0; channel < source[frame].size(); ++channel)
+                {
+                    recordedCameraTrack[frame][channel] += source[index][channel] * weights[step + radius] / total;
+                }
+            }
+        }
+    }
+
+    std::optional<RecordedCutsceneCamera> GameContext::GetRecordedCutsceneCamera() const
+    {
+        if (!cutscenePlaying || recordedCameraTrack.empty()) { return {}; }
+        const double last = static_cast<double>(recordedCameraTrack.size() - 1);
+        double time = std::clamp(recordedCameraFrame, 0.0, last);
+        if (recordedCameraEaseFrames > 0)
+        {
+            if (time < recordedCameraEaseFrames)
+            {
+                time = recordedCameraEaseFrames * EaseCameraEndpoint(time / recordedCameraEaseFrames);
+            }
+            else if (last - time < recordedCameraEaseFrames)
+            {
+                time = last - recordedCameraEaseFrames * EaseCameraEndpoint((last - time) / recordedCameraEaseFrames);
+            }
+        }
+        const int frame = static_cast<int>(std::floor(time));
+        const double u = time - frame, inverse = 1 - u;
+        // Uniform cubic B-splines are C2 continuous and remain inside their control-point hull.
+        const double weights[]{inverse * inverse * inverse / 6,
+            (3 * u * u * u - 6 * u * u + 4) / 6,
+            (-3 * u * u * u + 3 * u * u + 3 * u + 1) / 6, u * u * u / 6};
+        std::array<double, 5> pose{};
+        for (int point = 0; point < 4; ++point)
+        {
+            const auto index = std::clamp(frame + point - 1, 0, static_cast<int>(last));
+            for (std::size_t channel = 0; channel < pose.size(); ++channel)
+            {
+                pose[channel] += recordedCameraTrack[index][channel] * weights[point];
+            }
+        }
+        return RecordedCutsceneCamera{{pose[0], pose[4], pose[1]}, pose[2], pose[3]};
+    }
+
     bool GameContext::IsCutscenePlaying() const { return cutscenePlaying || IsBossFallPlaying(); }
+
+    bool GameContext::IsMuseumIntroPlaying() const
+    {
+        return (pendingLevelLoad && pendingLevelLoad->levelNumber == 98) ||
+            (loadedLevelNumber == 98 && cutscenePlaying);
+    }
+
+    void GameContext::StartMuseumIntro()
+    {
+        paused = false;
+        StartLevel(98);
+        if (runtimeState == GameRuntimeState::LoadFailed) { throw std::runtime_error(levelLoadError); }
+        SetMenuPage(MenuPage::Gameplay);
+    }
+
+    void GameContext::UpdateIntroCredits(RawGameObject& object)
+    {
+        object.generalPurpose1 = static_cast<std::uint16_t>(
+            WrapSignedWord(object.generalPurpose1 + tickCount));
+        if (WrapSignedWord(object.generalPurpose1) <= object.itemValue) { return; }
+        // Native VORSPANN indices are 1..10. Index zero is an authored initial delay,
+        // and indices after ten leave the completed credit sequence alone.
+        const int frame = object.doorLockOrGroupBitmask;
+        if (frame >= 1 && frame <= 10)
+        {
+            introCredit = IntroCredit{static_cast<std::uint8_t>(frame - 1),
+                object.blendWeightOrSpriteOpacity, object.blendWeightOrSpriteOpacity};
+        }
+        object.doorLockOrGroupBitmask = WrapSignedWord(object.doorLockOrGroupBitmask + 1);
+        object.generalPurpose1 = static_cast<std::uint16_t>(
+            WrapSignedWord(object.generalPurpose1 - object.itemValue));
+    }
 
     void GameContext::BeginBossFall(int bossSlot, int trapSlot)
     {
@@ -115,32 +251,49 @@ namespace Desperabis
     {
         bossFall.reset();
         recordedCutscene.clear();
+        recordedCameraTrack.clear();
+        recordedCameraFrame = 0;
         recordedCutsceneFrame = 0;
         cutsceneCameraSlot.reset();
         cinematicDepthShade = 0;
-        if ((loadedLevelNumber == 96 || loadedLevelNumber == 91) && !restoringSave)
+        introCredit.reset();
+        if ((loadedLevelNumber == 96 || loadedLevelNumber == 91 || loadedLevelNumber == 98) && !restoringSave)
         {
             const bool crystalBall = loadedLevelNumber == 91;
-            auto path = LoadFile(crystalBall ? "LEVEL\\DEMO7.KOO" : "LEVEL\\DEMO6.KOO");
+            auto path = LoadFile(loadedLevelNumber == 98 ? "LEVEL\\DEMO0.KOO" :
+                crystalBall ? "LEVEL\\DEMO7.KOO" : "LEVEL\\DEMO6.KOO");
             if (path.size() < 9 || path[0] != *loadedLevelNumber)
             {
-                throw std::invalid_argument("Ending recording does not match the loaded scene.");
+                throw std::invalid_argument("Cutscene recording does not match the loaded scene.");
             }
             const auto size = static_cast<std::size_t>(path[1] | (path[2] << 8));
             if (size == 0 || size % 6 != 0 || path.size() != size + 3)
             {
-                throw std::invalid_argument("Ending recording requires complete six-byte camera frames.");
+                throw std::invalid_argument("Cutscene recording requires complete six-byte camera frames.");
             }
             for (std::size_t offset = 3; offset < path.size(); offset += 6)
             {
-                const int supportedActions = crystalBall ? 0x70 : 0;
+                const int supportedActions = loadedLevelNumber == 96 ? 0 : 0x70;
                 if ((path[offset + 5] & ~supportedActions) != 0)
                 {
-                    throw std::invalid_argument("Ending recording contains unrecovered action bits.");
+                    throw std::invalid_argument("Cutscene recording contains unrecovered action bits.");
                 }
             }
             recordedCutscene.assign(path.begin() + 3, path.end());
+            PrepareRecordedCutsceneCamera();
             cutscenePlaying = true;
+            if (loadedLevelNumber == 98)
+            {
+                auto& player = worldObjects[1];
+                player.posX = WrapSignedWord(path[3] | (path[4] << 8));
+                player.posZ = WrapSignedWord(path[5] | (path[6] << 8));
+                playerHeading = playerTargetHeading = static_cast<std::int16_t>(path[7] * 2);
+                std::int16_t negativeZ;
+                GetDirectionDisplacement(player.velocityX, negativeZ, playerHeading, 100);
+                player.velocityZ = WrapSignedWord(-negativeZ);
+                soundListenerX = player.posX;
+                soundListenerZ = player.posZ;
+            }
             return;
         }
         // 07E0..07E8 initializes player word 34 from LEVELS.INF byte 104, at 35 ticks per unit.
@@ -203,6 +356,7 @@ namespace Desperabis
                 {
                     return WrapSignedWord(recordedCutscene[index] | (recordedCutscene[index + 1] << 8));
                 };
+                if (introCredit && --introCredit->remaining <= 0) { introCredit.reset(); }
                 result = TickGameplay({1, 1}, input);
                 if (result.status != GameTickStatus::Advanced || nextLoadRequestId != requestId) { return result; }
                 if (result.playerMovement)
@@ -231,9 +385,10 @@ namespace Desperabis
                 playerTargetHeading = static_cast<std::int16_t>(recordedCutscene[offset + 4] * 2);
                 soundListenerX = player.posX;
                 soundListenerZ = player.posZ;
+                recordedCameraFrame += 1;
                 if (++recordedCutsceneFrame == recordedCutscene.size() / 6)
                 {
-                    if (loadedLevelNumber == 91) { FinishGamePart(); }
+                    if (loadedLevelNumber == 91 || loadedLevelNumber == 98) { FinishGamePart(); }
                     else { StartLevel(95); }
                     result.status = GameTickStatus::LevelEnded;
                     result.objects.reset();

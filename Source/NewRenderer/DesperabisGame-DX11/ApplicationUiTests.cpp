@@ -53,6 +53,45 @@ namespace
 #endif
     }
 
+    void CheckMuseumNeon()
+    {
+        LevelScene scene(98);
+        Desperabis::GameContext core;
+        auto& lamp = core.worldObjects[33];
+        lamp.health = 1000;
+        lamp.behavior = Desperabis::BehaviorType::NeonLights;
+        lamp.posX = 2950;
+        lamp.posY = -60;
+        lamp.posZ = 1950;
+        lamp.itemValue = 1;
+        lamp.displayType = Desperabis::DisplayType::VectorUnlit;
+        ::RawGameObject raw{};
+        const auto synchronize = [&]
+        {
+            Desperabis::EncodeGameObject(lamp, raw.m_rawBytes, sizeof(raw.m_rawBytes));
+            scene.UpdateObjectPresentation(33, raw);
+        };
+        synchronize();
+        Check(scene.GetLightSources().size() == 1, "A museum neon fixture must own one local white light.");
+        const auto light = scene.GetLightSources().front();
+        const auto presentation = scene.GetObjectPresentation(33);
+        Check(light->GetRadius() > 0 && light->GetCoronaSize() == 0,
+            "Lit neon must illuminate its surroundings without a point-source corona.");
+        for (int tick = 0; tick < 100; ++tick)
+        {
+            lamp.displayType = tick % 2 == 0 ? Desperabis::DisplayType::VectorBrightness5 :
+                Desperabis::DisplayType::VectorUnlit;
+            synchronize();
+            Check(scene.GetObjectPresentation(33) == presentation && scene.GetLightSources().size() == 1 &&
+                ((light->GetRadius() > 0) == (tick % 2 != 0)),
+                "Neon illumination must follow the displayed tick, retaining its context and light.");
+        }
+        lamp.health = 0;
+        synchronize();
+        Check(scene.GetLightSources().empty() && !scene.GetObjectPresentation(33),
+            "Removing a museum fixture must immediately retire its light.");
+    }
+
     void CheckPresentationRecovery()
     {
         class RecoveryScene final : public Scene
@@ -9914,6 +9953,7 @@ int main(int argc, char* argv[])
         CheckMachineWaterHeight(renderer, device.Get(), context.Get());
         CheckEnemyModels();
         CheckPresentationRecovery();
+        CheckMuseumNeon();
         CheckEndingActorVisibility();
         CheckVillageCloudReveal(renderer, device.Get(), context.Get());
         CheckFinalLevelMorphs(renderer, device.Get(), context.Get());
@@ -9981,6 +10021,39 @@ int main(int argc, char* argv[])
                 return target.Pixels(device.Get(), context.Get());
             };
             const auto render = [&] { return drawRecipe(core.GetApplicationPresentation()); };
+            {
+                using namespace Desperabis;
+                ApplicationPresentation credits{ MenuPage::Gameplay, {
+                    UiBitmap{{180,125,0,0}, UiBitmapSource::IntroCredits, 0,0,0,
+                        {}, UiBitmapLayout::SpriteAnchor}} };
+                const auto brightness = [](const std::vector<std::uint32_t>& pixels)
+                {
+                    std::uint64_t total = 0;
+                    for (auto pixel : pixels)
+                    {
+                        total += (pixel & 255) + ((pixel >> 8) & 255) + ((pixel >> 16) & 255);
+                    }
+                    return total;
+                };
+                std::vector<std::uint32_t> previous;
+                for (std::uint8_t frame = 0; frame < 10; ++frame)
+                {
+                    auto& image = std::get<UiBitmap>(credits.commands.front());
+                    image.animation = frame / 5;
+                    image.frame = frame % 5;
+                    image.color.a = 255;
+                    const auto full = drawRecipe(credits);
+                    const auto fullBrightness = brightness(full);
+                    image.color.a = 128;
+                    const auto halfBrightness = brightness(drawRecipe(credits));
+                    image.color.a = 0;
+                    Check(fullBrightness > 1000 && full != previous &&
+                        halfBrightness > fullBrightness / 4 && halfBrightness < fullBrightness * 3 / 4 &&
+                        brightness(drawRecipe(credits)) == 0,
+                        "All ten museum credits must draw distinctly with alpha fading on native, wide and portrait targets.");
+                    previous = full;
+                }
+            }
             {
                 using namespace Desperabis;
                 ApplicationPresentation cursor{ MenuPage::MainMenu, {

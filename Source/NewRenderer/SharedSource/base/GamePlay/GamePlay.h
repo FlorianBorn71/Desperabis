@@ -219,7 +219,7 @@ namespace GamePlay
         Behavior_201 = 201, // could be thunder or leaf particles gen (assigned once to decoration in level 10)
         ForceWeaponSelection = 206,
         WitchMouthAnimation = 209,
-        Behavior_255 = 255, // Something in museum cutscene
+        IntroCredits = 255,
     };
 
     enum class CollisionType

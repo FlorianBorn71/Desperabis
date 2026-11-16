@@ -194,7 +194,7 @@ namespace Desperabis
         TutorialTrigger = 210,
         CrystalBallTableInCutScene = 211, // for the crystal ball
         SkullInCutScene = 212, // the skull in the crystal ball
-        Behavior_255 = 255, // Something in museum cutscene
+        IntroCredits = 255,
         Behavior_300 = 300,
         DisabledSentinel = 65535,
     };

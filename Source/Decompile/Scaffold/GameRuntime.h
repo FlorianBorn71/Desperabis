@@ -8,6 +8,12 @@
 
 namespace Desperabis
 {
+    struct RecordedCutsceneCamera
+    {
+        std::array<double, 3> position; // Native DOS eye coordinates, without integer quantization.
+        double yaw, pitch; // Radians, using the same view convention as PlayerCamera.
+    };
+
     struct PlayerCamera
     {
         // Native DOS eye coordinates; no renderer scaling or additional host eye offset.

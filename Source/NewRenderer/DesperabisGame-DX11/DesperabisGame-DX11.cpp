@@ -28,6 +28,7 @@
 #include <Renderer/VisibilitySettings.h>
 #include <GamePlay/GamePlay.h>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 #include <filesystem>
@@ -35,7 +36,6 @@
 
 namespace
 {
-	constexpr int g_startGamePart = 2;
 	bool g_cheatMode = true;
 
 	constexpr int g_numObjectSlots = static_cast<int>(std::tuple_size_v<decltype(Desperabis::GameContext::worldObjects)>);
@@ -922,7 +922,7 @@ namespace
 	void ApplyPlayerCamera()
 	{
 		const auto playerCam = g_gameCore->GetPlayerCamera();
-		const Vector pos = Level::DespToPos(playerCam.position[0], playerCam.position[1], playerCam.position[2]);
+		Vector pos = Level::DespToPos(playerCam.position[0], playerCam.position[1], playerCam.position[2]);
 
 		// a zero direction is not a valid orientation: keep the previous one
 		const auto& dir = playerCam.direction;
@@ -942,6 +942,17 @@ namespace
 			{
 				g_playerForward = forward;
 			}
+		}
+
+		if (const auto camera = g_gameCore->GetRecordedCutsceneCamera())
+		{
+			pos = Level::DespToPos(0, 0, 0) + Vector(
+				static_cast<float>(camera->position[0]) * DespToFloat,
+				static_cast<float>(camera->position[1]) * DespToFloat,
+				-static_cast<float>(camera->position[2]) * DespToFloat, 0.f);
+			const double horizontal = std::cos(camera->pitch);
+			g_playerForward = Vector(static_cast<float>(-std::sin(camera->yaw) * horizontal),
+				static_cast<float>(std::sin(camera->pitch)), static_cast<float>(std::cos(camera->yaw) * horizontal), 0.f);
 		}
 
 		// Same basis as GamePlay::PropertyAccessorPlayer::GetCameraTransform. With the right-handed projection the
@@ -1036,7 +1047,7 @@ namespace
 		g_camera = Renderer::Instance().GetOrCreateCamera();
 		UpdateProjection();
 
-		g_gameCore->StartNewGame(g_startGamePart);
+		g_gameCore->StartMuseumIntro();
 		SyncGameObjects();
 		g_gameCore->UpdateHealthBar();
 

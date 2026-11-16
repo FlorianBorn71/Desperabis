@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "executableSha256": "219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318",
-  "rendererHeaderSha256": "c80daabf6fb67558c20eb4892b8ac2ccc9a8d79cc5cc1406034827dd6a32f9cb",
+  "rendererHeaderSha256": "65594c47037d3f6234856c95c05f0968284cd2e550d12cf9accf68dc8d3e5617",
   "functionEntry": "0000:1094",
   "selectorLoad": "0000:114D",
   "commonPostprocessing": "0000:5110",
@@ -2473,7 +2473,7 @@
     },
     {
       "value": 255,
-      "name": "Behavior_255",
+      "name": "IntroCredits",
       "namedInRenderer": true,
       "hasSpecificCase": true,
       "entry": "0000:50C1",
