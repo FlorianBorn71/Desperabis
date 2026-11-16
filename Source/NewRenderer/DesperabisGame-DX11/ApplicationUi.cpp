@@ -700,7 +700,24 @@ FUTURE(void) ApplicationUi::Initialize()
     auto fontPalette = std::make_shared<Palette>();
     fontPalette->BuildGrayscale();
     const auto menuPalette = CO_AWAIT AssetManager::Instance().LoadAsset<Palette>(L"GRAFIK\\BACKGR2.PAL");
-    m_menuBackground = CO_AWAIT AssetManager::Instance().LoadAsset<Texture>(L"GRAFIK\\BACKGR2.256", menuPalette);
+    const auto menu = CO_AWAIT read(L"GRAFIK\\BACKGR2.256");
+    if (menu.size() != 4 + 360 * 480 || menu[0] != 103 || menu[1] != 1 || menu[2] != 223 || menu[3] != 1)
+    {
+        throw std::runtime_error("Expected the original 360x480 crypt background.");
+    }
+    TextureLoadingContext menuPixels;
+    menuPixels.m_rgbaData.resize(360 * 480);
+    for (std::size_t i = 0; i < menuPixels.m_rgbaData.size(); ++i)
+    {
+        // Full-screen art has no transparent palette index, unlike sprites.
+        menuPixels.m_rgbaData[i] = menuPalette->GetEntryCustomAlpha(menu[i + 4], 255);
+    }
+    m_menuBackground = std::make_shared<Texture>();
+    m_menuBackground->m_width = 360;
+    m_menuBackground->m_height = 480;
+    m_menuBackground->SetDefaultParams();
+    AssetManager::Instance().RegisterAsset(*m_menuBackground);
+    Renderer::Instance().CreateTexture(*m_menuBackground, menuPixels);
     const auto castlePalette = CO_AWAIT AssetManager::Instance().LoadAsset<Palette>(L"GRAFIK\\BACKGR6.PAL");
     m_castleIntroduction = CO_AWAIT AssetManager::Instance().LoadAsset<Texture>(L"GRAFIK\\BACKGR6.256", castlePalette);
     if (m_castleIntroduction->m_width != 360 || m_castleIntroduction->m_height != 480)
@@ -1324,6 +1341,11 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
 {
     using namespace Desperabis;
     if (!m_hud[0]) { throw std::logic_error("Application UI assets have not been initialized."); }
+    if (!std::isfinite(presentation.menuContentOpacity) ||
+        presentation.menuContentOpacity < 0 || presentation.menuContentOpacity > 1)
+    {
+        throw std::invalid_argument("Menu content opacity must be finite and in 0..1.");
+    }
     if (presentation.story)
     {
         if (!m_storyScene)
@@ -1501,7 +1523,8 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
                         instance.SetPosition(offsetX + penX * canvasScale,
                             offsetY + (text->y + glyph.offsetY * text->scale) * canvasScale);
                         instance.SetScale(canvasScale * text->scale);
-                        instance.SetTintColor({ text->color.r,text->color.g,text->color.b,text->color.a });
+                        instance.SetTintColor({ text->color.r,text->color.g,text->color.b,
+                            static_cast<byte>(std::lround(text->color.a * presentation.menuContentOpacity)) });
                         batch.push_back(&instance);
                     }
                     penX += width * text->scale;
@@ -1626,10 +1649,16 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
             caret.SetPosition(offsetX + (text->x + cached.mesh->GetExtent().x * text->scale * alignment + 1) * canvasScale,
                 offsetY + text->y * canvasScale);
             caret.SetScale(canvasScale * text->scale);
-            caret.SetTintColor({ text->color.r,text->color.g,text->color.b,text->color.a });
+            caret.SetTintColor({ text->color.r,text->color.g,text->color.b,
+                static_cast<byte>(std::lround(text->color.a * presentation.menuContentOpacity)) });
             batch.push_back(&caret);
         }
         auto& instance = instances.emplace_back(cached.mesh);
+        const auto* background = std::get_if<UiBitmap>(&command);
+        if (!background || background->source != UiBitmapSource::MenuBackground)
+        {
+            color.a = static_cast<byte>(std::lround(color.a * presentation.menuContentOpacity));
+        }
         instance.SetPosition(offsetX + x * canvasScale, offsetY + y * canvasScale);
         instance.SetScale(scale);
         instance.SetTintColor({ color.r,color.g,color.b,color.a });

@@ -474,12 +474,12 @@ namespace
             if (!view) { break; }
             ++visited;
             if (page == 0) { input.anyKeyPressed = true; }
-            else { input.Set(InputKey::UiCancelKey, true); }
+            else { input.Set(InputKey::UiConfirmKey, true); }
             Check(!host.UpdateApplication(0, input).tick, "Book input must not simulate the loaded level.");
             input.anyKeyPressed = false;
             if (host.GetMenuPage() == MenuPage::CastleIntroduction)
             {
-                input.Set(InputKey::UiCancelKey, false);
+                input.Set(InputKey::UiConfirmKey, false);
                 host.UpdateApplication(0, input);
                 continue;
             }
@@ -499,7 +499,7 @@ namespace
             host.UpdateApplication(0.5, input);
             Check(host.GetApplicationPresentation().story->turn == -1 && host.randomSeed == seed,
                 "Holding a key or animating a turn cannot consume gameplay RNG or start another turn.");
-            input.Set(InputKey::UiCancelKey, false);
+            input.Set(InputKey::UiConfirmKey, false);
             host.UpdateApplication(0, input);
         }
         Check(castleSeen && host.GetMenuPage() == MenuPage::Gameplay && host.levelElapsedTicks == 0 &&

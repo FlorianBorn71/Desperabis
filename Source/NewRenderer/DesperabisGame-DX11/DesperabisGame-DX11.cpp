@@ -42,7 +42,6 @@ namespace
 	static_assert(g_numObjectSlots == LevelScene::ObjectSlotCount);
 	// OBJPOS has no player record, so the initial view vector is a host choice.
 	// GameContext seeds the player heading from it at load and rewrites velocityX/Z from the heading every tick.
-	constexpr std::array<int16_t, 3> g_initialPlayerDirection = { -256, 0, 0 };
 	constexpr int g_initialWidth = 1280;
 	constexpr int g_initialHeight = 800;
 	const wchar_t* g_windowClass = L"DesperabisGameDX11Window";
@@ -425,7 +424,7 @@ namespace
 			Desperabis::LevelLoadData data;
 			LoadLevelGeometry(request.levelNumber, data);
 			LoadLevelObjects(request.levelNumber, data);
-			InitializeLevelPlayerSpawn(data, g_initialPlayerDirection);
+			InitializeLevelPlayerSpawn(data);
 			const auto* savedData = GetPendingSaveGame();
 			std::shared_ptr<Level> savedLevel;
 			if (savedData)
@@ -1048,7 +1047,7 @@ namespace
 		UpdateProjection();
 
 		g_gameCore->screenTransitionsEnabled = true;
-		g_gameCore->StartEndingBookPreview();
+		g_gameCore->StartMuseumIntro();
 		SyncGameObjects();
 		g_gameCore->UpdateHealthBar();
 

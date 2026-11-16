@@ -139,12 +139,18 @@ namespace Desperabis
         }
     }
 
-    const std::string& GetString(std::string_view id)
+    const std::string* FindString(std::string_view id)
     {
         if (messages.empty()) { LoadStringResources(std::filesystem::path("Localization") / "strings.json"); }
         const auto entry = messages.find(id);
-        if (entry == messages.end()) { throw std::out_of_range("Missing string resource: " + std::string(id)); }
-        return entry->second;
+        return entry == messages.end() ? nullptr : &entry->second;
+    }
+
+    const std::string& GetString(std::string_view id)
+    {
+        const auto* message = FindString(id);
+        if (!message) { throw std::out_of_range("Missing string resource: " + std::string(id)); }
+        return *message;
     }
 
     std::string FormatString(std::string_view id,

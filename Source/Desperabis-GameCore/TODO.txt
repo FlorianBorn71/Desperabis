@@ -3,7 +3,6 @@ bugs P0:
 - skybox not high engough in general
 
 bugs P1:
-- cursor movement
 - keyboard assignment
 
 improvements:
@@ -13,10 +12,7 @@ improvements:
 - digging for key with the shovel (L19): Currently cut by ground texture
 
 missing
-- cutscenes
 - strave keys
-- book text
-- music
 
 ---------------------------------------------
 Fixed:
@@ -31,3 +27,7 @@ Fixed:
 - visibility bbox fo morphed models (doors, ladder...)
 - graveyard moon blending
 - electric bolt
+- cursor movement
+- book text
+- music
+- cutscenes

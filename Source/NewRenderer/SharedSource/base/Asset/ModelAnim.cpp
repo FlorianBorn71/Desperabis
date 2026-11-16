@@ -24,6 +24,14 @@ void ModelAnim::Read(AssetStream& s)
         float scale;
         float depthOffsetDos = 0.f;
     } depthBiasOverrides[]{
+        {L"VEKT\\VEKT6.3DA", 1, 0, 0.f}, // Architectural floor/wall tiles, including both caves.
+        {L"VEKT\\VEKT6.3DA", 2, 0, 0.f},
+        {L"VEKT\\VEKT6.3DA", 3, 0, 0.f},
+        {L"VEKT\\VEKT6.3DA", 4, 0, 0.f},
+        {L"VEKT\\VEKT6.3DA", 5, 0, 0.f},
+        {L"VEKT\\VEKT6.3DA", 6, 0, 0.f},
+        {L"VEKT\\VEKT9.3DA", 3, 3, 0.f}, // Additional cave floor/ceiling tiles; other props retain their bias.
+        {L"VEKT\\VEKT9.3DA", 3, 4, 0.f},
         {L"VEKT\\VEKT20.3DA", 1, 1, 0.5f}, // Smaller windmill body variants.
         {L"VEKT\\VEKT20.3DA", 1, 2, 0.5f},
         {L"VEKT\\VEKT20.3DA", 1, 3, 0.5f},

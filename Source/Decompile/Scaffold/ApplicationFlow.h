@@ -154,5 +154,13 @@ namespace Desperabis
         std::vector<UiDrawCommand> commands;
         std::optional<UiStoryBook> story;
         UiColor screenTint;
+        float menuContentOpacity = 1.f;
     };
+
+    inline bool UsesMenuBackground(MenuPage page)
+    {
+        return page == MenuPage::MainMenu || page == MenuPage::AlternateMainMenu ||
+            page == MenuPage::ChapterSelection || page == MenuPage::LoadGame ||
+            page == MenuPage::SaveGame || page == MenuPage::Settings;
+    }
 }

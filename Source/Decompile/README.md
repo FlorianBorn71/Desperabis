@@ -289,8 +289,8 @@ For the first explained case and shared collision-map pointer, see
   interaction path. World/player overlap queries are in `GameContext.cpp`.
 - `museum-intro-evidence.txt`: view-dependent museum frames, neon switching,
   timed VORSPANN credits and the native opacity ramp. `StartMuseumIntro` runs
-  the level-98/DEMO0 tour; Escape skips it. DX11 temporarily starts with
-  `StartEndingBookPreview` to inspect the rigid closing cover instead. See
+  the level-98/DEMO0 tour at DX11 startup; Escape skips it.
+  `StartEndingBookPreview` remains an optional rigid-cover inspection helper. See
   [museum startup tour](BehaviorRecovery.md#museum-startup-tour-level-98).
 - `inventory-evidence.txt`: inventory/counter initialization, cleanup,
   input-gated calls, and the original copy-helper contract.

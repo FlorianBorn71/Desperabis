@@ -205,8 +205,8 @@ namespace
         Host host;
         Input input;
         Tap(host, input, InputKey::UiCancelKey);
-        Tap(host, input, InputKey::UiConfirmKey);
-        Check(host.GetMenuPage() == MenuPage::MainMenu, "A host without a level must not resume gameplay.");
+        Check(host.GetMenuPage() == MenuPage::MainMenu && !host.SelectMainMenuAction(MainMenuAction::ResumeGame),
+            "A host without a level must not resume gameplay.");
         host.synchronous = false;
         const auto request = host.StartLevel(50);
         host.SetMenuPage(MenuPage::Gameplay);
@@ -240,6 +240,200 @@ namespace
         ExpectError<std::logic_error>([&] { host.UpdateApplication(0, input); });
         ExpectError<std::logic_error>([&] { host.GetApplicationPresentation(); });
         Check(host.GetMenuPage() == MenuPage::Presentation20, "Future presentation pages must not silently skip.");
+    }
+
+    void TestMenuFidelity()
+    {
+        Host host;
+        Input input;
+        Ready(host, input);
+        Tap(host, input, InputKey::UiCancelKey);
+        Check(host.GetMenuPage() == MenuPage::MainMenu, "ESC in gameplay must open the main menu.");
+        const auto cursorY = [&]
+        {
+            for (const auto& command : host.GetApplicationPresentation().commands)
+            {
+                if (const auto* bitmap = std::get_if<UiBitmap>(&command);
+                    bitmap && bitmap->source == UiBitmapSource::MenuCursor) { return bitmap->bounds.y; }
+            }
+            throw std::runtime_error("Missing menu sword.");
+        };
+        bool newGame = false, settings = false, disabledLoad = false;
+        for (const auto& command : host.GetApplicationPresentation().commands)
+        {
+            const auto* text = std::get_if<UiText>(&command);
+            if (!text) { continue; }
+            if (text->text == GetString("menu_new")) { newGame = text->x == 85 && text->y == 76 && text->scale == 1; }
+            if (text->text == GetString("menu_settings")) { settings = true; }
+            if (text->text == GetString("menu_load")) { disabledLoad = text->color.r < 200; }
+            Check(text->text != GetString("menu_title"), "The original crypt menu has no added title.");
+        }
+        Check(newGame && settings && disabledLoad,
+            "The original-style menu must expose Settings, omit Configuration, and disable Load without valid saves.");
+        const float initial = cursorY();
+        Tap(host, input, InputKey::UiDownKey);
+        Check(cursorY() == initial, "Changing rows at zero elapsed time must not teleport the sword.");
+        host.UpdateApplication(0.025, input);
+        Check(cursorY() > initial && cursorY() < 81, "The sword must move through intermediate row positions.");
+        host.UpdateApplication(0.5, input);
+        Check(cursorY() == 81, "The sword must settle on the new row without moving the text.");
+        Tap(host, input, InputKey::UiDownKey);
+        Tap(host, input, InputKey::UiConfirmKey);
+        Check(host.GetMenuPage() == MenuPage::MainMenu, "A greyed-out Load action must not open the slot list.");
+        host.saves[0] = host.CaptureSaveGame("Available save");
+        Tap(host, input, InputKey::UiCancelKey);
+        Tap(host, input, InputKey::UiCancelKey);
+        Move(host, input, InputKey::UiDownKey, 2);
+        Tap(host, input, InputKey::UiConfirmKey);
+        Check(host.GetMenuPage() == MenuPage::LoadGame, "A valid save must enable Load on menu reentry.");
+        host.SetMenuPage(MenuPage::MainMenu);
+        Check(host.SelectMainMenuAction(MainMenuAction::Settings) && host.GetMenuPage() == MenuPage::Settings,
+            "Settings must be a reachable screen rather than an unsupported-page error.");
+        Tap(host, input, InputKey::UiCancelKey);
+
+        host.screenTransitionsEnabled = true;
+        host.SetMenuPage(MenuPage::LoadGame);
+        host.UpdateApplication(0.075, input);
+        auto presentation = host.GetApplicationPresentation();
+        Check(presentation.screenTint.r == 255 && presentation.menuContentOpacity > 0.49f &&
+            presentation.menuContentOpacity < 0.51f && presentation.page == MenuPage::MainMenu,
+            "Menu navigation must fade foreground content, not the crypt background.");
+        host.UpdateApplication(0.075, input);
+        presentation = host.GetApplicationPresentation();
+        Check(presentation.page == MenuPage::LoadGame && presentation.screenTint.r == 255 &&
+            presentation.menuContentOpacity == 0,
+            "The menu page must switch with its text invisible and its background fully visible.");
+        host.UpdateApplication(0.15, input);
+        Check(host.GetApplicationPresentation().menuContentOpacity == 1,
+            "The destination menu text must fade fully back in.");
+
+        Host cinematic;
+        Input cinematicInput;
+        cinematic.synchronous = false;
+        const auto cinematicLoad = cinematic.StartLevel(50);
+        auto timedLevel = Host::MakeLevel();
+        timedLevel.level->nativeInfo[104] = 10;
+        cinematic.CompleteLevelLoad(cinematicLoad.id, std::move(timedLevel));
+        cinematic.UpdateApplication(0, cinematicInput);
+        Tap(cinematic, cinematicInput, InputKey::MainMenuKey);
+        bool disabledSave = false;
+        for (const auto& command : cinematic.GetApplicationPresentation().commands)
+        {
+            if (const auto* text = std::get_if<UiText>(&command); text && text->text == GetString("menu_save"))
+            {
+                disabledSave = text->color.r < 200;
+            }
+        }
+        Move(cinematic, cinematicInput, InputKey::UiDownKey, 3);
+        Tap(cinematic, cinematicInput, InputKey::UiConfirmKey);
+        Check(cinematic.IsCutscenePlaying() && disabledSave && cinematic.GetMenuPage() == MenuPage::MainMenu,
+            "Save must be greyed out and unselectable while a cutscene is paused in the menu.");
+
+        Host book;
+        Input bookInput;
+        book.StartNewGame(2);
+        book.UpdateApplication(0, bookInput);
+        Tap(book, bookInput, InputKey::UiConfirmKey);
+        book.UpdateApplication(0.3, bookInput);
+        Check(book.GetApplicationPresentation().story->turn > 0,
+            "The ESC regression must exercise an in-progress paper turn.");
+        Tap(book, bookInput, InputKey::UiCancelKey);
+        Check(book.GetMenuPage() == MenuPage::Gameplay && book.levelElapsedTicks == 0,
+            "ESC must quit the complete book even during a page turn, without starting gameplay simulation.");
+    }
+
+    void TestMenuLayoutsAndInventoryNames()
+    {
+        const auto checkLayout = [](const GameContext& host, std::size_t count, bool heading)
+        {
+            const bool chapters = host.GetMenuPage() == MenuPage::ChapterSelection;
+            std::vector<UiText> rows;
+            for (const auto& command : host.GetApplicationPresentation().commands)
+            {
+                if (const auto* text = std::get_if<UiText>(&command); text && text->scale >= 0.8f)
+                {
+                    Check(text->x == (chapters ? 75 : 85),
+                        "Crypt menu labels must retain their page's original text column.");
+                    if (heading && text->scale == 1)
+                    {
+                        Check(text->y == 16, "Submenu headings must share a common top margin.");
+                    }
+                    else { rows.push_back(*text); }
+                }
+            }
+            Check(rows.size() == count, "The centered menu must retain all of its rows, including empty save slots.");
+            const float center = (rows.front().y + rows.back().y + 16 * rows.back().scale) * 0.5f;
+            Check(std::abs(center - (chapters ? 98.4f : heading ? 136.f : 120.f)) < 0.01f,
+                "Menu rows must be vertically centered in their content band, not packed against the top.");
+            if (chapters)
+            {
+                for (std::size_t row = 0; row < rows.size(); ++row)
+                {
+                    Check(rows[row].scale == 0.8f && rows[row].y == 68.f + row * 24.f &&
+                        rows[row].text != GetString("menu_new"),
+                        "New Game must match the original three-choice layout at Y=68/92/116 without a caption.");
+                }
+            }
+            for (std::size_t row = 1; row < rows.size(); ++row)
+            {
+                Check(rows[row].y - rows[row - 1].y >= 17.49f && rows[row].y + 16 * rows[row].scale <= 222,
+                    "Menu rows must remain separated and inside the logical screen.");
+            }
+        };
+        Host cold;
+        checkLayout(cold, 5, false);
+        Host host;
+        Input input;
+        Ready(host, input);
+        Tap(host, input, InputKey::MainMenuKey);
+        Move(host, input, InputKey::UiDownKey);
+        Tap(host, input, InputKey::UiConfirmKey);
+        checkLayout(host, 3, false);
+        for (const auto page : {MenuPage::MainMenu, MenuPage::AlternateMainMenu, MenuPage::LoadGame, MenuPage::SaveGame})
+        {
+            host.SetMenuPage(page);
+            const bool slots = page == MenuPage::LoadGame || page == MenuPage::SaveGame;
+            checkLayout(host, slots ? 10 : 6, slots);
+        }
+        host.SetMenuPage(MenuPage::Settings);
+        checkLayout(host, 1, false);
+        host.SetMenuPage(MenuPage::Gameplay);
+        Tap(host, input, InputKey::InventoryKey);
+        const auto name = [&]() -> std::string
+        {
+            for (const auto& command : host.GetApplicationPresentation().commands)
+            {
+                if (const auto* text = std::get_if<UiText>(&command); text && text->x == 20 && text->y == 161)
+                {
+                    Check(text->layout == UiTextLayout::Native, "Item names must use the original inventory font metrics.");
+                    Check(text->color.r == 255 && text->color.g == 192 && text->color.b == 128,
+                        "Item names must use the same light-orange tint as prompts.");
+                    return text->text;
+                }
+            }
+            return {};
+        };
+        auto& sword = host.inventory[13];
+        sword = Item(CollisionType::Weapon, 24);
+        sword.doorLockOrGroupBitmask = 6;
+        Check(name() == "Sword", "Inventory names must follow the authored name subtype, not the attack ID.");
+        LoadStringResources(std::filesystem::path("Localization") / "strings.json", "de-de");
+        Check(name() == "Schwert", "The inventory name under the cursor must use the selected locale.");
+        LoadStringResources(std::filesystem::path("Localization") / "strings.json");
+        sword.renderPlacementMode = 20;
+        sword.spriteScale = 42;
+        Check(name() == "Foil", "Placement-20 inventory items must resolve their alternate native name selector.");
+        sword.spriteScale = 64;
+        Check(name().empty(), "Deliberately unnamed native rows must not invent a label or keep the previous item's name.");
+        sword = Item(CollisionType::Key, 3);
+        Check(name() == GetString("item_06"), "Ordinary items must resolve names by collision type.");
+        sword.health = 0;
+        Check(name().empty(), "Empty inventory slots must clear the item-name line.");
+        host.inventory[12] = Item(CollisionType::Medicine, 20);
+        Tap(host, input, InputKey::UiRightKey);
+        Check(name() == GetString("item_02"), "Moving focus must immediately update the selected item's name.");
+        Move(host, input, InputKey::UiDownKey, 3);
+        Check(name().empty(), "Back and Use cells must not display an inventory-item name.");
     }
 
     void TestScreenFades()
@@ -356,9 +550,12 @@ namespace
         Check(death.GetMenuPage() == MenuPage::MainMenu && death.GetRuntimeState() == GameRuntimeState::NoLevel &&
             death.GetApplicationPresentation().screenTint.r == 0 && !death.CanResumeGame(),
             "Death must clear the world and resume/save availability at black.");
-        death.UpdateApplication(0.6, dyingInput);
+        death.UpdateApplication(0.075, dyingInput);
+        Check(death.GetApplicationPresentation().screenTint.r == 128,
+            "The main menu must reach half brightness halfway through its normal 0.15-second fade-in after death.");
+        death.UpdateApplication(0.075, dyingInput);
         Check(death.GetApplicationPresentation().screenTint.r == 255,
-            "The main menu must fade back in after death.");
+            "The main menu must complete its normal-speed fade-in after death.");
     }
 
     void TestNewGameSelection()
@@ -373,10 +570,20 @@ namespace
         };
         const auto focusedPart = [](const GameContext& host, std::size_t part)
         {
-            for (const auto& command : host.GetApplicationPresentation().commands)
+            float rowY = -100;
+            const auto presentation = host.GetApplicationPresentation();
+            for (const auto& command : presentation.commands)
+            {
+                if (const auto* text = std::get_if<UiText>(&command);
+                    text && text->text == GetString(IndexedStringId("chapter_", static_cast<int>(part) + 1)))
+                {
+                    rowY = text->y;
+                }
+            }
+            for (const auto& command : presentation.commands)
             {
                 if (const auto* bitmap = std::get_if<UiBitmap>(&command); bitmap &&
-                    bitmap->source == UiBitmapSource::MenuCursor && bitmap->bounds.y == 37.f + part * 30.f)
+                    bitmap->source == UiBitmapSource::MenuCursor && std::abs(bitmap->bounds.y - rowY - 5) < 0.01f)
                 {
                     return true;
                 }
@@ -412,7 +619,6 @@ namespace
             host.SetPaused(true);
             Tap(host, input, InputKey::MainMenuKey);
             Check(hasText(host, "New game"), "The main menu must expose New Game.");
-            Move(host, input, InputKey::UiDownKey);
             Tap(host, input, InputKey::UiConfirmKey);
             Check(host.GetMenuPage() == MenuPage::ChapterSelection && host.requests.size() == 1 &&
                 Same(host.inventory[4], Item(CollisionType::Key, 123)),
@@ -425,6 +631,7 @@ namespace
             Move(host, input, InputKey::UiUpKey, 4);
             Move(host, input, InputKey::UiDownKey, part);
             constexpr std::array<int, 3> starts{ 50, 30, 10 };
+            host.UpdateApplication(0.5, input);
             Check(hasText(host, GetString("chapter_01")) && hasText(host, GetString("chapter_02")) &&
                 hasText(host, GetString("chapter_03")) && focusedPart(host, static_cast<std::size_t>(part)) &&
                 !hasText(host, "Starts at level " + std::to_string(starts[part])),
@@ -487,6 +694,7 @@ namespace
         Move(cancelled, input, InputKey::UiDownKey);
         Tap(cancelled, input, InputKey::UiConfirmKey);
         Move(cancelled, input, InputKey::UiDownKey, 5);
+        cancelled.UpdateApplication(0.5, input);
         Check(focusedPart(cancelled, 2), "Part navigation must stop at the final HERZ part.");
         Tap(cancelled, input, InputKey::UiCancelKey);
         Check(cancelled.GetMenuPage() == MenuPage::MainMenu && cancelled.requests.size() == 1 &&
@@ -575,33 +783,33 @@ namespace
             Tap(host, input, InputKey::UiConfirmKey);
         };
         open(3);
-        const auto row = [&host](float y)
+        const auto row = [&host]()
         {
             for (const auto& command : host.GetApplicationPresentation().commands)
             {
-                if (const auto* text = std::get_if<UiText>(&command); text && text->x == 80 && text->y == y)
+                if (const auto* text = std::get_if<UiText>(&command); text && text->x == 85 && text->scale == 0.8f)
                 {
                     return *text;
                 }
             }
             throw std::runtime_error("Missing native save row.");
         };
-        Check(host.GetMenuPage() == MenuPage::SaveGame && row(32).text.empty() && !contains("Empty"),
+        Check(host.GetMenuPage() == MenuPage::SaveGame && row().text.empty() && !contains("Empty"),
             "Unused slots must be blank native rows, without labels or numbering.");
         const auto seed = host.randomSeed;
         Check(!host.UpdateApplication(1, input).tick && host.randomSeed == seed,
             "Save/load menus must freeze the world and RNG.");
         Tap(host, input, InputKey::UiConfirmKey);
-        Check(row(32).text.empty() && row(32).caret, "Empty slots must start editing in place with a visible caret.");
+        Check(row().text.empty() && row().caret, "Empty slots must start editing in place with a visible caret.");
         host.UpdateApplication(0.6, input);
-        Check(!row(32).caret, "The inline caret must blink while the world remains paused.");
+        Check(!row().caret, "The inline caret must blink while the world remains paused.");
         host.QueueTextInput(std::string(20, '\b') + "River gate");
         host.UpdateApplication(0, input);
-        Check(row(32).text == "River gate" && row(32).caret,
+        Check(row().text == "River gate" && row().caret,
             "Save names must replace their row in place, with a separate caret.");
         host.QueueTextInput(std::string(20, '\b'));
         host.UpdateApplication(0, input);
-        Check(row(32).text.empty() && row(32).caret, "Erasing every character must keep a valid empty editor.");
+        Check(row().text.empty() && row().caret, "Erasing every character must keep a valid empty editor.");
         Tap(host, input, InputKey::UiConfirmKey);
         Check(contains("Enter a save name.") && !host.saves[0],
             "An empty name must report validation without saving or leaving the editor.");
@@ -632,7 +840,7 @@ namespace
         Tap(host, input, InputKey::UiConfirmKey);
         host.QueueTextInput(std::string(20, '\b') + std::string(30, 'A'));
         host.UpdateApplication(0, input);
-        Check(row(32).text == std::string(NativeSaveGame::NameCapacity, 'A') && row(32).caret,
+        Check(row().text == std::string(NativeSaveGame::NameCapacity, 'A') && row().caret,
             "Save names must stop at the original 20-byte limit.");
         host.writeFails = true;
         Tap(host, input, InputKey::UiConfirmKey);
@@ -1054,6 +1262,8 @@ int main(int argc, char** argv)
         TestFrameTimingAndRoutes();
         TestGatesLoadingAndQuit();
         TestNewGameSelection();
+        TestMenuFidelity();
+        TestMenuLayoutsAndInventoryNames();
         TestScreenFades();
         TestSaveLoadMenus();
         TestInventorySelectionAndNavigation();

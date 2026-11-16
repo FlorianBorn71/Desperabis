@@ -561,8 +561,10 @@ gameplay placement do not need renderer-owned decisions. The nonblocking
 [application dispatcher and presentation recipe](Scaffold/ApplicationFlow.cpp)
 now implement inventory/main-menu flow, and the local DX11 adapter draws
 the recovered inventory art, layout and palette states. No shared renderer
-API has been added. Remaining visual work includes native per-item descriptions,
-preview animation, exact model projection and disabled-model shading.
+API has been added. Localized per-item names now follow the recovered
+`1E48:0B03` selector and draw at the native X=20/Y=161 inventory position.
+Remaining visual work includes preview animation, exact model projection
+and disabled-model shading.
 Exact DOS loop-to-wall-clock pulse timing also remains unmeasured.
 The legacy blocking driver retains its separate modal hooks; unsupported
 nonblocking pages and missing host loading still fail explicitly.

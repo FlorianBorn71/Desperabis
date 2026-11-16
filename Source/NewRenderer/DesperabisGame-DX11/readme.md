@@ -1,17 +1,17 @@
 # Desperabis Game (DX11)
 
 Standalone DX11 host with core-owned nonblocking gameplay, inventory and a
-first-pass main menu. Startup temporarily uses the core's
-`StartEndingBookPreview`: the last ending paper page is shown without replaying
-the cutscene. Press a key to close the rigid cover; it returns to the main menu
-after five seconds (or another fresh key).
-Ordinary paper turns retain their rolling curl. Restore `StartMuseumIntro`
-at the startup call site to return to the museum tour.
+first-pass main menu. Startup uses the core's `StartMuseumIntro` for the
+level-98 museum tour; Escape skips it and returns to the main menu.
+`StartEndingBookPreview` remains available for inspecting the rigid closing
+cover without replaying the ending cutscene. Ordinary paper turns retain
+their rolling curl.
 Part 1 restores the metadata-selected castle image between its opening book
 and park story. Core-owned fades use 0.6 seconds per direction for book/level
 boundaries and 0.15 seconds for inventory/menu navigation. Death slowly fades
 through dark red to black before the main menu.
-The final closed cover uses a slower four-second fade each way back to the menu.
+The final closed cover retains its slow four-second fade-out. Main-menu
+fade-in always takes the normal 0.15 seconds, including after death and the final book.
 Environmental ambience waits until gameplay, not its preceding book text.
 The opening Part-1 book/castle uses MUSIC20; the main menu after the museum uses
 MUSIC14 once. Cutscene/death transitions fade ambient/music with the picture,
@@ -374,12 +374,32 @@ Inventory text also preserves native glyph Y offsets, pen-X adjustment and
 character advances, so the health caption clears the bar and resource numbers
 do not use the wider modern spacing. Main-menu and prompt text are unchanged.
 All extra texture variants live in `ApplicationUi`, not shared renderer data.
+The focused item's localized name appears in prompt-orange RGB(255,192,128) in the native gap beneath the pockets,
+using the recovered collision/name-subtype selector (not its attack ID).
+Empty slots, action cells and deliberately unnamed items leave this line blank.
 Model projection/centering and the disabled electricity-model tint still use
-modern approximations; native item descriptions/preview animation remain open.
-The main menu offers Resume/Quit and explicitly identifies the other choices
-as unimplemented. Book sequences, cutscenes, chapter/new-game flow, settings,
-save and load remain future nonblocking pages. Tab is still a development
-level-switching shortcut.
+modern approximations; preview animation remains open.
+The crypt main menu offers New Game, Load, Save, Settings and Quit, with Resume
+as an additional row above New Game when available. It uses native label placement
+without an extra title; the rotating sword moves smoothly between selected rows.
+Unavailable actions are greyed out (including Save during cutscenes and Load
+without valid saves). Settings is currently a heading with Escape return.
+Escape or F1 during gameplay opens the menu. Escape in a story book exits the
+whole book rather than turning a page. Menu-to-menu fades affect only foreground
+text and cursor, leaving the crypt background visible.
+Main-menu rows are vertically centered. New Game matches the original
+caption-free layout: three choices at X=75, Y=68/92/116. Save/load headings
+share a top margin and their lists are centered below it.
+The crypt bitmap is uploaded fully opaque, including palette index zero,
+rather than inheriting sprite transparency; fades affect only foreground
+content, without relying on a black backing fill.
+
+Fresh normal levels now use native heading zero (`0000:E8D2`), corresponding to
+direction `{0,0,100}` rather than the old host's `{-256,0,0}` (a 90-degree
+difference). Saved views and recorded cutscene headings remain unchanged.
+Architectural VEKT6 cave tiles and VEKT9 animation 3 frames 3/4 use zero sorting
+depth-bias scale; adjacent VEKT9 props keep their existing scale.
+Tab is still a development level-switching shortcut.
 
 Headless presentation tests use D3D11 WARP plus the debug layer; no window,
 keyboard injection or audio device is needed:

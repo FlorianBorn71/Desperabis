@@ -1867,6 +1867,10 @@ namespace
         Check(data.playerSpawn && data.playerSpawn->position == std::array<std::int16_t, 3>{ 1350,29,3650 } &&
             data.playerSpawn->direction == direction,
             "Exact E1 selection must use pending terrain and native biased interpolation plus 45, preserving direction.");
+        host.InitializeLevelPlayerSpawn(data);
+        Check(data.playerSpawn->direction == std::array<std::int16_t, 3>{0,0,100} &&
+            GetVectorAngle(data.playerSpawn->direction[0], -data.playerSpawn->direction[2]) == 0,
+            "Fresh loads must default to native E8D2's heading zero, without rotating saved or explicitly supplied views.");
         data.level->wallTextures[4][12] = 0;
         data.level->wallTextures[20][7] = 0xe1;
         data.level->wallTextures[1][8] = 0xe1;

@@ -461,9 +461,12 @@ namespace
             core.GetApplicationPresentation().screenTint.r == 0 && audio.gain == 0 &&
             core.lastMusic == "SAMP\\MUSIC14.WAV" && !audio.looping,
             "At black the final cover must clean up and switch to the original one-shot menu music.");
-        for (int second = 0; second < 4; ++second) { core.UpdateApplication(1, input); }
+        core.UpdateApplication(0.075, input);
+        Check(core.GetApplicationPresentation().screenTint.r == 128 && audio.gain > 0.49f && audio.gain < 0.51f,
+            "The menu and its music must fade in at normal speed after the slow final-cover fade-out.");
+        core.UpdateApplication(0.075, input);
         Check(core.GetApplicationPresentation().screenTint.r == 255 && audio.gain == 1,
-            "The main menu and its music must fade in slowly after the final cover.");
+            "The main menu and its music must be fully restored after 0.15 seconds.");
     }
 
     void TestScreenAudio(const std::filesystem::path& assets)

@@ -4,6 +4,10 @@
       "message": "Desperabis",
       "description": "Title at the top of the main menu. Game name."
     },
+    "menu_settings": {
+      "message": "Settings",
+      "description": "Main menu action and settings screen heading. Replaces the old separate Settings/Configuration entries."
+    },
     "menu_resume": {
       "message": "Resume game",
       "description": "Main menu: return to the active game; disabled when no game is available."
@@ -330,6 +334,10 @@
     }
   },
   "de-de": {
+    "menu_settings": {
+      "message": "Einstellungen",
+      "description": "Main menu action and settings screen heading. Replaces the old separate Settings/Configuration entries."
+    },
     "menu_title": {
       "message": "Desperabis",
       "description": "Title at the top of the main menu. Game name."

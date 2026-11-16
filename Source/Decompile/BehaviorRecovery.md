@@ -772,8 +772,8 @@ Only the closing cover uses a stiff four-corner quad with cached hinged
 rotation poses; it never uses the rolling paper mesh. Its reverse is blank
 parchment, and the closed book retains the same rigid mesh and cover artwork.
 `StartEndingBookPreview` loads scene 95 but suppresses its cutscene, starting
-on the final paper page. DX11 temporarily uses this preview at startup instead
-of `StartMuseumIntro`: press a key to close the cover; it then exits automatically.
+on the final paper page as an optional inspection helper: press a key to close
+the cover; it then exits automatically. DX11 normally starts with `StartMuseumIntro`.
 The preview also supports deferred level loading.
 Its standalone load explicitly starts non-looping `MUSIC1`, since scene 96
 has not run to supply the track normally reused by scene 95. Ordinary
@@ -806,14 +806,15 @@ transitions hold the outgoing screen while fading out, apply the change
 only at black, wait at black for deferred loading, and fade the destination in.
 Book/level and chapter-image boundaries take **0.6 seconds per direction**;
 inventory/menu boundaries take **0.15 seconds per direction**. The final
-closed-cover return to the menu takes **4 seconds per direction**. Smoothstep
+closed cover takes **4 seconds to fade out**, followed by the normal
+**0.15-second main-menu fade-in**. Smoothstep
 color interpolation reaches exact black/white endpoints. World simulation,
 book clocks and navigation freeze during transitions, and input pressed
 during a fade is consumed rather than replayed. Load failures still propagate
 and clear the black mask; they are not converted into successful loads.
 On death, the camera's native fall continues while the screen darkens over
 **2.5 seconds** to RGB **(96,5,5)**, then fades to black over **1 second**.
-The core cleans up the game at black and fades the menu in over **0.6 seconds**.
+The core cleans up the game at black and fades the menu in over **0.15 seconds**.
 Ambient/music gain follows outgoing and incoming fades, including the complete
 3.5-second death sequence; quick inventory/menu fades retain the current audio.
 Gain multiplies the rain's indoor attenuation, without changing its low-pass,
@@ -2013,13 +2014,35 @@ outer state machine lives in
 - `RunApplication()` dispatches modal pages until Quit; `RunApplicationStep()`
   performs one blocking page invocation for the recovery harness.
 - `UpdateApplication(elapsedSeconds, input)` is the nonblocking host entry:
-  it owns F1/F2 edges, UI navigation, gameplay timing and page transitions.
+  it owns F1/F2/Escape edges, UI navigation, gameplay timing and page transitions.
   `GetApplicationPresentation()` produces a renderer-independent drawing recipe.
 - `SelectMainMenuAction()` routes to chapter selection, load/save, settings,
-  configuration, resumed gameplay, or Quit. It returns false for a disabled
+  configuration, resumed gameplay, or Quit. Configuration remains a legacy
+  blocking-harness route but is omitted from the nonblocking menu.
+  It returns false for a disabled
   choice without changing pages. Resume/save use `hasActiveGame` together with
   the original shared suppression gate. Escape retains its distinct native gate.
+  In the nonblocking menu, Load requires a readable occupied save
+  slot; save is disabled during cutscenes. Unavailable entries are greyed out.
+  Resume is an additional row above New Game when resuming is available.
+  The crypt menu has no added title; labels use native X=85 (`0000:A568`).
+  Main-menu rows are centered vertically. New Game has no heading: its three
+  choices match the original screenshot at X=75 and Y=68/92/116, with the
+  sword following those rows. Save/load use a common Y=16 heading and center
+  their lists in the 52..220 content band. The Settings placeholder is centered on its own.
+  Its rotating sword approaches the selected row continuously using the UI clock.
+  Escape during gameplay opens the main menu; Escape during a book skips the
+  whole book, even mid-turn, using its normal outgoing fade.
+  Crypt-menu page transitions fade only foreground text/cursor alpha, leaving
+  the background fully visible. BACKGR2 is uploaded fully opaque, including
+  palette index zero; sprite-style transparency is inappropriate for this
+  full-screen art. It needs no black-matte workaround to hide stale framebuffer
+  pixels. World/inventory transitions retain full-screen fades.
+  Settings currently has a heading and Escape return; its options remain future work.
 - `OpenInventory()` represents the gated gameplay-to-F2 transition.
+  The focused inventory item displays its localized `item_XX` name at native
+  X=20/Y=161 in prompt-orange RGB(255,192,128). Selection follows `1E48:0B03`'s collision/subtype/placement rules,
+  not weapon attack IDs; empty slots, action cells and unnamed rows clear the line.
 - `StartNewGame(chapter)` validates parts 1..3 and rejects an outstanding load
   before invoking `InitializeNewGame(chapter)`. The default initializer clears
   inventory, gold, poison and maps; restores life/oxygen and native weapon

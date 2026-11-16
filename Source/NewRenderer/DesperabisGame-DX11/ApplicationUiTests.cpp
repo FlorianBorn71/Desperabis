@@ -564,6 +564,21 @@ namespace
         };
         auto& assets = AssetManager::Instance();
         const auto table = FORCE_GET(assets.LoadAsset<ModelAnim>(L"VEKT\\VEKT30.3DA"));
+        const auto caveTiles = FORCE_GET(assets.LoadAsset<ModelAnim>(L"VEKT\\VEKT6.3DA"));
+        for (int animation = 0; animation < caveTiles->m_numAnims; ++animation)
+        {
+            for (int frame = 0; frame < caveTiles->m_numFrames; ++frame)
+            {
+                const auto& model = *caveTiles->GetModel(animation, frame);
+                if (model.HasOwnDrawcalls()) { checkGpuOffsets(model, 0.f, 0); }
+            }
+        }
+        const auto caveExtras = FORCE_GET(assets.LoadAsset<ModelAnim>(L"VEKT\\VEKT9.3DA"));
+        checkGpuOffsets(*caveExtras->GetModel(2, 2), 0.f, 0);
+        checkGpuOffsets(*caveExtras->GetModel(2, 3), 0.f, 0);
+        Check(caveExtras->GetModel(2, 0)->m_sortingDepthBiasScale == 0.002f &&
+            caveExtras->GetModel(2, 1)->m_sortingDepthBiasScale == 0.002f,
+            "Only the architectural cave additions may lose depth bias, not adjacent props.");
         checkGpuOffsets(*table->GetModel(1, 1), 0.f, 0);
         Check(table->GetModel(1, 0)->m_sortingDepthBiasScale == 0.002f &&
             table->GetModel(1, 2)->m_sortingDepthBiasScale == 0.002f &&
@@ -10155,9 +10170,9 @@ int main(int argc, char* argv[])
         {
             Target target(device.Get(), size.first, size.second);
             renderer.ReInitialize(target.colorView.Get(), target.depthView.Get(), target.viewport);
-            const auto drawRecipe = [&](const Desperabis::ApplicationPresentation& recipe)
+            const auto drawRecipe = [&](const Desperabis::ApplicationPresentation& recipe, float underlyingBrightness = 0.f)
             {
-                const float black[4]{ 0,0,0,1 };
+                const float black[4]{ underlyingBrightness,underlyingBrightness,underlyingBrightness,1 };
                 context->ClearRenderTargetView(target.colorView.Get(), black);
                 VisibilityResult empty;
                 empty.m_mainCamera = &camera;
@@ -10259,6 +10274,27 @@ int main(int argc, char* argv[])
             const float scale = (std::min)(size.first / 360.f, size.second / 240.f);
             const float offsetX = (size.first - 360 * scale) * 0.5f;
             const float offsetY = (size.second - 240 * scale) * 0.5f;
+            core.inventory[13].health = 1000;
+            core.inventory[13].collisionType = Desperabis::CollisionType::Weapon;
+            core.inventory[13].doorLockOrGroupBitmask = 6;
+            const auto namedInventory = render();
+            int namePixels = 0;
+            int orangeNamePixels = 0;
+            for (std::size_t pixel = 0; pixel < baseline.size(); ++pixel)
+            {
+                if (baseline[pixel] == namedInventory[pixel]) { continue; }
+                const float x = (pixel % size.first - offsetX) / scale;
+                const float y = (pixel / size.first - offsetY) / scale;
+                Check(x >= 14 && x < 220 && y >= 149 && y < 178,
+                    "The selected item name must render in the native gap beneath the pockets without covering inventory art.");
+                const auto color = namedInventory[pixel];
+                const int red = color & 255, green = (color >> 8) & 255, blue = (color >> 16) & 255;
+                if (red > green + 8 && green > blue + 8) { ++orangeNamePixels; }
+                ++namePixels;
+            }
+            Check(namePixels > 20 * scale * scale, "The selected inventory name must produce readable pixels at every aspect ratio.");
+            Check(orangeNamePixels > 20 * scale * scale, "Inventory item names must render orange like prompts, not white.");
+            core.inventory[13] = {};
             Desperabis::ApplicationPresentation healthLabel{ Desperabis::MenuPage::Inventory, {
                 Desperabis::UiFill{ { 0,0,360,240 }, { 0,0,0 } } } };
             auto meterOnly = healthLabel;
@@ -10403,6 +10439,44 @@ int main(int argc, char* argv[])
                 "Unlit UI model pictures must not modify shared world materials.");
             core.SetMenuPage(Desperabis::MenuPage::MainMenu);
             Check(render() != baseline, "The main menu must have a distinct presentation.");
+            auto fadedMenu = core.GetApplicationPresentation();
+            auto cryptOnly = fadedMenu;
+            cryptOnly.commands.erase(std::remove_if(cryptOnly.commands.begin(), cryptOnly.commands.end(), [](const auto& command)
+            {
+                const auto* bitmap = std::get_if<Desperabis::UiBitmap>(&command);
+                return !bitmap || bitmap->source != Desperabis::UiBitmapSource::MenuBackground;
+            }), cryptOnly.commands.end());
+            const auto backgroundPixels = drawRecipe(cryptOnly);
+            const auto backgroundOverWhite = drawRecipe(cryptOnly, 1.f);
+            for (std::size_t pixel = 0; pixel < backgroundPixels.size(); ++pixel)
+            {
+                const float x = (pixel % size.first - offsetX) / scale;
+                const float y = (pixel / size.first - offsetY) / scale;
+                if (x >= 0 && x < 360 && y >= 0 && y < 240)
+                {
+                    Check(backgroundPixels[pixel] == backgroundOverWhite[pixel],
+                        "The crypt bitmap alone must be fully opaque, including palette index zero, without a backing fill.");
+                }
+            }
+            fadedMenu.menuContentOpacity = 0;
+            Check(drawRecipe(fadedMenu) == backgroundPixels,
+                "Fully faded menu text and sword must leave the complete crypt background unchanged.");
+            const auto fadedOverBlack = drawRecipe(fadedMenu);
+            const auto fadedOverWhite = drawRecipe(fadedMenu, 1.f);
+            for (std::size_t pixel = 0; pixel < fadedOverBlack.size(); ++pixel)
+            {
+                const float x = (pixel % size.first - offsetX) / scale;
+                const float y = (pixel / size.first - offsetY) / scale;
+                if (x >= 0 && x < 360 && y >= 0 && y < 240)
+                {
+                    Check(fadedOverBlack[pixel] == fadedOverWhite[pixel],
+                        "A fading crypt menu must not expose stale framebuffer brightness through transparent background pixels.");
+                }
+            }
+            fadedMenu.menuContentOpacity = 0.5f;
+            const auto halfwayPixels = drawRecipe(fadedMenu);
+            Check(halfwayPixels != backgroundPixels && halfwayPixels != render(),
+                "Menu text and sword must fade gradually rather than disappearing in one step.");
             const auto herz = FORCE_GET(files.ReadDataFuture(files.FilenameToNative(L"GRAFIK\\HERZ.256")));
             core.SetGameParts(herz.data(), herz.size());
             core.SetMenuPage(Desperabis::MenuPage::ChapterSelection);
@@ -10420,6 +10494,7 @@ int main(int argc, char* argv[])
             core.UpdateApplication(0, selectionInput);
             selectionInput.down = true;
             core.UpdateApplication(0, selectionInput);
+            core.UpdateApplication(0.05, selectionInput);
             Check(render() != partSelection, "Part selection must visibly move focus to the next part.");
             core.SetMenuPage(Desperabis::MenuPage::LoadGame);
             const auto loadScreen = render();
@@ -10437,17 +10512,18 @@ int main(int argc, char* argv[])
                 if (saveScreen[pixel] == rotated[pixel]) { continue; }
                 const float x = (pixel % size.first - offsetX) / scale;
                 const float y = (pixel / size.first - offsetY) / scale;
-                Check(x >= 32 && x <= 68 && y >= 29 && y <= 44,
+                Check(x >= 32 && x <= 68 && y >= 47 && y <= 64,
                     "Sword animation must affect only its original anchored, half-height sprite footprint.");
             }
             auto editor = core.GetApplicationPresentation();
             const auto firstRow = std::find_if(editor.commands.begin(), editor.commands.end(), [](const auto& command)
             {
                 const auto* text = std::get_if<Desperabis::UiText>(&command);
-                return text && text->x == 80 && text->y == 32;
+                return text && text->x == 85 && text->scale == 0.8f;
             });
             Check(firstRow != editor.commands.end(), "Save editing requires its original inline row.");
             auto& name = std::get<Desperabis::UiText>(*firstRow);
+            name.text.clear();
             const auto emptyEditor = drawRecipe(editor);
             name.caret = true;
             const auto emptyCaret = drawRecipe(editor);
@@ -10458,14 +10534,14 @@ int main(int argc, char* argv[])
             const auto typed = drawRecipe(editor);
             Check(typed != emptyEditor && typedCaret != typed, "The caret must blink after the actual typed name.");
             const auto textMesh = font.CreateGlyphMesh(name.text, { 255,255,255,255 });
-            const float caretX = 80 + textMesh->GetExtent().x * name.scale + 1;
+            const float caretX = name.x + textMesh->GetExtent().x * name.scale + 1;
             int caretPixels = 0;
             for (std::size_t pixel = 0; pixel < typed.size(); ++pixel)
             {
                 if (typed[pixel] == typedCaret[pixel]) { continue; }
                 const float x = (pixel % size.first - offsetX) / scale;
                 const float y = (pixel / size.first - offsetY) / scale;
-                Check(x >= caretX - 1 && x <= caretX + 2 && y >= 31 && y <= 46,
+                Check(x >= caretX - 1 && x <= caretX + 2 && y >= name.y - 1 && y <= name.y + 14,
                     "Blinking must stay immediately after the name, on the selected row.");
                 ++caretPixels;
             }
@@ -10478,7 +10554,8 @@ int main(int argc, char* argv[])
                     "Empty, whitespace-only and glyphless text meshes must be harmless in the text renderer.");
             }
             for (const auto page : { Desperabis::MenuPage::MainMenu, Desperabis::MenuPage::AlternateMainMenu,
-                Desperabis::MenuPage::ChapterSelection, Desperabis::MenuPage::LoadGame, Desperabis::MenuPage::SaveGame })
+                Desperabis::MenuPage::ChapterSelection, Desperabis::MenuPage::LoadGame, Desperabis::MenuPage::SaveGame,
+                Desperabis::MenuPage::Settings })
             {
                 core.SetMenuPage(page);
                 int backdrops = 0, cursors = 0;
@@ -10490,16 +10567,12 @@ int main(int argc, char* argv[])
                         bitmap->layout == Desperabis::UiBitmapLayout::Stretch;
                     cursors += bitmap->source == Desperabis::UiBitmapSource::MenuCursor;
                 }
-                Check(backdrops == 1 && cursors == 1, "Every menu-family page must use the native background and sword.");
-                const auto screen = render();
-                for (std::size_t pixel = 0; pixel < screen.size(); ++pixel)
-                {
-                    const float y = (pixel / size.first - offsetY) / scale;
-                    if (y >= 205 && y < 225)
-                    {
-                        Check(screen[pixel] == saveScreen[pixel], "Menu pages must share the same full-width native backdrop.");
-                    }
-                }
+                Check(backdrops == 1 && cursors == (page == Desperabis::MenuPage::Settings ? 0 : 1),
+                    "Every menu-family page must use the native background and the selectable lists must have a sword.");
+                auto background = core.GetApplicationPresentation();
+                background.menuContentOpacity = 0;
+                Check(drawRecipe(background) == backgroundPixels,
+                    "All crypt-menu pages must retain the identical full-width backdrop when their foreground is faded out.");
             }
             if (argc >= 5 && size.first == 360)
             {

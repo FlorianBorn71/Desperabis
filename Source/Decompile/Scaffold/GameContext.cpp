@@ -169,7 +169,7 @@ namespace Desperabis
         }
     }
 
-    GameContext::GameContext() = default;
+    GameContext::GameContext() { menuCursorY = GetMenuCursorTargetY(); }
     GameContext::~GameContext() = default;
     GameContext::GameContext(GameContext&&) noexcept = default;
     GameContext& GameContext::operator=(GameContext&&) noexcept = default;
@@ -431,7 +431,11 @@ namespace Desperabis
         RefreshScreenAudio();
         pendingLevelLoad.reset();
         levelLoadError.clear();
-        if (screenTransitionsEnabled && screenFade == ScreenFade::None) { BeginScreenFadeIn(0.6); }
+        if (screenTransitionsEnabled && screenFade == ScreenFade::None)
+        {
+            fadeMenuContentOnly = false;
+            BeginScreenFadeIn(0.6);
+        }
         applicationPageChanged = true;
         applicationTickAccumulator = 0;
         for (std::size_t slot = 1; slot < worldObjects.size(); ++slot)
@@ -1408,7 +1412,11 @@ namespace Desperabis
         if (page == menuPage) { return; }
         const bool book = page == MenuPage::StoryBook || menuPage == MenuPage::StoryBook ||
             page == MenuPage::CastleIntroduction || menuPage == MenuPage::CastleIntroduction;
-        if (QueueScreenChange([this, page] { SetMenuPage(page); }, book ? 0.6 : 0.15)) { return; }
+        if (QueueScreenChange([this, page] { SetMenuPage(page); }, book ? 0.6 : 0.15,
+            UsesMenuBackground(menuPage) && UsesMenuBackground(page)))
+        {
+            return;
+        }
         CommitMenuPage(page);
     }
 
@@ -1431,7 +1439,11 @@ namespace Desperabis
             inventoryPulseAccumulator = 0;
         }
         else { inventorySource.reset(); }
-        if (page == MenuPage::MainMenu || page == MenuPage::AlternateMainMenu) { mainMenuFocus = 0; }
+        if (page == MenuPage::MainMenu || page == MenuPage::AlternateMainMenu)
+        {
+            mainMenuFocus = CanResumeGame() ? 0 : 1;
+            RefreshSaveSlots();
+        }
         if (page == MenuPage::ChapterSelection) { chapterFocus = 0; }
         if (page == MenuPage::LoadGame || page == MenuPage::SaveGame)
         {
@@ -1441,6 +1453,7 @@ namespace Desperabis
             saveError.clear();
             queuedText.clear();
         }
+        menuCursorY = GetMenuCursorTargetY();
     }
 
     bool GameContext::CanResumeGame() const

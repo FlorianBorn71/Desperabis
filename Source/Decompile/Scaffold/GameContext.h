@@ -625,7 +625,8 @@ namespace Desperabis
         // Loads FELD geometry, LEVELS.INF surface metadata and the initial static collision map.
         void LoadLevelGeometry(std::int16_t levelNumber, LevelLoadData& data);
         // Selects the exact normal map marker and derives eye Y from the pending level's terrain.
-        void InitializeLevelPlayerSpawn(LevelLoadData& data, const std::array<std::int16_t, 3>& direction);
+        void InitializeLevelPlayerSpawn(LevelLoadData& data,
+            const std::array<std::int16_t, 3>& direction = {0, 0, 100});
         // Loads ordinary slots 2..164, preserving reserved/player/fallback records.
         void LoadLevelObjects(std::int16_t levelNumber, LevelLoadData& data);
         // May complete synchronously or start host-side async work. Default reports an explicit error.
@@ -700,7 +701,11 @@ namespace Desperabis
         std::optional<std::uint8_t> inventorySource;
         std::uint16_t inventoryPulsePhase = 0;
         double inventoryPulseAccumulator = 0;
-        std::uint8_t mainMenuFocus = 0;
+        std::uint8_t mainMenuFocus = 1;
+        float menuCursorY = 0;
+        float GetMenuRowY(std::size_t row) const;
+        float GetMenuCursorTargetY() const;
+        bool IsMainMenuActionEnabled(MainMenuAction action) const;
         std::uint8_t chapterFocus = 0;
         double applicationTickAccumulator = 0;
         static constexpr std::size_t InputKeyCount = static_cast<std::size_t>(InputKey::Count);
@@ -764,11 +769,12 @@ namespace Desperabis
         std::function<void()> pendingScreenChange;
         bool applyingScreenChange = false;
         bool fadeScreenAudio = false;
+        bool fadeMenuContentOnly = false;
         float screenAudioGain = 1.f;
         std::optional<std::uint8_t> levelAmbientSound, activeAmbientSelector;
         void RefreshScreenAudio();
         void SetScreenAudioGain(float gain);
-        bool QueueScreenChange(std::function<void()> change, double duration);
+        bool QueueScreenChange(std::function<void()> change, double duration, bool menuContentOnly = false);
         bool UpdateScreenFade(double delta);
         void BeginScreenFadeIn(double duration);
         bool pendingLevelStory = false;

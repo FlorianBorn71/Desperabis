@@ -14,6 +14,9 @@ namespace Desperabis
         constexpr double TicksPerSecond = 33;
         constexpr std::array<std::uint8_t, 16> InventoryPayloads{
             14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 100, 101, 1, 2 };
+        constexpr float MenuTextX = 85.f;
+        constexpr float MenuHeadingY = 16.f;
+        constexpr float MenuLineHeight = 16.f;
         class ApplicationInput final : public InputHandler
         {
         public:
@@ -22,6 +25,54 @@ namespace Desperabis
             bool IsKeyPressed(InputKey key) override { return keys.at(static_cast<std::size_t>(key)); }
             std::array<bool, static_cast<std::size_t>(InputKey::Count)> keys;
         };
+    }
+
+    float GameContext::GetMenuRowY(std::size_t row) const
+    {
+        if (menuPage == MenuPage::ChapterSelection) { return 68.f + static_cast<float>(row) * 24.f; }
+        std::size_t count = 6;
+        float spacing = 24.f, height = MenuLineHeight, center = ApplicationPresentation::Height * 0.5f;
+        if (menuPage == MenuPage::LoadGame || menuPage == MenuPage::SaveGame)
+        {
+            count = saveSlots.size();
+            spacing = 17.5f;
+            height *= 0.8f;
+            center = 136.f; // Center lists below the common heading, inside the 52..220 content band.
+        }
+        else if (!CanResumeGame())
+        {
+            --count;
+            --row;
+        }
+        return center - ((static_cast<float>(count) - 1) * spacing + height) * 0.5f +
+            static_cast<float>(row) * spacing;
+    }
+
+    float GameContext::GetMenuCursorTargetY() const
+    {
+        if (!UsesMenuBackground(menuPage) || menuPage == MenuPage::Settings) { return 0; }
+        const auto row = menuPage == MenuPage::ChapterSelection ? chapterFocus :
+            menuPage == MenuPage::LoadGame || menuPage == MenuPage::SaveGame ? saveFocus : mainMenuFocus;
+        return GetMenuRowY(row) + 5.f;
+    }
+
+    bool GameContext::IsMainMenuActionEnabled(MainMenuAction action) const
+    {
+        switch (action)
+        {
+        case MainMenuAction::Cancel:
+        case MainMenuAction::ResumeGame: return runtimeState == GameRuntimeState::Ready && CanResumeGame();
+        case MainMenuAction::NewGame: return !pendingLevelLoad;
+        case MainMenuAction::LoadGame:
+            return !pendingLevelLoad && std::any_of(saveSlots.begin(), saveSlots.end(),
+                [](const SaveSlot& slot) { return slot.occupied && slot.error.empty(); });
+        case MainMenuAction::SaveGame:
+            return runtimeState == GameRuntimeState::Ready && CanResumeGame() && !IsCutscenePlaying();
+        case MainMenuAction::Settings:
+        case MainMenuAction::Quit: return true;
+        case MainMenuAction::Configuration: return false;
+        default: throw std::invalid_argument("Unknown main-menu action.");
+        }
     }
 
     void GameContext::OpenCodeBook(std::int16_t section)
@@ -269,7 +320,7 @@ namespace Desperabis
         return { InteractionStatus::NoEffect };
     }
 
-    bool GameContext::QueueScreenChange(std::function<void()> change, double duration)
+    bool GameContext::QueueScreenChange(std::function<void()> change, double duration, bool menuContentOnly)
     {
         if (!screenTransitionsEnabled || applyingScreenChange) { return false; }
         if (screenFade != ScreenFade::None) { return true; }
@@ -277,6 +328,7 @@ namespace Desperabis
         screenFade = ScreenFade::Out;
         screenFadeSeconds = 0;
         screenFadeDuration = duration;
+        fadeMenuContentOnly = menuContentOnly;
         fadeScreenAudio = duration >= 0.6;
         return true;
     }
@@ -323,7 +375,7 @@ namespace Desperabis
     {
         screenFade = ScreenFade::In;
         screenFadeSeconds = 0;
-        screenFadeDuration = duration;
+        screenFadeDuration = menuPage == MenuPage::MainMenu || menuPage == MenuPage::AlternateMainMenu ? 0.15 : duration;
         screenTint = {0, 0, 0, 255};
     }
 
@@ -433,6 +485,7 @@ namespace Desperabis
             screenFadeSeconds = 0;
             screenFadeDuration = 2.5;
             fadeScreenAudio = true;
+            fadeMenuContentOnly = false;
             pendingScreenChange = [this] { FinishGamePart(); };
         }
         if (UpdateScreenFade(delta))
@@ -444,8 +497,7 @@ namespace Desperabis
             queuedText.clear();
             return {};
         }
-        if (menuPage == MenuPage::MainMenu || menuPage == MenuPage::AlternateMainMenu ||
-            menuPage == MenuPage::ChapterSelection || menuPage == MenuPage::LoadGame || menuPage == MenuPage::SaveGame)
+        if (UsesMenuBackground(menuPage))
         {
             menuAnimationSeconds = std::fmod(menuAnimationSeconds + delta, 1.0);
         }
@@ -485,7 +537,7 @@ namespace Desperabis
                 break;
             }
             if (IsBossFallPlaying()) { break; }
-            if (wasPressed(InputKey::MainMenuKey)) { SetMenuPage(MenuPage::MainMenu); }
+            if (wasPressed(InputKey::MainMenuKey) || wasPressed(InputKey::UiCancelKey)) { SetMenuPage(MenuPage::MainMenu); }
             else if (wasPressed(InputKey::InventoryKey) && runtimeState == GameRuntimeState::Ready &&
                 !IsCutscenePlaying())
             {
@@ -503,6 +555,7 @@ namespace Desperabis
             }
             break;
         case MenuPage::StoryBook:
+            if (wasPressed(InputKey::UiCancelKey)) { CompleteStoryBook(); break; }
             storySeconds += delta;
             storyPageSeconds += delta;
             if (storyEndsGame && storyPageIndex + 1 == storyPages.size() && storyPageSeconds >= 5)
@@ -582,11 +635,12 @@ namespace Desperabis
             }
             else
             {
-                if (navigation == InputKey::UiUpKey && mainMenuFocus > 0) { --mainMenuFocus; }
-                if (navigation == InputKey::UiDownKey && mainMenuFocus < 4) { ++mainMenuFocus; }
+                if (navigation == InputKey::UiUpKey && mainMenuFocus > (CanResumeGame() ? 0 : 1)) { --mainMenuFocus; }
+                if (navigation == InputKey::UiDownKey && mainMenuFocus < 5) { ++mainMenuFocus; }
                 if (wasPressed(InputKey::UiConfirmKey))
                 {
-                    if (mainMenuFocus == 4) { SelectMainMenuAction(MainMenuAction::Quit); }
+                    if (mainMenuFocus == 5) { SelectMainMenuAction(MainMenuAction::Quit); }
+                    else if (mainMenuFocus == 4) { SelectMainMenuAction(MainMenuAction::Settings); }
                     else if (mainMenuFocus == 1 && runtimeState != GameRuntimeState::Loading)
                     {
                         EnsureGameParts();
@@ -595,8 +649,7 @@ namespace Desperabis
                     else if (mainMenuFocus == 2 || mainMenuFocus == 3)
                     {
                         const auto action = mainMenuFocus == 2 ? MainMenuAction::LoadGame : MainMenuAction::SaveGame;
-                        if (runtimeState != GameRuntimeState::Loading &&
-                            (action != MainMenuAction::SaveGame || runtimeState == GameRuntimeState::Ready) &&
+                        if (IsMainMenuActionEnabled(action) &&
                             SelectMainMenuAction(action)) { RefreshSaveSlots(); }
                     }
                     else if (runtimeState == GameRuntimeState::Ready)
@@ -605,6 +658,9 @@ namespace Desperabis
                     }
                 }
             }
+            break;
+        case MenuPage::Settings:
+            if (wasPressed(InputKey::UiCancelKey)) { SetMenuPage(MenuPage::MainMenu); }
             break;
         case MenuPage::ChapterSelection:
             if (wasPressed(InputKey::UiCancelKey)) { SetMenuPage(MenuPage::MainMenu); }
@@ -684,6 +740,12 @@ namespace Desperabis
                 std::to_string(static_cast<std::uint16_t>(menuPage)) + " is not implemented.");
         }
 
+        if (UsesMenuBackground(menuPage))
+        {
+            const float target = GetMenuCursorTargetY();
+            menuCursorY += (target - menuCursorY) * static_cast<float>(1 - std::exp(-20 * delta));
+            if (std::abs(target - menuCursorY) < 0.01f) { menuCursorY = target; }
+        }
         queuedText.clear();
         ApplicationUpdateResult result;
         if (applicationPageChanged || pageAtStart != menuPage)
@@ -791,6 +853,11 @@ namespace Desperabis
     {
         ApplicationPresentation result{ menuPage, {} };
         result.screenTint = screenTint;
+        if (fadeMenuContentOnly && screenFade != ScreenFade::None)
+        {
+            result.menuContentOpacity = screenTint.r / 255.f;
+            result.screenTint = {};
+        }
         if (screenFade == ScreenFade::Black && runtimeState == GameRuntimeState::Loading) { return result; }
         if (menuPage == MenuPage::CastleIntroduction)
         {
@@ -870,48 +937,53 @@ namespace Desperabis
                 static_cast<std::uint8_t>(frame / 5), static_cast<std::uint8_t>(frame % 5),
                 normal, UiBitmapLayout::SpriteAnchor });
         };
-        if (menuPage == MenuPage::MainMenu || menuPage == MenuPage::AlternateMainMenu ||
-            menuPage == MenuPage::ChapterSelection || menuPage == MenuPage::LoadGame || menuPage == MenuPage::SaveGame)
+        if (UsesMenuBackground(menuPage))
         {
             draw.emplace_back(UiBitmap{ { 0, 0, result.Width, result.Height },
                 UiBitmapSource::MenuBackground, 0, 0, 0, {}, UiBitmapLayout::Stretch });
         }
         if (menuPage == MenuPage::MainMenu || menuPage == MenuPage::AlternateMainMenu)
         {
-            text(55, 8, GetString("menu_title"), normal, 0.9f);
-            text(80, 32, GetString("menu_resume"), runtimeState == GameRuntimeState::Ready && CanResumeGame() ? normal : dark, 0.8f);
-            text(80, 60, GetString("menu_new"), runtimeState == GameRuntimeState::Loading ? dark : normal, 0.8f);
-            text(80, 88, GetString("menu_load"), runtimeState == GameRuntimeState::Loading ? dark : normal, 0.8f);
-            text(80, 116, GetString("menu_save"), runtimeState == GameRuntimeState::Ready && CanResumeGame() &&
-                !IsCutscenePlaying() ? normal : dark, 0.8f);
-            text(80, 144, GetString("menu_quit"), normal, 0.8f);
-            sword(48, 37.f + mainMenuFocus * 28.f);
+            constexpr std::array<std::string_view, 6> labels{
+                "menu_resume", "menu_new", "menu_load", "menu_save", "menu_settings", "menu_quit"};
+            constexpr std::array<MainMenuAction, 6> actions{MainMenuAction::ResumeGame, MainMenuAction::NewGame,
+                MainMenuAction::LoadGame, MainMenuAction::SaveGame, MainMenuAction::Settings, MainMenuAction::Quit};
+            for (std::size_t row = CanResumeGame() ? 0 : 1; row < labels.size(); ++row)
+            {
+                text(MenuTextX, GetMenuRowY(row), GetString(labels[row]),
+                    IsMainMenuActionEnabled(actions[row]) ? normal : dark, 1.f);
+            }
+            sword(48, menuCursorY);
+            return result;
+        }
+        if (menuPage == MenuPage::Settings)
+        {
+            text(MenuTextX, (result.Height - MenuLineHeight) * 0.5f, GetString("menu_settings"), normal, 1.f);
             return result;
         }
         if (menuPage == MenuPage::ChapterSelection)
         {
-            text(55, 8, GetString("menu_new"), normal, 0.9f);
             for (std::size_t part = 0; part < gameParts.size(); ++part)
             {
-                text(80, 32.f + static_cast<float>(part) * 30.f,
+                text(75, GetMenuRowY(part),
                     GetString(IndexedStringId("chapter_", static_cast<int>(part) + 1)), normal, 0.8f);
             }
-            sword(48, 37.f + chapterFocus * 30.f);
+            sword(48, menuCursorY);
             return result;
         }
         if (menuPage == MenuPage::LoadGame || menuPage == MenuPage::SaveGame)
         {
-            text(55, 8, GetString(menuPage == MenuPage::LoadGame ? "menu_load" : "menu_save"), normal, 0.9f);
+            text(MenuTextX, MenuHeadingY, GetString(menuPage == MenuPage::LoadGame ? "menu_load" : "menu_save"), normal, 1.f);
             for (std::size_t slot = 0; slot < saveSlots.size(); ++slot)
             {
                 const auto& entry = saveSlots[slot];
                 const bool editing = editingSaveName && slot == saveFocus;
-                text(80, 32.f + static_cast<float>(slot) * 17.5f,
+                text(MenuTextX, GetMenuRowY(slot),
                     editing ? saveName : !entry.error.empty() ? GetString("save_unreadable") : entry.occupied ? entry.name : "",
                     normal, 0.8f);
                 std::get<UiText>(draw.back()).caret = editing && saveCaretSeconds < 0.5;
             }
-            sword(48, 37.f + saveFocus * 17.5f);
+            sword(48, menuCursorY);
             const auto& error = saveError.empty() ? saveSlots[saveFocus].error : saveError;
             if (!error.empty()) { text(180, 230, error, bright, 0.4f, UiTextAlignment::Center); }
             return result;
@@ -966,6 +1038,34 @@ namespace Desperabis
                     static_cast<std::uint8_t>(item.modelAnim - 1), static_cast<std::uint8_t>(item.animFrame - 1),
                     item.modelFrame2, item.blendWeightOrSpriteOpacity, item.displayType,
                     { 30, -60, 30 }, static_cast<std::int16_t>(2 * picture + 50) });
+            }
+        }
+        const auto focusedPayload = InventoryPayloads.at(inventoryFocus);
+        if (focusedPayload <= inventory.size())
+        {
+            const auto& item = inventory.at(focusedPayload - 1);
+            int label = static_cast<std::uint8_t>(item.collisionType);
+            if (item.health > 0 && label > 0 && label < 120)
+            {
+                // Native 1E48:0B03 selects a BEZEICH row, not the weapon/attack ID in itemValue.
+                if (item.renderPlacementMode == 20)
+                {
+                    if (item.spriteScale != 64) { label = 100 + item.spriteScale; }
+                }
+                else if ((item.collisionType == CollisionType::Weapon || item.collisionType == CollisionType::Ammo) &&
+                    item.doorLockOrGroupBitmask > 0)
+                {
+                    label = 100 + item.doorLockOrGroupBitmask;
+                }
+                if (item.collisionType == CollisionType::BuyItem) { label = item.generalPurpose1; }
+                const auto id = IndexedStringId("item_", label);
+                // Deliberately blank native rows have no entry in the localized catalog.
+                if (const auto* name = FindString(id); name && !name->empty())
+                {
+                    text(20, 161, item.collisionType == CollisionType::BuyItem ?
+                        FormatString(id, {{"price", std::to_string(item.doorLockOrGroupBitmask)}}) : *name,
+                        {255, 192, 128}, 1.f);
+                }
             }
         }
         if (playerLifeMaximum <= 0) { throw std::logic_error("Inventory requires a positive player-life maximum."); }
