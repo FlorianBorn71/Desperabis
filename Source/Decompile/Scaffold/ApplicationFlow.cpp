@@ -34,8 +34,8 @@ namespace Desperabis
         float spacing = 24.f, height = MenuLineHeight, center = ApplicationPresentation::Height * 0.5f;
         if (menuPage == MenuPage::LoadGame || menuPage == MenuPage::SaveGame)
         {
-            count = saveSlots.size();
-            spacing = 17.5f;
+            count = GetSaveMenuSlotCount();
+            spacing = menuPage == MenuPage::LoadGame ? 16.f : 17.5f;
             height *= 0.8f;
             center = 136.f; // Center lists below the common heading, inside the 52..220 content band.
         }
@@ -477,6 +477,10 @@ namespace Desperabis
         const auto pageAtStart = menuPage;
         // No real-time catch-up for UI repeat/pulse or world simulation after a long host stall.
         const double delta = std::min(elapsedSeconds, 1.0);
+        if (runtimeState != GameRuntimeState::Loading)
+        {
+            quickSaveFeedbackSeconds = std::max(0.0, quickSaveFeedbackSeconds - elapsedSeconds);
+        }
         if (screenTransitionsEnabled && screenFade == ScreenFade::None &&
             menuPage == MenuPage::Gameplay && runtimeState == GameRuntimeState::Ready &&
             hasActiveGame && playerLife <= 0 && !cutscenePlaying)
@@ -525,9 +529,46 @@ namespace Desperabis
                 }
             }
         }
-        switch (menuPage)
+        if (wasPressed(InputKey::QuickLoadKey) && !pendingLevelLoad &&
+            (menuPage == MenuPage::Gameplay || menuPage == MenuPage::MainMenu ||
+                menuPage == MenuPage::AlternateMainMenu))
+        {
+            quickSaveFeedbackSeconds = 0;
+            try
+            {
+                auto bytes = ReadSaveFile(QuickSaveSlot);
+                if (!bytes) { throw std::runtime_error(GetString("save_empty")); }
+                LoadGame(std::move(*bytes));
+                quickSaveFeedback = GetString("save_quickloaded");
+                quickSaveFeedbackSeconds = 2;
+            }
+            catch (const std::runtime_error& error)
+            {
+                SetMenuPage(MenuPage::LoadGame);
+                saveFocus = QuickSaveSlot - 1;
+                saveError = error.what();
+            }
+            applicationPageChanged = true;
+        }
+        else switch (menuPage)
         {
         case MenuPage::Gameplay:
+            if (wasPressed(InputKey::QuickSaveKey))
+            {
+                quickSaveFeedbackSeconds = 0;
+                if (runtimeState == GameRuntimeState::Ready && CanResumeGame() && !paused &&
+                    playerLife > 0 && !IsCutscenePlaying())
+                {
+                    try
+                    {
+                        WriteSaveFile(QuickSaveSlot, CaptureSaveGame(GetString("save_quicksave")));
+                        quickSaveFeedback = GetString("save_quicksaved");
+                        quickSaveFeedbackSeconds = 2;
+                    }
+                    catch (const std::runtime_error& error) { PromptUserMessage(error.what(), 165); }
+                }
+                else { PromptUserMessage(GetString("save_unavailable"), 100); }
+            }
             if (IsMuseumIntroPlaying())
             {
                 if (runtimeState == GameRuntimeState::Ready && wasPressed(InputKey::UiCancelKey))
@@ -685,7 +726,8 @@ namespace Desperabis
             else if (!editingSaveName)
             {
                 if (navigation == InputKey::UiUpKey && saveFocus > 0) { --saveFocus; saveError.clear(); }
-                if (navigation == InputKey::UiDownKey && saveFocus < 9) { ++saveFocus; saveError.clear(); }
+                if (navigation == InputKey::UiDownKey &&
+                    saveFocus + 1u < GetSaveMenuSlotCount()) { ++saveFocus; saveError.clear(); }
                 if (wasPressed(InputKey::UiConfirmKey) && runtimeState != GameRuntimeState::Loading)
                 {
                     if (menuPage == MenuPage::LoadGame)
@@ -906,6 +948,11 @@ namespace Desperabis
                     (worldObjects[1].posX - 112.f) / 25.f,
                     162.f - (worldObjects[1].posZ - 38.f) / 25.f, playerHeading });
             }
+            if (runtimeState == GameRuntimeState::Ready && quickSaveFeedbackSeconds > 0)
+            {
+                result.commands.emplace_back(UiText{352, 222, quickSaveFeedback, 0.3f,
+                    {204, 102, 0}, UiTextAlignment::Right});
+            }
             return result;
         }
         if (menuPage == MenuPage::Quit) { return result; }
@@ -974,13 +1021,14 @@ namespace Desperabis
         if (menuPage == MenuPage::LoadGame || menuPage == MenuPage::SaveGame)
         {
             text(MenuTextX, MenuHeadingY, GetString(menuPage == MenuPage::LoadGame ? "menu_load" : "menu_save"), normal, 1.f);
-            for (std::size_t slot = 0; slot < saveSlots.size(); ++slot)
+            for (std::size_t slot = 0; slot < GetSaveMenuSlotCount(); ++slot)
             {
                 const auto& entry = saveSlots[slot];
                 const bool editing = editingSaveName && slot == saveFocus;
                 text(MenuTextX, GetMenuRowY(slot),
-                    editing ? saveName : !entry.error.empty() ? GetString("save_unreadable") : entry.occupied ? entry.name : "",
-                    normal, 0.8f);
+                    editing ? saveName : slot + 1 == QuickSaveSlot ? GetString("save_quicksave") :
+                        !entry.error.empty() ? GetString("save_unreadable") : entry.occupied ? entry.name : "",
+                    slot + 1 == QuickSaveSlot && (!entry.occupied || !entry.error.empty()) ? dark : normal, 0.8f);
                 std::get<UiText>(draw.back()).caret = editing && saveCaretSeconds < 0.5;
             }
             sword(48, menuCursorY);

@@ -378,7 +378,7 @@ namespace
 			if (!file)
 			{
 				if (!std::filesystem::exists(path)) { return std::nullopt; }
-				throw std::runtime_error("Cannot open STAND" + std::to_string(slot) + ".SPL.");
+				throw std::runtime_error("Cannot open " + path.filename().string() + ".");
 			}
 			const auto size = file.tellg();
 			if (size < 0 || size > static_cast<std::streamoff>(Desperabis::NativeSaveGame::MaximumSize))
@@ -521,6 +521,8 @@ namespace
 		bool selectBucket = false;
 		bool mainMenu = false;
 		bool inventory = false;
+		bool quickSave = false;
+		bool quickLoad = false;
 		bool uiUp = false;
 		bool uiDown = false;
 		bool uiLeft = false;
@@ -563,6 +565,8 @@ namespace
 			case Desperabis::InputKey::SelectBucketKey: return selectBucket;
 			case Desperabis::InputKey::MainMenuKey: return mainMenu;
 			case Desperabis::InputKey::InventoryKey: return inventory;
+			case Desperabis::InputKey::QuickSaveKey: return quickSave;
+			case Desperabis::InputKey::QuickLoadKey: return quickLoad;
 			case Desperabis::InputKey::UiUpKey: return uiUp;
 			case Desperabis::InputKey::UiDownKey: return uiDown;
 			case Desperabis::InputKey::UiLeftKey: return uiLeft;
@@ -709,12 +713,17 @@ namespace
 
 	std::filesystem::path SaveFilePath(std::uint8_t slot)
 	{
+		if (slot < 1 || slot > Desperabis::GameContext::QuickSaveSlot)
+		{
+			throw std::out_of_range("Unknown save slot.");
+		}
 		std::array<wchar_t, 32768> executable{};
 		const auto length = GetModuleFileNameW(nullptr, executable.data(), static_cast<DWORD>(executable.size()));
 		if (length == 0 || length >= executable.size()) { throw std::runtime_error("Cannot locate the game's save directory."); }
 		auto directory = std::filesystem::path(std::wstring(executable.data(), length)).parent_path();
 		if (directory.filename() == L"Debug") { directory = directory.parent_path(); }
-		return directory / L"SaveGames" / (L"STAND" + std::to_wstring(slot) + L".SPL");
+		return directory / L"SaveGames" / (slot == Desperabis::GameContext::QuickSaveSlot ?
+			L"quicksav.spl" : L"STAND" + std::to_wstring(slot) + L".SPL");
 	}
 
 	int16_t ToNativeWord(float value)
@@ -1130,6 +1139,8 @@ namespace
 		input.interaction = IsKeyPressed(VK_RETURN);
 		input.mainMenu = IsKeyPressed(VK_F1);
 		input.inventory = IsKeyPressed(VK_F2);
+		input.quickSave = IsKeyPressed(VK_F5);
+		input.quickLoad = IsKeyPressed(VK_F6);
 		input.uiUp = IsKeyPressed(VK_UP);
 		input.uiDown = IsKeyPressed(VK_DOWN);
 		input.uiLeft = IsKeyPressed(VK_LEFT);

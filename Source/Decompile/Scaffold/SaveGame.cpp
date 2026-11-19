@@ -341,7 +341,7 @@ namespace Desperabis
 
     void GameContext::RefreshSaveSlots()
     {
-        std::array<SaveSlot, 10> slots{};
+        decltype(saveSlots) slots{};
         for (std::size_t i = 0; i < slots.size(); ++i)
         {
             try

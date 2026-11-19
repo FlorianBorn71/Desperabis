@@ -46,8 +46,11 @@ namespace
         bool fail = false;
         bool reportFailure = false;
         std::vector<LevelLoadRequest> requests;
-        std::array<std::optional<std::vector<std::uint8_t>>, 10> saves{};
+        std::array<std::optional<std::vector<std::uint8_t>>, QuickSaveSlot> saves{};
         bool writeFails = false;
+        int saveWrites = 0;
+        std::string prompt;
+        void PromptUserMessage(std::string_view text, std::int16_t) override { prompt = text; }
         std::vector<std::uint8_t> LoadFile(std::string_view filename) override
         {
             std::ifstream file(originalAssets / filename, std::ios::binary);
@@ -59,6 +62,7 @@ namespace
         {
             if (writeFails) { throw std::runtime_error("Test disk is full."); }
             saves.at(slot - 1) = bytes;
+            ++saveWrites;
         }
         int healthNotifications = 0;
         void OnPlayerHealthChanged(std::int32_t, std::int32_t) override { ++healthNotifications; }
@@ -376,7 +380,8 @@ namespace
             }
             for (std::size_t row = 1; row < rows.size(); ++row)
             {
-                Check(rows[row].y - rows[row - 1].y >= 17.49f && rows[row].y + 16 * rows[row].scale <= 222,
+                Check(rows[row].y - rows[row - 1].y >= (host.GetMenuPage() == MenuPage::LoadGame ? 15.99f : 17.49f) &&
+                    rows[row].y + 16 * rows[row].scale <= (host.GetMenuPage() == MenuPage::LoadGame ? 223 : 222),
                     "Menu rows must remain separated and inside the logical screen.");
             }
         };
@@ -393,7 +398,7 @@ namespace
         {
             host.SetMenuPage(page);
             const bool slots = page == MenuPage::LoadGame || page == MenuPage::SaveGame;
-            checkLayout(host, slots ? 10 : 6, slots);
+            checkLayout(host, page == MenuPage::LoadGame ? 11 : slots ? 10 : 6, slots);
         }
         host.SetMenuPage(MenuPage::Settings);
         checkLayout(host, 1, false);
@@ -871,6 +876,160 @@ namespace
         Check(contains("This slot is empty."), "An empty slot must not pretend to load successfully.");
     }
 
+    void TestQuickSaveLoad()
+    {
+        Host host;
+        Input input;
+        Ready(host, input);
+        const auto quick = GameContext::QuickSaveSlot - 1;
+        host.gold = 23;
+        host.saves[0] = host.CaptureSaveGame("Manual save");
+        const auto manual = *host.saves[0];
+        const auto feedback = [&host](std::string_view value) -> std::optional<UiText>
+        {
+            for (const auto& command : host.GetApplicationPresentation().commands)
+            {
+                if (const auto* text = std::get_if<UiText>(&command); text && text->text == value) { return *text; }
+            }
+            return {};
+        };
+        host.prompt = "Puzzle prompt";
+        input.Set(InputKey::QuickSaveKey, true);
+        host.UpdateApplication(0, input);
+        host.gold = 99;
+        host.UpdateApplication(0, input);
+        Check(host.saveWrites == 1 && host.saves[quick] && *host.saves[0] == manual &&
+            NativeSaveGame::Decode(*host.saves[quick]).Name() == "Quicksave" && host.prompt == "Puzzle prompt",
+            "F5 must write one ordinary native SPL with the localized title, without repeating or replacing manual saves.");
+        const auto savedFeedback = feedback("Quicksaved.");
+        Check(savedFeedback && savedFeedback->alignment == UiTextAlignment::Right &&
+            savedFeedback->x > ApplicationPresentation::Width * 0.9f &&
+            savedFeedback->x < ApplicationPresentation::Width &&
+            savedFeedback->y > ApplicationPresentation::Height * 0.9f &&
+            savedFeedback->y < ApplicationPresentation::Height && savedFeedback->scale < 0.5f,
+            "Quicksave must show small bottom-right text without replacing an active gameplay prompt.");
+        input.Set(InputKey::QuickSaveKey, false);
+        host.UpdateApplication(0, input);
+        const auto loaded = Tap(host, input, InputKey::QuickLoadKey);
+        Check(!loaded.tick && host.GetMenuPage() == MenuPage::Gameplay && host.gold == 23,
+            "F6 must reload the quicksave even in the same level without simulating the transition frame.");
+        Check(feedback("Quickloaded.") && !feedback("Quicksaved."),
+            "Quickload must replace the corner notification after rebuilding the loaded scene.");
+        host.gold = 45;
+        Tap(host, input, InputKey::QuickSaveKey);
+        host.gold = 67;
+        Tap(host, input, InputKey::QuickLoadKey);
+        Check(host.gold == 45 && host.saveWrites == 2, "A new F5 press must replace the previous quicksave.");
+
+        host.saves[0] = host.saves[quick];
+        host.SetMenuPage(MenuPage::LoadGame);
+        Tap(host, input, InputKey::UiConfirmKey);
+        Check(host.gold == 45, "A quicksave copied into a manual slot must load as an ordinary SPL.");
+        host.gold = 78;
+        host.saves[quick] = host.CaptureSaveGame("Imported DOS save");
+        host.saves[0].reset();
+        host.gold = 99;
+        host.SetMenuPage(MenuPage::MainMenu);
+        Move(host, input, InputKey::UiDownKey, 2);
+        Tap(host, input, InputKey::UiConfirmKey);
+        Check(host.GetMenuPage() == MenuPage::LoadGame,
+            "A quicksave alone must enable the main menu's Load game action.");
+        const auto quickLabel = [&host]()
+        {
+            std::vector<UiText> rows;
+            for (const auto& command : host.GetApplicationPresentation().commands)
+            {
+                if (const auto* text = std::get_if<UiText>(&command); text && text->scale == 0.8f)
+                {
+                    rows.push_back(*text);
+                }
+            }
+            Check(rows.size() == GameContext::QuickSaveSlot, "The load menu must include all ten manual slots plus quicksave.");
+            return rows.back().text;
+        };
+        Check(quickLabel() == "Quicksave", "An imported SPL in quicksav.spl must still be labeled Quicksave.");
+        LoadStringResources(std::filesystem::path("Localization") / "strings.json", "de-de");
+        Check(quickLabel() == "Schnellspeicherung", "The quicksave label must follow the UI locale, not its stored title.");
+        LoadStringResources(std::filesystem::path("Localization") / "strings.json");
+        Move(host, input, InputKey::UiDownKey, 10);
+        Tap(host, input, InputKey::UiConfirmKey);
+        Check(host.gold == 78 && host.GetMenuPage() == MenuPage::Gameplay,
+            "The extra load-menu row must load arbitrary native save contents from the quick slot.");
+        host.SetMenuPage(MenuPage::MainMenu);
+        host.gold = 90;
+        Tap(host, input, InputKey::QuickLoadKey);
+        Check(host.gold == 78 && host.GetMenuPage() == MenuPage::Gameplay, "F6 must also work from the main menu.");
+        LoadStringResources(std::filesystem::path("Localization") / "strings.json", "de-de");
+        Tap(host, input, InputKey::QuickSaveKey);
+        Check(NativeSaveGame::Decode(*host.saves[quick]).Name() == "Schnellspeicherung",
+            "Quicksaves must store the localized native save title.");
+        Check(feedback("Schnell gespeichert.").has_value(), "Quicksave feedback must follow the UI locale.");
+        LoadStringResources(std::filesystem::path("Localization") / "strings.json");
+        host.synchronous = false;
+        Tap(host, input, InputKey::QuickLoadKey);
+        host.UpdateApplication(5, input);
+        Check(!feedback("Quickloaded."), "Quickload feedback must wait until the loaded world is ready.");
+        const auto request = host.requests.back();
+        host.synchronous = true;
+        host.LoadLevel(request);
+        Check(feedback("Quickloaded.").has_value(), "Loading time must not consume the quickload notification's lifetime.");
+        host.SetPaused(true);
+        host.UpdateApplication(1, input);
+        host.UpdateApplication(0.9, input);
+        Check(feedback("Quickloaded.").has_value(), "Corner notifications must remain visible for about two seconds.");
+        host.UpdateApplication(0.2, input);
+        Check(!feedback("Quickloaded."), "Corner notifications must expire even when gameplay is paused.");
+    }
+
+    void TestQuickSaveFailures()
+    {
+        Host host;
+        Input input;
+        Ready(host, input);
+        const auto quick = GameContext::QuickSaveSlot - 1;
+        Tap(host, input, InputKey::QuickSaveKey);
+        const auto saved = *host.saves[quick];
+        host.writeFails = true;
+        Tap(host, input, InputKey::QuickSaveKey);
+        Check(*host.saves[quick] == saved && host.prompt == "Test disk is full.",
+            "A failed quicksave must preserve the previous file and visibly report the failure.");
+        for (const auto& command : host.GetApplicationPresentation().commands)
+        {
+            const auto* text = std::get_if<UiText>(&command);
+            Check(!text || text->text != "Quicksaved.", "A failed quicksave must clear any previous success notification.");
+        }
+        host.writeFails = false;
+        host.saves[quick]->back() ^= 1;
+        const auto requests = host.requests.size();
+        Tap(host, input, InputKey::QuickLoadKey);
+        bool checksumError = false;
+        for (const auto& command : host.GetApplicationPresentation().commands)
+        {
+            if (const auto* text = std::get_if<UiText>(&command);
+                text && text->text.find("checksum mismatch") != std::string::npos) { checksumError = true; }
+        }
+        Check(checksumError && host.requests.size() == requests && host.GetMenuPage() == MenuPage::LoadGame,
+            "A corrupt quicksave must show its error without replacing the current game.");
+        host.saves[quick].reset();
+        host.SetMenuPage(MenuPage::MainMenu);
+        Tap(host, input, InputKey::QuickLoadKey);
+        bool emptyError = false;
+        for (const auto& command : host.GetApplicationPresentation().commands)
+        {
+            if (const auto* text = std::get_if<UiText>(&command); text && text->text == GetString("save_empty"))
+            {
+                emptyError = true;
+            }
+        }
+        Check(emptyError && host.requests.size() == requests, "F6 without a file must visibly report an empty quicksave.");
+        host.SetMenuPage(MenuPage::Gameplay);
+        host.BeginCreviceFall(host.worldObjects[2]);
+        const auto writes = host.saveWrites;
+        Tap(host, input, InputKey::QuickSaveKey);
+        Check(host.saveWrites == writes && !host.saves[quick] && host.prompt == GetString("save_unavailable"),
+            "F5 must respect the existing cutscene save restriction.");
+    }
+
     void TestInventorySelectionAndNavigation()
     {
         Host host;
@@ -1266,6 +1425,8 @@ int main(int argc, char** argv)
         TestMenuLayoutsAndInventoryNames();
         TestScreenFades();
         TestSaveLoadMenus();
+        TestQuickSaveLoad();
+        TestQuickSaveFailures();
         TestInventorySelectionAndNavigation();
         TestRepeatPulseAndInputLeakage();
         TestPotionCompatibility();

@@ -298,6 +298,8 @@ namespace Desperabis
         UiCancelKey,
         DebugNextLevelKey,
         DebugNextGamePartKey,
+        QuickSaveKey,
+        QuickLoadKey,
         Count
     };
 
@@ -312,6 +314,8 @@ namespace Desperabis
     class GameContext
     {
     public:
+        static constexpr std::uint8_t NormalSaveSlotCount = 10;
+        static constexpr std::uint8_t QuickSaveSlot = NormalSaveSlotCount + 1;
         GameContext();
         virtual ~GameContext();
         GameContext(const GameContext&) = delete;
@@ -621,6 +625,7 @@ namespace Desperabis
     protected:
         // Logical asset names, e.g. LEVEL\OBJPOS11.DAT; failures must throw.
         virtual std::vector<std::uint8_t> LoadFile(std::string_view filename);
+        // Slots 1..10 are STAND<n>.SPL; QuickSaveSlot is quicksav.spl, using the same native format.
         virtual std::optional<std::vector<std::uint8_t>> ReadSaveFile(std::uint8_t slot);
         virtual void WriteSaveFile(std::uint8_t slot, const std::vector<std::uint8_t>& bytes);
         // Loads FELD geometry, LEVELS.INF surface metadata and the initial static collision map.
@@ -683,16 +688,22 @@ namespace Desperabis
         std::optional<std::uint8_t> NextPlayableLevel(const std::vector<std::uint8_t>& order, std::size_t first);
         void RestoreSaveGame();
         void RefreshSaveSlots();
+        std::size_t GetSaveMenuSlotCount() const
+        {
+            return menuPage == MenuPage::LoadGame ? saveSlots.size() : NormalSaveSlotCount;
+        }
         std::vector<GamePart> gameParts;
         std::vector<std::uint8_t> activeLevelOrder;
         bool activePartHasCredits = false;
         std::vector<std::uint8_t> nativeSavePrefix;
         std::optional<NativeSaveGame> pendingSaveGame;
         struct SaveSlot { std::string name, error; bool occupied = false; };
-        std::array<SaveSlot, 10> saveSlots{};
+        std::array<SaveSlot, QuickSaveSlot> saveSlots{};
         std::uint8_t saveFocus = 0;
         bool editingSaveName = false;
         std::string saveName, queuedText, saveError;
+        std::string quickSaveFeedback;
+        double quickSaveFeedbackSeconds = 0;
         double menuAnimationSeconds = 0, saveCaretSeconds = 0;
         void WriteCollisionMapByte(std::size_t address, std::uint8_t value);
         std::vector<LightningFlash> lightningFlashes;

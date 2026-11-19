@@ -48,6 +48,22 @@
       "message": "This slot is empty.",
       "description": "Load screen feedback after selecting an unused save slot."
     },
+    "save_quicksave": {
+      "message": "Quicksave",
+      "description": "Dedicated quicksav.spl load-menu label and native save title, independent of an imported file's title."
+    },
+    "save_quicksaved": {
+      "message": "Quicksaved.",
+      "description": "Brief confirmation after F5 successfully writes quicksav.spl."
+    },
+    "save_quickloaded": {
+      "message": "Quickloaded.",
+      "description": "Small bottom-right confirmation after F6 loads quicksav.spl."
+    },
+    "save_unavailable": {
+      "message": "Saving is unavailable right now.",
+      "description": "F5 feedback when gameplay cannot be saved, for example during a cutscene."
+    },
     "save_name_required": {
       "message": "Enter a save name.",
       "description": "Save screen feedback after confirming an empty name."
@@ -381,6 +397,22 @@
     "save_empty": {
       "message": "Dieser Platz ist leer.",
       "description": "Load screen feedback after selecting an unused save slot."
+    },
+    "save_quicksave": {
+      "message": "Schnellspeicherung",
+      "description": "Dedicated quicksav.spl load-menu label and native save title, independent of an imported file's title."
+    },
+    "save_quicksaved": {
+      "message": "Schnell gespeichert.",
+      "description": "Brief confirmation after F5 successfully writes quicksav.spl."
+    },
+    "save_quickloaded": {
+      "message": "Schnell geladen.",
+      "description": "Small bottom-right confirmation after F6 loads quicksav.spl."
+    },
+    "save_unavailable": {
+      "message": "Speichern ist derzeit nicht erlaubt.",
+      "description": "F5 feedback when gameplay cannot be saved, for example during a cutscene."
     },
     "save_name_required": {
       "message": "Gib einen Namen ein.",

@@ -442,7 +442,7 @@ Startup remains the training level. See the
 [new-game contract](BehaviorRecovery.md#game-context-and-application-flow).
 Unported introductions are skipped using `LEVELS.INF` presentation metadata,
 but remain in the native saved sequence, including their ordinal positions.
-Load/Save offers ten slots, `STAND1.SPL` through `STAND10.SPL`, in the shared
+Load/Save offers ten manual slots, `STAND1.SPL` through `STAND10.SPL`, in the shared
 repository `Bin/SaveGames` directory for both Debug and Release. Copy original
 saves there to import them; files written there can also be copied back to DOS.
 Enter selects a save name, typing/backspace edits its original 20-byte DOS
@@ -453,6 +453,19 @@ main-menu-family pages use the original `BACKGR2` image/palette and rotating
 `CURSOR.AN2` sword in the font palette. Their 360x480 art/text aspect is mapped
 to the common 360x240 logical canvas. Empty/corrupt slots and file errors are
 explicitly reported.
+F5 quicksaves ordinary live gameplay to `quicksav.spl` in the same directory,
+using the unchanged native SPL format and the localized title "Quicksave"
+("Schnellspeicherung" in German). It overwrites only that dedicated file,
+once per key press; cutscenes, death and paused gameplay cannot be quicksaved.
+F6 quickloads from gameplay or the main menu. The Load menu has an additional,
+localized Quicksave row after the ten manual slots; the Save menu still has
+only the original ten slots. Any supported native SPL can be copied to
+`quicksav.spl`, and quicksaves can be copied into ordinary STAND slots or back
+to DOS. Successful F5/F6 actions show small orange text at the bottom right for
+two seconds, without replacing gameplay prompts; loading time does not consume
+the quickload notification's lifetime. Missing/corrupt quickloads show their
+errors in the Load menu; failed quicksaves show a gameplay prompt and preserve
+the previous file.
 The host supplies CP437 text through `QueueTextInput`, implements
 `ReadSaveFile`/`WriteSaveFile`, and installs `GetPendingSaveGame()` into an owned
 renderer `Level`/`LevelScene` before completing the core level load. Loaded
