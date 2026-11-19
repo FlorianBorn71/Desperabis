@@ -1000,7 +1000,7 @@ namespace
 	{
 		RenderingSettings::SetRelativeGeometryScaling(1.f);
 		g_fileManager.Initialize();
-		g_renderSettings.gridVisibility = false;
+		g_renderSettings.gridVisibility = true;
 
 		// the renderer must exist before assets can be loaded
 		CO_AWAIT g_renderer.Initialize(g_d3dDevice.Get(), g_d3dContext.Get(),

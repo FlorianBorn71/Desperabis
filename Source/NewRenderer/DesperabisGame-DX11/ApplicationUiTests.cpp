@@ -4413,6 +4413,137 @@ namespace
             "stable animation creases, reverse faces, quad weighting and actual lighting pixels passed.\n";
     }
 
+    void CheckIslandVisibility(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
+    {
+        LevelScene scene(19);
+        scene.m_createGameObjects = false;
+        scene.m_createMapIcons = false;
+        FORCE_WAIT(scene.CreateScene());
+        const auto& grid = scene.m_level->GetCellArray();
+        std::map<byte, Vector> positions;
+        for (int z = 0; z < grid.m_sizeZ; ++z)
+        {
+            for (int x = 0; x < grid.m_sizeX; ++x)
+            {
+                const auto& cell = grid.GetCell(x, z);
+                if (!cell.m_floor || !cell.m_visibilityIsland) { continue; }
+                const auto center = grid.GetCenterPos(x, z, HeightLevel::Floor);
+                positions.emplace(cell.m_visibilityIsland, Vector(center.x, center.y + 30.f, center.z));
+            }
+        }
+        Check(positions.size() >= 2, "The original graveyard must exercise separate outdoor and teleport-interior islands.");
+        std::map<const RenderableInstance*, byte> assignments;
+        for (const auto& instance : scene.GetRenderableInstances())
+        {
+            if ((instance->GetVisibilityFilterMask() & static_cast<uint32_t>(GamePlay::VisibilityFilter::Walls)) == 0) { continue; }
+            const auto island = instance->GetGlobalBounds().m_visibilityIsland;
+            if (!island) { continue; }
+            assignments.emplace(instance.get(), island);
+            instance->UpdateGlobalBounds();
+            Check(instance->GetGlobalBounds().m_visibilityIsland == island,
+                "Scene insertion must preserve a static batch's baked island instead of using its world-origin pivot.");
+            instance->SetTransform(instance->GetTransform());
+            instance->UpdateGlobalBounds();
+            Check(instance->GetGlobalBounds().m_visibilityIsland == island,
+                "Refreshing static bounds must retain explicit island assignments.");
+        }
+        Check(!assignments.empty(), "The graveyard must contain explicitly assigned static island geometry.");
+        Target image(device, 360, 240);
+        renderer.ReInitialize(image.colorView.Get(), image.depthView.Get(), image.viewport);
+        Camera camera;
+        Matrix4 projection;
+        projection.CreateOrthographic(150.f, 100.f, 0.01f, 200.f);
+        camera.SetProjectionMatrix(projection);
+        RenderingSettings settings;
+        settings.fullbrightRendering = true;
+        settings.useFog = false;
+        settings.renderSky = false;
+        DefaultVisibilityContext visibility;
+        ProfilingStats stats;
+        VisibilityResult all, selected;
+        std::vector<std::pair<byte, Vector>> visits(positions.begin(), positions.end());
+        visits.push_back(visits.front());
+        for (const auto& [island, position] : visits)
+        {
+            Matrix4 transform;
+            transform.Create(position, Vector(1,0,0,0), Vector(0,0,-1,0), Vector(0,1,0,0));
+            camera.SetCameraTransformMatrix(transform);
+            auto unfiltered = settings;
+            unfiltered.gridVisibility = false;
+            visibility.ComputeResultFor(&camera, &scene, all, unfiltered, VisibilitySettings{}, stats);
+            visibility.ComputeResultFor(&camera, &scene, selected, settings, VisibilitySettings{}, stats);
+            std::size_t kept = 0, hidden = 0;
+            const auto checkCollection = [&](const VisibilityResult::InstanceCollection& collection)
+            {
+                for (const auto& entry : collection)
+                {
+                    if (const auto found = assignments.find(entry.m_instance); found != assignments.end())
+                    {
+                        Check(found->second == island,
+                            "Only the current island may contribute graveyard geometry, including after a teleport.");
+                        ++kept;
+                    }
+                }
+            };
+            checkCollection(selected.m_visibleInstances.m_opaqueInstances);
+            checkCollection(selected.m_visibleInstances.m_transparentInstances);
+            checkCollection(selected.m_visibleInstances.m_burningInstances);
+            for (const auto& water : selected.m_visibleWater)
+            {
+                checkCollection(water.m_waterReceiver);
+                checkCollection(water.m_visibleInstancesInMirror.m_opaqueInstances);
+                checkCollection(water.m_visibleInstancesInMirror.m_transparentInstances);
+            }
+            for (const auto& entry : all.m_visibleInstances.m_opaqueInstances)
+            {
+                if (const auto found = assignments.find(entry.m_instance);
+                    found != assignments.end() && found->second != island) { ++hidden; }
+            }
+            Check(kept > 0 && hidden > 0,
+                "The graveyard test must retain the current island and exclude other geometry that was actually in the frustum.");
+            const auto draw = [&](const VisibilityResult& result)
+            {
+                const float black[]{0,0,0,1};
+                context->ClearRenderTargetView(image.colorView.Get(), black);
+                context->ClearDepthStencilView(image.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+                renderer.RenderSceneElements(result, settings, stats);
+                return image.Pixels(device, context);
+            };
+            const auto allPixels = draw(all), selectedPixels = draw(selected);
+            int changed = 0, drawn = 0;
+            for (std::size_t pixel = 0; pixel < allPixels.size(); ++pixel)
+            {
+                changed += allPixels[pixel] != selectedPixels[pixel];
+                drawn += (selectedPixels[pixel] & 0xffffff) != 0;
+            }
+            Check(changed > 0 && drawn > 0,
+                "Island visibility must remove actual graveyard/interior GPU pixels without blanking the current island.");
+        }
+        const auto lightCount = selected.m_visibileLights.size();
+        auto moving = std::make_shared<RenderableInstance>(
+            all.m_visibleInstances.m_opaqueInstances.front().m_instance->GetRenderable(),
+            static_cast<uint32_t>(GamePlay::VisibilityFilter::GameObjects));
+        moving->m_fireIntensity = 1.f;
+        scene.AddRenderableInstance(moving);
+        for (const auto& [island, position] : positions)
+        {
+            moving->SetTranslation(position - Vector(0,30,0,0));
+            moving->UpdateGlobalBounds();
+            Check(moving->GetGlobalBounds().m_visibilityIsland == island,
+                "Moving objects must keep deriving their island from their current position.");
+            visibility.ComputeResultFor(&camera, &scene, selected, settings, VisibilitySettings{}, stats);
+            const bool sameIsland = island == positions.begin()->first;
+            const bool burningVisible = std::any_of(selected.m_visibleInstances.m_burningInstances.begin(),
+                selected.m_visibleInstances.m_burningInstances.end(),
+                [&](const auto& entry) { return entry.m_instance == moving.get(); });
+            Check(burningVisible == sameIsland &&
+                selected.m_visibileLights.size() == lightCount + (sameIsland ? 1 : 0),
+                "Moving fires must contribute geometry/light only on the current island, not through the culled-fire fallback.");
+        }
+        std::cout << "Graveyard island visibility: " << positions.size()
+            << " islands, preserved static assignments, teleport/return changes, moving fires and actual filtered GPU pixels passed.\n";
+    }
+
     void CheckEnemyModels(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
         auto* gorillaLevel = FORCE_GET(AssetManager::Instance().LoadLevel(16));
@@ -10186,6 +10317,7 @@ int main(int argc, char* argv[])
         CheckMutableWalls(renderer, device.Get(), context.Get());
         CheckWaterSurfaceDefinitions();
         CheckMachineWaterHeight(renderer, device.Get(), context.Get());
+        CheckIslandVisibility(renderer, device.Get(), context.Get());
         CheckEnemyModels(renderer, device.Get(), context.Get());
         CheckPresentationRecovery();
         CheckMuseumNeon();

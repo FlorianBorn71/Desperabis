@@ -121,6 +121,10 @@ void RenderableInstance::UpdateGlobalBounds()
                      grid->GetTileAssignment(m_transform.GetTranslation(), m_globalBounds);
                  }
              }
+             if (m_visibilityIslandOverride)
+             {
+                 m_globalBounds.m_visibilityIsland = *m_visibilityIslandOverride;
+             }
         }
         else
         {

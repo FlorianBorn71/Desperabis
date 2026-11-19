@@ -638,7 +638,7 @@ RenderableInstancePtr Level::AddStaticCellObject(int x, int y, byte rawVal, Heig
             BoundingVolume& vol = inst->ModifyGlobalBounds();
             vol.m_tileRange.m_minX = vol.m_tileRange.m_maxX = (int8_t)x;
 			vol.m_tileRange.m_minZ = vol.m_tileRange.m_maxZ = (int8_t)y;
-            vol.m_visibilityIsland = m_cellArray.GetCell(x, y).m_visibilityIsland;
+            inst->SetVisibilityIsland(m_cellArray.GetCell(x, y).m_visibilityIsland);
             m_wallGeometry.push_back(inst);
             if (isFloor)
             {
@@ -1184,7 +1184,7 @@ void Level::CreateWallGeometry()
             inst->UpdateGlobalBounds();
             BoundingVolume& bounds = inst->ModifyGlobalBounds();
             m_cellArray.GetTileAssignment(inst->GetTransform().GetTranslation(), bounds);
-            bounds.m_visibilityIsland = islandId;
+            inst->SetVisibilityIsland(static_cast<byte>(islandId));
             m_wallGeometry.push_back(inst);
             if (drawCallIndex >= mutableFloorStart)
             {
@@ -1223,6 +1223,7 @@ void Level::CreateWallGeometry()
             auto geometry = CreateWaterGeometry(static_cast<byte>(island), waterSlot);
             auto instance = std::make_shared<RenderableInstance>(
                 geometry.get(), static_cast<uint32_t>(GamePlay::VisibilityFilter::Walls));
+            instance->SetVisibilityIsland(static_cast<byte>(island));
             instance->ComputeTransparencyMask();
             instance->SetVisible(geometry->IsValid());
             instance->UpdateGlobalBounds();
@@ -1230,7 +1231,7 @@ void Level::CreateWallGeometry()
             {
                 auto& bounds = instance->ModifyGlobalBounds();
                 m_cellArray.GetTileAssignment(instance->GetTransform().GetTranslation(), bounds);
-                bounds.m_visibilityIsland = static_cast<byte>(island);
+                instance->SetVisibilityIsland(static_cast<byte>(island));
             }
             m_wallGeometry.push_back(instance);
             m_waterSurfaces.push_back({ static_cast<byte>(island), waterSlot,
@@ -1363,7 +1364,7 @@ void Level::SynchronizeWaterHeight(WaterSlotIndex slot, float height)
         {
             auto& bounds = water.instance->ModifyGlobalBounds();
             m_cellArray.GetTileAssignment(water.instance->GetTransform().GetTranslation(), bounds);
-            bounds.m_visibilityIsland = water.island;
+            water.instance->SetVisibilityIsland(water.island);
         }
     }
 }
@@ -1437,7 +1438,7 @@ std::size_t Level::SynchronizeSurfaceTiles(
             {
                 auto& bounds = water.instance->ModifyGlobalBounds();
                 m_cellArray.GetTileAssignment(water.instance->GetTransform().GetTranslation(), bounds);
-                bounds.m_visibilityIsland = water.island;
+                water.instance->SetVisibilityIsland(water.island);
             }
         }
     }

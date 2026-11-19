@@ -182,6 +182,10 @@ void DefaultVisibilityContext::DetermineVisibleInstances(VisibilityResult& resul
         {
             inst->UpdateGlobalBounds();
             const BoundingVolume& bounds = inst->GetGlobalBounds();
+            if (grid && !inst->m_foreground && !grid->IsIslandVisible(bounds.m_visibilityIsland))
+            {
+                continue;
+            }
             
             if ((grid != nullptr && !inst->m_foreground && !grid->IsVisible(bounds)) || !camFrustum.IsVolumeVisible(bounds))
             {

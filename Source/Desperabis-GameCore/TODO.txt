@@ -1,9 +1,10 @@
 bugs P0:
-- island visibility (graveyard)
 - skybox not high engough in general
+- trees blitted into skybox (burning forrest) need alpha
+- inside windmills depth artifacts
 
 bugs P1:
-- keyboard assignment
+
 
 improvements:
 - look through ceiling when sliding down in cathedral
@@ -12,10 +13,13 @@ improvements:
 - digging for key with the shovel (L19): Currently cut by ground texture
 
 missing
-- strave keys
+- Settings
+  - keyboard assignment
+  - strave keys
 
 ---------------------------------------------
 Fixed:
+- island visibility (graveyard)
 - witch head pointing down
 - key in windmill level not reachable
 - black clear color (burning forest)

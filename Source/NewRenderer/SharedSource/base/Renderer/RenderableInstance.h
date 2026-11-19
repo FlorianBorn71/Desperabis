@@ -4,6 +4,7 @@
 #include <Renderer/DrawCall.h>
 #include <Renderer/RendererCommon.h>
 #include <Asset/ModelGeometry.h>
+#include <optional>
 
 class D_IMPEXP RenderableInstance
 {
@@ -70,6 +71,11 @@ public:
 	BoundingVolume& ModifyGlobalBounds() { return m_globalBounds; }
 
     void UpdateGlobalBounds();
+    void SetVisibilityIsland(uint8_t island)
+    {
+        m_visibilityIslandOverride = island;
+        m_globalBounds.m_visibilityIsland = island;
+    }
     inline const Matrix4& GetTransform() const { return m_transform; }
 	void SetTranslation(const Vector& pos);
 	void SetTransform(const Vector& pos, const Vector& eulerRot, float scale = 1.f);
@@ -103,6 +109,7 @@ protected:
 	Vector m_localPos, m_localOri; // only relevant for sub instances
     Matrix4 m_transform;
     BoundingVolume m_globalBounds;
+    std::optional<uint8_t> m_visibilityIslandOverride;
 
     const Renderable* m_renderable = nullptr;
     const Renderable* m_blendToRenderable = nullptr;

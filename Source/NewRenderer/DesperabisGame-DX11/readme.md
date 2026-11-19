@@ -18,6 +18,12 @@ MUSIC14 once. Cutscene/death transitions fade ambient/music with the picture,
 while quick inventory/menu navigation leaves the current track running.
 Player-light positioning remains live during frozen fade-in frames so world
 geometry is already illuminated before gameplay resumes.
+World rendering uses the existing grid/island visibility collector: only the
+current camera/player island is shown, including after teleporting. Disconnected
+outdoor islands are hidden too. Static geometry retains its authored island
+assignment when added to a scene or when its bounds are refreshed; moving objects
+and lights continue to derive theirs from their current positions. Shared sky
+geometry remains visible, and the existing outside-grid fallback is unchanged.
 The shared DX11 renderer's `SetVignette(texture, tint)` and final
 `RenderVignette(stats)` pass multiply the complete framebuffer; null texture
 selects white, and white tint skips the pass entirely.
