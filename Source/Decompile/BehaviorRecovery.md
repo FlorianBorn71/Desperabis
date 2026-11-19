@@ -4,6 +4,95 @@ The first compilable C++ target is a **selector/recovery scaffold**, not a
 playable port or an implementation of object movement. Its purpose is to give
 each recovered case an editable, named home without hiding missing behavior.
 
+## Used-level behavior and collision audit
+
+The used-level audit follows the actual HERZ chapter orders, plus the museum
+and ending scenes reached through application flow. It covers **31 object
+scenes**: 10..26, 30..36, 50, 90, 91, 95, 96, 97 and 98. HERZ selectors
+9 and 29 are presentation entries with no live object records; files outside
+these reachable orders are not automatically treated as used gameplay.
+
+Across these scenes there are **2,822 live or dormant authored objects**,
+including 430 with health above 1000, and **75 distinct collision selectors**
+(including None). The probe directly dispatches each non-excluded object,
+then runs 300 object-update ticks per scene both normally and with dormant
+groups activated. Authored pickup/interact records are also dispatched.
+Collision coverage additionally requires reviewing automatic contacts,
+movement/support, damage and tool-specific consumers: generic pickup or
+NoEffect results alone do not establish that a collision is implemented.
+These are coverage/smoke checks, not complete puzzle playthroughs.
+
+**The audit identified level 25's crevice sequence as missing gameplay.**
+It has since been restored as described below.
+
+| Original behavior name | Native slots | State at audit |
+|---|---|---|
+| 150 OpeningCreviceWithExit | 59 | Unconditional UnimplementedHandler |
+| 151 Behavior_151 | Runtime continuation of slot 59 | Unconditional UnimplementedHandler |
+| 152 OpeningCrevice | 56..58, 60..62 | Unconditional UnimplementedHandler |
+
+All seven authored objects start at health 1000, so this is not an unused
+variant or an inactive editor template. The original 150 case tests contact
+and explicitly changes its behavior to 151 at `0000:456B`; 151 then calls
+`10AC:CE41`. The companion 152 case copies DS:2B0E into object word 42.
+See [bounded native evidence](crevice-state-machine-evidence.txt).
+This established a genuine missing trigger and continuation, rather than an
+unused variant; the audit did not establish whether the whole level was
+impossible to finish.
+
+No additional missing authored behavior cases were found after excluding
+the agreed legacy sky/moon controllers and the deliberately unrecovered
+UnderwaterColorAnim (104) rendering effect. ShootArrows (40) and FlyingArrow
+(41) contain unsupported variant branches, but all their authored variants
+in these scenes take implemented paths.
+
+No additional missing collision handler was established. Level 10's two
+Type_107 records (slots 3 and 10) have behavior None and collision mask zero;
+their meaning remains unclassified, not a confirmed gameplay gap. Common-only
+behavior 201 and CrystalBallTableInCutScene (211) are not missing dispatch
+cases in the original either.
+
+The accompanying regression run passed 42 of 46 executable suites. The
+remaining failures were park-gameplay (empty-bucket presentation expectation),
+player-underwater (music LoadFile fixture), level-ten-weather (HERZ fixture),
+and behavior-recovery-routes (case-status expectation). Two other suites,
+fireplace-behavior and skeleton-behavior, could not rebuild because their
+audio doubles lack StopAllSamples. No gameplay or test fixes were made as
+part of this audit; these validation failures must not be presented as a
+fully passing regression baseline or automatically counted as missing cases.
+
+### Restored burning-forest crevice (150..152)
+
+The author confirmed that approaching the fissure opens the ground through
+model morphing, lets the player fall and ends the level. The enum names now
+describe their separate roles, with unchanged native values:
+
+- **150 CreviceFallTrigger:** player overlap sets the target heading from
+  the object yaw, zeros forward/sideways motion, looks down toward horizon
+  10, installs the native 65-tick player countdown and changes to 151.
+- **151 CreviceOpening:** native `10AC:CE41` adds `200*ticks +
+  Random(200*ticks)` to the wrapped 16-bit phase. Its unsigned high byte,
+  plus signed radius-one jitter, supplies both the controller's model morph
+  and the shared DS:2B0E signal. It changes placement to 3, plays effect 60
+  whenever the previous signal is divisible by eight, shakes body height
+  by toggling its low bit and nudges the player toward the opening.
+  Above morph 45 it lowers posture, capped at -3 per tick; above 100 it
+  disables its own behavior without removing the opened ground.
+- **152 CreviceSegment:** copies the shared signal into the companion
+  piece's morph weight. All six authored pieces therefore open together.
+
+The existing timed-cutscene path supplies neutral input, hides weapons,
+disables inventory/saving, continues physical camera movement below normal
+crouch height and ends the level when the countdown expires. No KOO path,
+new renderer feature, death or artificial teleport is involved. Normal
+EndLevel progression/fades then lead from level 25 to level 26 and its story.
+The same native countdown-to-EndLevel route is visible at `0000:C9E4..CA15`.
+
+The `timed-meteor-cutscene` suite now checks native morph arithmetic,
+signed-word overflow, both morph thresholds, companion synchronization,
+the original level-25 trigger boundary, input locking, the sinking camera,
+zero-frame behavior and expiry into level 26 without advancing the new scene.
+
 ## Game context and application flow
 
 ### Smoothed recorded cutscene cameras

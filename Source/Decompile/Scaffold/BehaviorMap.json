@@ -1878,7 +1878,7 @@
     },
     {
       "value": 150,
-      "name": "OpeningCreviceWithExit",
+      "name": "CreviceFallTrigger",
       "namedInRenderer": true,
       "hasSpecificCase": true,
       "entry": "0000:4552",
@@ -1896,7 +1896,7 @@
     },
     {
       "value": 151,
-      "name": "Behavior_151",
+      "name": "CreviceOpening",
       "namedInRenderer": false,
       "hasSpecificCase": true,
       "entry": "0000:458F",
@@ -1908,7 +1908,7 @@
     },
     {
       "value": 152,
-      "name": "OpeningCrevice",
+      "name": "CreviceSegment",
       "namedInRenderer": true,
       "hasSpecificCase": true,
       "entry": "0000:45A2",

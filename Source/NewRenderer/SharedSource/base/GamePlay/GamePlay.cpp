@@ -249,8 +249,9 @@ namespace GamePlay
         BT_ENUM2STRING(ActivatableLadder);
         BT_ENUM2STRING(Switch3);
         BT_ENUM2STRING(FireFly);
-        BT_ENUM2STRING(OpeningCrevice);
-        BT_ENUM2STRING(OpeningCreviceWithExit);
+        BT_ENUM2STRING(CreviceFallTrigger);
+        BT_ENUM2STRING(CreviceOpening);
+        BT_ENUM2STRING(CreviceSegment);
         BT_ENUM2STRING(FloodingWater);
         BT_ENUM2STRING(BreakableStoneWallFloodingWater);
         BT_ENUM2STRING(EndBossBody);

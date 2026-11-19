@@ -148,9 +148,9 @@ namespace Desperabis
         PuzzleGameHandler = 147,
         PuzzleTileTrigger = 148,
         PuzzleSpool = 149, // the ones with roman numbers in level 35
-        OpeningCreviceWithExit = 150, // the one that opens in level 25
-        Behavior_151 = 151,
-        OpeningCrevice = 152, // the one that opens in level 25
+        CreviceFallTrigger = 150,
+        CreviceOpening = 151,
+        CreviceSegment = 152,
         FlushingFishes = 153, // at the flush for flushing the fish, probably controls the water level
         SomethingWithTheFishes  = 154, // the water in the cave
         GrandfatherClock = 155, // level 35

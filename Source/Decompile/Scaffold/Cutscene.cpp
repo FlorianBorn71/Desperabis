@@ -247,6 +247,18 @@ namespace Desperabis
         return {GameTickStatus::Advanced, {}, {}};
     }
 
+    void GameContext::BeginCreviceFall(const RawGameObject& crevice)
+    {
+        playerTargetHeading = crevice.winY;
+        worldObjects[1].itemValue = 65;
+        playerForwardSpeed = playerSidewaysSpeed = 0;
+        playerTargetLookHeight = 10;
+        cutsceneCameraSlot.reset();
+        recordedCutscene.clear();
+        recordedCameraTrack.clear();
+        cutscenePlaying = true;
+    }
+
     void GameContext::BeginCutscene(bool restoringSave)
     {
         bossFall.reset();

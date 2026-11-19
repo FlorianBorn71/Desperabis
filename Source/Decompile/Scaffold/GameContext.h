@@ -339,6 +339,7 @@ namespace Desperabis
         bool IsMuseumIntroPlaying() const;
         void StartMuseumIntro();
         void StartEndingBookPreview();
+        void BeginCreviceFall(const RawGameObject& crevice);
         void UpdateIntroCredits(RawGameObject& object);
         bool IsBossFallPlaying() const { return bossFall.has_value(); }
         void BeginBossFall(int bossSlot, int trapSlot);

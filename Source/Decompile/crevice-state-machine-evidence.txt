@@ -1,0 +1,77 @@
+SHA-256: 219525080e93e7a9d2b072b0dd75ed35bb7e41024e01e837c7889566723a9318
+Bounded linear decoding through InspectCode.java, read-only Ghidra project.
+Addresses and call targets below are module-relative.
+
+The main object-behavior dispatch compares AX with 150, 151 and 152.
+The object behavior word is at offset 08. Thus 0000:456B proves the
+150 -> 151 continuation, although OBJPOS25 initially contains no 151.
+
+0000:454D  3D 96 00                 CMP AX,0x96
+0000:4550  75 38                    JNZ 0000:458A
+0000:4552  FF 76 FC                 PUSH word ptr [BP + -0x4]
+0000:4555  9A 63 2D 48 2E           CALLF 1E48:2D63
+0000:455A  08 C0                    OR AL,AL
+0000:455C  74 29                    JZ 0000:4587
+0000:455E  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:4561  26 8B 45 1E              MOV AX,word ptr ES:[DI + 0x1e]
+0000:4565  A3 4C DC                 MOV [0xdc4c],AX
+0000:4568  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:456B  26 C7 45 08 97 00        MOV word ptr ES:[DI + 0x8],0x97
+0000:4571  C7 06 94 82 41 00        MOV word ptr [0x8294],0x41
+0000:4577  31 C0                    XOR AX,AX
+0000:4579  A3 D8 D4                 MOV [0xd4d8],AX
+0000:457C  31 C0                    XOR AX,AX
+0000:457E  A3 DA D4                 MOV [0xd4da],AX
+0000:4581  C7 06 B6 D4 0A 00        MOV word ptr [0xd4b6],0xa
+0000:4587  E9 86 0B                 JMP 0000:5110
+0000:458A  3D 97 00                 CMP AX,0x97
+0000:458D  75 0E                    JNZ 0000:459D
+0000:458F  FF 76 FC                 PUSH word ptr [BP + -0x4]
+0000:4592  FF 76 04                 PUSH word ptr [BP + 0x4]
+0000:4595  9A 41 CE AC 20           CALLF 10AC:CE41
+0000:459A  E9 73 0B                 JMP 0000:5110
+0000:459D  3D 98 00                 CMP AX,0x98
+0000:45A0  75 0D                    JNZ 0000:45AF
+0000:45A2  A1 0E 2B                 MOV AX,[0x2b0e]
+0000:45A5  C4 7E C6                 LES DI,[BP + -0x3a]
+0000:45A8  26 89 45 2A              MOV word ptr ES:[DI + 0x2a],AX
+0000:45AC  E9 61 0B                 JMP 0000:5110
+
+Controller 151 calls 10AC:CE41 (also decoded in level33-helper-evidence.txt).
+Recovered operations, in native instruction order:
+
+10AC:CE56  object.renderPlacementMode = 3
+10AC:CE5B  if ((DS:2B0E & 7) == 0):
+10AC:CE65      PlaySoundEffect(60, GetSoundVolume(0), objectSlot, 3)
+10AC:CE79  range = low_word(200 * ticks)
+10AC:CE7F  randomIncrement = Random(range)
+10AC:CE97  object.word34 += range + randomIncrement
+10AC:CE9D  jitter = RandomSigned(1)
+10AC:CEA7  phase = unsigned_high_byte(object.word34) + jitter
+10AC:CEAF  DS:2B0E = phase
+10AC:CEB8  object.word42 = phase
+10AC:CEBF  DS:D4B2 ^= 1
+10AC:CED2  player.posX += GetStepToward(workingCameraX, object.posX, 1)
+10AC:CEE8  player.posZ += GetStepToward(workingCameraZ, object.posZ, 1)
+10AC:CEF4  if (object.word42 > 45):
+10AC:CEFE      DS:D4B4 -= ticks
+10AC:CF02      DS:D4B4 = max(DS:D4B4, -3)
+10AC:CF0F  if (DS:2B0E > 100):
+10AC:CF1B      object.behavior = 0
+
+DS:D4B2 is playerBodyHeight; DS:D4B4 is playerPostureDelta. Positive player
+word34 suppresses ordinary keyboard/weapon control and normal posture clamps.
+The existing timed-cutscene controller follows this same countdown route:
+
+0000:C9E4  83 3E 94 82 00           CMP word ptr [0x8294],0x0
+0000:C9E9  7E 35                    JLE 0000:CA20
+0000:C9FB  FF 36 94 82              PUSH word ptr [0x8294]
+0000:C9FF  6A 00                    PUSH 0x0
+0000:CA01  FF 36 CA D4              PUSH word ptr [0xd4ca]
+0000:CA05  9A 6C 0A 48 2E           CALLF 1E48:0A6C
+0000:CA0A  01 06 94 82              ADD word ptr [0x8294],AX
+0000:CA0E  83 3E 94 82 01           CMP word ptr [0x8294],0x1
+0000:CA13  7D 03                    JGE 0000:CA18
+0000:CA15  E8 F7 03                 CALL 0000:CE0F
+
+CE0F is normal level progression, not player death.

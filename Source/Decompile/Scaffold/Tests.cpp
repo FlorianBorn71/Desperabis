@@ -303,7 +303,9 @@ namespace
                 entry.type == BehaviorType::RandomAttachmentYaw || entry.type == BehaviorType::ObjectPoseSequence ||
                 entry.type == BehaviorType::CutSceneCloud || entry.type == BehaviorType::FlipTRexHead ||
                 entry.type == BehaviorType::NeonLights || entry.type == BehaviorType::IntroCredits ||
-                entry.type == BehaviorType::WitchMouthAnimation || entry.type == BehaviorType::DisabledSentinel;
+                entry.type == BehaviorType::WitchMouthAnimation || entry.type == BehaviorType::DisabledSentinel ||
+                entry.type == BehaviorType::CreviceFallTrigger || entry.type == BehaviorType::CreviceOpening ||
+                entry.type == BehaviorType::CreviceSegment;
             Check(result.status == (implemented ?
                 DispatchStatus::ExecutedCase : entry.hasSpecificCase ?
                 DispatchStatus::UnimplementedHandler : DispatchStatus::NoSpecificCase), "Wrong case status.");

@@ -3575,19 +3575,45 @@ namespace Desperabis
         return { DispatchStatus::ExecutedCase, BehaviorType::PuzzleSpool, 0x4480 };
     }
 
-    DispatchResult Function_OpeningCreviceWithExit(RawGameObject&, GameContext&)
+    DispatchResult Function_CreviceFallTrigger(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::OpeningCreviceWithExit, 0x4552 };
+        if (context.OverlapsPlayer(object))
+        {
+            context.BeginCreviceFall(object);
+            object.behavior = BehaviorType::CreviceOpening;
+        }
+        return { DispatchStatus::ExecutedCase, BehaviorType::CreviceFallTrigger, 0x4552 };
     }
 
-    DispatchResult Function_Behavior_151(RawGameObject&, GameContext&)
+    DispatchResult Function_CreviceOpening(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::Behavior_151, 0x458F };
+        object.renderPlacementMode = 3;
+        if ((context.windX & 7) == 0)
+        {
+            context.PlaySoundEffect(static_cast<SoundEffect>(60), GameContext::GetSoundVolume(0), object, 3);
+        }
+        const auto increment = static_cast<std::uint16_t>(context.tickCount * 200u);
+        object.itemValue = WrapSignedWord(object.itemValue + increment + context.Random(increment));
+        context.windX = WrapSignedWord((static_cast<std::uint16_t>(object.itemValue) >> 8) +
+            context.RandomSigned(1));
+        object.blendWeightOrSpriteOpacity = context.windX;
+        context.playerBodyHeight ^= 1;
+        auto& player = context.worldObjects[1];
+        player.posX = WrapSignedWord(player.posX + GetStepToward(context.soundListenerX, object.posX, 1));
+        player.posZ = WrapSignedWord(player.posZ + GetStepToward(context.soundListenerZ, object.posZ, 1));
+        if (object.blendWeightOrSpriteOpacity > 45)
+        {
+            context.playerPostureDelta = std::max<std::int16_t>(-3,
+                WrapSignedWord(context.playerPostureDelta - context.tickCount));
+        }
+        if (context.windX > 100) { object.behavior = BehaviorType::None; }
+        return { DispatchStatus::ExecutedCase, BehaviorType::CreviceOpening, 0x458F };
     }
 
-    DispatchResult Function_OpeningCrevice(RawGameObject&, GameContext&)
+    DispatchResult Function_CreviceSegment(RawGameObject& object, GameContext& context)
     {
-        return { DispatchStatus::UnimplementedHandler, BehaviorType::OpeningCrevice, 0x45A2 };
+        object.blendWeightOrSpriteOpacity = context.windX;
+        return { DispatchStatus::ExecutedCase, BehaviorType::CreviceSegment, 0x45A2 };
     }
 
     DispatchResult Function_FlushingFishes(RawGameObject& object, GameContext& context)

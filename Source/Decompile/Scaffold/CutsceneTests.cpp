@@ -94,6 +94,92 @@ namespace
         }
     };
 
+    void TestCreviceMorph()
+    {
+        for (const auto [phase, ticks] : {
+            std::pair<int, int>{0, 1}, {45 * 256, 3}, {100 * 256, 4}, {32700, 3}})
+        {
+            GameContext context, reference;
+            context.soundEnabled = false;
+            context.randomSeed = reference.randomSeed = 123;
+            context.tickCount = static_cast<std::int16_t>(ticks);
+            context.soundListenerX = 1490;
+            context.soundListenerZ = 2510;
+            auto& player = context.worldObjects[1];
+            player.posX = 1490; player.posZ = 2510;
+            auto& opening = context.worldObjects[59];
+            opening.health = 1000;
+            opening.behavior = BehaviorType::CreviceOpening;
+            opening.posX = 1500; opening.posZ = 2500;
+            opening.itemValue = static_cast<std::int16_t>(phase);
+            const auto counter = WrapSignedWord(phase + ticks * 200 + reference.Random(
+                static_cast<std::uint16_t>(ticks * 200)));
+            const auto blend = (static_cast<std::uint16_t>(counter) >> 8) + reference.RandomSigned(1);
+            const auto result = DispatchObjectCase(opening, context);
+            Check(result.status == DispatchStatus::ExecutedCase && opening.itemValue == counter &&
+                opening.renderPlacementMode == 3 && opening.blendWeightOrSpriteOpacity == blend &&
+                context.windX == blend && context.randomSeed == reference.randomSeed &&
+                context.playerBodyHeight == 44 && player.posX == 1491 && player.posZ == 2509,
+                "The crevice must preserve native fractional morphing, unsigned high-byte extraction, jitter and centering.");
+            Check(context.playerPostureDelta == (blend > 45 ? -3 : 0) &&
+                opening.behavior == (blend > 100 ? BehaviorType::None : BehaviorType::CreviceOpening),
+                "Falling must start above blend 45; the opening controller must stop only above 100.");
+            auto& segment = context.worldObjects[56];
+            segment.health = 1000;
+            segment.behavior = BehaviorType::CreviceSegment;
+            Check(DispatchObjectCase(segment, context).status == DispatchStatus::ExecutedCase &&
+                segment.blendWeightOrSpriteOpacity == blend,
+                "Companion pieces must follow the opening controller's shared morph phase.");
+        }
+    }
+
+    void TestOriginalCreviceFall()
+    {
+        Host host;
+        host.original = true;
+        host.soundEnabled = false;
+        host.StartLevel(25);
+        auto& trigger = host.worldObjects[59];
+        auto& player = host.worldObjects[1];
+        Check(trigger.behavior == BehaviorType::CreviceFallTrigger && trigger.health == 1000,
+            "The original burning forest must contain its live crevice trigger in slot 59.");
+        player.posX = WrapSignedWord(trigger.posX + trigger.collisionRadiusXZ + player.collisionRadiusXZ + 1);
+        player.posY = trigger.posY;
+        player.posZ = trigger.posZ;
+        host.tickCount = 1;
+        DispatchObjectCase(trigger, host);
+        Check(!host.IsCutscenePlaying() && trigger.behavior == BehaviorType::CreviceFallTrigger,
+            "The crevice must not open before the authored contact boundary.");
+        player.posX = trigger.posX;
+        const auto life = host.playerLife;
+        DispatchObjectCase(trigger, host);
+        Check(host.IsCutscenePlaying() && trigger.behavior == BehaviorType::CreviceOpening &&
+            player.itemValue == 65 && host.playerTargetLookHeight == 10 && !host.OpenInventory() &&
+            !host.GetWeaponView(), "Proximity must start the native 65-tick fall, look down and suppress inventory/weapons.");
+        for (const int slot : {56, 57, 58, 60, 61, 62})
+        {
+            Check(host.worldObjects[slot].behavior == BehaviorType::CreviceSegment,
+                "All six original companion pieces must use the shared crevice morph.");
+        }
+        Input input;
+        input.keys.fill(true);
+        host.Tick({10, 0}, input);
+        Check(player.itemValue == 65 && host.windX == 0,
+            "A zero-frame call must not advance the crevice countdown or morph.");
+        host.Tick({35, 35}, input);
+        const auto upperEye = host.GetPlayerCamera().position[1];
+        host.Tick({29, 29}, input);
+        Check(host.GetLoadedLevelNumber() == 25 && player.itemValue == 1 &&
+            trigger.blendWeightOrSpriteOpacity > 45 && host.playerBodyHeight < 28 &&
+            host.GetPlayerCamera().position[1] < upperEye && host.playerLife == life &&
+            input.calls == 0 && host.pathReads == 0,
+            "The opening must lower the live player below normal crouch height, ignore input and remain in level 25 until expiry.");
+        const auto ended = host.Tick({10, 10}, input);
+        Check(ended.status == GameTickStatus::LevelEnded && !ended.objects &&
+            host.GetLoadedLevelNumber() == 26 && !host.IsCutscenePlaying() && host.levelElapsedTicks == 0,
+            "Crevice expiry must use normal story/progression to level 26 without ticking it during catch-up.");
+    }
+
     void TestTimedCameraAndInput()
     {
         Host host;
@@ -957,6 +1043,8 @@ int main(int argc, char** argv)
     {
         if (argc != 2) { throw std::invalid_argument("Expected the original assets directory."); }
         assets = argv[1];
+        TestCreviceMorph();
+        TestOriginalCreviceFall();
         TestTimedCameraAndInput();
         TestClockAndCleanup();
         TestOriginalSceneAndBatching();
