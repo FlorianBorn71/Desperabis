@@ -4413,7 +4413,7 @@ namespace
             "stable animation creases, reverse faces, quad weighting and actual lighting pixels passed.\n";
     }
 
-    void CheckEnemyModels()
+    void CheckEnemyModels(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
     {
         auto* gorillaLevel = FORCE_GET(AssetManager::Instance().LoadLevel(16));
         const auto gorillaBytes = FORCE_GET(FileManager::Instance().ReadDataFuture(
@@ -4466,6 +4466,80 @@ namespace
             "Slime impact/dissolve must resolve both real puddle morph targets.");
         Check(std::fabs(instance->m_blendWeight - 0.6f) < 0.00001f,
             "Slime dissolve must forward the native blend weight.");
+
+        auto* mansion = FORCE_GET(AssetManager::Instance().LoadLevel(33));
+        const auto mansionBytes = FORCE_GET(FileManager::Instance().ReadDataFuture(
+            FileManager::Instance().FilenameToNative(L"LEVEL\\OBJPOS33.DAT")));
+        const auto rope = Desperabis::DecodeGameObject(mansionBytes.data() + (140 - 2) * 54, 54);
+        Check(rope.behavior == Desperabis::BehaviorType::RopeSwitch && rope.modelFrame2 == 27,
+            "The original tower rope must supply the packed target 27.");
+        Desperabis::EncodeGameObject(rope, raw.m_rawBytes, 54);
+        raw.m_level = mansion;
+        model = mansion->GetLevelInfo().GetModelAnim(rope.modelId - 30);
+        for (const int selector : {11, 15, 16, 20, 27, 35})
+        {
+            raw.m_rawBytes[2] = static_cast<std::uint8_t>(selector);
+            const int animation = (selector - 11) / 5, frame = (selector - 11) % 5;
+            Check(properties.GetModelAnim2() == animation && properties.GetModelFrame2() == frame,
+                "Packed targets must decode for ropes as well as enemies, including the last frame of each bank.");
+        }
+        raw.m_rawBytes[2] = rope.modelFrame2;
+        for (const short weight : {short{0}, short{50}, short{100}})
+        {
+            raw.m_rawShorts[21] = weight;
+            mansion->ApplyRenderProperties(instance, raw);
+            Check(instance->GetVisible() && instance->GetRenderable() == model->GetModelSafe(5, 4) &&
+                instance->GetBlendTargetRenderable() == model->GetModelSafe(3, 1) &&
+                instance->GetBlendTargetRenderable() != nullptr &&
+                std::abs(instance->m_blendWeight - weight * 0.01f) < 0.00001f,
+                "The bucket rope must retain its real cross-bank GPU morph target throughout its sway.");
+        }
+        instance->UpdateGlobalBounds();
+        const auto center = instance->GetGlobalBounds().GetCenter();
+        const float span = (std::max)(instance->GetGlobalBounds().GetSphereRadius() * 3.f, 0.2f);
+        Matrix4 projection, transform;
+        projection.CreateOrthographic(span * 1.5f, span, 0.1f, 20.f);
+        transform.SetTranslation(Vector(center.GetX(), center.GetY(), center.GetZ() + 10.f));
+        Camera camera;
+        camera.SetProjectionMatrix(projection);
+        camera.SetCameraTransformMatrix(transform);
+        Texture lightmap;
+        lightmap.CreatePlainWhite();
+        lightmap.m_atlasData = {0, 0, 0.5f, 0.5f};
+        VisibilityResult visible;
+        visible.m_mainCamera = &camera;
+        visible.m_visibleInstances.m_opaqueInstances.push_back({instance.get(), 0});
+        visible.m_visibleInstances.m_visibleTransparencyTypes = instance->GetUsedTransparencyMask();
+        visible.m_ambientColor = {1.f, 1.f, 1.f};
+        visible.m_fogFalloff = 0.f;
+        visible.m_lightmap = &lightmap;
+        Target image(device, 720, 480);
+        renderer.ReInitialize(image.colorView.Get(), image.depthView.Get(), image.viewport);
+        RenderingSettings settings;
+        settings.fullbrightRendering = true;
+        ProfilingStats stats;
+        std::vector<std::uint32_t> previous;
+        for (const short weight : {short{0}, short{50}, short{100}})
+        {
+            raw.m_rawShorts[21] = weight;
+            mansion->ApplyRenderProperties(instance, raw);
+            const float black[]{0, 0, 0, 1};
+            context->ClearRenderTargetView(image.colorView.Get(), black);
+            context->ClearDepthStencilView(image.depthView.Get(), D3D11_CLEAR_DEPTH, 1.f, 0);
+            renderer.RenderSceneElements(visible, settings, stats);
+            const auto pixels = image.Pixels(device, context);
+            int drawn = 0, changed = 0;
+            for (std::size_t pixel = 0; pixel < pixels.size(); ++pixel)
+            {
+                drawn += (pixels[pixel] & 0xffffff) != 0;
+                changed += !previous.empty() && pixels[pixel] != previous[pixel];
+            }
+            std::cout << "Bucket rope morph " << weight << ": " << drawn << " visible, "
+                << changed << " changed pixels.\n";
+            Check(drawn > 30 && (previous.empty() || changed > 10),
+                "The original bucket rope must draw visibly different GPU pixels at rest, midway and fully swayed.");
+            previous = pixels;
+        }
     }
 
     void CheckParkKnothole(RendererDX11& renderer, ID3D11Device3* device, ID3D11DeviceContext3* context)
@@ -10112,7 +10186,7 @@ int main(int argc, char* argv[])
         CheckMutableWalls(renderer, device.Get(), context.Get());
         CheckWaterSurfaceDefinitions();
         CheckMachineWaterHeight(renderer, device.Get(), context.Get());
-        CheckEnemyModels();
+        CheckEnemyModels(renderer, device.Get(), context.Get());
         CheckPresentationRecovery();
         CheckMuseumNeon();
         CheckEndingActorVisibility();
@@ -10182,6 +10256,33 @@ int main(int argc, char* argv[])
                 return target.Pixels(device.Get(), context.Get());
             };
             const auto render = [&] { return drawRecipe(core.GetApplicationPresentation()); };
+            {
+                using namespace Desperabis;
+                const float scale = (std::min)(size.first / 360.f, size.second / 240.f);
+                for (const auto* message : {"Quicksaved.", "Quickloaded."})
+                {
+                    ApplicationPresentation notification{MenuPage::Gameplay, {
+                        UiText{2, 2, message, 0.3f, {255, 160, 32},
+                            UiTextAlignment::Left, UiTextLayout::ViewportTopLeft}}};
+                    const auto pixels = drawRecipe(notification);
+                    UINT minX = size.first, minY = size.second;
+                    int visible = 0;
+                    for (UINT y = 0; y < size.second; ++y)
+                    {
+                        for (UINT x = 0; x < size.first; ++x)
+                        {
+                            if ((pixels[static_cast<std::size_t>(y) * size.first + x] & 0xffffff) == 0) { continue; }
+                            minX = (std::min)(minX, x);
+                            minY = (std::min)(minY, y);
+                            Check(x < 160 * scale && y < 32 * scale,
+                                "Quick-action text must stay small and near the viewport's top-left corner.");
+                            ++visible;
+                        }
+                    }
+                    Check(visible > 0 && minX < 6 * scale && minY < 6 * scale,
+                        "Quick-action notifications must use the viewport corner on native, wide and portrait targets.");
+                }
+            }
             {
                 using namespace Desperabis;
                 ApplicationPresentation credits{ MenuPage::Gameplay, {

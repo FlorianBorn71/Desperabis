@@ -1419,6 +1419,7 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
         auto& cached = m_meshes[i];
         std::string key;
         float x = 0, y = 0, scale = canvasScale;
+        float originX = offsetX, originY = offsetY;
         UiColor color;
         if (const auto* model = std::get_if<UiModel>(&command))
         {
@@ -1533,6 +1534,11 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
             }
             x = text->x;
             y = text->y;
+            if (text->layout == UiTextLayout::ViewportTopLeft)
+            {
+                originX = viewport.TopLeftX;
+                originY = viewport.TopLeftY;
+            }
             scale *= text->scale;
             color = text->color;
             key = "text:" + std::to_string(static_cast<int>(text->alignment)) + ":" +
@@ -1646,8 +1652,8 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
             const float alignment = text->alignment == UiTextAlignment::Left ? 1.f :
                 text->alignment == UiTextAlignment::Center ? 0.5f : 0.f;
             auto& caret = instances.emplace_back(m_textCaret);
-            caret.SetPosition(offsetX + (text->x + cached.mesh->GetExtent().x * text->scale * alignment + 1) * canvasScale,
-                offsetY + text->y * canvasScale);
+            caret.SetPosition(originX + (text->x + cached.mesh->GetExtent().x * text->scale * alignment + 1) * canvasScale,
+                originY + text->y * canvasScale);
             caret.SetScale(canvasScale * text->scale);
             caret.SetTintColor({ text->color.r,text->color.g,text->color.b,
                 static_cast<byte>(std::lround(text->color.a * presentation.menuContentOpacity)) });
@@ -1659,7 +1665,7 @@ void ApplicationUi::Draw(const Desperabis::ApplicationPresentation& presentation
         {
             color.a = static_cast<byte>(std::lround(color.a * presentation.menuContentOpacity));
         }
-        instance.SetPosition(offsetX + x * canvasScale, offsetY + y * canvasScale);
+        instance.SetPosition(originX + x * canvasScale, originY + y * canvasScale);
         instance.SetScale(scale);
         instance.SetTintColor({ color.r,color.g,color.b,color.a });
         batch.push_back(&instance);

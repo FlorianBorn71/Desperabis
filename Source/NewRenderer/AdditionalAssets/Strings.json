@@ -58,7 +58,7 @@
     },
     "save_quickloaded": {
       "message": "Quickloaded.",
-      "description": "Small bottom-right confirmation after F6 loads quicksav.spl."
+      "description": "Small top-left confirmation after F6 loads quicksav.spl."
     },
     "save_unavailable": {
       "message": "Saving is unavailable right now.",
@@ -408,7 +408,7 @@
     },
     "save_quickloaded": {
       "message": "Schnell geladen.",
-      "description": "Small bottom-right confirmation after F6 loads quicksav.spl."
+      "description": "Small top-left confirmation after F6 loads quicksav.spl."
     },
     "save_unavailable": {
       "message": "Speichern ist derzeit nicht erlaubt.",

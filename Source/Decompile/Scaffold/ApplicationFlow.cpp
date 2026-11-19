@@ -950,8 +950,8 @@ namespace Desperabis
             }
             if (runtimeState == GameRuntimeState::Ready && quickSaveFeedbackSeconds > 0)
             {
-                result.commands.emplace_back(UiText{352, 222, quickSaveFeedback, 0.3f,
-                    {204, 102, 0}, UiTextAlignment::Right});
+                result.commands.emplace_back(UiText{2, 2, quickSaveFeedback, 0.3f,
+                    {255, 160, 32}, UiTextAlignment::Left, UiTextLayout::ViewportTopLeft});
             }
             return result;
         }

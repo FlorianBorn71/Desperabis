@@ -90,6 +90,17 @@ namespace Desperabis
             (muzzle ? frame.muzzleVertex : frame.billboardVertex);
         if (anchor && *anchor == 0) { throw std::invalid_argument("Linked object requires a type-9 model polygon."); }
         if (!anchor) { return std::nullopt; }
+        // Native 1E48:9D57: selectors above ten encode a different animation bank.
+        const auto targetAnimation = object.modelFrame2 > 10 ?
+            (object.modelFrame2 - 1) / 5 - 2 : object.modelAnim - 1;
+        const auto targetFrame = object.modelFrame2 > 10 ?
+            (object.modelFrame2 - 1) % 5 : object.modelFrame2 - 1;
+        const Frame* blendFrame = nullptr;
+        if (targetAnimation >= 0 && targetAnimation < static_cast<int>(animations.size()) &&
+            targetFrame >= 0 && targetFrame < static_cast<int>(animations[targetAnimation].size()))
+        {
+            blendFrame = &animations[targetAnimation][targetFrame];
+        }
         std::array<double, 3> position{};
         double blend = object.blendWeightOrSpriteOpacity * 0.01;
         if (object.blendWeightOrSpriteOpacity > 100) { blend = 2 - blend; }
@@ -97,9 +108,9 @@ namespace Desperabis
         for (std::size_t axis = 0; axis < position.size(); ++axis)
         {
             position[axis] = frame.vertices.at(*anchor - 1)[axis];
-            if (object.modelFrame2 > 0 && object.modelFrame2 <= row.size())
+            if (blendFrame)
             {
-                position[axis] += (row[object.modelFrame2 - 1].vertices.at(*anchor - 1)[axis] - position[axis]) * blend;
+                position[axis] += (blendFrame->vertices.at(*anchor - 1)[axis] - position[axis]) * blend;
             }
         }
         // Same coordinate conversion and X/Z/Y rotation order as the model renderer.

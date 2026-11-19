@@ -461,7 +461,8 @@ F6 quickloads from gameplay or the main menu. The Load menu has an additional,
 localized Quicksave row after the ten manual slots; the Save menu still has
 only the original ten slots. Any supported native SPL can be copied to
 `quicksav.spl`, and quicksaves can be copied into ordinary STAND slots or back
-to DOS. Successful F5/F6 actions show small orange text at the bottom right for
+to DOS. Successful F5/F6 actions show small bright-orange text inset two logical
+pixels from the top-left viewport corner for
 two seconds, without replacing gameplay prompts; loading time does not consume
 the quickload notification's lifetime. Missing/corrupt quickloads show their
 errors in the Load menu; failed quicksaves show a gameplay prompt and preserve

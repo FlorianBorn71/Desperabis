@@ -79,7 +79,7 @@ namespace Desperabis
     };
 
     enum class UiTextAlignment { Left, Center, Right };
-    enum class UiTextLayout { TopAligned, Native, Menu };
+    enum class UiTextLayout { TopAligned, Native, Menu, ViewportTopLeft };
 
     struct UiText
     {

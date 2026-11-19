@@ -902,12 +902,14 @@ namespace
             NativeSaveGame::Decode(*host.saves[quick]).Name() == "Quicksave" && host.prompt == "Puzzle prompt",
             "F5 must write one ordinary native SPL with the localized title, without repeating or replacing manual saves.");
         const auto savedFeedback = feedback("Quicksaved.");
-        Check(savedFeedback && savedFeedback->alignment == UiTextAlignment::Right &&
-            savedFeedback->x > ApplicationPresentation::Width * 0.9f &&
-            savedFeedback->x < ApplicationPresentation::Width &&
-            savedFeedback->y > ApplicationPresentation::Height * 0.9f &&
-            savedFeedback->y < ApplicationPresentation::Height && savedFeedback->scale < 0.5f,
-            "Quicksave must show small bottom-right text without replacing an active gameplay prompt.");
+        Check(savedFeedback && savedFeedback->alignment == UiTextAlignment::Left &&
+            savedFeedback->layout == UiTextLayout::ViewportTopLeft &&
+            savedFeedback->x > 0 && savedFeedback->x <= 2 &&
+            savedFeedback->y > 0 && savedFeedback->y <= 2 &&
+            savedFeedback->scale < 0.5f && savedFeedback->color.r == 255 &&
+            savedFeedback->color.g >= 150 && savedFeedback->color.g < savedFeedback->color.r &&
+            savedFeedback->color.b < savedFeedback->color.g,
+            "Quicksave must show small bright-orange text close to the top-left edge without replacing an active gameplay prompt.");
         input.Set(InputKey::QuickSaveKey, false);
         host.UpdateApplication(0, input);
         const auto loaded = Tap(host, input, InputKey::QuickLoadKey);
@@ -999,6 +1001,18 @@ namespace
             Check(!text || text->text != "Quicksaved.", "A failed quicksave must clear any previous success notification.");
         }
         host.writeFails = false;
+        const auto healthyLife = host.playerLife;
+        const auto writesBeforeDeath = host.saveWrites;
+        for (const auto life : {0, -65536})
+        {
+            host.playerLife = life;
+            host.prompt.clear();
+            Tap(host, input, InputKey::QuickSaveKey);
+            Check(host.saveWrites == writesBeforeDeath && *host.saves[quick] == saved &&
+                host.prompt == GetString("save_unavailable"),
+                "F5 must not write or overwrite a save when player life is zero or negative.");
+        }
+        host.playerLife = healthyLife;
         host.saves[quick]->back() ^= 1;
         const auto requests = host.requests.size();
         Tap(host, input, InputKey::QuickLoadKey);
@@ -1022,12 +1036,13 @@ namespace
             }
         }
         Check(emptyError && host.requests.size() == requests, "F6 without a file must visibly report an empty quicksave.");
+        host.saves[quick] = saved;
         host.SetMenuPage(MenuPage::Gameplay);
         host.BeginCreviceFall(host.worldObjects[2]);
         const auto writes = host.saveWrites;
         Tap(host, input, InputKey::QuickSaveKey);
-        Check(host.saveWrites == writes && !host.saves[quick] && host.prompt == GetString("save_unavailable"),
-            "F5 must respect the existing cutscene save restriction.");
+        Check(host.saveWrites == writes && *host.saves[quick] == saved && host.prompt == GetString("save_unavailable"),
+            "F5 during a cutscene must preserve the previous quicksave without writing.");
     }
 
     void TestInventorySelectionAndNavigation()

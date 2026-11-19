@@ -76,6 +76,37 @@ namespace
             key.doorLockOrGroupBitmask == 140 && wheel.doorLockOrGroupBitmask == 140,
             "The original bucket key and wheel must share their authored rope link.");
         const auto savedKey = key;
+        Check(rope.behavior == BehaviorType::RopeSwitch && rope.modelFrame2 == 27,
+            "The original bucket rope must use the packed cross-bank sway target.");
+        const auto& geometry = *host.GetLevel()->modelAnchors[rope.modelId - 30];
+        auto pose = rope;
+        pose.blendWeightOrSpriteOpacity = 0;
+        const auto rest = geometry.Sample(pose, false, key.generalPurpose3);
+        pose.blendWeightOrSpriteOpacity = 100;
+        const auto swayed = geometry.Sample(pose, false, key.generalPurpose3);
+        pose.modelAnim = 4;
+        pose.animFrame = 2;
+        pose.modelFrame2 = 0;
+        const auto target = geometry.Sample(pose, false, key.generalPurpose3);
+        Check(rest && swayed && target && swayed == target && rest != swayed,
+            "Packed target 27 must move the bucket anchor to animation 4/frame 2.");
+        const auto savedRope = rope;
+        bool nearRest = false, nearSwayed = false, movedKey = false;
+        const auto initialKey = host.GetObjectRenderState(129);
+        host.tickCount = 1;
+        for (int tick = 0; tick < 512; ++tick)
+        {
+            DispatchObjectCase(rope, host);
+            nearRest |= rope.blendWeightOrSpriteOpacity <= 1;
+            nearSwayed |= rope.blendWeightOrSpriteOpacity >= 99;
+            const auto spatial = host.GetObjectRenderState(129);
+            movedKey |= spatial.posX != initialKey.posX || spatial.posZ != initialKey.posZ;
+            Check(key.posX == savedKey.posX && key.posY == savedKey.posY && key.posZ == savedKey.posZ &&
+                rope.posX == savedRope.posX && rope.posY == savedRope.posY && rope.posZ == savedRope.posZ,
+                "Rope sway must preserve the authored rope and key save coordinates.");
+        }
+        Check(nearRest && nearSwayed && movedKey,
+            "The authored sine phase must sway the attached key through both ends of a complete cycle.");
         bool reachedWindow = false, missedWindow = false, reversed = false;
         Input input;
         for (int turn = 0; turn < 600; ++turn)

@@ -370,10 +370,9 @@ namespace GamePlay
         inline int GetModelAnim2() const
         {
             const int frame = m_go.m_rawBytes[2];
-            if ((m_go.m_rawShorts[4] == static_cast<short>(BehaviorType::Mummie) ||
-                m_go.m_rawShorts[4] == static_cast<short>(BehaviorType::Gorilla)) && frame > 10)
+            if (frame > 10)
             {
-                return frame / 5 - 2;
+                return (frame - 1) / 5 - 2;
             }
             return GetModelAnim();
         }
@@ -381,10 +380,9 @@ namespace GamePlay
         inline int GetModelFrame2() const
         {
             const int frame = m_go.m_rawBytes[2];
-            if ((m_go.m_rawShorts[4] == static_cast<short>(BehaviorType::Mummie) ||
-                m_go.m_rawShorts[4] == static_cast<short>(BehaviorType::Gorilla)) && frame > 10)
+            if (frame > 10)
             {
-                return frame % 5 - 1;
+                return (frame - 1) % 5;
             }
             return frame - 1;
         }

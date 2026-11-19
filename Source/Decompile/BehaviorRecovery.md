@@ -372,6 +372,16 @@ This collision resolution is restricted to bucket keys; other placement-20
 presentation extras retain their previous collision behavior. Tests stand on
 the actual window floor rather than teleporting into the exterior bucket.
 
+Rope 140 also runs `RopeSwitch` (52): phase advances by three angle units per
+behavior tick and a sine drives its morph weight through 0..100. Its packed
+target 27 means animation 4/frame 2, starting from animation 6/frame 5.
+Native `1E48:9D57..9D7D` applies packed-target decoding to every vector model,
+not only enemies: for a selector above ten, the one-based animation is
+`(selector - 1) / 5 - 1` and frame is `(selector - 1) % 5 + 1`.
+Both the game-data renderer bridge and core attachment sampling honor this
+rule, so the rope and key sway together without changing native save positions
+or the window-side X/Z pickup proxy.
+
 The coffin's first-person Z offset is 10 rather than the other placeables'
 35 native units, pulling it twenty-five units toward the player without changing
 its world pose or trap-blocking dimensions. Knight 83 is a one-shot floor
@@ -2613,9 +2623,9 @@ sound at full volume, and approaches blend 100 by wrapped `ticks * 17`. On
 completion, select the target frame and set behavior `None`. Zero-tick opening
 frames still request sound.
 
-The renderer bridge decodes ordinary mummies' and gorillas' packed target bank/frame and uses
-that bank for both initial creation and live model blending. Other behaviors
-retain their existing target-frame interpretation. Display modes **30..36**
+The renderer bridge decodes packed target bank/frame selectors for all models and uses
+that bank for both initial creation and live model blending, matching native
+`1E48:9D57..9D7D` (including bank-ending selectors divisible by five). Display modes **30..36**
 are now named `VectorBrightness0..VectorBrightness6` in both core and renderer enums.
 The [native model-display export](model-fade-display-evidence.txt) confirms
 that `1E48:A660` maps these modes to shade arguments 7..13; the model draw
@@ -7066,7 +7076,7 @@ when the behavior tick count is zero. The parent's scale byte is a mouth
 selector, not a vector-model scale; the head keeps its own scale 32/64.
 
 GameCore reads checked original 3DA vertices/markers into level-owned geometry,
-samples the current frame and same-bank `modelFrame2` target, folds weights
+samples the current frame and same-bank or packed cross-bank `modelFrame2` target, folds weights
 above 100 back toward zero (above 200 uses zero), and applies the renderer's
 coordinate conversion and X-pitch/Z-roll/Y-yaw order: pitch `-winX`, roll
 `+winZ` and yaw `256+winY` after the upload's X/Y reflection; see
